@@ -1,5 +1,5 @@
 import express from "express"
-import functions from "firebase-functions"
+import * as functions from "firebase-functions"
 
 type IReqHandler = (req: express.Request, resp: express.Response) => void
 
@@ -10,7 +10,7 @@ const WrapExpressApp = (expressApp: IReqHandler) => {
     if (!request.path) {
       request.url = `/${request.url}` // prepend '/' to keep query params if any
     }
-    return expressApp(request, response)
+    expressApp(request, response)
   })
   return wrapped;
 }
