@@ -1,5 +1,5 @@
 import express from "express"
-const cors = require("cors")
+import cors from "cors"
 
 // A simple example app to mount and experiment with
 const TestApp = express()

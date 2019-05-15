@@ -6,7 +6,7 @@ import ImportRunApp from "./import-run-app"
 // Without these next two lines we see this error:
 // The Firebase Admin module has not been initialized early enough.
 // Make sure you run "admin.initializeApp()" outside of any function …
-const admin = require('firebase-admin');
+import admin from "firebase-admin"
 admin.initializeApp();
 
 // not as clean, but a better endpoint to consume

@@ -1,5 +1,5 @@
 import express from "express"
-const cors = require("cors")
+import cors from "cors"
 
 // A placeholder app for the firebase function that imports learner data
 const ImportRunApp = express()

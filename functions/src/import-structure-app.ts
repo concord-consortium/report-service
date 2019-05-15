@@ -1,5 +1,6 @@
 import express from "express"
-const cors = require("cors")
+import cors from "cors"
+
 const ImportStructureApp = express()
 ImportStructureApp.use(cors({ origin: true }))
 ImportStructureApp.get("*", (request, response) => {

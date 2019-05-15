@@ -1,6 +1,5 @@
 import express from "express"
-
-import * as functions from "firebase-functions"
+import functions from "firebase-functions"
 
 type IReqHandler = (req: express.Request, resp: express.Response) => void
 
