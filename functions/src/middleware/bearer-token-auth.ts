@@ -33,7 +33,7 @@ export default function (req: express.Request, res: express.Response, next: expr
   }
 
   if (!clientBearerToken) {
-    res.error(400, "No Bearer header found in request!")
+    res.error(400, "No bearer found in request header, body, or params")
     return
   }
 

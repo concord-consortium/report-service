@@ -9,7 +9,7 @@ export default function (req: express.Request, res: express.Response, next: expr
 
   res.success = (payload: string | object) => {
     if (typeof payload === "string") {
-      res.json({success: false, message: payload});
+      res.json({success: true, message: payload});
     }
     else {
       (payload as any).success = true;
