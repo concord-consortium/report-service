@@ -2,7 +2,7 @@ import express from "express"
 
 export default function (req: express.Request, res: express.Response, next: express.NextFunction) {
 
-  res.error = (message: any, status: number = 500) => {
+  res.error = (status: number, message: any) => {
     res.status(status).json({success: false, error: message});
     return res
   }

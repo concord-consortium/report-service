@@ -15,7 +15,7 @@ export default function (req: express.Request, res: express.Response, next: expr
   const authConfig = functions.config().auth
   const serverBearerToken = authConfig && authConfig.bearer_token
   if (!serverBearerToken) {
-    res.error("No bearer_token set in Firebase auth config!", 500)
+    res.error(500, "No bearer_token set in Firebase auth config!")
     return
   }
 
@@ -33,12 +33,12 @@ export default function (req: express.Request, res: express.Response, next: expr
   }
 
   if (!clientBearerToken) {
-    res.error("No Bearer header found in request!", 400)
+    res.error(400, "No Bearer header found in request!")
     return
   }
 
   if (clientBearerToken !== serverBearerToken) {
-    res.error("Incorrect bearer token value!", 401)
+    res.error(401, "Incorrect bearer token value!")
     return
   }
 

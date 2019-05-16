@@ -3,7 +3,7 @@
 // tslint:disable-next-line:no-namespace
 declare namespace Express {
   export interface Response {
-    error: (message: any, status?: number) => Response;
+    error: (status: number, message: any) => Response;
     success: (payload: string | object) => Response;
   }
 }
