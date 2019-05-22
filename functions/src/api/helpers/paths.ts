@@ -1,15 +1,19 @@
-import crypto from 'crypto'
 import admin from "firebase-admin"
-import { IPartialLaraRun, IPartialLaraAuthoredResource } from './lara-types';
+import {
+  IPartialLaraRun,
+  IPartialLaraAnswer,
+  IPartialLaraAuthoredResource
+} from './lara-types';
 
-const hashKey = (input:string) => {
+const resourceKey = (url:string) => {
   return new Promise<string>((resolve, reject) => {
-    if (input && input.length > 1) {
-      const shaSum = crypto.createHash('sha1');
-      shaSum.update(input);
-      resolve(shaSum.digest('hex'))
+    const re = /(https?:\/\/)(.*)/
+    const match = url.match(re) || []
+    const hostPath = match[2]
+    if (hostPath) {
+      resolve(hostPath.replace(/\.|\//g, '_'))
     } else {
-      reject(`Can't create hashKey from string:${input}`)
+      reject(`hostPath not found in url, or url missing ${url}`)
     }
   })
 }
@@ -22,7 +26,7 @@ const genSourceKey = (url:string) => {
     if (hostPart) {
       resolve(hostPart.replace(/\./g, '_'))
     } else {
-      reject("Host Name not found in url, or url missing")
+      reject(`Host Name not found in url, or url missing ${url}`)
     }
   })
 }
@@ -37,7 +41,7 @@ export const getSourcePath = (url: string) => {
 
 export const getResourcePath = (resource: IPartialLaraAuthoredResource) => {
   return getSourcePath(resource.url).then((sourcePath) => {
-    return hashKey(resource.url).then((resourceKey) => `${sourcePath}/resources/${resourceKey}`)
+    return resourceKey(resource.url).then((key) => `${sourcePath}/resources/${key}`)
   })
 }
 
@@ -45,3 +49,7 @@ export const getRunPath = (run: IPartialLaraRun) => {
   return getSourcePath(run.url).then((sourcePath) => `${sourcePath}/runs/${run.key}`)
 }
 
+export const getAnswerPath = (answer: IPartialLaraAnswer) => {
+  return getSourcePath(answer.url)
+    .then((sourcePath) => `${sourcePath}/answers/${answer.key}`)
+}

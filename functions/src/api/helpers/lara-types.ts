@@ -9,4 +9,10 @@ export interface IPartialLaraAuthoredResource {
 export interface IPartialLaraRun {
   url: string;
   key: string;
+  answers: IPartialLaraAnswer[]
+}
+
+export interface IPartialLaraAnswer {
+  url: string;
+  key: string;
 }
