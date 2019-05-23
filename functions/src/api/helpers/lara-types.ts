@@ -1,18 +1,21 @@
 export type ILaraResourceType = 'Activity' | 'Sequence';
 
-export interface IPartialLaraAuthoredResource {
+export interface IStandardLaraKeys {
+  id: string;
+  source_key: string;
+}
+
+export interface IPartialLaraAuthoredResource extends IStandardLaraKeys{
   url: string;
   author_email: string;
   type: ILaraResourceType;
 }
 
-export interface IPartialLaraRun {
+export interface IPartialLaraRun extends IStandardLaraKeys{
   url: string;
-  key: string;
-  answers: IPartialLaraAnswer[]
+  answers: IPartialLaraAnswer[];
 }
 
-export interface IPartialLaraAnswer {
-  url: string;
-  key: string;
+export interface IPartialLaraAnswer extends IStandardLaraKeys {
+  question_key: string;
 }
