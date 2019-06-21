@@ -9,5 +9,12 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
+    match /sources/{source}/resources/{document=**} {
+      allow read: if request.auth.uid != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    match /sources/{source}/answers/{document=**} {
+      allow read: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.context_id ||
+                     request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id);
+    }
   }
 }
