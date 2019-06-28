@@ -16,5 +16,16 @@ service cloud.firestore {
       allow read: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.context_id ||
                      request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id);
     }
+
+    // This lets us limit access to report settings based on user and offering.
+    match /sources/{source}/user_settings/{user_id}/{document=**} {
+      allow read, create, update: if request.auth.token.user_type == 'teacher' &&
+      string(request.auth.token.platform_user_id) == string(user_id);
+    }
+    
+    // This let us test the report settings with fake portal data:
+    match /sources/fake.portal/user_settings/1/offering/class123 {
+      allow read, create, update: if true;
+    }
   }
 }
