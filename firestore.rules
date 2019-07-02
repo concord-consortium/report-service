@@ -18,13 +18,13 @@ service cloud.firestore {
     }
 
     // This lets us limit access to report settings based on user and offering.
-    match /sources/{source}/user_settings/{user_id}/{document=**} {
+    match /sources/{source}/user_settings/{user_id}/resource_link/{document=**} {
       allow read, create, update: if request.auth.token.user_type == 'teacher' &&
       string(request.auth.token.platform_user_id) == string(user_id);
     }
     
     // This let us test the report settings with fake portal data:
-    match /sources/fake.portal/user_settings/1/offering/class123 {
+    match /sources/fake.portal/user_settings/1/resource_link/1 {
       allow read, create, update: if true;
     }
   }
