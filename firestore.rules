@@ -15,7 +15,7 @@ service cloud.firestore {
     match /sources/{source}/answers/{document=**} {
       allow read: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.context_id ||
                      request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id);
-    }
+    }  
 
     // This lets us limit access to report settings based on user and offering.
     match /sources/{source}/user_settings/{user_id}/resource_link/{document=**} {
@@ -25,6 +25,36 @@ service cloud.firestore {
     
     // This let us test the report settings with fake portal data:
     match /sources/fake.portal/user_settings/1/resource_link/1 {
+      allow read, create, update: if true;
+    }
+    
+    // Feedbacks
+    match /sources/{source}/question_feedbacks/{document=**} {
+    	allow create: if request.auth.token.user_type == 'teacher';
+  		allow read, update: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.contextId;
+      allow read: if request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platformStudentId);
+    }
+
+    match /sources/{source}/activity_feedbacks/{document=**} {
+    	allow create: if request.auth.token.user_type == 'teacher';
+  		allow read, update: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.contextId;
+      allow read: if request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platformStudentId);
+    }
+
+    match /sources/{source}/feedback_settings/{document=**} {
+  		allow create: if request.auth.token.user_type == 'teacher';
+  		allow read, update: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.contextId;
+      allow read: if request.auth.token.user_type == 'learner' && request.auth.token.class_hash == resource.data.contextId;
+    }
+    
+    // This let us test the report feedback with fake portal data:
+    match /sources/fake.authoring.system/question_feedbacks/{document=**} {
+      allow read, create, update: if true;
+    }
+    match /sources/fake.authoring.system/activity_feedbacks/{document=**} {
+      allow read, create, update: if true;
+    }
+    match /sources/fake.authoring.system/feedback_settings/{document=**} {
       allow read, create, update: if true;
     }
   }
