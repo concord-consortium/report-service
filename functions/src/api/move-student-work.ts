@@ -19,14 +19,16 @@ export default (req: Request, res: Response) => {
 
   console.log('Variables set from submitted JSON.')
 
+  const promises:any = []
+
   assignments.forEach((assignment:any) => {
     console.log('Iteration through assignments begun.')
-    const toolId = makeSourceKey(assignment.tool_id)
-    console.log('Tool ID set: ' + toolId)
+    const sourceKey = makeSourceKey(assignment.tool_id)
+    console.log('Tool ID set: ' + sourceKey)
     const data = {class_info_url: classInfoUrl, context_id: newContextId, platform_id: platformId, resource_link_id: assignment.new_resource_link_id}
     console.log('Data set: ' + data)
 
-    admin.firestore().collection(`sources/${toolId}/answers`)
+    promises.concat(admin.firestore().collection(`sources/${sourceKey}/answers`)
       .where("context_id", "==", currentContextId)
       .where("platform_id", "==", platformId)
       .where("platform_user_id", "==", platformUserId.toString())
@@ -35,26 +37,28 @@ export default (req: Request, res: Response) => {
       .then((querySnapshot) => {
         console.log('Number of matching docs in querySnapshot: ' + querySnapshot.size)
         if (querySnapshot.size > 0) {
-          querySnapshot.forEach((document) => {
+          promises.concat(querySnapshot.docs.map((document) => {
             const ref = document.ref
-            ref.set(data, {merge: true})
-               .then( (success) => {
-                 res.status(200).send("")
-                 console.log('Work updated.')
-               })
-               .catch( (e) => {
-                 console.error(e)
-               })
-
-          })
+            return ref.set(data, {merge: true})
+            })
+          )
         } else {
+          res.status(200).send("No matches")
           console.log('No matching docs for context_id=' + currentContextId + ' & platform_id=' + platformId + ' & platform_user_id=' + platformUserId + ' & resource_link_id=' + assignment.current_resource_link_id.toString())
         }
       })
-      .catch( (e) => {
-        console.error(e);
-        res.error(500, {error: e})
-      })
+    )
   })
+
+  Promise.all(promises)
+    .then( (success) => {
+      res.status(200).send("Success")
+      console.log('Work updated.')
+    })
+    .catch( (e) => {
+      console.error(e)
+      res.status(500).send("Error")
+    })
+
   console.log('End.')
 }
