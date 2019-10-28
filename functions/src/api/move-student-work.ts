@@ -17,7 +17,6 @@ const processAnswer = (answerDoc: any, data: any) => {
 const processAssignment = (assignment: IPortalMoveStudentsAssignment, config: IPortalMoveStudentsConfig) => {
 
   const sourceKey = makeSourceKey(assignment.tool_id)
-  console.log()
   const data = {
     class_info_url: config.class_info_url,
     context_id: config.new_context_id,
