@@ -51,4 +51,8 @@ export default (req: Request, res: Response) => {
     .then( (success) => {
       res.status(200).send("Success")
     })
+    .catch( (e) => {
+      console.error(e)
+      res.status(500).send("Error")
+    })
 }
