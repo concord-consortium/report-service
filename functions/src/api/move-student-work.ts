@@ -18,7 +18,7 @@ const processAssignment = (assignment: IPortalMoveStudentsAssignment, config: IP
 
   const sourceKey = makeSourceKey(assignment.tool_id)
   const data = {
-    class_info_url: config.class_info_url,
+    class_info_url: config.new_class_info_url,
     context_id: config.new_context_id,
     platform_id: config.platform_id,
     resource_link_id: assignment.new_resource_link_id
