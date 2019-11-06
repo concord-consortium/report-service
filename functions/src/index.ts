@@ -8,6 +8,7 @@ import responseMethods from "./middleware/response-methods"
 
 import importRun from "./api/import-run"
 import importStructure from "./api/import-structure"
+import moveStudentWork from "./api/move-student-work"
 
 admin.initializeApp();
 
@@ -20,12 +21,14 @@ api.get("/", (req, res) => {
     description: "Report service API",
     methods: {
       "POST import_run": "Imports a run, requires a bearer token",
-      "POST import_structure": "Imports the structure, requires a bearer token"
+      "POST import_structure": "Imports the structure, requires a bearer token",
+      "POST move_student_work": "Moves a students work from one class to another, requires a bearer token."
     }
   })
 })
 api.post("/import_run", importRun)
 api.post("/import_structure", importStructure)
+api.post("/move_student_work", moveStudentWork)
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.
@@ -39,4 +42,3 @@ const wrappedApi = functions.https.onRequest( (req: express.Request, res: expres
 module.exports = {
   api: wrappedApi
 }
-
