@@ -15,7 +15,9 @@ const processAnswer = (answerDoc: any, data: any) => {
 // this returns a promise that resolves
 // once all of the answer documents of the user have been updated
 const processAssignment = (assignment: IPortalMoveStudentsAssignment, config: IPortalMoveStudentsConfig) => {
-
+  if (!assignment.tool_id) {
+    return Promise.resolve(null)
+  }
   const sourceKey = makeSourceKey(assignment.tool_id)
   const data = {
     class_info_url: config.new_class_info_url,
