@@ -4,7 +4,6 @@ import { IPortalMoveStudentsConfig, IPortalMoveStudentsAssignment } from "./help
 
 // This matches the make_source_key method in LARA's report_service.rb
 const makeSourceKey = (toolId: string) => {
-
   return toolId.replace(/http[|s]?:\/\/([^\/]+)/, "$1")
 }
 
