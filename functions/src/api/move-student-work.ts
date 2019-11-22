@@ -4,6 +4,7 @@ import { IPortalMoveStudentsConfig, IPortalMoveStudentsAssignment } from "./help
 
 // This matches the make_source_key method in LARA's report_service.rb
 const makeSourceKey = (toolId: string) => {
+
   return toolId.replace(/http[|s]?:\/\/([^\/]+)/, "$1")
 }
 
@@ -15,7 +16,9 @@ const processAnswer = (answerDoc: any, data: any) => {
 // this returns a promise that resolves
 // once all of the answer documents of the user have been updated
 const processAssignment = (assignment: IPortalMoveStudentsAssignment, config: IPortalMoveStudentsConfig) => {
-
+  if (!assignment.tool_id) {
+    return Promise.resolve(null)
+  }
   const sourceKey = makeSourceKey(assignment.tool_id)
   const data = {
     class_info_url: config.new_class_info_url,
