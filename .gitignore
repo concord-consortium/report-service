@@ -2,6 +2,12 @@
 scripts/node_modules
 scripts/config.json
 scripts/credentials.json
+scripts/config.json
 scripts/answers
 scripts/*.pem
 
+tmp
+
+query-creator/.aws-sam
+query-creator/create-query/node_modules
+query-creator/env-dev.json

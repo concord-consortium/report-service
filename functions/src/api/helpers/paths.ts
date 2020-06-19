@@ -5,7 +5,7 @@ import {
   IPartialLaraAuthoredResource
 } from './lara-types';
 
-const getPath = (source_key:string, type:string, id:string) => {
+export const getPath = (source_key:string, type:string, id:string) => {
   return new Promise<string>((resolve, reject) => {
     resolve(`/sources/${source_key}/${type}/${id}`)
   })
