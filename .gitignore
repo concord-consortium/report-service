@@ -1,1 +1,7 @@
 *.log
+scripts/node_modules
+scripts/config.json
+scripts/credentials.json
+scripts/answers
+scripts/*.pem
+
