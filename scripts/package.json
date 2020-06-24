@@ -1,0 +1,15 @@
+{
+  "name": "report-service-scripts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "export-activities.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Doug Martin",
+  "license": "MIT",
+  "dependencies": {
+    "@google-cloud/firestore": "^3.8.5",
+    "aws-sdk": "^2.701.0"
+  }
+}
