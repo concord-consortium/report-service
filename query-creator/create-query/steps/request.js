@@ -1,10 +1,15 @@
 const crypto = require('crypto');
 
 exports.getBody = (event) => {
-  // const body = JSON.parse(event.body)
+  if (event.body === null) {
+    throw new Error("Missing post body in request")
+  }
+  return JSON.parse(event.body)
 
-  // for now we are faking the post body
-  const body = {
+  /*
+
+  // for testing
+  return {
     allowDebug: 1,
     json: JSON.stringify({
       "type": "learners",
@@ -21,8 +26,7 @@ exports.getBody = (event) => {
     }),
     signature: "4d59e0998f112485392d28b8033f41006cdb83d58c7eab715e8626bc3d866528"
   }
-
-  return body
+  */
 }
 
 exports.validateJSON = (body) => {
