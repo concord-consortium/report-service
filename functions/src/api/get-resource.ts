@@ -13,7 +13,7 @@ export default (req: Request, res: Response) => {
     return res.error(500, {error: new Error("Missing source in query!")})
   }
 
-  getPath(source, "resources", id)
+  return getPath(source, "resources", id)
     .then((path) => {
       return getDoc(path)
         .get()

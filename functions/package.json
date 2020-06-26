@@ -16,9 +16,13 @@
   },
   "jest": {
     "testURL": "https://starter-projects.unexisting.url.com",
-    "transform": { "^.+\\.tsx?$": "ts-jest" },
+    "transform": {
+      "^.+\\.tsx?$": "ts-jest"
+    },
     "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
-    "testPathIgnorePatterns": [ "/node_modules/" ],
+    "testPathIgnorePatterns": [
+      "/node_modules/"
+    ],
     "coveragePathIgnorePatterns": [
       "/node_modules/",
       "src/utilities/test-utils.ts"
@@ -33,7 +37,7 @@
     ]
   },
   "engines": {
-    "node": "8"
+    "node": "10"
   },
   "main": "lib/index.js",
   "dependencies": {
