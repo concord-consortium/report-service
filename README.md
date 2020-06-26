@@ -48,11 +48,11 @@ See which project you have access to and which you are currently using via: `fir
 
 * set the current project to dev: `firebase use report-service-dev`
 * deploy the rules: `firebase deploy --only firestore:rules`
-* deploy the functions: `firebase deploy --only funuctions`
+* deploy the functions: `firebase deploy --only functions`
 
 ### To deploy to the production server:
 
 * set the current project to production: `firebase use report-service-pro`
 * deploy the rules:  `firebase deploy --only firestore:rules`
-* deploy the functions:`firebase deploy --only funuctions`
+* deploy the functions:`firebase deploy --only functions`
 * Retrn to the safety of development: `firebase use report-service-dev`
