@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  query-creator
+
+Parameters:
+  JwtHmacSecret:
+    Type: String
+    Description: Secret to verify request
+  OutputBucket:
+    Type: String
+    Description: Output bucket for Athena queries
+  ReportServiceToken:
+    Type: String
+    Description: Bearer token for report service
+  ReportServiceUrl:
+    Type: String
+    Description: URL for report service
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+    Environment:
+      Variables:
+        JWT_HMAC_SECRET: !Ref JwtHmacSecret
+        OUTPUT_BUCKET: !Ref OutputBucket
+        REPORT_SERVICE_TOKEN: !Ref ReportServiceToken
+        REPORT_SERVICE_URL: !Ref ReportServiceUrl
+
+Resources:
+  CreateQueryFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: create-query/
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+      Events:
+        CreateQuery:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /create-query
+            Method: get
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  CreateQueryApi:
+    Description: "API Gateway endpoint URL for Prod stage for Create Query function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/create-query/"
+  CreateQueryFunction:
+    Description: "Create Query Lambda Function ARN"
+    Value: !GetAtt CreateQueryFunction.Arn
+  CreateQueryFunctionIamRole:
+    Description: "Implicit IAM Role created for Create Query function"
+    Value: !GetAtt CreateQueryFunctionRole.Arn

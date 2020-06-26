@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "report-service-query-creator"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-wt2wsqi9ar09"
+s3_prefix = "report-service-query-creator"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+

@@ -9,6 +9,7 @@ import responseMethods from "./middleware/response-methods"
 import importRun from "./api/import-run"
 import importStructure from "./api/import-structure"
 import moveStudentWork from "./api/move-student-work"
+import getResource from "./api/get-resource"
 
 admin.initializeApp();
 
@@ -29,6 +30,7 @@ api.get("/", (req, res) => {
 api.post("/import_run", importRun)
 api.post("/import_structure", importStructure)
 api.post("/move_student_work", moveStudentWork)
+api.get("/resource/:id", getResource)
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.
