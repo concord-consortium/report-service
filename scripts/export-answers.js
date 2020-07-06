@@ -176,9 +176,7 @@ function onEnd() {
     ++batchIndex;
     // This might be bad because it might be growing the stack
     // but at least it isn't closing around anything extra
-    setTimeout(() => {
-      countBatch(masterQuery.startAfter(lastDoc))
-    }, 1)
+    countBatch(masterQuery.startAfter(lastDoc))
   } else {
     finish();
     console.log(`Total count is ${count}`);
