@@ -44,7 +44,7 @@ const firestore = new Firestore();
 
 let query = firestore.collection('sources/authoring.concord.org/answers');
 let masterQuery = query.limit(BATCH_SIZE)
-  .orderBy('run_key')
+  .orderBy('run_key').orderBy("id")
 
 let count = 0;
 let lastDoc = null;
@@ -161,7 +161,7 @@ function countBatch(query) {
 }
 
 function finish() {
-  console.log(`Finished: ${batchIndex}, uploads: ${Object.keys(uploadPromises).length}, last_id: ${lastDoc.id}, memory: ${JSON.stringify(process.memoryUsage())}`);
+  console.log(`Finished: ${batchIndex}, uploads: ${Object.keys(uploadPromises).length}, memory: ${JSON.stringify(process.memoryUsage())}`);
   waitingForUploadsToFinish = true;
   uploadAnswers(lastRunKey);
   const promises = Object.values(uploadPromises);
@@ -170,12 +170,12 @@ function finish() {
 }
 
 function onEnd() {
-  if (batchIndex === 10) {
+  if (batchIndex === 3) {
     finish();
   }
   else if (batchCount == BATCH_SIZE) {
     batchCount = 0;
-    console.log(`Ended batch: ${batchIndex}, uploads: ${Object.keys(uploadPromises).length}, last_id: ${lastDoc.id}, memory: ${JSON.stringify(process.memoryUsage())}`);
+    console.log(`Ended batch: ${batchIndex}, uploads: ${Object.keys(uploadPromises).length}, memory: ${JSON.stringify(process.memoryUsage())}`);
     ++batchIndex;
     // This might be bad because it might be growing the stack
     // but at least it isn't closing around anything extra
