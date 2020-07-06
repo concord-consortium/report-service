@@ -170,10 +170,7 @@ function finish() {
 }
 
 function onEnd() {
-  if (batchIndex === 3) {
-    finish();
-  }
-  else if (batchCount == BATCH_SIZE) {
+  if (batchCount == BATCH_SIZE) {
     batchCount = 0;
     console.log(`Ended batch: ${batchIndex}, uploads: ${Object.keys(uploadPromises).length}, memory: ${JSON.stringify(process.memoryUsage())}`);
     ++batchIndex;
