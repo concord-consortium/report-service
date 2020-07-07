@@ -1,5 +1,4 @@
 const AWS = require("aws-sdk");
-const { v4: uuidv4 } = require('uuid');
 
 exports.ensureWorkgroup = async (user) => {
   const athena = new AWS.Athena({apiVersion: '2017-05-18'});
@@ -37,17 +36,17 @@ exports.ensureWorkgroup = async (user) => {
   return workgroup.WorkGroup;
 }
 
-exports.uploadDenormalizedResource = async (denormalizedResource, runnable, workgroup) => {
-  const key = `${runnable.type}-${runnable.id}`
+exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workgroup) => {
   const s3 = new AWS.S3({apiVersion: '2006-03-01'});
   await s3.putObject({
     Bucket: process.env.OUTPUT_BUCKET,
     Body: JSON.stringify(denormalizedResource),
-    Key: `activity-structure/${key}/${key}-structure.json`
+    Key: `activity-structure/${queryId}/${queryId}-structure.json`
   }).promise()
+  // TODO: tie the uploaded file to the workgroup
 }
 
-exports.generateSQL = (runnable, resource, denormalizedResource) => {
+exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   const selectColumns = [];
   const whereClauses = [];
 
@@ -55,13 +54,16 @@ exports.generateSQL = (runnable, resource, denormalizedResource) => {
     const type = questionId.split(/_\d+/).shift();
     switch (type) {
       case "image_question":
-        selectColumns.push(`json_extract_scalar(answer, '$.image_url') AS ${questionId}`)
+        selectColumns.push(`json_extract_scalar(answer, '$.image_url') AS ${questionId}_image_url`)
+        selectColumns.push(`json_extract_scalar(answer, '$.text') AS ${questionId}_text`)
+        selectColumns.push("answer")
         break;
       case "open_response":
-        selectColumns.push(`kv1['${questionId}'] AS ${questionId}`)
+        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_text`)
+        selectColumns.push(`submitted AS ${questionId}_submitted`)
         break;
       case "multiple_choice":
-        selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}`)
+        selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}_choice`)
         break;
       default:
         throw new Error(`Unknown question type: ${type}`)
@@ -71,7 +73,7 @@ exports.generateSQL = (runnable, resource, denormalizedResource) => {
 
   const remoteEndpoints = runnable.remoteEndpoints.map(remoteEndpoint => `'${remoteEndpoint}'`)
 
-  return `WITH activities AS ( SELECT * FROM "report-service"."activity_structure" WHERE structure_id = '${runnable.type}-${runnable.id}' )
+  return `WITH activities AS ( SELECT * FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
 
 SELECT
   remote_endpoint,
@@ -86,7 +88,7 @@ WHERE
   `
 }
 
-exports.createQuery = async (user, sql, workgroup) => {
+exports.createQuery = async (queryId, user, sql, workgroup) => {
   /*
 
   works but cannot find in aws UI, need to wait until hooked up to email notification
@@ -97,7 +99,7 @@ exports.createQuery = async (user, sql, workgroup) => {
     Description: `Report service query for ${user.email}`,
     Database: "report-service",
     QueryString: sql,
-    ClientRequestToken: uuidv4(),
+    ClientRequestToken: queryId,
     WorkGroup: workgroup.Name
   }).promise()
   return query
