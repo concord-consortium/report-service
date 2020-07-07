@@ -51,9 +51,11 @@ let lastDoc = null;
 let batchCount = 0;
 let batchIndex = 0;
 let lastRunKey = undefined;
-let waitingForUploadsToFinish = false;
 const answerHash = {};
 const uploadPromises = {};
+
+// set to true once all uploads have been created and the system is waiting for the uploads to finish
+let waitingForUploadsToFinish = false;
 
 const schema = new parquet.ParquetSchema({
   submitted: { type: 'BOOLEAN', optional: true },
@@ -117,8 +119,8 @@ function uploadAnswers(runKey) {
         Bucket: BUCKET,
         Key: key,
         Body: body,
-        ContentType: 'application/json',
-        ContentEncoding: "gzip"
+        ContentType: 'application/octet-stream',
+        ContentEncoding: 'gzip'
       }, function (err) {
         if (err) {
           console.error(`${documentSnapshot.id}: ${err.toString()}`)
@@ -128,9 +130,12 @@ function uploadAnswers(runKey) {
       console.error(err);
     } finally {
       await deleteFile();
+      delete answerHash[runKey];
     }
 
-    // while running keep the upload promises object as small as possible
+    // while running keep the upload promises object as small as possible by removing them from the hash
+    // this is set to true once all the uploads have been created and the system is waiting for them to complete
+    // via Promise.allSettled(...)
     if (!waitingForUploadsToFinish) {
       delete uploadPromises[runKey];
     }
@@ -138,10 +143,6 @@ function uploadAnswers(runKey) {
     // always resolve
     resolve();
   });
-
-  // console.log("starting", key)
-  // uploadPromises[runKey].then(() => console.log("done", key))
-  Promise.resolve(uploadPromises[runKey])
 }
 
 function countBatch(query) {
@@ -162,6 +163,8 @@ function countBatch(query) {
 
 function finish() {
   console.log(`Finished: ${batchIndex}, uploads: ${Object.keys(uploadPromises).length}, memory: ${JSON.stringify(process.memoryUsage())}`);
+  // flag that we are waiting for the uploads to finish - this changes the uploader to not remove upload promises from the hash it uses
+  // to track them so that we can then use Promise.allSettled to wait for them to finish
   waitingForUploadsToFinish = true;
   uploadAnswers(lastRunKey);
   const promises = Object.values(uploadPromises);
