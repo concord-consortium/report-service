@@ -5,14 +5,16 @@ import {
   IPartialLaraAuthoredResource
 } from './lara-types';
 
-export const getPath = (source_key:string, type:string, id:string) => {
-  return new Promise<string>((resolve, reject) => {
-    resolve(`/sources/${source_key}/${type}/${id}`)
-  })
+export const getPath = (source_key:string, type:string, id?:string) => {
+  return Promise.resolve(`/sources/${source_key}/${type}${id ? `/${id}` : ""}`)
 }
 
 export const getDoc = (path: string) => {
   return admin.firestore().doc(path)
+}
+
+export const getCollection = (path: string) => {
+  return admin.firestore().collection(path)
 }
 
 export const getResourcePath = (resource: IPartialLaraAuthoredResource) => {

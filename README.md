@@ -12,6 +12,7 @@ in the background from the `src` directory.
 - `api/` -- json based documentation of routes
 - `api/import_run` -- used to ingest learner runs, requires bearer token
 - `api/import_structure` -- used to ingest activity structure, requires bearer token
+- `api/resource` -- used to get a resource under source with given url
 
 # Bearer Tokens
 

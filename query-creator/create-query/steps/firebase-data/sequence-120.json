@@ -1,0 +1,1691 @@
+{
+  "created": "2019-07-25 21:51:17 UTC",
+  "version": "1",
+  "children": [
+    {
+      "type": "activity",
+      "id": "activity_749",
+      "children": [
+        {
+          "type": "section",
+          "id": "section_749",
+          "children": [
+            {
+              "children": [
+                {
+                  "required": false,
+                  "id": "multiple_choice_2270",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": false,
+                      "id": 8129,
+                      "content": "yes"
+                    },
+                    {
+                      "content": "no",
+                      "correct": true,
+                      "id": 8130
+                    }
+                  ],
+                  "question_number": 1,
+                  "type": "multiple_choice",
+                  "prompt": "<b>(Claim)</b> Based on the graph, is Earth's temperature dependent on the level of solar activity?"
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "<b>Explain</b> your claim.",
+                  "required": false,
+                  "id": "open_response_4073",
+                  "show_in_featured_question_report": true,
+                  "question_number": 2
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 3,
+                  "choices": [
+                    {
+                      "content": "(1) Not at all certain",
+                      "correct": false,
+                      "id": 8131
+                    },
+                    {
+                      "correct": false,
+                      "id": 8132,
+                      "content": "(2)"
+                    },
+                    {
+                      "correct": false,
+                      "id": 8133,
+                      "content": "(3)"
+                    },
+                    {
+                      "id": 8134,
+                      "content": "(4)",
+                      "correct": false
+                    },
+                    {
+                      "correct": false,
+                      "id": 8135,
+                      "content": "(5) Very certain"
+                    }
+                  ],
+                  "type": "multiple_choice",
+                  "prompt": "<b>How certain </b>are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2271"
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "<b>Explain</b> what influenced your <b>certainty rating</b>.",
+                  "required": false,
+                  "id": "open_response_4074",
+                  "show_in_featured_question_report": true,
+                  "question_number": 4
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3603",
+              "name": "Solar activity",
+              "type": "page",
+              "id": "page_3603"
+            },
+            {
+              "type": "page",
+              "id": "page_3604",
+              "children": [],
+              "url": "https://authoring.staging.concord.org/pages/3604",
+              "name": "Feedback on your answers"
+            }
+          ],
+          "url": "https://authoring.staging.concord.org/activities/749",
+          "name": "Constructing an argument: climate Section"
+        }
+      ],
+      "url": "https://authoring.staging.concord.org/activities/749",
+      "name": "Constructing an argument: climate"
+    },
+    {
+      "type": "activity",
+      "id": "activity_750",
+      "children": [
+        {
+          "url": "https://authoring.staging.concord.org/activities/750",
+          "name": "Earth's changing climates Section",
+          "type": "section",
+          "id": "section_750",
+          "children": [
+            {
+              "children": [
+                {
+                  "type": "open_response",
+                  "prompt": "What do the colors indicate about the change in average temperature over time from 1884 to 2012?",
+                  "required": false,
+                  "id": "open_response_4075",
+                  "show_in_featured_question_report": true,
+                  "question_number": 1
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4076",
+                  "show_in_featured_question_report": true,
+                  "question_number": 2,
+                  "type": "open_response",
+                  "prompt": "In the past 50 years, where has the temperature changed the most?"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3605",
+              "name": "What will Earth's climates be in the future?",
+              "type": "page",
+              "id": "page_3605"
+            },
+            {
+              "children": [
+                {
+                  "prompt": "Describe the average temperature change from 1880 to 2010.",
+                  "required": false,
+                  "id": "open_response_4077",
+                  "show_in_featured_question_report": true,
+                  "question_number": 3,
+                  "type": "open_response"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3606",
+              "name": "Trends of the past (part 1)",
+              "type": "page",
+              "id": "page_3606"
+            },
+            {
+              "type": "page",
+              "id": "page_3607",
+              "children": [
+                {
+                  "prompt": "Why is the curve&nbsp;between 1950 and 1980 relatively flat and centered around zero degrees difference from the baseline? <i>(Hint: how is the temperature change being compared over time?)</i>",
+                  "required": false,
+                  "id": "open_response_4078",
+                  "show_in_featured_question_report": true,
+                  "question_number": 4,
+                  "type": "open_response"
+                },
+                {
+                  "question_number": 5,
+                  "type": "open_response",
+                  "prompt": "The green bars are called \"error bars.\" They indicate the range of uncertainty that scientists have about the data on the graph. (Note: Not all error bars are shown.)<div><br><div>Why do you think these error bars are smaller near the year 2000 than in the 1890s?</div></div>",
+                  "required": false,
+                  "id": "open_response_4079",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "question_number": 6,
+                  "type": "open_response",
+                  "prompt": "Why is the black line so much more variable than the red line?<div>What's the difference between the data they show?</div>",
+                  "required": false,
+                  "id": "open_response_4080",
+                  "show_in_featured_question_report": true
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3607",
+              "name": "Trends of the past (part 2)"
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3608",
+              "name": "Predicting the future",
+              "type": "page",
+              "id": "page_3608",
+              "children": [
+                {
+                  "type": "multiple_choice",
+                  "prompt": "The three lines (marked A, B, and C) on the graph are possibilities for what could happen in the future (from 2010 to 2100).<br><br>Which line best shows what you think will happen to the temperature in the future?",
+                  "required": false,
+                  "id": "multiple_choice_2272",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "content": "Line A (increasing temperature)",
+                      "correct": true,
+                      "id": 8136
+                    },
+                    {
+                      "id": 8137,
+                      "content": "Line B (temperature about the same)",
+                      "correct": false
+                    },
+                    {
+                      "id": 8138,
+                      "content": "Line C (decreasing temperature)",
+                      "correct": false
+                    }
+                  ],
+                  "question_number": 7
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4081",
+                  "show_in_featured_question_report": true,
+                  "question_number": 8
+                },
+                {
+                  "prompt": "How certain are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2273",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "id": 8139,
+                      "content": "(1) Not at all certain",
+                      "correct": null
+                    },
+                    {
+                      "content": "(2)",
+                      "correct": null,
+                      "id": 8140
+                    },
+                    {
+                      "id": 8141,
+                      "content": "(3)",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8142,
+                      "content": "(4)"
+                    },
+                    {
+                      "id": 8143,
+                      "content": "(5) Very certain",
+                      "correct": null
+                    }
+                  ],
+                  "question_number": 9,
+                  "type": "multiple_choice"
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4082",
+                  "show_in_featured_question_report": true,
+                  "question_number": 10,
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating."
+                }
+              ]
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3609",
+              "name": "Way, way back in time",
+              "type": "page",
+              "id": "page_3609",
+              "children": [
+                {
+                  "question_number": 11,
+                  "type": "open_response",
+                  "prompt": "Why do you think the winter layers are darker than the summer layers in the ice core?",
+                  "required": false,
+                  "id": "open_response_4083",
+                  "show_in_featured_question_report": true
+                }
+              ]
+            },
+            {
+              "children": [
+                {
+                  "choices": [
+                    {
+                      "content": "getting warmer.",
+                      "correct": false,
+                      "id": 8144
+                    },
+                    {
+                      "id": 8145,
+                      "content": "staying fairly stable.",
+                      "correct": false
+                    },
+                    {
+                      "id": 8146,
+                      "content": "getting colder.",
+                      "correct": false
+                    }
+                  ],
+                  "question_number": 12,
+                  "type": "multiple_choice",
+                  "prompt": "The trend in the graph shows short warm periods between long periods of highly variable cold climate.<div><br></div><div>Which statement is supported by the information in the graph?</div><div><br></div><div>The graph shows that the temperature for the past 10,000 years, compared with the previous 400,000 years, has been</div>",
+                  "required": false,
+                  "id": "multiple_choice_2274",
+                  "show_in_featured_question_report": true
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3610",
+              "name": "Vostok Research Station, Antarctica",
+              "type": "page",
+              "id": "page_3610"
+            },
+            {
+              "type": "page",
+              "id": "page_3611",
+              "children": [
+                {
+                  "question_number": 13,
+                  "type": "open_response",
+                  "prompt": "Describe how current climate trends (from 1880 to 2010) might change the pattern of warming and cooling shown on the Vostok ice core graph.",
+                  "required": false,
+                  "id": "open_response_4084",
+                  "show_in_featured_question_report": true
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3611",
+              "name": "Predicting the future from the past"
+            },
+            {
+              "children": [
+                {
+                  "type": "open_response",
+                  "prompt": "Explain how scientists can be both fairly certain that Earth is warming and still actively researching the unknown factors.",
+                  "required": false,
+                  "id": "open_response_4085",
+                  "show_in_featured_question_report": true,
+                  "question_number": 14
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3612",
+              "name": "Looking to the future",
+              "type": "page",
+              "id": "page_3612"
+            }
+          ]
+        }
+      ],
+      "url": "https://authoring.staging.concord.org/activities/750",
+      "name": "Earth's changing climates"
+    },
+    {
+      "url": "https://authoring.staging.concord.org/activities/751",
+      "name": "Interactions within the atmosphere",
+      "type": "activity",
+      "id": "activity_751",
+      "children": [
+        {
+          "children": [
+            {
+              "type": "page",
+              "id": "page_3613",
+              "children": [
+                {
+                  "id": "open_response_4086",
+                  "show_in_featured_question_report": true,
+                  "question_number": 1,
+                  "type": "open_response",
+                  "prompt": "What two things can happen when energy from the Sun interacts with the ground? <i>Click the button labeled \"Follow Energy Packet\" for a hint.</i>",
+                  "required": false
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4087",
+                  "show_in_featured_question_report": true,
+                  "question_number": 2,
+                  "type": "open_response",
+                  "prompt": "How does carbon dioxide (CO<sub>2</sub>) interact with the two types of radiation&nbsp;(sunlight and infrared) shown in this model?"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3613",
+              "name": "Solar radiation"
+            },
+            {
+              "type": "page",
+              "id": "page_3614",
+              "children": [
+                {
+                  "prompt": "How does atmospheric carbon dioxide affect global temperature?",
+                  "required": false,
+                  "id": "open_response_4088",
+                  "show_in_featured_question_report": true,
+                  "question_number": 3,
+                  "type": "open_response"
+                },
+                {
+                  "required": false,
+                  "id": "multiple_choice_2275",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": false,
+                      "id": 8147,
+                      "content": "increases."
+                    },
+                    {
+                      "content": "decreases.",
+                      "correct": true,
+                      "id": 8148
+                    },
+                    {
+                      "content": "stays the same.",
+                      "correct": false,
+                      "id": 8149
+                    }
+                  ],
+                  "question_number": 4,
+                  "type": "multiple_choice",
+                  "prompt": "What happens if you remove all of the carbon dioxide from the atmosphere?<div><br></div><div>The temperature</div>"
+                },
+                {
+                  "question_number": 5,
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4089",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "id": 8150,
+                      "content": "(1) Not at all certain",
+                      "correct": null
+                    },
+                    {
+                      "id": 8151,
+                      "content": "(2)",
+                      "correct": null
+                    },
+                    {
+                      "content": "(3)",
+                      "correct": null,
+                      "id": 8152
+                    },
+                    {
+                      "id": 8153,
+                      "content": "(4)",
+                      "correct": null
+                    },
+                    {
+                      "id": 8154,
+                      "content": "(5) Very certain",
+                      "correct": null
+                    }
+                  ],
+                  "question_number": 6,
+                  "type": "multiple_choice",
+                  "prompt": "How certain are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2276"
+                },
+                {
+                  "question_number": 7,
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating.",
+                  "required": false,
+                  "id": "open_response_4090",
+                  "show_in_featured_question_report": true
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3614",
+              "name": "Carbon dioxide in the atmosphere"
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3615",
+              "name": "Radiation-gas interactions",
+              "type": "page",
+              "id": "page_3615",
+              "children": [
+                {
+                  "id": "open_response_4091",
+                  "show_in_featured_question_report": true,
+                  "question_number": 8,
+                  "type": "open_response",
+                  "prompt": "What happens when the sunlight hits particles in the ground?&nbsp;<div><i>(Try resetting the model and turning on \"Display heat in molecules.\" Redder shading means higher energy.)</i></div>",
+                  "required": false
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4092",
+                  "show_in_featured_question_report": true,
+                  "question_number": 9,
+                  "type": "open_response",
+                  "prompt": "What happens when the sunlight hits greenhouse gas molecules?"
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "What happens when infrared radiation hits the greenhouse gas molecules? How does the temperature change as a result?",
+                  "required": false,
+                  "id": "open_response_4093",
+                  "show_in_featured_question_report": true,
+                  "question_number": 10
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": false,
+                      "id": 8155,
+                      "content": "absorb incoming solar radiation."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8156,
+                      "content": "reflect incoming solar radiation."
+                    },
+                    {
+                      "correct": true,
+                      "id": 8157,
+                      "content": "absorb outgoing infrared radiation."
+                    },
+                    {
+                      "correct": true,
+                      "id": 8158,
+                      "content": "emit outgoing infrared radiation."
+                    }
+                  ],
+                  "question_number": 11,
+                  "type": "multiple_choice",
+                  "prompt": "Based on the Earth system model and the molecular model, how do carbon dioxide (CO<sub>2</sub>) and other greenhouse gases cause Earth's atmosphere to warm?<div>(Choose all correct answers.)</div><div><br></div><div>Greenhouse gases</div>",
+                  "required": false,
+                  "id": "multiple_choice_2277"
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 12,
+                  "type": "open_response",
+                  "prompt": "Describe the similarities between the molecular model and the Earth system model.",
+                  "required": false,
+                  "id": "open_response_4094"
+                }
+              ]
+            },
+            {
+              "children": [
+                {
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "content": "solar radiation",
+                      "correct": false,
+                      "id": 8159
+                    },
+                    {
+                      "id": 8160,
+                      "content": "infrared radiation",
+                      "correct": false
+                    },
+                    {
+                      "id": 8161,
+                      "content": "greenhouse gases",
+                      "correct": false
+                    }
+                  ],
+                  "question_number": 13,
+                  "type": "multiple_choice",
+                  "prompt": "Which factor is represented by the purple arrows in the Earth system model?",
+                  "required": false,
+                  "id": "multiple_choice_2278"
+                },
+                {
+                  "id": "open_response_4095",
+                  "show_in_featured_question_report": true,
+                  "question_number": 14,
+                  "type": "open_response",
+                  "prompt": "What evidence do you have to support this?",
+                  "required": false
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3616",
+              "name": "Earth systems & greenhouse gases",
+              "type": "page",
+              "id": "page_3616"
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3617",
+              "name": "Atmospheric carbon dioxide levels over time",
+              "type": "page",
+              "id": "page_3617",
+              "children": [
+                {
+                  "prompt": "What are some of the causes of the carbon dioxide increase over the past 50 years?",
+                  "required": false,
+                  "id": "open_response_4096",
+                  "show_in_featured_question_report": true,
+                  "question_number": 15,
+                  "type": "open_response"
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 16,
+                  "type": "open_response",
+                  "prompt": "Why does the carbon dioxide level fluctuate during a single year (the red \"wiggles\" in the CO<sub>2</sub> plot)? &nbsp;<div><i>(Hint: Think about some natural reasons that carbon dioxide would increase and decrease over a yearly period.)</i></div>",
+                  "required": false,
+                  "id": "open_response_4097"
+                }
+              ]
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3618",
+              "name": "Historical carbon dioxide levels",
+              "type": "page",
+              "id": "page_3618",
+              "children": [
+                {
+                  "choices": [
+                    {
+                      "id": 8162,
+                      "content": "50 years",
+                      "correct": false
+                    },
+                    {
+                      "id": 8163,
+                      "content": "50,000 years",
+                      "correct": false
+                    },
+                    {
+                      "content": "420,000 years",
+                      "correct": true,
+                      "id": 8164
+                    },
+                    {
+                      "id": 8165,
+                      "content": "4,000,000,000 years",
+                      "correct": false
+                    }
+                  ],
+                  "question_number": 17,
+                  "type": "multiple_choice",
+                  "prompt": "How many years of data are available from the Vostok ice core?",
+                  "required": false,
+                  "id": "multiple_choice_2279",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "required": false,
+                  "id": "multiple_choice_2280",
+                  "show_in_featured_question_report": true,
+                  "question_number": 18,
+                  "choices": [
+                    {
+                      "correct": false,
+                      "id": 8166,
+                      "content": "lower than 355,000 years ago."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8167,
+                      "content": "the same as 355,000 years ago."
+                    },
+                    {
+                      "id": 8168,
+                      "content": "higher than 355,000 years ago.",
+                      "correct": true
+                    }
+                  ],
+                  "type": "multiple_choice",
+                  "prompt": "Temperature is related to the amount of carbon dioxide in the atmosphere.&nbsp;<div><br></div><div>How does the temperature of 125,000 years ago compare to the temperature of 355,000 years ago?</div><div><br></div><div>The temperature 125,000 years ago was likely</div>"
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4098",
+                  "show_in_featured_question_report": true,
+                  "question_number": 19,
+                  "type": "open_response",
+                  "prompt": "Explain your answer."
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": null,
+                      "id": 8169,
+                      "content": "(1) Not at all certain"
+                    },
+                    {
+                      "id": 8170,
+                      "content": "(2)",
+                      "correct": null
+                    },
+                    {
+                      "id": 8171,
+                      "content": "(3)",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8172,
+                      "content": "(4)"
+                    },
+                    {
+                      "id": 8173,
+                      "content": "(5) Very certain",
+                      "correct": null
+                    }
+                  ],
+                  "question_number": 20,
+                  "type": "multiple_choice",
+                  "prompt": "How certain are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2281"
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating.",
+                  "required": false,
+                  "id": "open_response_4099",
+                  "show_in_featured_question_report": true,
+                  "question_number": 21
+                }
+              ]
+            }
+          ],
+          "url": "https://authoring.staging.concord.org/activities/751",
+          "name": "Interactions within the atmosphere Section",
+          "type": "section",
+          "id": "section_751"
+        }
+      ]
+    },
+    {
+      "type": "activity",
+      "id": "activity_752",
+      "children": [
+        {
+          "type": "section",
+          "id": "section_752",
+          "children": [
+            {
+              "children": [
+                {
+                  "choices": [
+                    {
+                      "id": 8174,
+                      "content": "Reservoirs add more carbon dioxide to the environment than they remove.",
+                      "correct": false
+                    },
+                    {
+                      "id": 8175,
+                      "content": "Carbon dioxide travels through the environment in a single direction.",
+                      "correct": false
+                    },
+                    {
+                      "id": 8176,
+                      "content": "Carbon dioxide is constantly moving throughout the environment.",
+                      "correct": true
+                    },
+                    {
+                      "correct": false,
+                      "id": 8177,
+                      "content": "When carbon dioxide enters a reservoir, it no longer cycles."
+                    }
+                  ],
+                  "question_number": 1,
+                  "type": "multiple_choice",
+                  "prompt": "Which statement is true about the CO<sub>2</sub> cycle?",
+                  "required": false,
+                  "id": "multiple_choice_2282",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "id": "open_response_4100",
+                  "show_in_featured_question_report": true,
+                  "question_number": 2,
+                  "type": "open_response",
+                  "prompt": "Is there a reservoir that serves only to take in carbon dioxide? Is there a source that is not also a sink? Explain your reasoning.",
+                  "required": false
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3619",
+              "name": "Carbon cycling in the Earth system",
+              "type": "page",
+              "id": "page_3619"
+            },
+            {
+              "children": [
+                {
+                  "prompt": "Use the picture of the model to make a prediction about the effect that temperature will have on the ability of CO<sub>2</sub> to dissolve in the ocean.<div><br><div>Will higher temperatures increase or decrease CO<sub>2</sub> solubility?</div></div>",
+                  "required": false,
+                  "id": "multiple_choice_2283",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "id": 8178,
+                      "content": "increase (more carbon dioxide will dissolve)",
+                      "correct": false
+                    },
+                    {
+                      "content": "decrease (less carbon dioxide will dissolve)",
+                      "correct": true,
+                      "id": 8179
+                    }
+                  ],
+                  "question_number": 3,
+                  "type": "multiple_choice"
+                },
+                {
+                  "question_number": 4,
+                  "type": "open_response",
+                  "prompt": "Explain your prediction.",
+                  "required": false,
+                  "id": "open_response_4101",
+                  "show_in_featured_question_report": true
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3620",
+              "name": "Carbon dioxide: solubility in the ocean",
+              "type": "page",
+              "id": "page_3620"
+            },
+            {
+              "type": "page",
+              "id": "page_3621",
+              "children": [
+                {
+                  "question_number": 5,
+                  "type": "open_response",
+                  "prompt": "How does the water temperature affect the amount of carbon dioxide that can dissolve in the ocean?",
+                  "required": false,
+                  "id": "open_response_4102",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "required": false,
+                  "id": "multiple_choice_2284",
+                  "show_in_featured_question_report": true,
+                  "question_number": 6,
+                  "choices": [
+                    {
+                      "correct": true,
+                      "id": 8180,
+                      "content": "less carbon dioxide can be dissolved in the ocean."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8181,
+                      "content": "more carbon dioxide can be dissolved in the ocean."
+                    },
+                    {
+                      "id": 8182,
+                      "content": "there is no effect on the amount of carbon dioxide that can dissolve.",
+                      "correct": false
+                    }
+                  ],
+                  "type": "multiple_choice",
+                  "prompt": "Which statement best describes the relationship between temperature and solubility of carbon dioxide in the ocean?<div>When Earth's ocean temperature is higher,</div>"
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 7,
+                  "choices": [
+                    {
+                      "id": 8183,
+                      "content": "less CO2 is absorbed by the ocean.",
+                      "correct": true
+                    },
+                    {
+                      "correct": false,
+                      "id": 8184,
+                      "content": "the same amount of CO2 is absorbed by the ocean."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8185,
+                      "content": "more CO2 is absorbed by the odean."
+                    }
+                  ],
+                  "type": "multiple_choice",
+                  "prompt": "Of course, in the real world, we can't just magically change the temperature of the Earth with a slider. <br><br>Which choice best describes the relationship between atmospheric CO<sub>2</sub> levels and its absorption by the ocean?<br><br>When atmospheric CO<sub>2</sub> levels become higher,<br>",
+                  "required": false,
+                  "id": "multiple_choice_2285"
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 8,
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4103"
+                },
+                {
+                  "required": false,
+                  "id": "multiple_choice_2286",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": null,
+                      "id": 8186,
+                      "content": "(1) Not at all certain"
+                    },
+                    {
+                      "correct": null,
+                      "id": 8187,
+                      "content": "(2)"
+                    },
+                    {
+                      "content": "(3)",
+                      "correct": null,
+                      "id": 8188
+                    },
+                    {
+                      "correct": null,
+                      "id": 8189,
+                      "content": "(4)"
+                    },
+                    {
+                      "content": "(5) Very certain",
+                      "correct": null,
+                      "id": 8190
+                    }
+                  ],
+                  "question_number": 9,
+                  "type": "multiple_choice",
+                  "prompt": "How certain are you about your claim based on your explanation?"
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 10,
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating.",
+                  "required": false,
+                  "id": "open_response_4104"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3621",
+              "name": "Changing ocean temperature"
+            },
+            {
+              "children": [
+                {
+                  "type": "open_response",
+                  "prompt": "What is the relationship between water vapor and temperature?",
+                  "required": false,
+                  "id": "open_response_4105",
+                  "show_in_featured_question_report": true,
+                  "question_number": 11
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": true,
+                      "id": 8191,
+                      "content": "Temperature will increase."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8192,
+                      "content": "Temperature will decrease."
+                    },
+                    {
+                      "content": "There will be no effect on temperature.",
+                      "correct": false,
+                      "id": 8193
+                    }
+                  ],
+                  "question_number": 12,
+                  "type": "multiple_choice",
+                  "prompt": "Water is a greenhouse gas.&nbsp;<div>What do you think will happen to the temperature when the amount of water vapor increases?</div>",
+                  "required": false,
+                  "id": "multiple_choice_2287"
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4106",
+                  "show_in_featured_question_report": true,
+                  "question_number": 13
+                },
+                {
+                  "prompt": "How certain are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2288",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "id": 8194,
+                      "content": "(1) Not at all certain",
+                      "correct": null
+                    },
+                    {
+                      "id": 8195,
+                      "content": "(2)",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8196,
+                      "content": "(3)"
+                    },
+                    {
+                      "correct": null,
+                      "id": 8197,
+                      "content": "(4)"
+                    },
+                    {
+                      "id": 8198,
+                      "content": "(5) Very certain",
+                      "correct": null
+                    }
+                  ],
+                  "question_number": 14,
+                  "type": "multiple_choice"
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating.",
+                  "required": false,
+                  "id": "open_response_4107",
+                  "show_in_featured_question_report": true,
+                  "question_number": 15
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3622",
+              "name": "Water vapor: a powerful greenhouse gas",
+              "type": "page",
+              "id": "page_3622"
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3623",
+              "name": "Combining the effects of carbon dioxide and water vapor",
+              "type": "page",
+              "id": "page_3623",
+              "children": [
+                {
+                  "prompt": "How does the level of carbon dioxide affect the level of water vapor in the atmosphere?<div>Increased levels of carbon dioxide ________ levels of atmospheric water vapor.</div>",
+                  "required": false,
+                  "id": "multiple_choice_2289",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "id": 8199,
+                      "content": "increase",
+                      "correct": true
+                    },
+                    {
+                      "correct": false,
+                      "id": 8200,
+                      "content": "decrease"
+                    },
+                    {
+                      "correct": false,
+                      "id": 8201,
+                      "content": "do not affect"
+                    }
+                  ],
+                  "question_number": 16,
+                  "type": "multiple_choice"
+                },
+                {
+                  "question_number": 17,
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4108",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "choices": [
+                    {
+                      "correct": true,
+                      "id": 8202,
+                      "content": "The temperature increases."
+                    },
+                    {
+                      "id": 8203,
+                      "content": "The temperature decreases.",
+                      "correct": false
+                    },
+                    {
+                      "content": "The temperature stays the same.",
+                      "correct": false,
+                      "id": 8204
+                    }
+                  ],
+                  "question_number": 18,
+                  "type": "multiple_choice",
+                  "prompt": "What happens to the temperature when the CO<sub>2</sub> level increases in this model?",
+                  "required": false,
+                  "id": "multiple_choice_2290",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4109",
+                  "show_in_featured_question_report": true,
+                  "question_number": 19,
+                  "type": "open_response",
+                  "prompt": "Explain your answer."
+                },
+                {
+                  "question_number": 20,
+                  "choices": [
+                    {
+                      "id": 8205,
+                      "content": "(1) Not at all certain",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8206,
+                      "content": "(2)"
+                    },
+                    {
+                      "id": 8207,
+                      "content": "(3)",
+                      "correct": null
+                    },
+                    {
+                      "id": 8208,
+                      "content": "(4)",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8209,
+                      "content": "(5) Very certain"
+                    }
+                  ],
+                  "type": "multiple_choice",
+                  "prompt": "How certain are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2291",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "question_number": 21,
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating.",
+                  "required": false,
+                  "id": "open_response_4110",
+                  "show_in_featured_question_report": true
+                }
+              ]
+            },
+            {
+              "children": [
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 22,
+                  "type": "open_response",
+                  "prompt": "Describe a positive feedback system that affects Earth's temperature.",
+                  "required": false,
+                  "id": "open_response_4111"
+                },
+                {
+                  "id": "open_response_4112",
+                  "show_in_featured_question_report": true,
+                  "question_number": 23,
+                  "type": "open_response",
+                  "prompt": "So far, the models have only shown increasing temperatures. But, obviously, since Earth has had ice ages in the past, temperatures don't only increase.<div><br><div>What kinds of things could<i> decrease </i>Earth's temperature?</div></div>",
+                  "required": false
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3624",
+              "name": "Multiple factors",
+              "type": "page",
+              "id": "page_3624"
+            }
+          ],
+          "url": "https://authoring.staging.concord.org/activities/752",
+          "name": "Sources, sinks, and feedbacks Section"
+        }
+      ],
+      "url": "https://authoring.staging.concord.org/activities/752",
+      "name": "Sources, sinks, and feedbacks"
+    },
+    {
+      "type": "activity",
+      "id": "activity_753",
+      "children": [
+        {
+          "children": [
+            {
+              "name": "Ice on Earth's surface",
+              "type": "page",
+              "id": "page_3625",
+              "children": [
+                {
+                  "prompt": "What happens when energy from the Sun encounters a white surface (ice or snow)?<div>The energy is</div>",
+                  "required": false,
+                  "id": "multiple_choice_2292",
+                  "show_in_featured_question_report": true,
+                  "question_number": 1,
+                  "choices": [
+                    {
+                      "correct": true,
+                      "id": 8210,
+                      "content": "reflected off the surface and leaves the atmosphere."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8211,
+                      "content": "reflected off the surface and trapped in the atmosphere."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8212,
+                      "content": "absorbed by the surface and stored in the land and ocean."
+                    },
+                    {
+                      "id": 8213,
+                      "content": "absorbed by the surface, radiating heat into the atmosphere.",
+                      "correct": false
+                    }
+                  ],
+                  "type": "multiple_choice"
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4113",
+                  "show_in_featured_question_report": true,
+                  "question_number": 2,
+                  "type": "open_response",
+                  "prompt": "Describe how changes in the amount of ice covering Earth's surface can affect Earth's temperature."
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4114",
+                  "show_in_featured_question_report": true,
+                  "question_number": 3,
+                  "type": "open_response",
+                  "prompt": "Currently, about 10% of Earth is covered with ice year-round.<div>If this ice melts, what could happen to Earth's temperature?</div>"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3625"
+            },
+            {
+              "children": [
+                {
+                  "required": false,
+                  "id": "open_response_4115",
+                  "show_in_featured_question_report": true,
+                  "question_number": 4,
+                  "type": "open_response",
+                  "prompt": "In this model, how do the changes in cloud cover affect Earth's temperature?"
+                },
+                {
+                  "required": false,
+                  "id": "image_question_1013",
+                  "show_in_featured_question_report": true,
+                  "drawing_prompt": null,
+                  "question_number": 5,
+                  "type": "image_question",
+                  "prompt": "Take a snapshot that shows cloud cover that decreased the temperature."
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "How do energy packets (solar radiation and infrared radiation) interact with the clouds to cool the planet?",
+                  "required": false,
+                  "id": "open_response_4116",
+                  "show_in_featured_question_report": true,
+                  "question_number": 6
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4117",
+                  "show_in_featured_question_report": true,
+                  "question_number": 7,
+                  "type": "open_response",
+                  "prompt": "In this model, clouds caused the temperature to decrease. This is called negative feedback, where a stimulus (heating) results in a feedback (evaporation of water into the atmosphere, where it forms clouds) that counteracts the stimulus (cooling effect).<div><br><div>How is this different from the positive feedback relationship of water vapor and temperature?</div></div>"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3626",
+              "name": "Clouds",
+              "type": "page",
+              "id": "page_3626"
+            },
+            {
+              "children": [
+                {
+                  "prompt": "Which photograph shows the land being less able to reflect incoming solar radiation (having a lower albedo)?",
+                  "required": false,
+                  "id": "multiple_choice_2293",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "content": "the 1909 photograph",
+                      "correct": false,
+                      "id": 8214
+                    },
+                    {
+                      "id": 8215,
+                      "content": "the 2005 photograph",
+                      "correct": false
+                    }
+                  ],
+                  "question_number": 8,
+                  "type": "multiple_choice"
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 9,
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4118"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3627",
+              "name": "Melting glaciers",
+              "type": "page",
+              "id": "page_3627"
+            },
+            {
+              "type": "page",
+              "id": "page_3628",
+              "children": [
+                {
+                  "type": "multiple_choice",
+                  "prompt": "How might the trend shown in the graph affect Earth's temperature in the year 2100?",
+                  "required": false,
+                  "id": "multiple_choice_2294",
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": true,
+                      "id": 8216,
+                      "content": "It will increase Earth's temperature."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8217,
+                      "content": "It will decrease Earth's temperature."
+                    },
+                    {
+                      "correct": false,
+                      "id": 8218,
+                      "content": "There will be no effect on Earth's temperature."
+                    }
+                  ],
+                  "question_number": 10
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4119",
+                  "show_in_featured_question_report": true,
+                  "question_number": 11
+                },
+                {
+                  "prompt": "How certain are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2295",
+                  "show_in_featured_question_report": true,
+                  "question_number": 12,
+                  "choices": [
+                    {
+                      "id": 8219,
+                      "content": "(1) Not at all certain",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8220,
+                      "content": "(2)"
+                    },
+                    {
+                      "id": 8221,
+                      "content": "(3)",
+                      "correct": null
+                    },
+                    {
+                      "id": 8222,
+                      "content": "(4)",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8223,
+                      "content": "(5) Very certain"
+                    }
+                  ],
+                  "type": "multiple_choice"
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4120",
+                  "show_in_featured_question_report": true,
+                  "question_number": 13,
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating."
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3628",
+              "name": "Arctic sea ice"
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3629",
+              "name": "Feedback: positive or negative?",
+              "type": "page",
+              "id": "page_3629",
+              "children": [
+                {
+                  "choices": [
+                    {
+                      "id": 8224,
+                      "content": "positive feedback",
+                      "correct": true
+                    },
+                    {
+                      "id": 8225,
+                      "content": "negative feedback",
+                      "correct": false
+                    }
+                  ],
+                  "question_number": 14,
+                  "type": "multiple_choice",
+                  "prompt": "Is the melting of Arctic ice an example of positive feedback or negative feedback?",
+                  "required": false,
+                  "id": "multiple_choice_2296",
+                  "show_in_featured_question_report": true
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 15,
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4121"
+                }
+              ]
+            },
+            {
+              "children": [
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 16,
+                  "type": "open_response",
+                  "prompt": "Based on this information, how is the model both a good and a poor representation of how clouds change the flow of radiation into and out of Earth's atmosphere?",
+                  "required": false,
+                  "id": "open_response_4122"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3630",
+              "name": "Clouds: cooling or warming?",
+              "type": "page",
+              "id": "page_3630"
+            }
+          ],
+          "url": "https://authoring.staging.concord.org/activities/753",
+          "name": "Feedbacks of ice and clouds Section",
+          "type": "section",
+          "id": "section_753"
+        }
+      ],
+      "url": "https://authoring.staging.concord.org/activities/753",
+      "name": "Feedbacks of ice and clouds"
+    },
+    {
+      "type": "activity",
+      "id": "activity_754",
+      "children": [
+        {
+          "type": "section",
+          "id": "section_754",
+          "children": [
+            {
+              "type": "page",
+              "id": "page_3631",
+              "children": [],
+              "url": "https://authoring.staging.concord.org/pages/3631",
+              "name": "Complex climate models"
+            },
+            {
+              "type": "page",
+              "id": "page_3632",
+              "children": [
+                {
+                  "prompt": "Why is there a lag between changes in CO<sub>2</sub> levels and temperature?<div><i>(Hint: Remember that there are many reservoirs for carbon dioxide. Where can carbon dioxide be stored when the temperature is low?)</i></div>",
+                  "required": false,
+                  "id": "open_response_4123",
+                  "show_in_featured_question_report": true,
+                  "question_number": 1,
+                  "type": "open_response"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3632",
+              "name": "Time lags in temperature changes"
+            },
+            {
+              "url": "https://authoring.staging.concord.org/pages/3633",
+              "name": "Meet a climate scientist: Mark Chandler",
+              "type": "page",
+              "id": "page_3633",
+              "children": [
+                {
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "id": 8226,
+                      "content": "yes",
+                      "correct": false
+                    },
+                    {
+                      "content": "no",
+                      "correct": false,
+                      "id": 8227
+                    }
+                  ],
+                  "question_number": 2,
+                  "type": "multiple_choice",
+                  "prompt": "Are models necessary to understand climate change?",
+                  "required": false,
+                  "id": "multiple_choice_2297"
+                },
+                {
+                  "type": "open_response",
+                  "prompt": "Explain your answer.",
+                  "required": false,
+                  "id": "open_response_4124",
+                  "show_in_featured_question_report": true,
+                  "question_number": 3
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 4,
+                  "type": "open_response",
+                  "prompt": "How can you (and scientists) tell that a model is good? What kinds of tests can you run to assess the validity of a model?",
+                  "required": false,
+                  "id": "open_response_4125"
+                }
+              ]
+            },
+            {
+              "children": [
+                {
+                  "required": false,
+                  "id": "open_response_4126",
+                  "show_in_featured_question_report": true,
+                  "question_number": 5,
+                  "type": "open_response",
+                  "prompt": "How can scientists be sure that Earth is getting warmer when they are not completely certain about what is going to happen to Earth's temperature in the future?"
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3634",
+              "name": "Societal effects",
+              "type": "page",
+              "id": "page_3634"
+            },
+            {
+              "name": "Millions of years of data",
+              "type": "page",
+              "id": "page_3635",
+              "children": [
+                {
+                  "type": "open_response",
+                  "prompt": "Based on all of what you've learned from this module, how can scientists look at 542 million years of temperature data (in the graph) and still be fairly confident that humans are contributing to the current warming trend?",
+                  "required": false,
+                  "id": "open_response_4127",
+                  "show_in_featured_question_report": true,
+                  "question_number": 6
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3635"
+            },
+            {
+              "children": [
+                {
+                  "type": "open_response",
+                  "prompt": "What additional factors would you like to add to the model to be able to make a better prediction of the impact of a reduction of human emissions on the global temperature?",
+                  "required": false,
+                  "id": "open_response_4128",
+                  "show_in_featured_question_report": true,
+                  "question_number": 7
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "question_number": 8,
+                  "choices": [
+                    {
+                      "id": 8228,
+                      "content": "0-25% of 2010 emissions",
+                      "correct": false
+                    },
+                    {
+                      "correct": true,
+                      "id": 8229,
+                      "content": "25-50% of 2010 emissions"
+                    },
+                    {
+                      "content": "50-75% of 2010 emissions",
+                      "correct": true,
+                      "id": 8230
+                    },
+                    {
+                      "id": 8231,
+                      "content": "100% of 2010 emissions (to zero human emissions)",
+                      "correct": false
+                    }
+                  ],
+                  "type": "multiple_choice",
+                  "prompt": "How much did you need to change the human emissions to reduce the average global temperature in the model?",
+                  "required": false,
+                  "id": "multiple_choice_2298"
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4129",
+                  "show_in_featured_question_report": true,
+                  "question_number": 9,
+                  "type": "open_response",
+                  "prompt": "Explain your answer.<br><br>Describe the outcomes of experiments that you tried. In your \r\nexplanation, include as many factors as possible that might affect the \r\nglobal temperature."
+                },
+                {
+                  "show_in_featured_question_report": true,
+                  "choices": [
+                    {
+                      "correct": null,
+                      "id": 8232,
+                      "content": "(1) Not at all certain"
+                    },
+                    {
+                      "correct": null,
+                      "id": 8233,
+                      "content": "(2)"
+                    },
+                    {
+                      "correct": null,
+                      "id": 8234,
+                      "content": "(3)"
+                    },
+                    {
+                      "id": 8235,
+                      "content": "(4)",
+                      "correct": null
+                    },
+                    {
+                      "correct": null,
+                      "id": 8236,
+                      "content": "(5) Very certain"
+                    }
+                  ],
+                  "question_number": 10,
+                  "type": "multiple_choice",
+                  "prompt": "How certain are you about your claim based on your explanation?",
+                  "required": false,
+                  "id": "multiple_choice_2299"
+                },
+                {
+                  "required": false,
+                  "id": "open_response_4130",
+                  "show_in_featured_question_report": true,
+                  "question_number": 11,
+                  "type": "open_response",
+                  "prompt": "Explain what influenced your certainty rating."
+                }
+              ],
+              "url": "https://authoring.staging.concord.org/pages/3636",
+              "name": "How much reduction?",
+              "type": "page",
+              "id": "page_3636"
+            }
+          ],
+          "url": "https://authoring.staging.concord.org/activities/754",
+          "name": "Using models to make predictions Section"
+        }
+      ],
+      "url": "https://authoring.staging.concord.org/activities/754",
+      "name": "Using models to make predictions"
+    }
+  ],
+  "tool_id": "https://authoring.staging.concord.org",
+  "name": "A Import of HASBOT What is the future of Earth's climate?",
+  "type": "sequence",
+  "source_key": "authoring.staging.concord.org",
+  "url": "https://authoring.staging.concord.org/sequences/120",
+  "id": "sequence-sequence_120"
+}
