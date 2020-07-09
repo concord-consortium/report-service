@@ -41,7 +41,7 @@ if (!fs.existsSync(outputPath)) {
 // Create a new client
 const firestore = new Firestore();
 
-let query = firestore.collection('sources/authoring.concord.org/answers');
+let query = firestore.collection('sources/authoring.staging.concord.org/answers');
 let masterQuery = query.limit(BATCH_SIZE)
   .orderBy('run_key').orderBy("id")
 
@@ -87,7 +87,7 @@ function uploadAnswers(runKey) {
   const answer = answers[0];
   const filename = path.join(outputPath, `${runKey}.parquet`);
   const folder = answer.resource_url.replace(/[^a-z0-9]/g, "-");
-  const key = `${DIRECTORY}/${folder}/${filename}`;
+  const key = `${DIRECTORY}/${folder}/${runKey}.parquet`;
 
   if (uploadPromises[runKey]) {
     console.error("Already uploading", runKey)
