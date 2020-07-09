@@ -11,7 +11,6 @@ const path = require('path');
 
 const zlib = require('zlib');
 const util = require('util');
-const gzip = util.promisify(zlib.gzip);
 
 const access = util.promisify(fs.access);
 const unlink = util.promisify(fs.unlink);
@@ -86,9 +85,9 @@ function uploadAnswers(runKey) {
 
   const answers = answerHash[runKey];
   const answer = answers[0];
-  const filename = path.join(outputPath, `${answer.run_key}.parquet`);
+  const filename = path.join(outputPath, `${runKey}.parquet`);
   const folder = answer.resource_url.replace(/[^a-z0-9]/g, "-");
-  const key = `${DIRECTORY}/${folder}/${runKey}.parquet.gz`;
+  const key = `${DIRECTORY}/${folder}/${filename}`;
 
   if (uploadPromises[runKey]) {
     console.error("Already uploading", runKey)
@@ -110,8 +109,7 @@ function uploadAnswers(runKey) {
       }
       await writer.close();
 
-      const contents = await readFile(filename)
-      const body = await gzip(contents)
+      const body = await readFile(filename)
 
       // write file to s3
       // console.log("uploading", key)
@@ -119,8 +117,7 @@ function uploadAnswers(runKey) {
         Bucket: BUCKET,
         Key: key,
         Body: body,
-        ContentType: 'application/octet-stream',
-        ContentEncoding: 'gzip'
+        ContentType: 'application/octet-stream'
       }, function (err) {
         if (err) {
           console.error(`${documentSnapshot.id}: ${err.toString()}`)
