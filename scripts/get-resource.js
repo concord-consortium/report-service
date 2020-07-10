@@ -16,7 +16,7 @@ if (args.length !== 1) {
 const id = args[0]
 
 const firestore = new Firestore();
-const ref = firestore.doc(`sources/authoring.concord.org/resources/${id}`);
+const ref = firestore.doc(`sources/authoring.staging.concord.org/resources/${id}`);
 
 ref.get().then(snapshot => {
   if (snapshot.exists) {

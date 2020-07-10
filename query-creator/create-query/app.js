@@ -9,11 +9,22 @@ const tokenService = require("./steps/token-service");
 exports.lambdaHandler = async (event, context) => {
 
   try {
+    const params = event.queryStringParameters || {};
+
+    // get the report service source from the url
+    const reportServiceSource = params.reportServiceSource;
+    if (!reportServiceSource) {
+      throw new Error("Missing reportServiceSource in the report url");
+    }
+
+    // see if we are in demo mode which uses built in request bodies and firebase data
+    const demo = !!params.demo;
+
     // ensure all the environment variables exist
     envVars.validate();
 
     // get the post body and validate the HMAC and format of the json payload
-    const body = request.getBody(event);
+    const body = request.getBody(event, demo);
     const json = request.validateJSON(body);
     const runnables = request.getRunnables(json);
     const user = json.user;
@@ -30,8 +41,11 @@ exports.lambdaHandler = async (event, context) => {
       // single id that ties together the uploaded files to s3 and the Athena query
       const queryId = uuidv4()
 
+      // upload the learner data
+      await aws.uploadLearnerData(queryId, runnable.learners, workgroup);
+
       // get and denormalize the resource (activity or sequence) from Firebase
-      const resource = await firebase.getResource(runnable, json.reportServiceSource);
+      const resource = await firebase.getResource(runnable, reportServiceSource, demo);
       const denormalizedResource = firebase.denormalizeResource(resource);
 
       // upload the denormalized resource to s3 and tie it to the workgroup
@@ -43,7 +57,7 @@ exports.lambdaHandler = async (event, context) => {
       // create the athena query in the workgroup
       const query = await aws.createQuery(queryId, user, sql, workgroup)
 
-      debugSQL.push(`${resource.id}:\n\n${sql}`);
+      debugSQL.push(`-- ${resource.id}\n\n${sql}`);
     }
 
     // TODO: redirect the user to the result loader

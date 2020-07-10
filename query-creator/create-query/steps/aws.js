@@ -36,6 +36,19 @@ exports.ensureWorkgroup = async (user) => {
   return workgroup.WorkGroup;
 }
 
+exports.uploadLearnerData = async (queryId, learners, workgroup) => {
+  const body = learners
+    .map(l => JSON.stringify(l))
+    .join("\n");
+  const s3 = new AWS.S3({apiVersion: '2006-03-01'});
+  await s3.putObject({
+    Bucket: process.env.OUTPUT_BUCKET,
+    Body: body,
+    Key: `learners/${queryId}/${queryId}.json`
+  }).promise()
+  // TODO: tie the uploaded file to the workgroup
+}
+
 exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workgroup) => {
   const s3 = new AWS.S3({apiVersion: '2006-03-01'});
   await s3.putObject({
@@ -48,19 +61,20 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workg
 
 exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   const selectColumns = [];
-  const whereClauses = [];
+  const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
   Object.keys(denormalizedResource.questions).forEach(questionId => {
     const type = questionId.split(/_\d+/).shift();
     switch (type) {
       case "image_question":
-        selectColumns.push(`json_extract_scalar(answer, '$.image_url') AS ${questionId}_image_url`)
-        selectColumns.push(`json_extract_scalar(answer, '$.text') AS ${questionId}_text`)
-        selectColumns.push("answer")
+        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.image_url') AS ${questionId}_image_url`)
+        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.text') AS ${questionId}_text`)
+        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_answer`)
         break;
       case "open_response":
         selectColumns.push(`kv1['${questionId}'] AS ${questionId}_text`)
-        selectColumns.push(`submitted AS ${questionId}_submitted`)
+        // TODO: only add if can be submitted  (need to check resource structure)
+        selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`)
         break;
       case "multiple_choice":
         selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}_choice`)
@@ -68,10 +82,7 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
       default:
         throw new Error(`Unknown question type: ${type}`)
     }
-    whereClauses.push(`kv1['${questionId}'] IS NOT NULL`)
   })
-
-  const remoteEndpoints = runnable.remoteEndpoints.map(remoteEndpoint => `'${remoteEndpoint}'`)
 
   return `WITH activities AS ( SELECT * FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
 
@@ -79,14 +90,24 @@ SELECT
   remote_endpoint,
   ${selectColumns.join(",\n  ")}
 FROM activities,
-  ( SELECT remote_endpoint, map_agg(question_id, answer) kv1
-    FROM "report-service"."answers"
-    WHERE resource_url = '${resource.url}' AND remote_endpoint IN (${remoteEndpoints.join(", ")})
-    GROUP BY remote_endpoint )
-WHERE
-  ${whereClauses.join(" AND\n  ")}
-  `
+  ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+    FROM "report-service"."partitioned_answers" a
+    INNER JOIN "report-service"."learners" l
+    ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
+    WHERE a.escaped_url = '${escapedUrl}'
+    GROUP BY l.run_remote_endpoint )`
 }
+
+/*
+  alternative subselect that puts the smaller table on the left, Athena recommends putting it on the right though (as done above)
+
+  ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+    FROM "report-service"."learners" l
+    INNER JOIN "report-service"."partitioned_answers" a
+    ON (a.escaped_url = '${escapedUrl}' AND l.run_remote_endpoint = a.remote_endpoint)
+    WHERE l.query_id = '${queryId}'
+    GROUP BY l.run_remote_endpoint )`
+*/
 
 exports.createQuery = async (queryId, user, sql, workgroup) => {
   /*
