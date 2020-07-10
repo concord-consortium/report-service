@@ -38,8 +38,6 @@ exports.ensureWorkgroup = async (user) => {
 
 exports.uploadLearnerData = async (queryId, learners, workgroup) => {
   const body = learners
-    // TODO: explicitly add query_id instead of using partition projection?
-    // .map(l => Object.assign({}, l, {query_id: queryId}))
     .map(l => JSON.stringify(l))
     .join("\n");
   const s3 = new AWS.S3({apiVersion: '2006-03-01'});
@@ -75,6 +73,7 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
         break;
       case "open_response":
         selectColumns.push(`kv1['${questionId}'] AS ${questionId}_text`)
+        // TODO: only add if can be submitted  (need to check resource structure)
         selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`)
         break;
       case "multiple_choice":
