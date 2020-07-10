@@ -1,9 +1,10 @@
 *.log
 scripts/node_modules
 scripts/config.json
-scripts/credentials.json
+scripts/credentials.*
 scripts/config.json
 scripts/answers
+scripts/uploads
 scripts/*.pem
 
 tmp
