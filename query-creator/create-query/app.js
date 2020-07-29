@@ -69,7 +69,10 @@ exports.lambdaHandler = async (event, context) => {
     console.log(err);
     return {
       statusCode: 500,
-      body: err.toString()
+      body: {
+        error: err.toString(),
+        // stack: err.stack
+      }
     }
   }
 };
