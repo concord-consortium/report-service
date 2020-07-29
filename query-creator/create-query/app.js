@@ -71,7 +71,7 @@ exports.lambdaHandler = async (event, context) => {
       statusCode: 500,
       body: {
         error: err.toString(),
-        // stack: err.stack
+        stack: err.stack
       }
     }
   }
