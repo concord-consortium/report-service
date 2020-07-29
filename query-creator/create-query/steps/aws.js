@@ -79,8 +79,13 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
       case "multiple_choice":
         selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}_choice`)
         break;
+      case "managed_interactive":
+      case "mw_interactive":
+        // TODO: add support for custom report fields
+        break;
       default:
-        throw new Error(`Unknown question type: ${type}`)
+        console.info(`Unknown question type: ${type}`);
+        break;
     }
   })
 
