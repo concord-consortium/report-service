@@ -120,7 +120,7 @@ function uploadAnswers(runKey) {
         ContentType: 'application/octet-stream'
       }, function (err) {
         if (err) {
-          console.error(`${documentSnapshot.id}: ${err.toString()}`)
+          console.error(`${runKey}: ${err.toString()}`)
         }
       }).promise();
     } catch (err) {
