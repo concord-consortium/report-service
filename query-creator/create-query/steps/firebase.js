@@ -10,13 +10,30 @@ exports.getResource = async (runnable, reportServiceSource, demo) => {
     throw new Error(`Unable to find ${runnable.url}`)
   }
 
-  const url = `${process.env.REPORT_SERVICE_URL}/resource?source=${encodeURIComponent(reportServiceSource)}&url=${encodeURIComponent(runnable.url)}`
-  try {
-    const response = await axios.get(url, { headers: { "Authorization": `Bearer ${process.env.REPORT_SERVICE_TOKEN}` } })
-    return JSON.parse(response.resource)
-  } catch (e) {
-    throw new Error(`Unable to load resource using ${url}`)
+  const url = `${process.env.REPORT_SERVICE_URL}/resource`
+  const params = {
+    source: reportServiceSource,
+    url: runnable.url
   }
+
+  let response
+  try {
+    response = await axios.get(url,
+      {
+        headers: {
+          "Authorization": `Bearer ${process.env.REPORT_SERVICE_TOKEN}`
+        },
+        params
+      }
+    )
+  } catch (e) {
+    throw new Error(`Unable to get resource at ${url} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${error.response ? JSON.stringify(error.response.data) : "no response"}`)
+  }
+  const result = response.data
+  if (result && result.success && result.resource) {
+    return result.resource
+  }
+  throw new Error(`Unable to find resource at ${url} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${JSON.stringify(response.data)}`)
 }
 
 exports.denormalizeResource = (resource) => {

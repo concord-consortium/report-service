@@ -41,6 +41,23 @@ Resources:
           Properties:
             Path: /create-query
             Method: post
+      Policies:
+      - Statement:
+        - Sid: QueryCreatorWorkgroupPolicy
+          Effect: Allow
+          Action:
+          - athena:GetWorkGroup
+          - athena:CreateWorkGroup
+          - athena:TagResource
+          Resource: '*'
+      - Statement:
+        - Sid: QueryCreatorS3Policy
+          Effect: Allow
+          Action:
+          - s3:PutObject
+          - s3:PutObjectAcl
+          Resource:
+          - !Sub 'arn:${AWS::Partition}:s3:::${OutputBucket}/*'
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
