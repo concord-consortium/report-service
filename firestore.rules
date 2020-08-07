@@ -16,10 +16,10 @@ service cloud.firestore {
       allow read: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.context_id;
       allow read: if request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id);
       allow update: if request.auth.token.user_type == 'learner'
-      				&& string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id)
+              && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id)
               && request.auth.token.class_hash == resource.data.context_id;
       allow create: if request.auth.token.user_type == 'learner'
-      				&& string(request.auth.token.platform_user_id) == string(request.resource.data.platform_user_id)
+              && string(request.auth.token.platform_user_id) == string(request.resource.data.platform_user_id)
               && request.auth.token.class_hash == request.resource.data.context_id;
       // anonymous requests based on run_key, which must be larger than 10 chars
       allow read, update: if resource.data.run_key.size() > 10;
