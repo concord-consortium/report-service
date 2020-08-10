@@ -22,7 +22,7 @@ service cloud.firestore {
               && string(request.auth.token.platform_user_id) == string(request.resource.data.platform_user_id)
               && request.auth.token.class_hash == request.resource.data.context_id;
       // anonymous requests based on run_key, which must be larger than 10 chars
-      allow read, update: if resource.data.run_key.size() > 10;
+      allow read, update: if resource.data.run_key.size() > 10 && resource.data.run_key == request.resource.data.run_key;
       allow create: if request.resource.data.run_key.size() > 10;
     }  
 
