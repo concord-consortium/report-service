@@ -27,7 +27,7 @@ exports.getResource = async (runnable, reportServiceSource, demo) => {
       }
     )
   } catch (e) {
-    throw new Error(`Unable to get resource at ${url} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${error.response ? JSON.stringify(error.response.data) : "no response"}`)
+    throw new Error(`Unable to get resource at ${url} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${e.response ? JSON.stringify(e.response.data) : "no response"}`)
   }
   const result = response.data
   if (result && result.success && result.resource) {
