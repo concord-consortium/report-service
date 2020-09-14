@@ -1,12 +1,15 @@
 {
   "name": "functions",
+  "version": "1.1.0",
   "scripts": {
     "lint": "tslint --project tsconfig.json",
     "build": "tsc",
     "serve": "tsc -w & firebase serve --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
+    "deploy": "npm run buildinfo && npm run deploy:functions",
+    "deploy:functions": "firebase deploy --only functions",
+    "buildinfo": "printf '{\"date\":\"%s\", \"commit\":\"%s\"}\n' \"$(date)\" \"$(git rev-parse HEAD)\" > build-info.json",
     "logs": "firebase functions:log",
     "test": "jest",
     "test:coverage": "jest --coverage",

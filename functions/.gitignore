@@ -13,3 +13,5 @@ node_modules/
 
 # runtime config (holds environment variables for emulator)
 .runtimeconfig.json
+
+build-info.json
