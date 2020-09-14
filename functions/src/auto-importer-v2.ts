@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import * as functions from "firebase-functions";
-import admin from "firebase-admin";
+import admin, { firestore } from "firebase-admin";
 
 /*
 
@@ -21,7 +21,7 @@ interface SyncData {
   run_key: string;
   count: number | FirebaseFirestore.FieldValue;
   remove?: boolean;
-  sync?: boolean;
+  sync?: Date | FirebaseFirestore.Timestamp;
 }
 
 const getHash = (data: any) => {
@@ -49,6 +49,11 @@ const addSyncDoc = (data: AnswerData, options: {remove: boolean} = {remove: fals
     return admin.firestore().runTransaction((transaction) => {
       return transaction.get(docRef).then((doc) => {
         if (doc.exists) {
+          // use the existing field values
+          const existingDocData = doc.data() as SyncData
+          docData.sync = existingDocData.sync
+          docData.remove = existingDocData.remove || docData.remove
+
           return docRef.update(docData);
         } else {
           return docRef.set(docData);
@@ -95,14 +100,35 @@ exports.monitorSyncDocCount = functions.pubsub.schedule("every 4 minutes").onRun
           .then((querySnapshot) => {
             const promises: Promise<FirebaseFirestore.WriteResult>[] = [];
             querySnapshot.forEach((doc) => {
+              // use a timestamp instead of a boolean for sync so that we trigger a write
               promises.push(doc.ref.update({
-                sync: true,
+                sync: firestore.Timestamp,
                 count: 0
               }));
             });
             return Promise.all(promises);
           });
 });
+
+
+exports.syncToS3AfterSyncDocWritten = functions.firestore
+  .document(`sources/${syncSource}/sync_answers/{runKey}`) // NOTE: {runKey} is correct (NOT ${runKey}) as it is a wildcard passed to Firebase
+  .onWrite((change, context) => {
+    if (change.after.exists) {
+      const data = change.after.data() as SyncData;
+      let remove = !!data.remove
+      if (data.sync) {
+        remove = true
+      }
+
+      if (remove) {
+
+      }
+    }
+
+    return null;
+  });
+
 
 /*
 
