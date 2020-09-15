@@ -11,6 +11,9 @@ import importStructure from "./api/import-structure"
 import moveStudentWork from "./api/move-student-work"
 import getResource from "./api/get-resource"
 
+const packageJSON = require("../package.json")
+const buildInfo = require("../build-info.json")
+
 admin.initializeApp();
 
 const api = express()
@@ -20,6 +23,8 @@ api.use(bearerTokenAuth)
 api.get("/", (req, res) => {
   res.success({
     description: "Report service API",
+    version: packageJSON.version,
+    buildInfo,
     methods: {
       "POST import_run": "Imports a run, requires a bearer token",
       "POST import_structure": "Imports the structure, requires a bearer token",
