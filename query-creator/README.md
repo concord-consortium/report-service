@@ -103,3 +103,80 @@ aws cloudformation delete-stack --stack-name query-creator
 See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
 
 Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond create query samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
+
+
+## AWS Glue/Athena Setup
+
+1. Create a `report-service` database in AWS Glue.
+2. In Athena with the `report-service` database selected run the following:
+
+    ```
+    CREATE EXTERNAL TABLE IF NOT EXISTS activity_structure (
+      choices map<string,map<string,struct<content:string,correct:boolean>>>,
+      questions map<string,struct<prompt:string>>
+    )
+    PARTITIONED BY
+    (
+        structure_id STRING
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    LOCATION "s3://concord-report-data/activity-structure/"
+    TBLPROPERTIES
+    (
+        "projection.enabled" = "true",
+        "projection.structure_id.type" = "injected",
+        "storage.location.template" = "s3://concord-report-data/activity-structure/${structure_id}"
+    )
+
+    CREATE EXTERNAL TABLE IF NOT EXISTS learners (
+      run_remote_endpoint string,
+      class_id int,
+      runnable_url string
+    )
+    PARTITIONED BY
+    (
+        query_id STRING
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    LOCATION "s3://concord-report-data/learners/"
+    TBLPROPERTIES
+    (
+        "projection.enabled" = "true",
+        "projection.query_id.type" = "injected",
+        "storage.location.template" = "s3://concord-report-data/learners/${query_id}"
+    )
+
+    CREATE EXTERNAL TABLE IF NOT EXISTS partitioned_answers (
+      submitted boolean,
+      run_key string,
+      platform_user_id string,
+      id string,
+      context_id string,
+      class_info_url string,
+      platform_id string,
+      resource_link_id string,
+      type string,
+      question_id string,
+      source_key string,
+      question_type string,
+      tool_user_id string,
+      answer string,
+      resource_url string,
+      remote_endpoint string,
+      created string,
+      tool_id string,
+      version string
+    )
+    PARTITIONED BY
+    (
+        escaped_url STRING
+    )
+    ROW FORMAT SERDE 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+    LOCATION "s3://concord-report-data/partitioned-answers/"
+    TBLPROPERTIES
+    (
+        "projection.enabled" = "true",
+        "projection.escaped_url.type" = "injected",
+        "storage.location.template" = "s3://concord-report-data/partitioned-answers/${escaped_url}"
+    )
+    ```
