@@ -9,10 +9,12 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
+
     match /sources/{source}/resources/{document=**} {
       // allows anonymous user to get the resource structure
       allow read: if true;
     }
+
     match /sources/{source}/answers/{document=**} {
       allow read: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.context_id;
       allow read: if request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id);
@@ -20,24 +22,38 @@ service cloud.firestore {
               && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id)
               && request.auth.token.class_hash == resource.data.context_id;
       allow create: if request.auth.token.user_type == 'learner'
-              && string(request.auth.token.platform_user_id) == string(request.resource.data.platform_user_id)
+      				&& string(request.auth.token.platform_user_id) == string(request.resource.data.platform_user_id)
               && request.auth.token.class_hash == request.resource.data.context_id;
       // anonymous requests based on run_key, which must be larger than 10 chars
-      allow read, update: if resource.data.run_key.size() > 10 && resource.data.run_key == request.resource.data.run_key;
-      allow create: if request.resource.data.run_key.size() > 10;
-    }  
+      allow read, update: if resource.data.run_key.size() > 10
+      allow create: if request.resource.data.run_key.size() > 10
+    }
+
+    match /sources/{source}/plugin_states/{document=**} {
+      allow read: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.context_id;
+      allow read: if request.auth.token.user_type == 'learner' && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id);
+      allow update: if request.auth.token.user_type == 'learner'
+      				&& string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id)
+              && request.auth.token.class_hash == resource.data.context_id;
+      allow create: if request.auth.token.user_type == 'learner'
+      				&& string(request.auth.token.platform_user_id) == string(request.resource.data.platform_user_id)
+              && request.auth.token.class_hash == request.resource.data.context_id;
+      // anonymous requests based on run_key, which must be larger than 10 chars
+      allow read, update: if resource.data.run_key.size() > 10
+      allow create: if request.resource.data.run_key.size() > 10
+    }
 
     // This lets us limit access to report settings based on user and offering.
     match /sources/{source}/user_settings/{user_id}/resource_link/{document=**} {
       allow read, create, update: if request.auth.token.user_type == 'teacher' &&
       string(request.auth.token.platform_user_id) == string(user_id);
     }
-    
+
     // This let us test the report settings with fake portal data:
     match /sources/fake.portal/user_settings/1/resource_link/1 {
       allow read, create, update: if true;
     }
-    
+
     // Feedbacks
     match /sources/{source}/question_feedbacks/{document=**} {
     	allow create: if request.auth.token.user_type == 'teacher';
@@ -56,7 +72,7 @@ service cloud.firestore {
   		allow read, update: if request.auth.token.user_type == 'teacher' && request.auth.token.class_hash == resource.data.contextId;
       allow read: if request.auth.token.user_type == 'learner' && request.auth.token.class_hash == resource.data.contextId;
     }
-    
+
     // This let us test the report feedback with fake portal data:
     match /sources/fake.authoring.system/question_feedbacks/{document=**} {
       allow read, create, update: if true;
