@@ -9,7 +9,6 @@ describe('with an anonymous user', () => {
   beforeAll(() => {
     testApp = firebase.initializeTestApp({
       projectId: "report-service-dev",
-      // projectId: "my-test-project",
       auth: null
     });
   })
@@ -96,7 +95,6 @@ describe("with a logged in learner", () => {
   beforeAll(() => {
     testApp = firebase.initializeTestApp({
       projectId: "report-service-dev",
-      // projectId: "my-test-project",
       auth: {
         user_id: "not_sure_what_this_is",
         user_type: "learner",
@@ -111,7 +109,6 @@ describe("with a logged in learner", () => {
 
     testAppOtherClass = firebase.initializeTestApp({
       projectId: "report-service-dev",
-      // projectId: "my-test-project",
       auth: {
         user_id: "not_sure_what_this_is",
         user_type: "learner",
@@ -124,7 +121,6 @@ describe("with a logged in learner", () => {
 
     testAppOtherPlatform = firebase.initializeTestApp({
       projectId: "report-service-dev",
-      // projectId: "my-test-project",
       auth: {
         user_id: "not_sure_what_this_is",
         user_type: "learner",
@@ -303,7 +299,6 @@ describe("with a logged in teacher", () => {
   beforeAll(() => {
     testApp = firebase.initializeTestApp({
       projectId: "report-service-dev",
-      // projectId: "my-test-project",
       auth: {
         user_id: "not_sure_what_this_is",
         user_type: "teacher",
@@ -363,7 +358,6 @@ describe("with a logged in teacher", () => {
     beforeAll(async () => {
       const testAppStudent = firebase.initializeTestApp({
         projectId: "report-service-dev",
-        // projectId: "my-test-project",
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "learner",

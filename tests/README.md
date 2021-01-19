@@ -21,7 +21,7 @@ will set that ENV. So I won't have to worry about it.
 
 You can see the rule coverage after running the tests by looking at this URL:
 
-    http://localhost:8080/emulator/v1/projects/my-test-project:ruleCoverage.html
+    http://localhost:8080/emulator/v1/projects/report-service-dev:ruleCoverage.html
 
 To reset the coverage info you have to restart the emulator.
 
@@ -41,13 +41,12 @@ The `auth` object is actually the `token` in the rules.
 In order to use the Emulator UI to look at the data in the database from the test runs,
 the projectId in the tests, has to match the project id in .firebaserc.
 There doesn't seem to be a way to use the Emulator UI to inspect data from other
-projectIds.
+projectIds. So the projectId of `report-service-dev` is used.
 
-### Questions
+firebase.assertSucceeds is a no-op it just returns the passed in promise
+firebase.assertFails chains a promise off of the passed in promise, to check
+  that the promise is rejected with a permission denied error. If so, it swallows
+  the error. Otherwise it rejects the promise.
+Reference: https://github.com/firebase/firebase-js-sdk/blob/master/packages/rules-unit-testing/src/api/index.ts
 
-It isn't clear how Jest and firebase.assertSucceeds work together. The assertSucceeds
-return a promise. How does Jest know that the promise is complete? My best guess is
-that assetSucceeds has some Jest integration knowledge and internally calls Jest done
-or `expect.assertions(...)` with a expect statement.
-Or perhaps it doesn't really integrate well and this is something we should look into more.
-It seems to work most of the time though.
+Because of this it is necessary to `await` for each of these assertions.
