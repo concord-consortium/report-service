@@ -35,6 +35,21 @@ describe('with an anonymous user', () => {
       }));
   });
 
+  it('can find and read a document with a run_key', async () => {
+    const query = testApp.firestore()
+      .collection("sources/example.com/answers")
+      .where("run_key", "==", "0123456789A");
+
+    await firebase.assertSucceeds(query.get());
+  });
+
+  it('cannot find and read a document without a run_key', async () => {
+    const query = testApp.firestore()
+      .collection("sources/example.com/answers");
+
+    await firebase.assertFails(query.get());
+  });
+
   describe('with an existing run_key document', () => {
     let runKeyDoc = null;
 
@@ -67,16 +82,6 @@ describe('with an anonymous user', () => {
         }));
     });
 
-    it('can find and read the run_key document', async () => {
-      expect.assertions(1);
-      const query = testApp.firestore()
-        .collection("sources/example.com/answers")
-        .where("run_key", "==", "0123456789A");
-
-      const querySnapshot = await query.get();
-      expect(querySnapshot.empty).toBe(false);
-    });
-
   });
 });
 
@@ -87,7 +92,6 @@ describe('with an anonymous user', () => {
 describe("with a logged in learner", () => {
   let testApp = null;
   let testAppOtherClass = null;
-  let testAppOtherStudent = null;
 
   beforeAll(() => {
     testApp = firebase.initializeTestApp({
@@ -118,15 +122,15 @@ describe("with a logged in learner", () => {
       }
     });
 
-    testAppOtherStudent = firebase.initializeTestApp({
+    testAppOtherPlatform = firebase.initializeTestApp({
       projectId: "report-service-dev",
       // projectId: "my-test-project",
       auth: {
         user_id: "not_sure_what_this_is",
         user_type: "learner",
         // TODO use a typical value here
-        platform_id: "https://portal.concord.org",
-        platform_user_id: "abcd-other-student",
+        platform_id: "https://portal.staging.concord.org",
+        platform_user_id: "abcd",
         class_hash: "qwerty"
       }
     });
@@ -135,7 +139,6 @@ describe("with a logged in learner", () => {
   afterAll(async () => {
     await testApp.delete();
     await testAppOtherClass.delete();
-    await testAppOtherStudent.delete();
   });
 
   const validAnswer = {
@@ -176,6 +179,39 @@ describe("with a logged in learner", () => {
           platform_user_id: "incorrect platform user id"
       }));
   });
+
+  it('can read the answer by the same student', async () => {
+    // query document
+    const query = await testApp.firestore()
+      .collection("sources/example.com/answers")
+      .where("platform_id", "==", "https://portal.concord.org")
+      .where("platform_user_id", "==", "abcd")
+      .where("context_id", "==", "qwerty");
+
+    await firebase.assertSucceeds(query.get());
+  });
+
+  it('cannot read an answer from a different student', async () => {
+    const query = await testApp.firestore()
+      .collection("sources/example.com/answers")
+      .where("platform_id", "==", "https://portal.concord.org")
+      .where("platform_user_id", "==", "abcd-other-student")
+      .where("context_id", "==", "qwerty");
+
+    await firebase.assertFails(query.get());
+  });
+
+  it('cannot read an answer from a different platform', async () => {
+    const query = await testApp.firestore()
+      .collection("sources/example.com/answers")
+      .where("platform_id", "==", "https://portal.staging.concord.org")
+      .where("platform_user_id", "==", "abcd")
+      .where("context_id", "==", "qwerty");
+
+    await firebase.assertFails(query.get());
+  });
+
+  // TODO Check reading an answer with a different platform_id
 
   describe('with an existing learner answer', () => {
     let runKeyDoc = null;
@@ -218,37 +254,6 @@ describe("with a logged in learner", () => {
           context_id: "invalid context_id"
         }));
     });
-
-    it('can read the existing answer', async () => {
-      // query document
-      const query = await testApp.firestore()
-        .collection("sources/example.com/answers")
-        .where("platform_id", "==", "https://portal.concord.org")
-        .where("platform_user_id", "==", "abcd")
-        .where("context_id", "==", "qwerty");
-
-      await firebase.assertSucceeds(query.get());
-    });
-
-    it('cannot read an existing answer from a different student', async () => {
-      // Create the answer from a different student
-      await testAppOtherStudent.firestore()
-        .collection("sources/example.com/answers")
-        .add({
-            ...validAnswer,
-            platform_user_id: "abcd-other-student"
-        });
-
-      // query document
-      const query = await testApp.firestore()
-        .collection("sources/example.com/answers")
-        .where("platform_id", "==", "https://portal.concord.org")
-        .where("platform_user_id", "==", "abcd-other-student")
-        .where("context_id", "==", "qwerty");
-
-      await firebase.assertFails(query.get());
-    });
-
 
     // check changing context id see checkme in rules
     it('cannot change the context_id of a document from a different class', async () => {
@@ -337,12 +342,21 @@ describe("with a logged in teacher", () => {
   })
 
   it("cannot read a student answer in different context", async () => {
-    const query = testApp.firestore()
+    const query = await testApp.firestore()
       .collection("sources/example.com/answers")
       .where("platform_id", "==", "https://portal.concord.org")
       .where("context_id", "==", "qwerty-other");
     await firebase.assertFails(query.get());
   })
+
+  it('cannot read an answer from a different platform', async () => {
+    const query = await testApp.firestore()
+      .collection("sources/example.com/answers")
+      .where("platform_id", "==", "https://portal.staging.concord.org")
+      .where("platform_user_id", "==", "abcd")
+      .where("context_id", "==", "qwerty");
+    await firebase.assertFails(query.get());
+  });
 
   describe("with an existing student answer", () => {
 
