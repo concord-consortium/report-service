@@ -1,0 +1,53 @@
+I'm using a locally installed firebase tools. The generally recommended approach is to globally install it.
+
+Install Java
+
+    brew cask install java
+
+That installs open jdk, and doesn't add it to the path so you need to update your shell's config.
+The brew command should tell you what is appropriate for your shell.
+Without updating the config OS X will continue to tell you that you need to install java.
+
+Start the emulator
+
+    npx firebase -c ../firebase.json emulators:start --only firestore
+
+I got this warning
+
+    Warning: FIRESTORE_EMULATOR_HOST not set, using default value localhost:8080
+
+I suspect that if I use the `-exec` option of the emulator to run the test then it
+will set that ENV. So I won't have to worry about it.
+
+You can see the rule coverage after running the tests by looking at this URL:
+
+    http://localhost:8080/emulator/v1/projects/my-test-project:ruleCoverage.html
+
+To reset the coverage info you have to restart the emulator.
+
+If you change the rules you need to restart the emulator. The emulator seems to
+identify the rules have changed, but the tests continue to see the original rules.
+
+For some reason Jest needs to be run with `--env=node`. I got that from here https://stackoverflow.com/a/63465382.
+Otherwise, it was failing with an error `INTERNAL ASSERTION FAILED: Unexpected state`.
+
+Some useful example tests: https://github.com/zkohi/firebase-testing-samples/blob/sign_in_provider/__tests__/firestore.rules.test.ts
+
+Useful note about the `auth` object passed to initializeTestApp:
+https://github.com/firebase/firebase-tools/issues/2405#issuecomment-651315898
+
+The `auth` object is actually the `token` in the rules.
+
+In order to use the Emulator UI to look at the data in the database from the test runs,
+the projectId in the tests, has to match the project id in .firebaserc.
+There doesn't seem to be a way to use the Emulator UI to inspect data from other
+projectIds.
+
+### Questions
+
+It isn't clear how Jest and firebase.assertSucceeds work together. The assertSucceeds
+return a promise. How does Jest know that the promise is complete? My best guess is
+that assetSucceeds has some Jest integration knowledge and internally calls Jest done
+or `expect.assertions(...)` with a expect statement.
+Or perhaps it doesn't really integrate well and this is something we should look into more.
+It seems to work most of the time though.
