@@ -36,10 +36,10 @@ service cloud.firestore {
 
     // Note: this conditional is used in read rules, which do not require a
     // matching context_id, so the context_id is not enforced here
-    function learnerOwner() {
+    function learnerOwner(res) {
       return request.auth.token.user_type == 'learner'
-        && string(request.auth.token.platform_user_id) == string(resource.data.platform_user_id)
-        && request.auth.token.platform_id == resource.data.platform_id;
+        && string(request.auth.token.platform_user_id) == string(res.data.platform_user_id)
+        && request.auth.token.platform_id == res.data.platform_id;
     }
 
     function notChangingIdentifyingProps() {
@@ -53,50 +53,34 @@ service cloud.firestore {
         && request.resource.data.context_id == resource.data.context_id;
     }
 
-    // This is similar to learnerOwner except that we are looking at the request.resource
-    // and in this case we can enforce the context_id matches the auth info
+    // This is similar to learnerOwner, we are using request.resource
+    // because there is no existing resource to look at, and we can enforce
+    // the context_id matches the auth info
     function learnerOwnerCreate() {
-      return request.auth.token.user_type == 'learner'
-        && string(request.auth.token.platform_user_id) == string(request.resource.data.platform_user_id)
-        && request.auth.token.platform_id == request.resource.data.platform_id
+      return learnerOwner(request.resource)
         // Make sure the document will be in the correct class
         && request.auth.token.class_hash == request.resource.data.context_id;
     }
 
-    // Anyone can read any anonymous docs with a 'valid' run_key
-    function anonymousRead() {
-      return resource.data.run_key.size() > 10
-    }
+    // Security: the update and create rules allow any anonymous user to write almost any
+    //   content they want. The key bit is the requirement that the platform_id is not
+    //   set.  So long as other other rules check for this platform_id, then we can be
+    //   sure that anonymous users don't inject documents into authenticated query results.
 
     // Anonymous Reports: these update and create rules allow a user to write any data
     //   except for platform_id.
-    //   So in the future the activity player can add a resource_link_id to anonymous answers
-    //   which would let a teacher correlate multiple students running from a single
-    //   resource_link that they posted to their LMS.
+    //   So in the future the activity player could support a resource_link_id with anonymous users.
+    //   This would let a teacher correlate multiple students running from a single
+    //   link that they posted to their LMS.
 
-    //  Possible improvement: our 'run_key' essentially represents a
-    //   platform_id, platform_user_id, resource_link_id
+    // Possible improvement: our 'run_key' essentially represents
+    //   (platform_id, platform_user_id, resource_link_id)
     //   So we might be able to simplify some of the logic here by using those
     //   3 properties instead of a run_key
     //   The platform_id could be left null or be a fixed string like "anonymous".
     //   The platform_user_id could be the randomly generated 'run_key'
     //   The resource_link_id would be an optional randomly generated id that can correlate
     //   multiple platform_users so a teacher gets an anonymous class report.
-    //
-
-    // Security: the update and create rules allow any anonymous user to write almost any
-    //  content they want. The key bit is the requirement that the platform_id is not
-    //   set.  So long as other queries always send the platform_id and other rules
-    //   check for this platform_id, then we can be sure that anonymous users don't
-    //   inject documents into other query results.
-
-    function anonymousUpdate() {
-      // Make sure they can't change the run key of an existing document
-      // Make sure anonymous answers don't have platform_ids
-      return resource.data.run_key.size() > 10
-        && resource.data.run_key == request.resource.data.run_key
-        && !('platform_id' in request.resource.data);
-    }
 
     function anonymousCreate() {
       return request.resource.data.run_key.size() > 10
@@ -104,28 +88,45 @@ service cloud.firestore {
         && !('platform_id' in request.resource.data);
     }
 
-    match /sources/{source}/answers/{document=**} {
-      allow create: if learnerOwnerCreate();
-      allow read: if teacherOfContext();
-      allow read: if teacherOfContext() || learnerOwner();
-      allow update: if learnerOwner() && notChangingIdentifyingProps();
+    // Anyone can read any anonymous docs with a 'valid' run_key
+    function anonymousRead() {
+      return resource.data.run_key.size() > 10
+    }
 
-      // ---- Anonymous access rules ----
-      allow create: if anonymousCreate();
-      allow read: if anonymousRead();
-      allow update: if anonymousUpdate();
+    function anonymousUpdate() {
+      return resource.data.run_key.size() > 10
+        // Make sure they can't change the run key of an existing document
+        && resource.data.run_key == request.resource.data.run_key
+        // Make sure anonymous answers don't have platform_ids
+        && !('platform_id' in request.resource.data);
+    }
+
+    function studentWorkCreate() {
+      return anonymousCreate()
+        || learnerOwnerCreate();
+    }
+
+    function studentWorkRead() {
+      return anonymousRead()
+        || teacherOfContext()
+        || learnerOwner(resource);
+    }
+
+    function studentWorkUpdate() {
+      return anonymousUpdate()
+        || (learnerOwner(resource) && notChangingIdentifyingProps());
+    }
+
+    match /sources/{source}/answers/{document=**} {
+      allow create: if studentWorkCreate();
+      allow read: if studentWorkRead();
+      allow update: if studentWorkUpdate();
     }
 
     match /sources/{source}/plugin_states/{document=**} {
-      allow create: if learnerOwnerCreate();
-      allow read: if teacherOfContext();
-      allow read: if learnerOwner();
-      allow update: if learnerOwner() && notChangingIdentifyingProps();
-
-      // ---- Anonymous access rules ----
-      allow create: if anonymousCreate();
-      allow read: if anonymousRead();
-      allow update: if anonymousUpdate();
+      allow create: if studentWorkCreate();
+      allow read: if studentWorkRead();
+      allow update: if studentWorkUpdate();
     }
 
     // This is a collection in which users can write their own documents
@@ -146,7 +147,7 @@ service cloud.firestore {
       allow read, create, update: if true;
     }
 
-    function teacherFeedbackCreate() {
+    function feedbackCreate() {
       return request.auth.token.user_type == 'teacher'
         // Make sure teachers can only update feedbacks from their own contexts
         // Note this uses camel case instead of snake case
@@ -160,7 +161,17 @@ service cloud.firestore {
         && request.auth.token.class_hash == resource.data.contextId;
     }
 
-    function teacherFeedbackUpdate() {
+    function learnerFeedbackRead() {
+      return request.auth.token.user_type == 'learner'
+        && string(request.auth.token.platform_user_id) == string(resource.data.platformStudentId)
+        && request.auth.token.platform_id == resource.data.platformId;
+    }
+
+    function feedbackRead() {
+      return teacherFeedbackRead() || learnerFeedbackRead();
+    }
+
+    function feedbackUpdate() {
       return request.auth.token.user_type == 'teacher'
         && request.auth.token.platform_id == resource.data.platformId
         && request.auth.token.platform_id == request.resource.data.platformId
@@ -168,18 +179,11 @@ service cloud.firestore {
         && request.auth.token.class_hash == request.resource.data.contextId;
     }
 
-    function learnerFeedbackRead() {
-      return request.auth.token.user_type == 'learner'
-        && string(request.auth.token.platform_user_id) == string(resource.data.platformStudentId)
-        && request.auth.token.platform_id == resource.data.platformId;
-    }
-
     // Feedbacks
     match /sources/{source}/question_feedbacks/{document=**} {
-      allow create: if teacherFeedbackCreate();
-      allow read: if teacherFeedbackRead();
-      allow update: if teacherFeedbackUpdate();
-      allow read: if learnerFeedbackRead();
+      allow create: if feedbackCreate();
+      allow read: if feedbackRead();
+      allow update: if feedbackUpdate();
 
       // To support anonymous users we'd need a new read option that matches a context_id, resource_link_id, and run_key
       // One of the reasons to support anonymous feedback is to simplify testing, but if the data and code paths
@@ -198,10 +202,9 @@ service cloud.firestore {
 
     // The same comments above apply here
     match /sources/{source}/activity_feedbacks/{document=**} {
-      allow create: if teacherFeedbackCreate();
-      allow read: if teacherFeedbackRead();
-      allow update: if teacherFeedbackUpdate();
-      allow read: if learnerFeedbackRead();
+      allow create: if feedbackCreate();
+      allow read: if feedbackRead();
+      allow update: if feedbackUpdate();
     }
 
     // Anonymous Reports:
@@ -209,10 +212,9 @@ service cloud.firestore {
     //   the documents are named based on resource_link_id that is another good reason to require that id
     //   in the params when the student and teacher are running anonymously.
     match /sources/{source}/feedback_settings/{document=**} {
-      allow create: if teacherFeedbackCreate();
-      allow read: if teacherFeedbackRead();
-      allow update: if teacherFeedbackUpdate();
-      allow read: if learnerFeedbackRead();
+      allow create: if feedbackCreate();
+      allow read: if feedbackRead();
+      allow update: if feedbackUpdate();
     }
 
     // This let us test the report feedback with fake portal data:
