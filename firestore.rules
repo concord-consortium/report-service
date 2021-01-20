@@ -1,23 +1,11 @@
 // NOTE: to deploy only these rules run
 // `firebase deploy --only firestore:rules`
 
-// General Note:
-// Based on this doc: https://firebase.google.com/docs/firestore/security/rules-conditions
-//     For update operations that only modify a subset of the document fields,
-//     the request.resource variable will contain the pending document state after the operation.
-// So even if the client code uses an update to change some other property we can still verify that
-// the pending document matches all of the correct identifying properties
-// The token service has firebase tests with Jest
-// The firestore rules library includes coverage testing:
-//   https://firebase.google.com/docs/firestore/security/test-rules-emulator
-// The emulator also shows errors in the rules
-
-// initially lock out all client access to all documents
-// the plan will be to open up client access as the schema is developed
-// note: firestore functions can still access anything by default
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // by default lock out all client access to all documents
     match /{document=**} {
       allow read, write: if false;
     }
@@ -27,10 +15,13 @@ service cloud.firestore {
       allow read: if true;
     }
 
+    //
+    //  -----------  Student Work -------------
+    //
+
     function teacherOfContext() {
       return request.auth.token.user_type == 'teacher'
         && request.auth.token.class_hash == resource.data.context_id
-        // The context_id is scoped to the platform_id
         && request.auth.token.platform_id == resource.data.platform_id;
     }
 
@@ -46,41 +37,22 @@ service cloud.firestore {
       // Make sure the learner isn't changing the document's identifying properties
       return string(request.resource.data.platform_user_id) == string(request.auth.token.platform_user_id)
         && request.resource.data.platform_id == request.auth.token.platform_id
-        // If for some reason the learner got a hold of a document from outside of their
-        // current class don't let them update it
+        // no changing the document's context outside of the learner's context
         && request.resource.data.context_id == request.auth.token.class_hash
-        // Make sure the learner isn't changing the current document's id
+        // no changing the document's context from what it was before
+        // this could only happen if learner got access to an existing document in a different context
         && request.resource.data.context_id == resource.data.context_id;
+        // This implicitly also means that
+        // request.auth.token.class_hash == resource.data.context_id
     }
 
-    // This is similar to learnerOwner, we are using request.resource
-    // because there is no existing resource to look at, and we can enforce
-    // the context_id matches the auth info
+    // Check the owner of the request.resource and
+    // enforce the context_id matches the auth info
     function learnerOwnerCreate() {
       return learnerOwner(request.resource)
-        // Make sure the document will be in the correct class
+        // the platform_id is checked in the learnerOwner check
         && request.auth.token.class_hash == request.resource.data.context_id;
     }
-
-    // Security: the update and create rules allow any anonymous user to write almost any
-    //   content they want. The key bit is the requirement that the platform_id is not
-    //   set.  So long as other other rules check for this platform_id, then we can be
-    //   sure that anonymous users don't inject documents into authenticated query results.
-
-    // Anonymous Reports: these update and create rules allow a user to write any data
-    //   except for platform_id.
-    //   So in the future the activity player could support a resource_link_id with anonymous users.
-    //   This would let a teacher correlate multiple students running from a single
-    //   link that they posted to their LMS.
-
-    // Possible improvement: our 'run_key' essentially represents
-    //   (platform_id, platform_user_id, resource_link_id)
-    //   So we might be able to simplify some of the logic here by using those
-    //   3 properties instead of a run_key
-    //   The platform_id could be left null or be a fixed string like "anonymous".
-    //   The platform_user_id could be the randomly generated 'run_key'
-    //   The resource_link_id would be an optional randomly generated id that can correlate
-    //   multiple platform_users so a teacher gets an anonymous class report.
 
     function anonymousCreate() {
       return request.resource.data.run_key.size() > 10
@@ -88,7 +60,7 @@ service cloud.firestore {
         && !('platform_id' in request.resource.data);
     }
 
-    // Anyone can read any anonymous docs with a 'valid' run_key
+    // Anyone can read any anonymous docs with a valid run_key
     function anonymousRead() {
       return resource.data.run_key.size() > 10
     }
@@ -129,14 +101,16 @@ service cloud.firestore {
       allow update: if studentWorkUpdate();
     }
 
-    // This is a collection in which users can write their own documents
-    // Security: the path here is what restricts access. But we are only checking
-    //   the user_id. I think the source in this case matches the platform_id so
-    //   we can check that (if we can convert it), or perhaps the platform_id is
-    //   written into the documents so we should check that too
     //
-    // Anonymous Reports: we could just not allow report settings saving
-    //   however this might cause problems in the portal-report code
+    //  -----------  User Settings -------------
+    //
+
+    // This is a collection in which teachers can write their own documents
+    //
+    // Security: the path here is what restricts access. But we are only checking
+    //   the user_id. The source in this case is based on the platform_id so
+    //   we might be able to extend the rule to check that.
+    //
     match /sources/{source}/user_settings/{user_id}/resource_link/{document=**} {
       allow read, create, update: if request.auth.token.user_type == 'teacher' &&
         string(request.auth.token.platform_user_id) == string(user_id);
@@ -147,81 +121,68 @@ service cloud.firestore {
       allow read, create, update: if true;
     }
 
-    function feedbackCreate() {
-      return request.auth.token.user_type == 'teacher'
-        // Make sure teachers can only update feedbacks from their own contexts
-        // Note this uses camel case instead of snake case
-        && request.auth.token.platform_id == request.resource.data.platformId
-        && request.auth.token.class_hash == request.resource.data.contextId;
+    //
+    //  -----------  Feedback -------------
+    //
+
+    // Note: the feedback documents use camelCase instead of snake_case like the
+    //   student work documents
+
+    // Security: teachers can create feedback documents for any student in their
+    //   authorized platform. These documents are required to have the teacher's
+    //   authorized contextId in them, but when students list their feedbacks
+    //   they do not include the contextId.
+
+    function authorizedContext(res) {
+      return request.auth.token.platform_id == res.data.platformId
+        && request.auth.token.class_hash == res.data.contextId;
     }
 
-    function teacherFeedbackRead() {
-      return request.auth.token.user_type == 'teacher'
-        && request.auth.token.platform_id == resource.data.platformId
-        && request.auth.token.class_hash == resource.data.contextId;
-    }
-
-    function learnerFeedbackRead() {
-      return request.auth.token.user_type == 'learner'
-        && string(request.auth.token.platform_user_id) == string(resource.data.platformStudentId)
+    function authorizedStudent() {
+      return string(request.auth.token.platform_user_id) == string(resource.data.platformStudentId)
         && request.auth.token.platform_id == resource.data.platformId;
     }
 
-    function feedbackRead() {
-      return teacherFeedbackRead() || learnerFeedbackRead();
+    // Make sure teachers can only create feedbacks in their current context
+    function feedbackCreate() {
+      return request.auth.token.user_type == 'teacher'
+        && authorizedContext(request.resource);
     }
 
+    // Make sure learners can only read feedbacks directed at them, and
+    // teachers can only read feedbacks in their context
+    // Note: this isn't used for feedback settings
+    function feedbackRead() {
+      return (request.auth.token.user_type == 'teacher' && authorizedContext(resource))
+        || (request.auth.token.user_type == 'learner' && authorizedStudent()) ;
+    }
+
+    // Make sure the teacher can't change the identifying properties of
+    // platformId and contextId
+    // Make sure the teacher can't update documents that don't match their
+    // current authorized platformId and contextId
     function feedbackUpdate() {
       return request.auth.token.user_type == 'teacher'
-        // Make sure the teacher can't update a document from another platform
-        // However there shouldn't be a way for the teacher to get a document
-        // from another platform to update
-        && request.auth.token.platform_id == resource.data.platformId
-        // Make sure the teacher can't change the platformId to something else
-        && request.auth.token.platform_id == request.resource.data.platformId
-        // Make sure the teacher can't update a document from another context
-        // However there shouldn't be a way for the teacher to get a document
-        // from another context to update
-        && request.auth.token.class_hash == resource.data.contextId
-        // Make sure the teacher can't change the contextId to something else
-        && request.auth.token.class_hash == request.resource.data.contextId;
+        && authorizedContext(resource)
+        && authorizedContext(request.resource);
     }
 
-    // Feedbacks
     match /sources/{source}/question_feedbacks/{document=**} {
       allow create: if feedbackCreate();
       allow read: if feedbackRead();
       allow update: if feedbackUpdate();
-
-      // To support anonymous users we'd need a new read option that matches a context_id, resource_link_id, and run_key
-      // One of the reasons to support anonymous feedback is to simplify testing, but if the data and code paths
-      // for this anonymous feedback is different it won't be as good for testing.
-      // So maybe we should switch from a run_key to a special platform_user_id that starts with a
-      // fake domain like https://activities.concord.org/anonymous/{run_key}
-      // If we follow that to its conclusion would also allow students/teachers to re-use the
-      // same anonymous platform_user_id for multiple anonymous assignments. There isn't a great
-      // reason to use this right away, but it would match the current logged in case better.
-      // And in the future it would allow anonymous teachers to correlate data across multiple assignments
-      // for a single student. The issue is that most LMS would not support something like this
-      // out of the box. They'd need some option which lets the user supply a template for the URL which
-      // the LMS then populates with a student id. So using generic LMS support the student would need
-      // to know their special id and paste it into some field when they run the activity.
     }
 
-    // The same comments above apply here
     match /sources/{source}/activity_feedbacks/{document=**} {
       allow create: if feedbackCreate();
       allow read: if feedbackRead();
       allow update: if feedbackUpdate();
     }
 
-    // Anonymous Reports:
-    //   We'll need a teacher giving anonymous feedback to be able to write documents like this. Assuming
-    //   the documents are named based on resource_link_id that is another good reason to require that id
-    //   in the params when the student and teacher are running anonymously.
     match /sources/{source}/feedback_settings/{document=**} {
       allow create: if feedbackCreate();
-      allow read: if feedbackRead();
+      // Anyone can read the settings if they are authorized for the context
+      allow read: if authorizedContext(resource);
       allow update: if feedbackUpdate();
     }
 

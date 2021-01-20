@@ -3,7 +3,7 @@
 const firebase = require("@firebase/rules-unit-testing");
 
 
-function testFeedback(path, label) {
+function testFeedback(path, label, perStudent) {
   describe('with an anonymous user', () => {
     let testApp = null;
 
@@ -169,6 +169,8 @@ function testFeedback(path, label) {
 
   });
 
+  // TODO: need to figure out how to conditionalize this
+  // in the case of feedback settings, the documents don't have platformStudentId
   describe("with a logged in student", () => {
     let testApp = null;
 
@@ -192,53 +194,73 @@ function testFeedback(path, label) {
       await testApp.delete();
     });
 
-    const invalidStudentFeedback = {
-      platformId: "https://portal.concord.org",
-      contextId: "qwerty",
-      platformStudentId: "abcd-student"
-    };
-
     it(`cannot create ${label}s`, async () => {
       await firebase.assertFails(testApp.firestore()
         .collection(path)
-        .add(invalidStudentFeedback));
+        .add({anything: "value"}));
     });
 
-    it(`can read ${label}s in same context for this student`, async () => {
-      const query = testApp.firestore()
-        .collection(path)
-        .where("platformId", "==", "https://portal.concord.org")
-        .where("contextId", "==", "qwerty")
-        .where("platformStudentId", "==", "abcd-student");
-      await firebase.assertSucceeds(query.get());
-    })
+    if (perStudent) {
+      it(`can read ${label}s in same context for this student`, async () => {
+        const query = testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.concord.org")
+          .where("contextId", "==", "qwerty")
+          .where("platformStudentId", "==", "abcd-student");
+        await firebase.assertSucceeds(query.get());
+      })
 
-    it(`can read ${label}s in different context`, async () => {
-      const query = await testApp.firestore()
-        .collection(path)
-        .where("platformId", "==", "https://portal.concord.org")
-        .where("contextId", "==", "qwerty-other")
-        .where("platformStudentId", "==", "abcd-student");
-      await firebase.assertSucceeds(query.get());
-    })
+      it(`can read ${label}s in different context`, async () => {
+        const query = await testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.concord.org")
+          .where("contextId", "==", "qwerty-other")
+          .where("platformStudentId", "==", "abcd-student");
+        await firebase.assertSucceeds(query.get());
+      })
 
-    it(`cannot read ${label}s from a different platform`, async () => {
-      const query = await testApp.firestore()
-        .collection(path)
-        .where("platformId", "==", "https://portal.staging.concord.org")
-        .where("contextId", "==", "qwerty")
-        .where("platformStudentId", "==", "abcd-student");
-      await firebase.assertFails(query.get());
-    });
+      it(`cannot read ${label}s from a different platform`, async () => {
+        const query = await testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.staging.concord.org")
+          .where("contextId", "==", "qwerty")
+          .where("platformStudentId", "==", "abcd-student");
+        await firebase.assertFails(query.get());
+      });
 
-    it(`cannot read ${label}s for a different student`, async () => {
-      const query = await testApp.firestore()
-        .collection(path)
-        .where("platformId", "==", "https://portal.concord.org")
-        .where("contextId", "==", "qwerty")
-        .where("platformStudentId", "==", "abcd-other-student");
-      await firebase.assertFails(query.get());
-    });
+      it(`cannot read ${label}s for a different student`, async () => {
+        const query = await testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.concord.org")
+          .where("contextId", "==", "qwerty")
+          .where("platformStudentId", "==", "abcd-other-student");
+        await firebase.assertFails(query.get());
+      });
+    } else {
+      it(`can read ${label}s in the auth context`, async () => {
+        const query = testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.concord.org")
+          .where("contextId", "==", "qwerty");
+        await firebase.assertSucceeds(query.get());
+      })
+
+      it(`cannot read ${label}s in different context`, async () => {
+        const query = await testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.concord.org")
+          .where("contextId", "==", "qwerty-other");
+        await firebase.assertFails(query.get());
+      })
+
+      it(`cannot read ${label}s from a different platform`, async () => {
+        const query = await testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.staging.concord.org")
+          .where("contextId", "==", "qwerty")
+        await firebase.assertFails(query.get());
+      });
+    }
 
     describe(`with an existing ${label}`, () => {
 
@@ -255,24 +277,33 @@ function testFeedback(path, label) {
           }
         });
 
+        const existingDoc = {
+          platformId: "https://portal.concord.org",
+          contextId: "qwerty"
+        }
+
+        if (perStudent) {
+          existingDoc.platformStudentId = "abcd-student";
+        }
+
         await testAppTeacher.firestore()
           .collection(path)
-          .add({
-            platformId: "https://portal.concord.org",
-            contextId: "qwerty",
-            platformStudentId: "abcd-student"
-          });
+          .add(existingDoc);
 
         await testAppTeacher.delete();
       });
 
       it(`cannot update ${label}`, async () => {
         expect.assertions(1);
-        const query = await testApp.firestore()
+        let query = await testApp.firestore()
           .collection(path)
           .where("platformId", "==", "https://portal.concord.org")
-          .where("contextId", "==", "qwerty")
-          .where("platformStudentId", "==", "abcd-student");
+          .where("contextId", "==", "qwerty");
+
+        if (perStudent) {
+          query = query.where("platformStudentId", "==", "abcd-student");
+        }
+
         const querySnapshot = await query.get();
         expect(querySnapshot.empty).toBe(false);
         const feedbackRef = querySnapshot.docs[0].ref;
@@ -286,10 +317,10 @@ function testFeedback(path, label) {
 }
 
 describe("Question Feedbacks", () =>
-  testFeedback("sources/example.com/question_feedbacks", "question feedback"));
+  testFeedback("sources/example.com/question_feedbacks", "question feedback", true));
 
 describe("Activity Feedbacks", () =>
-  testFeedback("sources/example.com/activity_feedbacks", "activity feedback"));
+  testFeedback("sources/example.com/activity_feedbacks", "activity feedback", true));
 
 describe("Feedback Settings", () =>
-  testFeedback("sources/example.com/feedback_settings", "feedback setting"));
+  testFeedback("sources/example.com/feedback_settings", "feedback setting", false));
