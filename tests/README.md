@@ -39,7 +39,7 @@ https://github.com/firebase/firebase-tools/issues/2405#issuecomment-651315898
 The `auth` object is actually the `token` in the rules.
 
 In order to use the Emulator UI to look at the data in the database from the test runs,
-the projectId in the tests, has to match the project id in .firebaserc.
+the projectId in the tests has to match the project id in .firebaserc.
 There doesn't seem to be a way to use the Emulator UI to inspect data from other
 projectIds. So the projectId of `report-service-dev` is used.
 

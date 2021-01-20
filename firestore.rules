@@ -85,7 +85,7 @@ service cloud.firestore {
     //
 
     // Security: the update and create rules allow any anonymous user to write almost any
-    //   any content they want. The key bit is the requirement that the platform_id is not
+    //  content they want. The key bit is the requirement that the platform_id is not
     //   set.  So long as other queries always send the platform_id and other rules
     //   check for this platform_id, then we can be sure that anonymous users don't
     //   inject documents into other query results.
@@ -107,7 +107,7 @@ service cloud.firestore {
     match /sources/{source}/answers/{document=**} {
       allow create: if learnerOwnerCreate();
       allow read: if teacherOfContext();
-      allow read: if learnerOwner();
+      allow read: if teacherOfContext() || learnerOwner();
       allow update: if learnerOwner() && notChangingIdentifyingProps();
 
       // ---- Anonymous access rules ----
@@ -128,7 +128,7 @@ service cloud.firestore {
       allow update: if anonymousUpdate();
     }
 
-    // This is a collection that where users can write their own documents
+    // This is a collection in which users can write their own documents
     // Security: the path here is what restricts access. But we are only checking
     //   the user_id. I think the source in this case matches the platform_id so
     //   we can check that (if we can convert it), or perhaps the platform_id is
@@ -189,7 +189,7 @@ service cloud.firestore {
       // If we follow that to its conclusion would also allow students/teachers to re-use the
       // same anonymous platform_user_id for multiple anonymous assignments. There isn't a great
       // reason to use this right away, but it would match the current logged in case better.
-      // And in the future it would allow anonymous teachers to coorelate data across multiple assignments
+      // And in the future it would allow anonymous teachers to correlate data across multiple assignments
       // for a single student. The issue is that most LMS would not support something like this
       // out of the box. They'd need some option which lets the user supply a template for the URL which
       // the LMS then populates with a student id. So using generic LMS support the student would need
