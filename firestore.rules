@@ -173,9 +173,17 @@ service cloud.firestore {
 
     function feedbackUpdate() {
       return request.auth.token.user_type == 'teacher'
+        // Make sure the teacher can't update a document from another platform
+        // However there shouldn't be a way for the teacher to get a document
+        // from another platform to update
         && request.auth.token.platform_id == resource.data.platformId
+        // Make sure the teacher can't change the platformId to something else
         && request.auth.token.platform_id == request.resource.data.platformId
+        // Make sure the teacher can't update a document from another context
+        // However there shouldn't be a way for the teacher to get a document
+        // from another context to update
         && request.auth.token.class_hash == resource.data.contextId
+        // Make sure the teacher can't change the contextId to something else
         && request.auth.token.class_hash == request.resource.data.contextId;
     }
 

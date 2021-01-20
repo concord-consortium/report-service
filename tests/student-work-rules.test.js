@@ -119,18 +119,6 @@ function testStudentWork(path, label) {
           class_hash: "different-qwerty"
         }
       });
-
-      testAppOtherPlatform = firebase.initializeTestApp({
-        projectId: "report-service-dev",
-        auth: {
-          user_id: "not_sure_what_this_is",
-          user_type: "learner",
-          // TODO use a typical value here
-          platform_id: "https://portal.staging.concord.org",
-          platform_user_id: "abcd",
-          class_hash: "qwerty"
-        }
-      });
     })
 
     afterAll(async () => {
@@ -208,10 +196,8 @@ function testStudentWork(path, label) {
       await firebase.assertFails(query.get());
     });
 
-    // TODO Check reading an answer with a different platform_id
-
     describe(`with an existing learner ${label}`, () => {
-      let runKeyDoc = null;
+      let learnerDoc = null;
 
       beforeAll(async () => {
         learnerDoc = await testApp.firestore()
@@ -252,7 +238,6 @@ function testStudentWork(path, label) {
           }));
       });
 
-      // check changing context id see checkme in rules
       it(`cannot change the context_id of a ${label} from a different class`, async () => {
         expect.assertions(1);
 
