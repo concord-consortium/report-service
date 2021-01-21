@@ -1,5 +1,6 @@
 *.log
-scripts/node_modules
+node_modules
+
 scripts/config.json
 scripts/credentials.*
 scripts/config.json

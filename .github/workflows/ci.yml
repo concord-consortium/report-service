@@ -1,0 +1,15 @@
+name: Test Firebase rules on PR
+on: push
+jobs:
+  test_rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: '14'
+      - run: npm install -g firebase-tools
+      - run: npm ci
+        working-directory: tests
+      - run: firebase -c ../firebase.json emulators:exec --only firestore "npm test"
+        working-directory: tests
