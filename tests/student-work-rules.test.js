@@ -85,10 +85,6 @@ function testStudentWork(path, label) {
     });
   });
 
-  // TODO: These tests would be easier to write and read if we could populate
-  // the database with documents regardless of the current rules
-  // the docs say we can use initalizeAdminApp for this, but when I tried that
-  // there was a complaint about a missing library
   describe("with a logged in learner", () => {
     let testApp = null;
     let testAppOtherClass = null;
@@ -99,11 +95,8 @@ function testStudentWork(path, label) {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "learner",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          // TODO check why we are using string() in the rules
-          // perhaps we are sending numbers instead of strings in some cases
-          platform_user_id: "abcd",
+          platform_user_id: 1234,
           class_hash: "qwerty"
         }
       });
@@ -113,9 +106,8 @@ function testStudentWork(path, label) {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "learner",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          platform_user_id: "abcd",
+          platform_user_id: 1234,
           class_hash: "different-qwerty"
         }
       });
@@ -129,7 +121,7 @@ function testStudentWork(path, label) {
     const validAnswer = {
       platform_id: "https://portal.concord.org",
       context_id: "qwerty",
-      platform_user_id: "abcd"
+      platform_user_id: "1234"
     };
 
     it(`creates ${label}s that match the auth`, async () => {
@@ -170,7 +162,7 @@ function testStudentWork(path, label) {
       const query = await testApp.firestore()
         .collection(path)
         .where("platform_id", "==", "https://portal.concord.org")
-        .where("platform_user_id", "==", "abcd")
+        .where("platform_user_id", "==", "1234")
         .where("context_id", "==", "qwerty");
 
       await firebase.assertSucceeds(query.get());
@@ -180,7 +172,7 @@ function testStudentWork(path, label) {
       const query = await testApp.firestore()
         .collection(path)
         .where("platform_id", "==", "https://portal.concord.org")
-        .where("platform_user_id", "==", "abcd-other-student")
+        .where("platform_user_id", "==", "2345")
         .where("context_id", "==", "qwerty");
 
       await firebase.assertFails(query.get());
@@ -190,7 +182,7 @@ function testStudentWork(path, label) {
       const query = await testApp.firestore()
         .collection(path)
         .where("platform_id", "==", "https://portal.staging.concord.org")
-        .where("platform_user_id", "==", "abcd")
+        .where("platform_user_id", "==", "1234")
         .where("context_id", "==", "qwerty");
 
       await firebase.assertFails(query.get());
@@ -255,7 +247,7 @@ function testStudentWork(path, label) {
         const query = await testApp.firestore()
           .collection(path)
           .where("platform_id", "==", "https://portal.concord.org")
-          .where("platform_user_id", "==", "abcd")
+          .where("platform_user_id", "==", "1234")
           .where("context_id", "==", "different-qwerty");
 
         const querySnapshot = await query.get();
@@ -288,11 +280,8 @@ function testStudentWork(path, label) {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "teacher",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          // This value isn't strictly necessary for testing answers by teachers
-          // but other document types might need it
-          platform_user_id: "abcd-teacher",
+          platform_user_id: "3456",
           class_hash: "qwerty"
         }
       });
@@ -305,7 +294,7 @@ function testStudentWork(path, label) {
     const invalidTeacherAnswer = {
       platform_id: "https://portal.concord.org",
       context_id: "qwerty",
-      platform_user_id: "abcd-teacher"
+      platform_user_id: "3456"
     };
 
     it(`cannot create ${label}s`, async () => {
@@ -330,11 +319,10 @@ function testStudentWork(path, label) {
       await firebase.assertFails(query.get());
     })
 
-    it(`cannot read an ${label}s from a different platform`, async () => {
+    it(`cannot read ${label}s from a different platform`, async () => {
       const query = await testApp.firestore()
         .collection(path)
         .where("platform_id", "==", "https://portal.staging.concord.org")
-        .where("platform_user_id", "==", "abcd")
         .where("context_id", "==", "qwerty");
       await firebase.assertFails(query.get());
     });
@@ -347,9 +335,8 @@ function testStudentWork(path, label) {
           auth: {
             user_id: "not_sure_what_this_is",
             user_type: "learner",
-            // TODO use a typical value here
             platform_id: "https://portal.concord.org",
-            platform_user_id: "abcd",
+            platform_user_id: 1234,
             class_hash: "qwerty"
           }
         });
@@ -359,7 +346,7 @@ function testStudentWork(path, label) {
           .add({
             platform_id: "https://portal.concord.org",
             context_id: "qwerty",
-            platform_user_id: "abcd"
+            platform_user_id: "1234"
           });
 
         await testAppStudent.delete();

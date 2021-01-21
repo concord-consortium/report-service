@@ -26,8 +26,6 @@ function testFeedback(path, label, perStudent) {
         }));
     });
 
-    // TODO add more create tests here with platform_id, class_hash
-
     it(`cannot find and read ${label}s`, async () => {
       const query = testApp.firestore()
         .collection(path);
@@ -35,13 +33,8 @@ function testFeedback(path, label, perStudent) {
       await firebase.assertFails(query.get());
     });
 
-    // TODO add more listing tests here with platform_id, class_hash
   });
 
-  // TODO: These tests would be easier to write and read if we could populate
-  // the database with documents regardless of the current rules
-  // the docs say we can use initalizeAdminApp for this, but when I tried that
-  // there was a complaint about a missing library
   describe("with a logged in teacher", () => {
     let testApp = null;
     let testAppOtherClass = null;
@@ -52,11 +45,8 @@ function testFeedback(path, label, perStudent) {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "teacher",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          // TODO check why we are using string() in the rules
-          // perhaps we are sending numbers instead of strings in some cases
-          platform_user_id: "abcd",
+          platform_user_id: 1234,
           class_hash: "qwerty"
         }
       });
@@ -66,9 +56,8 @@ function testFeedback(path, label, perStudent) {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "teacher",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          platform_user_id: "abcd",
+          platform_user_id: 1234,
           class_hash: "different-qwerty"
         }
       });
@@ -169,8 +158,6 @@ function testFeedback(path, label, perStudent) {
 
   });
 
-  // TODO: need to figure out how to conditionalize this
-  // in the case of feedback settings, the documents don't have platformStudentId
   describe("with a logged in student", () => {
     let testApp = null;
 
@@ -180,11 +167,8 @@ function testFeedback(path, label, perStudent) {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "learner",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          // This value isn't strictly necessary for testing answers by teachers
-          // but other document types might need it
-          platform_user_id: "abcd-student",
+          platform_user_id: 2345,
           class_hash: "qwerty"
         }
       });
@@ -206,7 +190,7 @@ function testFeedback(path, label, perStudent) {
           .collection(path)
           .where("platformId", "==", "https://portal.concord.org")
           .where("contextId", "==", "qwerty")
-          .where("platformStudentId", "==", "abcd-student");
+          .where("platformStudentId", "==", "2345");
         await firebase.assertSucceeds(query.get());
       })
 
@@ -215,7 +199,7 @@ function testFeedback(path, label, perStudent) {
           .collection(path)
           .where("platformId", "==", "https://portal.concord.org")
           .where("contextId", "==", "qwerty-other")
-          .where("platformStudentId", "==", "abcd-student");
+          .where("platformStudentId", "==", "2345");
         await firebase.assertSucceeds(query.get());
       })
 
@@ -224,7 +208,7 @@ function testFeedback(path, label, perStudent) {
           .collection(path)
           .where("platformId", "==", "https://portal.staging.concord.org")
           .where("contextId", "==", "qwerty")
-          .where("platformStudentId", "==", "abcd-student");
+          .where("platformStudentId", "==", "2345");
         await firebase.assertFails(query.get());
       });
 
@@ -233,7 +217,7 @@ function testFeedback(path, label, perStudent) {
           .collection(path)
           .where("platformId", "==", "https://portal.concord.org")
           .where("contextId", "==", "qwerty")
-          .where("platformStudentId", "==", "abcd-other-student");
+          .where("platformStudentId", "==", "3456");
         await firebase.assertFails(query.get());
       });
     } else {
@@ -270,9 +254,8 @@ function testFeedback(path, label, perStudent) {
           auth: {
             user_id: "not_sure_what_this_is",
             user_type: "teacher",
-            // TODO use a typical value here
             platform_id: "https://portal.concord.org",
-            platform_user_id: "abcd-teacher",
+            platform_user_id: "5678",
             class_hash: "qwerty"
           }
         });
@@ -283,7 +266,7 @@ function testFeedback(path, label, perStudent) {
         }
 
         if (perStudent) {
-          existingDoc.platformStudentId = "abcd-student";
+          existingDoc.platformStudentId = "2345";
         }
 
         await testAppTeacher.firestore()
@@ -301,7 +284,7 @@ function testFeedback(path, label, perStudent) {
           .where("contextId", "==", "qwerty");
 
         if (perStudent) {
-          query = query.where("platformStudentId", "==", "abcd-student");
+          query = query.where("platformStudentId", "==", "2345");
         }
 
         const querySnapshot = await query.get();

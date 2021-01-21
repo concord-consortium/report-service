@@ -78,11 +78,23 @@ the pending document matches all of the correct identifying properties
 
 ### Testing the rules
 
-We use the firestore emulator to test the rules: https://firebase.google.com/docs/firestore/security/test-rules-emulator
+The firebase emulator is used to test the rules: https://firebase.google.com/docs/firestore/security/test-rules-emulator
 
 The tests are in the `tests` folder.
 
-TODO: add details about running the tests
+Within the `tests` folder install the dependencies
+
+    npm install
+
+Start the emulator
+
+    npx firebase -c ../firebase.json emulators:start --only firestore
+
+In a new terminal run
+
+    FIRESTORE_EMULATOR_HOST=localhost:8080 npm test
+
+To run the emulator you need java installed.
 
 ### Anonymous Reports
 
@@ -133,3 +145,8 @@ portal-report code. The rules could be updated to enforce that it is set and use
 The rules do not check that the platformStudentId is set for question_feedbacks and
 activity_feedbacks. These documents are specific to students and should have this property
 set on all of them.
+
+The user settings are stored under a path that includes the platform_user_id. The rules
+only check that this id in the path matches the authorized platform_user_id. It would be
+better if the rules also checked the platform_id since the platform_user_id could overlap
+between different platforms.

@@ -50,10 +50,6 @@ describe("User Settings", () => {
     });
   });
 
-  // TODO: These tests would be easier to write and read if we could populate
-  // the database with documents regardless of the current rules
-  // the docs say we can use initalizeAdminApp for this, but when I tried that
-  // there was a complaint about a missing library
   describe("with a logged in teacher", () => {
     let testApp = null;
 
@@ -63,11 +59,8 @@ describe("User Settings", () => {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "teacher",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          // TODO check why we are using string() in the rules
-          // perhaps we are sending numbers instead of strings in some cases
-          platform_user_id: "abcd",
+          platform_user_id: 12345,
           class_hash: "qwerty"
         }
       });
@@ -79,45 +72,37 @@ describe("User Settings", () => {
 
     it("creates user settings in collections that match the auth", async () => {
       await firebase.assertSucceeds(testApp.firestore()
-        .collection(path + "/abcd/resource_link")
+        .collection(path + "/12345/resource_link")
         .add({setting: "any value"}));
     });
 
     it("fails to create user settings in other collections", async () => {
       await firebase.assertFails(testApp.firestore()
-        .collection(path + "/other-user/resource_link")
+        .collection(path + "/23456/resource_link")
         .add({setting: "any value"}));
     });
 
     it("can read user settings in collections that match the auth", async () => {
       // query document
       const query = await testApp.firestore()
-        .collection(path + "/abcd/resource_link");
+        .collection(path + "/12345/resource_link");
 
       await firebase.assertSucceeds(query.get());
     });
 
     it("cannot read user settings in other collections", async () => {
       const query = await testApp.firestore()
-        .collection(path + "/other-user/resource_link");
+        .collection(path + "/23456/resource_link");
 
       await firebase.assertFails(query.get());
     });
-
-    // Security: currently the platform_id of the user id is not checked here
-    //   so a different platform could provide a JWT with the same user id
-    //   and the teacher could then read and write the other platform's settings
-    // TODO: the source part of the path could be used to secure this better.
-    //   Currently the settings are only written by portal-report so its method
-    //   of computing the source could be used here, or the data could be migrated
-    //   to bring this more inline with the rest of the documents
 
     describe("with an existing user settings doc", () => {
       let settingsDoc = null;
 
       beforeAll(async () => {
         settingsDoc = await testApp.firestore()
-          .collection(path + "/abcd/resource_link")
+          .collection(path + "/12345/resource_link")
           .add({setting: "any value"});
       });
 
@@ -140,11 +125,8 @@ describe("User Settings", () => {
         auth: {
           user_id: "not_sure_what_this_is",
           user_type: "learner",
-          // TODO use a typical value here
           platform_id: "https://portal.concord.org",
-          // This value isn't strictly necessary for testing answers by teachers
-          // but other document types might need it
-          platform_user_id: "abcd-student",
+          platform_user_id: 123456,
           class_hash: "qwerty"
         }
       });
@@ -156,13 +138,13 @@ describe("User Settings", () => {
 
     it("cannot create user settings", async () => {
       await firebase.assertFails(testApp.firestore()
-        .collection(path + "/abcd/resource_link")
+        .collection(path + "/123456/resource_link")
         .add({some: "value"}));
     });
 
     it("cannot read user settings", async () => {
       const query = await testApp.firestore()
-        .collection(path + "/abcd/resource_link");
+        .collection(path + "/123456/resource_link");
       await firebase.assertFails(query.get());
     });
   });
