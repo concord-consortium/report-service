@@ -5,9 +5,7 @@ import crypto from "crypto";
 import * as functions from "firebase-functions";
 import admin, { firestore } from "firebase-admin";
 
-import { S3Client } from "@aws-sdk/client-s3-node/S3Client";
-import { PutObjectCommand } from "@aws-sdk/client-s3-node/commands/PutObjectCommand";
-import { DeleteObjectCommand } from "@aws-sdk/client-s3-node/commands/DeleteObjectCommand";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const parquet = require('parquetjs');
 
@@ -182,7 +180,7 @@ exports.createSyncDocAfterAnswerWritten = functions.firestore
           }
         }
 
-        return null;
+        return (null as unknown) as Promise<firestore.WriteResult>;
       })
   });
 
@@ -205,7 +203,7 @@ exports.monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSchedule).
                     return Promise.all(promises);
                   });
       }
-      return null;
+      return (null as unknown) as Promise<firestore.WriteResult[]>;
     });
 });
 
@@ -234,8 +232,6 @@ exports.syncToS3AfterSyncDocWritten = functions.firestore
           }
         }
 
-        return null;
+        return (null as unknown) as Promise<firestore.WriteResult>;
       });
-  });
-
-
+});

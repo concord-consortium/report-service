@@ -14,7 +14,7 @@ const runExport = {
 }
 
 test('Run Parser', () => {
-  const {run, answers} = ParseRun(runExport);
+  const {run, answers = []} = ParseRun(runExport);
   expect(answers.length).toBe(4)
   expect(run.answers).toBeUndefined()
 })

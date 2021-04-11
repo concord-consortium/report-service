@@ -19,7 +19,7 @@ export default function (req: express.Request, res: express.Response, next: expr
     return
   }
 
-  if (req.query && req.query.bearer) {
+  if (req.query && req.query.bearer && typeof req.query.bearer === "string") {
     clientBearerToken = req.query.bearer;
   }
   else if (req.body && req.body.bearer) {

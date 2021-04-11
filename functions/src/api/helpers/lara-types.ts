@@ -13,7 +13,7 @@ export interface IPartialLaraAuthoredResource extends IStandardLaraKeys{
 
 export interface IPartialLaraRun extends IStandardLaraKeys{
   url: string;
-  answers: IPartialLaraAnswer[];
+  answers?: IPartialLaraAnswer[];
 }
 
 export interface IPartialLaraAnswer extends IStandardLaraKeys {
