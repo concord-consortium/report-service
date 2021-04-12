@@ -4,9 +4,16 @@ report queries later.
 
 ### One way to develop this:
 This command should start up a firestore emulator, and compile typescript
-in the background from the `src` directory.
+in the background from the `functions` directory.
 
-`npm run serve`
+The firebase CLI needs to be installed globally: `npm install -g firebase-tools`
+
+Then
+
+```
+cd functions
+npm run serve
+```
 
 ### Some routes:
 - `api/` -- json based documentation of routes
@@ -38,7 +45,7 @@ The `.runtimeconfig.json` file is present in the `.gitignore` so it won't be com
 ### Requirements:
 
  * You should install the firebase CLI via: `npm i -g firebase-tools`
- * You shouuld be logged in to firebase: `firebase login`
+ * You should be logged in to firebase: `firebase login`
 
 You deploy firebase functions and rules directly from the working directory using
 the `firebase deploy` command. You can see `firebase deploy help` for more info.

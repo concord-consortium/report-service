@@ -4,7 +4,7 @@
   "scripts": {
     "lint": "tslint --project tsconfig.json",
     "build": "tsc",
-    "serve": "tsc -w & firebase serve --only functions",
+    "serve": "npm run buildinfo && tsc -w & firebase serve --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "npm run buildinfo && npm run deploy:functions",
