@@ -53,6 +53,8 @@ We can download the AWS key and Secret Key for this user, and then push it up to
 
 These are then accessible to the Functions via `functions.config().aws.key` and `functions.config().aws.secret_key`.
 
+To run the `export-answers.js` script, we also need to add them to `scripts/config.json` as shown in the sample file.
+
 ## Deploying rules and functions:
 
 ### Requirements:
