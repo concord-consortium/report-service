@@ -11,6 +11,12 @@ import importStructure from "./api/import-structure"
 import moveStudentWork from "./api/move-student-work"
 import getResource from "./api/get-resource"
 
+import {
+  createSyncDocAfterAnswerWritten,
+  monitorSyncDocCount,
+  syncToS3AfterSyncDocWritten
+} from "./auto-importer";
+
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
 
@@ -48,5 +54,8 @@ const wrappedApi = functions.https.onRequest( (req: express.Request, res: expres
 })
 
 module.exports = {
-  api: wrappedApi
+  api: wrappedApi,
+  createSyncDocAfterAnswerWritten,
+  monitorSyncDocCount,
+  syncToS3AfterSyncDocWritten
 }

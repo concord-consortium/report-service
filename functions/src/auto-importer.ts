@@ -165,7 +165,7 @@ const deleteFromS3 = (answer: AnswerData) => {
   return s3Client().send(deleteObjectCommand)
 }
 
-exports.createSyncDocAfterAnswerWritten = functions.firestore
+export const createSyncDocAfterAnswerWritten = functions.firestore
   .document(`${answersPath()}/{answerId}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
@@ -191,7 +191,7 @@ exports.createSyncDocAfterAnswerWritten = functions.firestore
       })
   });
 
-exports.monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSchedule).onRun((context) => {
+export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSchedule).onRun((context) => {
   return getSettings()
     .then(({ setNeedSync }) => {
       if (setNeedSync) {
@@ -214,7 +214,7 @@ exports.monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSchedule).
     });
 });
 
-exports.syncToS3AfterSyncDocWritten = functions.firestore
+export const syncToS3AfterSyncDocWritten = functions.firestore
   .document(`${answersSyncPath()}/{answerId}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
