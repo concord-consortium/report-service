@@ -40,6 +40,19 @@ environment variables.  To create that file use:
 
 The `.runtimeconfig.json` file is present in the `.gitignore` so it won't be committed.
 
+### AWS secrets
+
+In order to write to S3, a user needs to be created in AWS IAM with permission to write to the S3 bucket.
+For instance there exists a user, `report-service-qa`, within the AminConcordQA role, with permission to write
+to the `concordqa-report-data` S3 bucket.
+
+We can download the AWS key and Secret Key for this user, and then push it up to Firebase with
+
+`firebase functions:config:set auth.aws.key=<VALUE>`
+`firebase functions:config:set auth.aws.seret_key=<VALUE>`
+
+These are then accessible to the Functions via `functions.config().aws.key` and `functions.config().aws.secret_key`.
+
 ## Deploying rules and functions:
 
 ### Requirements:

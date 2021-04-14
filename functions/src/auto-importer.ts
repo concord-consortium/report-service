@@ -113,7 +113,14 @@ const addSyncDoc = (answerId: string, options: {removeAnswer: boolean} = {remove
   })
 };
 
-const s3Client = () => new S3Client({region});
+// gets AWS creds from firebase config.
+const s3Client = () => new S3Client({
+  region,
+  credentials: {
+    accessKeyId: functions.config().aws.key,
+    secretAccessKey: functions.config().aws.secret_key,
+  }
+});
 
 const syncToS3 = (answer: AnswerData) => {
   const {run_key} = answer
