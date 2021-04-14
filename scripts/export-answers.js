@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 const BUCKET = "concordqa-report-data"
-const DIRECTORY = "partitioned-answers"
+const SOURCE = "authoring.staging.concord.org"
+const DIRECTORY = `${SOURCE}/partitioned-answers`
 const BATCH_SIZE = 100;
 
 var AWS = require('aws-sdk');
@@ -42,7 +43,7 @@ if (!fs.existsSync(outputPath)) {
 // Create a new client
 const firestore = new Firestore();
 
-let query = firestore.collection('sources/authoring.staging.concord.org/answers');
+let query = firestore.collection(`sources/${SOURCE}/answers`);
 let masterQuery = query.limit(BATCH_SIZE)
   .orderBy('run_key').orderBy("id")
 
