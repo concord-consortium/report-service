@@ -63,8 +63,8 @@ const defaultSettings: AutoImporterSettings = {
 interface SyncData {
   count: number | FirebaseFirestore.FieldValue;
   remove_answer?: boolean;
-  need_sync?: Date | typeof FirebaseFirestore.Timestamp;
-  did_sync?: Date | typeof FirebaseFirestore.Timestamp;
+  need_sync?: firestore.Timestamp;
+  did_sync?: firestore.Timestamp;
 }
 
 type PartialSyncData = Partial<SyncData>;
@@ -105,9 +105,9 @@ const addSyncDoc = (answerId: string, options: {removeAnswer: boolean} = {remove
         // add the existing field values with the new field values overwriting them
         const existingSyncDocData = doc.data() as SyncData
         syncDocData = {...existingSyncDocData, ...syncDocData}
-        return syncDocRef.update(syncDocData);
+        return transaction.update(syncDocRef, syncDocData);
       } else {
-        return syncDocRef.set(syncDocData);
+        return transaction.set(syncDocRef, syncDocData);
       }
     })
   })
@@ -203,7 +203,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
                     querySnapshot.forEach((doc) => {
                       // use a timestamp instead of a boolean for sync so that we trigger a write
                       promises.push(doc.ref.update({
-                        need_sync: firestore.Timestamp,
+                        need_sync: firestore.Timestamp.now(),
                         count: 0
                       } as PartialSyncData));
                     });
@@ -223,7 +223,7 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
           const docRef = getAnswerCollection().doc(context.params.answerId);
           const syncDocRef = getAnswerSyncCollection().doc(context.params.answerId);
 
-          const setDidSync = () => syncDocRef.update({did_sync: firestore.Timestamp} as PartialSyncData)
+          const setDidSync = () => syncDocRef.update({did_sync: firestore.Timestamp.now()} as PartialSyncData)
           const deleteSyncDoc = () => syncDocRef.delete()
 
           const data = change.after.data() as SyncData;
