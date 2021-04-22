@@ -129,7 +129,7 @@ const syncToS3 = (answer: AnswerData) => {
 
   const deleteFile = async () => access(tmpFilePath).then(() => unlink(tmpFilePath)).catch(() => undefined);
 
-  return async () => {
+  return new Promise(async (resolve, reject) => {
     try {
       // parquetjs can't write to buffers
       await deleteFile();
@@ -150,11 +150,12 @@ const syncToS3 = (answer: AnswerData) => {
       await s3Client().send(putObjectCommand)
 
     } catch (err) {
-      console.error(`${run_key}: ${err.toString()}`);
+      reject(`${run_key}: ${err.toString()}`);
     } finally {
       await deleteFile();
+      resolve(true);
     }
-  }
+  });
 }
 
 const deleteFromS3 = (answer: AnswerData) => {
@@ -171,7 +172,6 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
   .onWrite((change, context) => {
     return getSettings()
       .then(({ watchAnswers }) => {
-
         if (watchAnswers) {
           const answerId = context.params.answerId;
 
@@ -188,7 +188,7 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
           }
         }
 
-        return (null as unknown) as Promise<firestore.WriteResult>;
+        return null;
       })
   });
 
@@ -211,7 +211,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
                     return Promise.all(promises);
                   });
       }
-      return (null as unknown) as Promise<firestore.WriteResult[]>;
+      return null;
     });
 });
 
@@ -226,20 +226,21 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
 
           const setDidSync = () => syncDocRef.update({did_sync: firestore.Timestamp.now()} as PartialSyncData)
           const deleteSyncDoc = () => syncDocRef.delete()
-
           const data = change.after.data() as SyncData;
           if (data.remove_answer) {
             return docRef.get()
               .then(doc => deleteFromS3(doc.data() as AnswerData))
               .then(deleteSyncDoc)
+              .catch(functions.logger.error)
           }
           else if (data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync))) {
             return docRef.get()
               .then(doc => syncToS3(doc.data() as AnswerData))
               .then(setDidSync)
+              .catch(functions.logger.error)
           }
         }
 
-        return (null as unknown) as Promise<firestore.WriteResult>;
+        return null;
       });
 });
