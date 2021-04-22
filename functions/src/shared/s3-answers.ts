@@ -2,6 +2,7 @@ const parquet = require('parquetjs');
 
 export interface AnswerData {
   // leaving out everything but the resource_url and run_key which is what we care about
+  answer?: any;
   resource_url: string;
   run_key?: string;
 }

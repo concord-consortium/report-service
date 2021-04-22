@@ -134,6 +134,7 @@ const syncToS3 = (answer: AnswerData) => {
       // parquetjs can't write to buffers
       await deleteFile();
       const writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
+      if (answer.answer) answer.answer = JSON.stringify(answer.answer)
       await writer.appendRow(answer);
       await writer.close();
 
