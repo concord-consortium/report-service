@@ -62,7 +62,6 @@ const defaultSettings: AutoImporterSettings = {
 
 interface SyncData {
   count: number | FirebaseFirestore.FieldValue;
-  remove_answer?: boolean;
   need_sync?: firestore.Timestamp;
   did_sync?: firestore.Timestamp;
 }
@@ -90,14 +89,11 @@ const getSettings = () => {
     .catch(() => defaultSettings)
 }
 
-const addSyncDoc = (answerId: string, options: {removeAnswer: boolean} = {removeAnswer: false}) => {
-  const syncDocRef = getAnswerSyncCollection().doc(answerId);
+const addSyncDoc = (runKey: string) => {
+  const syncDocRef = getAnswerSyncCollection().doc(runKey);
   let syncDocData: SyncData = {
     count: admin.firestore.FieldValue.increment(1)
   };
-  if (options.removeAnswer) {
-    syncDocData.remove_answer = true;
-  }
 
   return admin.firestore().runTransaction((transaction) => {
     return transaction.get(syncDocRef).then((doc) => {
@@ -122,9 +118,9 @@ const s3Client = () => new S3Client({
   }
 });
 
-const syncToS3 = (answer: AnswerData) => {
-  const {run_key} = answer
-  const {filename, key} = parquetInfo(answer, answerDirectory);
+const syncToS3 = (answers: AnswerData[]) => {
+  const {run_key} = answers[0]
+  const {filename, key} = parquetInfo(answers[0], answerDirectory);
   const tmpFilePath = path.join("/tmp", filename);
 
   const deleteFile = async () => access(tmpFilePath).then(() => unlink(tmpFilePath)).catch(() => undefined);
@@ -134,8 +130,10 @@ const syncToS3 = (answer: AnswerData) => {
       // parquetjs can't write to buffers
       await deleteFile();
       const writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
-      if (answer.answer) answer.answer = JSON.stringify(answer.answer)
-      await writer.appendRow(answer);
+      for (const answer of answers) {
+        answer.answer = JSON.stringify(answer.answer)
+        await writer.appendRow(answer);
+      }
       await writer.close();
 
       const body = await readFile(tmpFilePath)
@@ -158,33 +156,24 @@ const syncToS3 = (answer: AnswerData) => {
   });
 }
 
-const deleteFromS3 = (answer: AnswerData) => {
-  const {key} = parquetInfo(answer, answerDirectory);
-  const deleteObjectCommand = new DeleteObjectCommand({
-    Bucket: bucket,
-    Key: key
-  })
-  return s3Client().send(deleteObjectCommand)
-}
-
 export const createSyncDocAfterAnswerWritten = functions.firestore
   .document(`${answersPath()}/{answerId}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
       .then(({ watchAnswers }) => {
         if (watchAnswers) {
-          const answerId = context.params.answerId;
+          // const answerId = context.params.answerId;
+          const runKey = change.after.data()?.run_key;
 
-          if (!change.after.exists) {
-            // answer has been deleted - mark the sync doc to be removed
-            return addSyncDoc(answerId, {removeAnswer: true});
+          if (!runKey) {
+            return null;
           }
 
           const beforeHash = getHash(change.before.data());
           const afterHash = getHash(change.after.data());
 
           if (afterHash !== beforeHash) {
-            return addSyncDoc(answerId);
+            return addSyncDoc(runKey);
           }
         }
 
@@ -216,31 +205,34 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
 });
 
 export const syncToS3AfterSyncDocWritten = functions.firestore
-  .document(`${answersSyncPath()}/{answerId}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
+  .document(`${answersSyncPath()}/{runKey}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
       .then(({ sync }) => {
         if (sync && change.after.exists) {
-          const docRef = getAnswerCollection().doc(context.params.answerId);
-          const syncDocRef = getAnswerSyncCollection().doc(context.params.answerId);
-
-          const setDidSync = () => syncDocRef.update({did_sync: firestore.Timestamp.now()} as PartialSyncData)
-          const deleteSyncDoc = () => syncDocRef.delete()
           const data = change.after.data() as SyncData;
-          if (data.remove_answer) {
-            return docRef.get()
-              .then(doc => deleteFromS3(doc.data() as AnswerData))
-              .then(deleteSyncDoc)
-              .catch(functions.logger.error)
-          }
-          else if (data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync))) {
-            return docRef.get()
-              .then(doc => syncToS3(doc.data() as AnswerData))
-              .then(setDidSync)
-              .catch(functions.logger.error)
+
+          if (data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync))) {
+            return getAnswerCollection()
+              .where("run_key", "==", context.params.runKey)
+              .get()
+              .then((querySnapshot) => {
+                const answers: firestore.DocumentData[] = [];
+                querySnapshot.forEach((doc) => {
+                  answers.push(doc.data());
+                });
+
+                const syncDocRef = getAnswerSyncCollection().doc(context.params.runKey);
+                const setDidSync = () => syncDocRef.update({did_sync: firestore.Timestamp.now()} as PartialSyncData)
+
+                if (answers.length) {
+                  syncToS3(answers as AnswerData[])
+                    .then(setDidSync)
+                    .catch(functions.logger.error)
+                }
+              });
           }
         }
-
         return null;
       });
 });
