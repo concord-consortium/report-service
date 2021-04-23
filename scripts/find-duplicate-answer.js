@@ -37,6 +37,8 @@ answersRef.get().then(answerSnapshot => {
       multipleAnswers.push(questionUser)
     }
   }
-  console.log(`length: ${multipleAnswers.length}`)
+  var file = fs.createWriteStream("multipleAnswerStudents.txt")
+  multipleAnswers.forEach(item=>{file.write(item + ", \n")})
+  file.end()
 })
 
