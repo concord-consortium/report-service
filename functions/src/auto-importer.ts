@@ -29,16 +29,12 @@ import { AnswerData, schema, parquetInfo } from "./shared/s3-answers"
 HOW THIS WORKS:
 
 1. createSyncDocAfterAnswerWritten runs on every write of an answer.  If the answer changes or is deleted a "sync doc"
-   is created or updated which contains the run_key for the answer along with an incrementing counter starting at 1.
-   In the case of deletes a "remove" flag is added.
-2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with a count > 0.  Each document that is
-   found has a sync field set to the current server time and has its count reset to 0.
-3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  It ignores deletes of the sync doc itself.
-
-1. per answer write create/update sync document per run_key (null, ignore) increment sync count
-2. cron job looking at sync docs where count > 0 and setting flag to sync reset the count in a transaction
-3. sync doc write looking for sync flag and then sync if true, then clear flag
-
+   is created or updated whose name is the run_key for the answer along with a boolean "updated".
+2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with updated = true.  Each document that is
+   found has a needs_sync field set to the current server time and has updated set to false.
+3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
+   never synced before, or needs_sync > did_sync, it will gather up all the answers for that runKey and post them to
+  s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp
 */
 
 const syncSource = "TODO: GET FROM ENVIRONMENT";
@@ -61,7 +57,7 @@ const defaultSettings: AutoImporterSettings = {
 }
 
 interface SyncData {
-  count: number | FirebaseFirestore.FieldValue;
+  updated: boolean;
   resource_url: string;
   need_sync?: firestore.Timestamp;
   did_sync?: firestore.Timestamp;
@@ -93,7 +89,7 @@ const getSettings = () => {
 const addSyncDoc = (runKey: string, resourceUrl: string) => {
   const syncDocRef = getAnswerSyncCollection().doc(runKey);
   let syncDocData: SyncData = {
-    count: admin.firestore.FieldValue.increment(1),
+    updated: true,
     resource_url: resourceUrl
   };
 
@@ -200,7 +196,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
     .then(({ setNeedSync }) => {
       if (setNeedSync) {
         return getAnswerSyncCollection()
-                  .where("count", ">", 0)
+                  .where("updated", "==", true)
                   .get()
                   .then((querySnapshot) => {
                     const promises: Promise<FirebaseFirestore.WriteResult>[] = [];
@@ -208,7 +204,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
                       // use a timestamp instead of a boolean for sync so that we trigger a write
                       promises.push(doc.ref.update({
                         need_sync: firestore.Timestamp.now(),
-                        count: 0
+                        updated: false
                       } as PartialSyncData));
                     });
                     return Promise.all(promises);
