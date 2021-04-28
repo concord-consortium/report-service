@@ -62,6 +62,7 @@ const defaultSettings: AutoImporterSettings = {
 
 interface SyncData {
   count: number | FirebaseFirestore.FieldValue;
+  resource_url: string;
   need_sync?: firestore.Timestamp;
   did_sync?: firestore.Timestamp;
 }
@@ -89,10 +90,11 @@ const getSettings = () => {
     .catch(() => defaultSettings)
 }
 
-const addSyncDoc = (runKey: string) => {
+const addSyncDoc = (runKey: string, resourceUrl: string) => {
   const syncDocRef = getAnswerSyncCollection().doc(runKey);
   let syncDocData: SyncData = {
-    count: admin.firestore.FieldValue.increment(1)
+    count: admin.firestore.FieldValue.increment(1),
+    resource_url: resourceUrl
   };
 
   return admin.firestore().runTransaction((transaction) => {
@@ -120,7 +122,7 @@ const s3Client = () => new S3Client({
 
 const syncToS3 = (answers: AnswerData[]) => {
   const {run_key} = answers[0]
-  const {filename, key} = parquetInfo(answers[0], answerDirectory);
+  const {filename, key} = parquetInfo(answerDirectory, answers[0]);
   const tmpFilePath = path.join("/tmp", filename);
 
   const deleteFile = async () => access(tmpFilePath).then(() => unlink(tmpFilePath)).catch(() => undefined);
@@ -156,14 +158,26 @@ const syncToS3 = (answers: AnswerData[]) => {
   });
 }
 
+const deleteFromS3 = (runKey: string, resourceUrl: string) => {
+  const {key} = parquetInfo(answerDirectory, null, runKey, resourceUrl);
+  const deleteObjectCommand = new DeleteObjectCommand({
+    Bucket: bucket,
+    Key: key
+  })
+  return s3Client().send(deleteObjectCommand)
+}
+
 export const createSyncDocAfterAnswerWritten = functions.firestore
   .document(`${answersPath()}/{answerId}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
       .then(({ watchAnswers }) => {
         if (watchAnswers) {
-          // const answerId = context.params.answerId;
-          const runKey = change.after.data()?.run_key;
+          // need to get the before data in case answer was deleted
+          const runKey = change.before.data()?.run_key;
+          // likewise, if the answer was deleted, we need to record where it used to be, to potentially delete the doc
+          const resourceUrl = change.before.data()?.resource_url;
+
 
           if (!runKey) {
             return null;
@@ -173,7 +187,7 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
           const afterHash = getHash(change.after.data());
 
           if (afterHash !== beforeHash) {
-            return addSyncDoc(runKey);
+            return addSyncDoc(runKey, resourceUrl);
           }
         }
 
@@ -229,6 +243,9 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                   syncToS3(answers as AnswerData[])
                     .then(setDidSync)
                     .catch(functions.logger.error)
+                } else {
+                  // if the learner has no answers associated with this run, delete the doc
+                  deleteFromS3(context.params.runKey, data.resource_url);
                 }
               });
           }

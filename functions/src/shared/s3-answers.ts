@@ -29,10 +29,21 @@ export const schema = new parquet.ParquetSchema({
   version: { type: 'UTF8' },
 });
 
-export const parquetInfo = (answer: AnswerData, directory: string) => {
-  const { run_key } = answer;
-  const filename = `${run_key}.parquet`;
-  const folder = answer.resource_url.replace(/[^a-z0-9]/g, "-");
+export const parquetInfo = (directory: string, answer?: AnswerData | null, _runKey?: string, _resourceUrl?: string) => {
+  let runKey, resourceUrl;
+  if (answer) {
+    runKey = answer.run_key;
+    resourceUrl = answer.resource_url;
+  } else {
+    runKey = _runKey;
+    resourceUrl = _resourceUrl;
+  }
+  if (!runKey || !resourceUrl) {
+    throw Error(`Cannot create filename for ${runKey}`);
+  }
+
+  const filename = `${runKey}.parquet`;
+  const folder = resourceUrl.replace(/[^a-z0-9]/g, "-");
   return {
     filename,
     key: `${directory}/${folder}/${filename}`
