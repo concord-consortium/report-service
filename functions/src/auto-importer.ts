@@ -247,13 +247,15 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                     .catch(functions.logger.error)
                 } else {
                   // if the learner has no answers associated with this run, delete the doc
-                  deleteFromS3(context.params.runKey, data.resource_url);
+                  deleteFromS3(context.params.runKey, data.resource_url)
+                    .catch(functions.logger.error);
                 }
               });
           } else if (!data.updated && data.need_sync && data.did_sync && data.did_sync > data.need_sync) {
             // after we have written the did_sync, we will get a notification again. If no other answers have
             // been written while we were updating S3, we can delete the sync doc
-            deleteSyncDoc(context.params.runKey);
+            deleteSyncDoc(context.params.runKey)
+              .catch(functions.logger.error);
           }
         }
         return null;
