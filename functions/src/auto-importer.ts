@@ -34,7 +34,9 @@ HOW THIS WORKS:
    found has a needs_sync field set to the current server time and has updated set to false.
 3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
    never synced before, or needs_sync > did_sync, it will gather up all the answers for that runKey and post them to
-  s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp
+   s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp
+4. After the did_sync is set, syncToS3AfterSyncDocWritten will be notified again. If no new data has been written, it will
+   delete the sync doc
 */
 
 const syncSource = "TODO: GET FROM ENVIRONMENT";
@@ -106,6 +108,10 @@ const addSyncDoc = (runKey: string, resourceUrl: string) => {
     })
   })
 };
+
+const deleteSyncDoc = (runKey: string) => {
+  return getAnswerSyncCollection().doc(runKey).delete();
+}
 
 // gets AWS creds from firebase config.
 const s3Client = () => new S3Client({
@@ -244,6 +250,10 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                   deleteFromS3(context.params.runKey, data.resource_url);
                 }
               });
+          } else if (!data.updated && data.need_sync && data.did_sync && data.did_sync > data.need_sync) {
+            // after we have written the did_sync, we will get a notification again. If no other answers have
+            // been written while we were updating S3, we can delete the sync doc
+            deleteSyncDoc(context.params.runKey);
           }
         }
         return null;
