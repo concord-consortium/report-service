@@ -2,7 +2,7 @@
 
 const BUCKET = "concordqa-report-data"
 const SOURCE = "authoring.staging.concord.org"
-const DIRECTORY = `${SOURCE}/partitioned-answers`
+const DIRECTORY = "partitioned-answers"
 const BATCH_SIZE = 100;
 
 var AWS = require('aws-sdk');

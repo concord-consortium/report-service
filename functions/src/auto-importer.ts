@@ -41,7 +41,7 @@ HOW THIS WORKS:
 
 const syncSource = "TODO: GET FROM ENVIRONMENT";
 const bucket = "concordqa-report-data"
-const answerDirectory = `${syncSource}/partitioned-answers`
+const answerDirectory = "partitioned-answers"
 const region = "us-east-1"
 
 const monitorSyncDocSchedule = "every 4 minutes"
