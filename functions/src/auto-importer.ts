@@ -67,8 +67,10 @@ interface S3SyncInfo {
 interface SyncData {
   updated: boolean;
   resource_url: string;
+  last_answer_updated: firestore.Timestamp;
   need_sync?: firestore.Timestamp;
   did_sync?: firestore.Timestamp;
+  start_sync?: firestore.Timestamp;
   info?: S3SyncInfo;
 }
 
@@ -99,6 +101,7 @@ const addSyncDoc = (runKey: string, resourceUrl: string) => {
   const syncDocRef = getAnswerSyncCollection().doc(runKey);
   let syncDocData: SyncData = {
     updated: true,
+    last_answer_updated: firestore.Timestamp.now(),
     resource_url: resourceUrl
   };
 
@@ -247,7 +250,16 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
         if (sync && change.after.exists) {
           const data = change.after.data() as SyncData;
 
-          if (data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync))) {
+          const needSyncMoreRecentThanDidSync = data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync));
+          const needSyncMoreRecentThanStartSync = data.need_sync && (!data.start_sync || (data.need_sync > data.start_sync));
+
+          if (data.need_sync && needSyncMoreRecentThanDidSync && needSyncMoreRecentThanStartSync) {
+            const syncDocRef = getAnswerSyncCollection().doc(context.params.runKey);
+
+            syncDocRef.update({
+              start_sync: firestore.Timestamp.now()
+            } as PartialSyncData).catch(functions.logger.error)
+
             const syncToS3StartTime = performance.now();
             return getAnswerCollection()
               .where("run_key", "==", context.params.runKey)
@@ -258,7 +270,6 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                   answers.push(doc.data());
                 });
 
-                const syncDocRef = getAnswerSyncCollection().doc(context.params.runKey);
                 const setDidSync = (info: S3SyncInfo) => {
                   info.totalTime = performance.now() - syncToS3StartTime;
                   return syncDocRef.update({
