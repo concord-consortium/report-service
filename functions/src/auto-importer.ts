@@ -2,6 +2,7 @@ import fs from "fs"
 import path from "path"
 import util from "util"
 import crypto from "crypto";
+import { performance } from 'perf_hooks';
 import * as functions from "firebase-functions";
 import admin, { firestore } from "firebase-admin";
 
@@ -56,11 +57,19 @@ const defaultSettings: AutoImporterSettings = {
   sync: true,
 }
 
+interface S3SyncInfo {
+  success: boolean;
+  totalTime?: number;
+  fileWriterTotalTime?: number;
+  s3SendFileTotalTime?: number;
+}
+
 interface SyncData {
   updated: boolean;
   resource_url: string;
   need_sync?: firestore.Timestamp;
   did_sync?: firestore.Timestamp;
+  info?: S3SyncInfo;
 }
 
 type PartialSyncData = Partial<SyncData>;
@@ -116,15 +125,21 @@ const s3Client = () => new S3Client({
   }
 });
 
-const syncToS3 = (answers: AnswerData[]) => {
+const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
   const {run_key} = answers[0]
   const {filename, key} = parquetInfo(answerDirectory, answers[0]);
   const tmpFilePath = path.join("/tmp", filename);
 
   const deleteFile = async () => access(tmpFilePath).then(() => unlink(tmpFilePath)).catch(() => undefined);
 
+  let resultsInfo: S3SyncInfo = {
+    success: false
+  };
+
   return new Promise(async (resolve, reject) => {
     try {
+      const fileWriterStartTime = performance.now();
+
       // parquetjs can't write to buffers
       await deleteFile();
       const writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
@@ -133,6 +148,7 @@ const syncToS3 = (answers: AnswerData[]) => {
         await writer.appendRow(answer);
       }
       await writer.close();
+      const fileWriterTotalTime = performance.now() - fileWriterStartTime;
 
       const body = await readFile(tmpFilePath)
 
@@ -143,13 +159,22 @@ const syncToS3 = (answers: AnswerData[]) => {
         ContentType: 'application/octet-stream'
       })
 
+      const s3SendFileStartTime = performance.now();
+
       await s3Client().send(putObjectCommand)
 
+      const s3SendFileTotalTime = performance.now() - s3SendFileStartTime;
+
+      resultsInfo = {
+        success: true,
+        fileWriterTotalTime,
+        s3SendFileTotalTime
+      }
     } catch (err) {
       reject(`${run_key}: ${err.toString()}`);
     } finally {
       await deleteFile();
-      resolve(true);
+      resolve(resultsInfo);
     }
   });
 }
@@ -223,6 +248,7 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
           const data = change.after.data() as SyncData;
 
           if (data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync))) {
+            const syncToS3StartTime = performance.now();
             return getAnswerCollection()
               .where("run_key", "==", context.params.runKey)
               .get()
@@ -233,7 +259,13 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                 });
 
                 const syncDocRef = getAnswerSyncCollection().doc(context.params.runKey);
-                const setDidSync = () => syncDocRef.update({did_sync: firestore.Timestamp.now()} as PartialSyncData)
+                const setDidSync = (info: S3SyncInfo) => {
+                  info.totalTime = performance.now() - syncToS3StartTime;
+                  return syncDocRef.update({
+                    did_sync: firestore.Timestamp.now(),
+                    info
+                  } as PartialSyncData)
+                }
 
                 if (answers.length) {
                   syncToS3(answers as AnswerData[])
