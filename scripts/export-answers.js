@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const BUCKET = "concordqa-report-data"
+const SOURCE = "authoring.staging.concord.org"
 const DIRECTORY = "partitioned-answers"
 const BATCH_SIZE = 100;
 
@@ -17,6 +18,7 @@ const unlink = util.promisify(fs.unlink);
 const readFile = util.promisify(fs.readFile);
 
 const parquet = require('parquetjs');
+const { parquetInfo, schema } = require('../functions/src/shared/s3-answers')
 
 const awsConfig = "./config.json"
 if (!fs.existsSync(awsConfig)) {
@@ -41,7 +43,7 @@ if (!fs.existsSync(outputPath)) {
 // Create a new client
 const firestore = new Firestore();
 
-let query = firestore.collection('sources/authoring.staging.concord.org/answers');
+let query = firestore.collection(`sources/${SOURCE}/answers`);
 let masterQuery = query.limit(BATCH_SIZE)
   .orderBy('run_key').orderBy("id")
 
@@ -56,28 +58,6 @@ const uploadPromises = {};
 // set to true once all uploads have been created and the system is waiting for the uploads to finish
 let waitingForUploadsToFinish = false;
 
-const schema = new parquet.ParquetSchema({
-  submitted: { type: 'BOOLEAN', optional: true },
-  run_key: { type: 'UTF8' },
-  platform_user_id: { type: 'UTF8', optional: true },
-  id: { type: 'UTF8' },
-  context_id: { type: 'UTF8', optional: true },
-  class_info_url: { type: 'UTF8', optional: true },
-  platform_id: { type: 'UTF8', optional: true },
-  resource_link_id: { type: 'UTF8', optional: true },
-  type: { type: 'UTF8' },
-  question_id: { type: 'UTF8' },
-  source_key: { type: 'UTF8' },
-  question_type: { type: 'UTF8' },
-  tool_user_id: { type: 'UTF8' },
-  answer: { type: 'UTF8' },
-  resource_url: { type: 'UTF8' },
-  remote_endpoint: { type: 'UTF8', optional: true },
-  created: { type: 'UTF8' },
-  tool_id: { type: 'UTF8' },
-  version: { type: 'UTF8' },
-});
-
 function uploadAnswers(runKey) {
   if (!answerHash[runKey] || (answerHash[runKey].length === 0)) {
     return;
@@ -85,31 +65,30 @@ function uploadAnswers(runKey) {
 
   const answers = answerHash[runKey];
   const answer = answers[0];
-  const filename = path.join(outputPath, `${runKey}.parquet`);
-  const folder = answer.resource_url.replace(/[^a-z0-9]/g, "-");
-  const key = `${DIRECTORY}/${folder}/${runKey}.parquet`;
+  const {filename, key} = parquetInfo(answer, DIRECTORY);
+  const tmpFilePath = path.join(outputPath, filename);
 
   if (uploadPromises[runKey]) {
     console.error("Already uploading", runKey)
     return;
   }
 
-  const deleteFile = async () => {
-    return access(filename).then(() => unlink(filename)).catch(() => undefined);
+  const deleteTmpFile = async () => {
+    return access(tmpFilePath).then(() => unlink(tmpFilePath)).catch(() => undefined);
   }
 
   uploadPromises[runKey] = new Promise(async (resolve) => {
     try {
       // parquetjs can't write to buffers
-      await deleteFile();
-      var writer = await parquet.ParquetWriter.openFile(schema, filename);
+      await deleteTmpFile();
+      var writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
       for (let i = 0; i < answers.length; i++) {
         answers[i].answer = JSON.stringify(answers[i].answer)
         await writer.appendRow(answers[i]);
       }
       await writer.close();
 
-      const body = await readFile(filename)
+      const body = await readFile(tmpFilePath)
 
       // write file to s3
       // console.log("uploading", key)
@@ -126,7 +105,7 @@ function uploadAnswers(runKey) {
     } catch (err) {
       console.error(err);
     } finally {
-      await deleteFile();
+      await deleteTmpFile();
       delete answerHash[runKey];
     }
 

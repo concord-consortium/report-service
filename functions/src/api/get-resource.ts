@@ -11,6 +11,9 @@ export default (req: Request, res: Response) => {
   if (!url) {
     return res.error(500, "Missing url in query!")
   }
+  if (typeof source !== "string") {
+    return res.error(500, "Malformed source")
+  }
 
   return getPath(source, "resources")
     .then((path) => {

@@ -92,8 +92,7 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   return `WITH activities AS ( SELECT * FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
 
 SELECT
-  remote_endpoint,
-  ${selectColumns.join(",\n  ")}
+  ${["remote_endpoint"].concat(selectColumns).join(",\n  ")}
 FROM activities,
   ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a

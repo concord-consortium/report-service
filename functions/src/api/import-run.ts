@@ -12,7 +12,7 @@ export const ParseRun = (body: IPartialLaraRun) => {
 }
 
 export default (req: Request, res: Response) => {
-  const {run, answers} = ParseRun(req.body)
+  const {run, answers = []} = ParseRun(req.body)
 
   getRunPath(run)
     .then((path) => {
