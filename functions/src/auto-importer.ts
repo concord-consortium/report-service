@@ -38,7 +38,6 @@ HOW THIS WORKS:
    s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp
 */
 
-const syncSource = "TODO: GET FROM ENVIRONMENT";
 const bucket = "concordqa-report-data"
 const answerDirectory = "partitioned-answers"
 const region = "us-east-1"
@@ -82,11 +81,16 @@ const getHash = (data: any) => {
   return hash.digest('hex');
 }
 
-const answersPath = () => `sources/${syncSource}/answers`
-const answersSyncPath = () => `sources/${syncSource}/answers_async`
+// syncSource is a wildcard in the Firestore path name
+const answersPathAllSources = "sources/{syncSource}/answers"
+const answersSyncPathAllSources = "sources/{syncSource}/answers_async"
+const answersSyncPath = (syncSource: string) => `sources/${syncSource}/answers_async`
 
-const getAnswerCollection = () => admin.firestore().collection(answersPath());
-const getAnswerSyncCollection = () => admin.firestore().collection(answersSyncPath());
+const getAnswersCollection = (syncSource: string) => admin.firestore().collection(`sources/${syncSource}/answers`);
+const getAnswerSyncCollection = (syncSource: string) => admin.firestore().collection(answersSyncPath(syncSource));
+// to monitor all answers_async documents across all sources, we need to use a collectionGroup, which requires
+// adding a single field index exemption to the firestore setup
+const getAnswerSyncAllSourcesCollection = () => admin.firestore().collectionGroup("answers_async");
 
 const getSettings = () => {
   return admin.firestore()
@@ -97,8 +101,8 @@ const getSettings = () => {
     .catch(() => defaultSettings)
 }
 
-const addSyncDoc = (runKey: string, resourceUrl: string) => {
-  const syncDocRef = getAnswerSyncCollection().doc(runKey);
+const addSyncDoc = (syncSource: string, runKey: string, resourceUrl: string) => {
+  const syncDocRef = getAnswerSyncCollection(syncSource).doc(runKey);
   let syncDocData: SyncData = {
     updated: true,
     last_answer_updated: firestore.Timestamp.now(),
@@ -118,6 +122,10 @@ const addSyncDoc = (runKey: string, resourceUrl: string) => {
     })
   })
 };
+
+const deleteSyncDoc = (syncSource: string, runKey: string) => {
+  return getAnswerSyncCollection(syncSource).doc(runKey).delete();
+}
 
 // gets AWS creds from firebase config.
 const s3Client = () => new S3Client({
@@ -192,7 +200,7 @@ const deleteFromS3 = (runKey: string, resourceUrl: string) => {
 }
 
 export const createSyncDocAfterAnswerWritten = functions.firestore
-  .document(`${answersPath()}/{answerId}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
+  .document(`${answersPathAllSources}/{answerId}`) // NOTE: {answerId} is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
       .then(({ watchAnswers }) => {
@@ -211,7 +219,7 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
           const afterHash = getHash(change.after.data());
 
           if (afterHash !== beforeHash) {
-            return addSyncDoc(runKey, resourceUrl);
+            return addSyncDoc(context.params.syncSource, runKey, resourceUrl);
           }
         }
 
@@ -223,7 +231,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
   return getSettings()
     .then(({ setNeedSync }) => {
       if (setNeedSync) {
-        return getAnswerSyncCollection()
+        return getAnswerSyncAllSourcesCollection()
                   .where("updated", "==", true)
                   .get()
                   .then((querySnapshot) => {
@@ -243,7 +251,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
 });
 
 export const syncToS3AfterSyncDocWritten = functions.firestore
-  .document(`${answersSyncPath()}/{runKey}`) // NOTE: {answerId} is correct (NOT ${answerId}) as it is a wildcard passed to Firebase
+  .document(`${answersSyncPathAllSources}/{runKey}`) // NOTE: {answerId} is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
       .then(({ sync }) => {
@@ -254,14 +262,14 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
           const needSyncMoreRecentThanStartSync = data.need_sync && (!data.start_sync || (data.need_sync > data.start_sync));
 
           if (data.need_sync && needSyncMoreRecentThanDidSync && needSyncMoreRecentThanStartSync) {
-            const syncDocRef = getAnswerSyncCollection().doc(context.params.runKey);
+            const syncDocRef = getAnswerSyncCollection(context.params.syncSource).doc(context.params.runKey);
 
             syncDocRef.update({
               start_sync: firestore.Timestamp.now()
             } as PartialSyncData).catch(functions.logger.error)
 
             const syncToS3StartTime = performance.now();
-            return getAnswerCollection()
+            return getAnswersCollection(context.params.syncSource)
               .where("run_key", "==", context.params.runKey)
               .get()
               .then((querySnapshot) => {
