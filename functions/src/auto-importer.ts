@@ -18,24 +18,18 @@ import { AnswerData, schema, parquetInfo } from "./shared/s3-answers"
 
 /*
 
-  TODO:
-
-  1. Figure out how to get syncSource from the environment
-  2. Figure out how to get AWS config from the environment
-
-*/
-
-/*
-
 HOW THIS WORKS:
 
 1. createSyncDocAfterAnswerWritten runs on every write of an answer.  If the answer changes or is deleted a "sync doc"
-   is created or updated whose name is the run_key for the answer along with a boolean "updated".
+   is created or updated whose name is the run_key for the answer along with a boolean "updated". For logging purposes,
+   it will also add a last_answer_updated timestamp.
 2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with updated = true.  Each document that is
    found has a needs_sync field set to the current server time and has updated set to false.
 3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
    never synced before, or needs_sync > did_sync, it will gather up all the answers for that runKey and post them to
-   s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp
+   s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp.
+   For logging purposes, it will also set a start_sync timestamp the momement it starts handling the sync_doc, and when
+   it finishes it will add some timing info.
 */
 
 const answerDirectory = "partitioned-answers"
