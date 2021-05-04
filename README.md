@@ -42,6 +42,11 @@ The `.runtimeconfig.json` file is present in the `.gitignore` so it won't be com
 
 ### AWS secrets
 
+First we need a bucket to write to, e.g. `concordqa-report-data`. We need to set this as an environment variable
+for the auto_update function:
+
+`firebase functions:config:set aws.s3_bucket=concordqa-report-data`
+
 In order to write to S3, a user needs to be created in AWS IAM with permission to write to the S3 bucket.
 For instance there exists a user, `report-service-qa`, within the AminConcordQA role, with permission to write
 to the `concordqa-report-data` S3 bucket.

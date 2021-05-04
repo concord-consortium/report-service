@@ -38,7 +38,6 @@ HOW THIS WORKS:
    s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp
 */
 
-const bucket = "concordqa-report-data"
 const answerDirectory = "partitioned-answers"
 const region = "us-east-1"
 
@@ -164,7 +163,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
       const body = await readFile(tmpFilePath)
 
       const putObjectCommand = new PutObjectCommand({
-        Bucket: bucket,
+        Bucket: functions.config().aws.s3_bucket,
         Key: key,
         Body: body,
         ContentType: 'application/octet-stream'
@@ -193,7 +192,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
 const deleteFromS3 = (runKey: string, resourceUrl: string) => {
   const {key} = parquetInfo(answerDirectory, null, runKey, resourceUrl);
   const deleteObjectCommand = new DeleteObjectCommand({
-    Bucket: bucket,
+    Bucket: functions.config().aws.s3_bucket,
     Key: key
   })
   return s3Client().send(deleteObjectCommand)
