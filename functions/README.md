@@ -29,8 +29,8 @@ to the `concordqa-report-data` S3 bucket.
 
 We can download the AWS key and Secret Key for this user (check 1Password), and then push it up to Firebase with
 
-`firebase functions:config:set auth.aws.key=<VALUE>`
-`firebase functions:config:set auth.aws.seret_key=<VALUE>`
+`firebase functions:config:set aws.key=<VALUE>`
+`firebase functions:config:set aws.secret_key=<VALUE>`
 
 These three values are now accessible to the Functions via `functions.config().aws.s3_bucket`, `key` and `secret_key`
 

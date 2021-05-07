@@ -14,22 +14,22 @@ const access = util.promisify(fs.access);
 const unlink = util.promisify(fs.unlink);
 const readFile = util.promisify(fs.readFile);
 
-import { AnswerData, schema, parquetInfo } from "./shared/s3-answers"
+import { AnswerData, schema, parquetInfo, AnswerMetadata, getAnswerMetadata, getSyncDocId } from "./shared/s3-answers"
 
 /*
 
 HOW THIS WORKS:
 
 1. createSyncDocAfterAnswerWritten runs on every write of an answer.  If the answer changes or is deleted a "sync doc"
-   is created or updated whose name is the run_key for the answer along with a boolean "updated". For logging purposes,
-   it will also add a last_answer_updated timestamp.
+   is created or updated whose name is a unique key for the learner-assignment (either a hash of the LTI data or a
+    runKey) along with a boolean "updated". For logging purposes, it will also add a last_answer_updated timestamp.
 2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with updated = true.  Each document that is
    found has a needs_sync field set to the current server time and has updated set to false.
 3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
-   never synced before, or needs_sync > did_sync, it will gather up all the answers for that runKey and post them to
-   s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync timestamp.
-   For logging purposes, it will also set a start_sync timestamp the momement it starts handling the sync_doc, and when
-   it finishes it will add some timing info.
+   never synced before, or needs_sync > did_sync, it will gather up all the answers for that learner-assignment and post
+   them to s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync
+   timestamp. For logging purposes, it will also set a start_sync timestamp the momement it starts handling the sync_doc,
+   and when it finishes it will add some timing info.
 */
 
 const answerDirectory = "partitioned-answers"
@@ -58,7 +58,7 @@ interface S3SyncInfo {
 
 interface SyncData {
   updated: boolean;
-  resource_url: string;
+  answer_metadata: AnswerMetadata;
   last_answer_updated: firestore.Timestamp;
   need_sync?: firestore.Timestamp;
   did_sync?: firestore.Timestamp;
@@ -68,7 +68,7 @@ interface SyncData {
 
 type PartialSyncData = Partial<SyncData>;
 
-const getHash = (data: any) => {
+export const getHash = (data: any) => {
   const hash = crypto.createHash('sha256');
   hash.update(JSON.stringify(data));
   return hash.digest('hex');
@@ -94,12 +94,21 @@ const getSettings = () => {
     .catch(() => defaultSettings)
 }
 
-const addSyncDoc = (syncSource: string, runKey: string, resourceUrl: string) => {
-  const syncDocRef = getAnswerSyncCollection(syncSource).doc(runKey);
+/**
+ * Creates a document in answers_async letting the app know there are answers to be synced
+ *
+ * @param syncSource The source collection from whence the answer came
+ * @param answerMetadata A collection of identifiers that lets us uniquely identify a learner-assignment or anon user
+ */
+const addSyncDoc = (syncSource: string, answerMetadata: AnswerMetadata) => {
+  const syncDocId = getHash(getSyncDocId(answerMetadata));
+  if (!syncDocId || !answerMetadata) return;
+
+  const syncDocRef = getAnswerSyncCollection(syncSource).doc(syncDocId);
   let syncDocData: SyncData = {
     updated: true,
     last_answer_updated: firestore.Timestamp.now(),
-    resource_url: resourceUrl
+    answer_metadata: answerMetadata
   };
 
   return admin.firestore().runTransaction((transaction) => {
@@ -130,7 +139,6 @@ const s3Client = () => new S3Client({
 });
 
 const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
-  const {run_key} = answers[0]
   const {filename, key} = parquetInfo(answerDirectory, answers[0]);
   const tmpFilePath = path.join("/tmp", filename);
 
@@ -148,7 +156,13 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
       await deleteFile();
       const writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
       for (const answer of answers) {
+        // clean up answer objects for parquet
         answer.answer = JSON.stringify(answer.answer)
+        delete answer.report_state;
+        if (typeof answer.version === "number") {
+          answer.version = "" + answer.version;
+        }
+
         await writer.appendRow(answer);
       }
       await writer.close();
@@ -175,7 +189,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
         s3SendFileTotalTime
       }
     } catch (err) {
-      reject(`${run_key}: ${err.toString()}`);
+      reject(err.toString());
     } finally {
       await deleteFile();
       resolve(resultsInfo);
@@ -183,8 +197,8 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
   });
 }
 
-const deleteFromS3 = (runKey: string, resourceUrl: string) => {
-  const {key} = parquetInfo(answerDirectory, null, runKey, resourceUrl);
+const deleteFromS3 = (answerMetadata: AnswerMetadata) => {
+  const {key} = parquetInfo(answerDirectory, answerMetadata);
   const deleteObjectCommand = new DeleteObjectCommand({
     Bucket: functions.config().aws.s3_bucket,
     Key: key
@@ -198,13 +212,11 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
     return getSettings()
       .then(({ watchAnswers }) => {
         if (watchAnswers) {
-          // need to get the before data in case answer was deleted
-          const runKey = change.before.data()?.run_key;
-          // likewise, if the answer was deleted, we need to record where it used to be, to potentially delete the doc
-          const resourceUrl = change.before.data()?.resource_url;
+          // need to get the before location data in case answer was deleted
+          const previousAnswer = change.before.data();
+          const answerMetadata = previousAnswer && getAnswerMetadata(previousAnswer as AnswerData);
 
-
-          if (!runKey) {
+          if (!answerMetadata) {
             return null;
           }
 
@@ -212,7 +224,7 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
           const afterHash = getHash(change.after.data());
 
           if (afterHash !== beforeHash) {
-            return addSyncDoc(context.params.syncSource, runKey, resourceUrl);
+            return addSyncDoc(context.params.syncSource, answerMetadata);
           }
         }
 
@@ -244,7 +256,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
 });
 
 export const syncToS3AfterSyncDocWritten = functions.firestore
-  .document(`${answersSyncPathAllSources}/{runKey}`) // NOTE: {answerId} is a wildcard passed to Firebase
+  .document(`${answersSyncPathAllSources}/{id}`) // {id} is a wildcard passed to Firebase.
   .onWrite((change, context) => {
     return getSettings()
       .then(({ sync }) => {
@@ -255,15 +267,27 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
           const needSyncMoreRecentThanStartSync = data.need_sync && (!data.start_sync || (data.need_sync > data.start_sync));
 
           if (data.need_sync && needSyncMoreRecentThanDidSync && needSyncMoreRecentThanStartSync) {
-            const syncDocRef = getAnswerSyncCollection(context.params.syncSource).doc(context.params.runKey);
+            const syncDocRef = change.after.ref;
 
             syncDocRef.update({
               start_sync: firestore.Timestamp.now()
             } as PartialSyncData).catch(functions.logger.error)
 
+            let getAllAnswersForLearner;
+            const { answer_metadata } = data;
+            if (answer_metadata.platform_id && answer_metadata.resource_link_id && answer_metadata.platform_user_id) {
+              getAllAnswersForLearner = getAnswersCollection(context.params.syncSource)
+                .where("platform_id", "==", answer_metadata.platform_id)
+                .where("resource_link_id", "==", answer_metadata.resource_link_id)
+                .where("platform_user_id", "==", answer_metadata.platform_user_id)
+            } else if (answer_metadata.run_key) {
+              getAllAnswersForLearner = getAnswersCollection(context.params.syncSource)
+                .where("run_key", "==", answer_metadata.run_key)
+            }
+            if (!getAllAnswersForLearner) return null;
+
             const syncToS3StartTime = performance.now();
-            return getAnswersCollection(context.params.syncSource)
-              .where("run_key", "==", context.params.runKey)
+            return getAllAnswersForLearner
               .get()
               .then((querySnapshot) => {
                 const answers: firestore.DocumentData[] = [];
@@ -285,7 +309,7 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                     .catch(functions.logger.error)
                 } else {
                   // if the learner has no answers associated with this run, delete the doc
-                  deleteFromS3(context.params.runKey, data.resource_url)
+                  deleteFromS3(data.answer_metadata)
                     .catch(functions.logger.error);
                 }
               });
