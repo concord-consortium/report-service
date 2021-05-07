@@ -68,7 +68,7 @@ interface SyncData {
 
 type PartialSyncData = Partial<SyncData>;
 
-const getHash = (data: any) => {
+export const getHash = (data: any) => {
   const hash = crypto.createHash('sha256');
   hash.update(JSON.stringify(data));
   return hash.digest('hex');
@@ -256,7 +256,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
 });
 
 export const syncToS3AfterSyncDocWritten = functions.firestore
-  .document(`${answersSyncPathAllSources}/{id}`) // NOTE: {answerId} is a wildcard passed to Firebase
+  .document(`${answersSyncPathAllSources}/{id}`) // {id} is a wildcard passed to Firebase.
   .onWrite((change, context) => {
     return getSettings()
       .then(({ sync }) => {

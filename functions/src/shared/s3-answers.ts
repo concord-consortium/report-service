@@ -1,3 +1,5 @@
+import { getHash } from "../auto-importer";
+
 const parquet = require('parquetjs');
 
 export interface AnswerMetadata {
@@ -75,10 +77,11 @@ export const parquetInfo = (directory: string, answer: AnswerMetadata) => {
 }
 
 // returns just the part needed to identify the answer uniquely
-// urls don't need to be escaped because the document name will be hashed
 export const getSyncDocId = (answer: AnswerData) => {
   if (answer.platform_id && answer.resource_link_id && answer.platform_user_id) {
-    return `${answer.platform_id}_${answer.resource_url}_${answer.platform_user_id}`;
+    // urls don't need to be escaped because the document name will be hashed
+    const ltiId = `${answer.platform_id}_${answer.resource_url}_${answer.platform_user_id}`;
+    return getHash(ltiId);
   } else if (answer.run_key) {
     return answer.run_key;
   }
