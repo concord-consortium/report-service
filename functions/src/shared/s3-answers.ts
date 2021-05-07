@@ -1,6 +1,11 @@
-import { getHash } from "../auto-importer";
-
+const crypto = require("crypto");
 const parquet = require('parquetjs');
+
+const getHash = (data: any) => {
+  const hash = crypto.createHash('sha256');
+  hash.update(JSON.stringify(data));
+  return hash.digest('hex');
+}
 
 export interface AnswerMetadata {
   resource_url: string;
