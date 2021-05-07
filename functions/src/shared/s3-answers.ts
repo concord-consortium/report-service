@@ -18,24 +18,24 @@ export interface AnswerData extends AnswerMetadata {
 
 export const schema = new parquet.ParquetSchema({
   submitted: { type: 'BOOLEAN', optional: true },
-  run_key: { type: 'UTF8' },
+  run_key: { type: 'UTF8', optional: true },
   platform_user_id: { type: 'UTF8', optional: true },
   id: { type: 'UTF8' },
   context_id: { type: 'UTF8', optional: true },
   class_info_url: { type: 'UTF8', optional: true },
   platform_id: { type: 'UTF8', optional: true },
   resource_link_id: { type: 'UTF8', optional: true },
-  type: { type: 'UTF8' },
+  type: { type: 'UTF8', optional: true },
   question_id: { type: 'UTF8' },
   source_key: { type: 'UTF8' },
-  question_type: { type: 'UTF8' },
-  tool_user_id: { type: 'UTF8' },
+  question_type: { type: 'UTF8', optional: true },
+  tool_user_id: { type: 'UTF8', optional: true },
   answer: { type: 'UTF8' },
   resource_url: { type: 'UTF8' },
   remote_endpoint: { type: 'UTF8', optional: true },
-  created: { type: 'UTF8' },
+  created: { type: 'UTF8', optional: true },
   tool_id: { type: 'UTF8' },
-  version: { type: 'UTF8' },
+  version: { type: 'UTF8', optional: true },
 });
 
 // replaces everything but alphanumeric chars with -
