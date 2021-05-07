@@ -80,7 +80,7 @@ export const parquetInfo = (directory: string, answer: AnswerMetadata) => {
 export const getSyncDocId = (answer: AnswerData) => {
   if (answer.platform_id && answer.resource_link_id && answer.platform_user_id) {
     // urls don't need to be escaped because the document name will be hashed
-    const ltiId = `${answer.platform_id}_${answer.resource_url}_${answer.platform_user_id}`;
+    const ltiId = `${answer.platform_id}_${answer.resource_link_id}_${answer.platform_user_id}`;
     return getHash(ltiId);
   } else if (answer.run_key) {
     return answer.run_key;
