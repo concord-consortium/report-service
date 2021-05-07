@@ -13,8 +13,9 @@ const getQuestionKey = (questionUser) => {
 }
 
 const firestore = new Firestore();
-const answersRef = firestore.collection(`sources/activity-player.concord.org/answers`)
-const resourceRef = firestore.collection(`sources/activity-player.concord.org/resources`)
+const sourceCollection = "activity-player.concord.org"
+const answersRef = firestore.collection(`sources/${sourceCollection}/answers`)
+const resourceRef = firestore.collection(`sources/${sourceCollection}/resources`)
 let answerArr = [];
 let questionArr = [];
 let resourceArr = [];
