@@ -9,42 +9,54 @@ if (!fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
 }
 
 const getQuestionKey = (questionUser) => {
-  return question = questionUser.split("@")[1]
+  return question = questionUser.split("#")[1].split("@")[0];
 }
 
 const firestore = new Firestore();
-const answersRef = firestore.collection(`sources/authoring.staging.concord.org/answers`)
-const resourceRef = firestore.collection(`sources/authoring.staging.concord.org/resources`)
+const answersRef = firestore.collection(`sources/activity-player.concord.org/answers`)
+const resourceRef = firestore.collection(`sources/activity-player.concord.org/resources`)
 let answerArr = [];
 let questionArr = [];
 let resourceArr = [];
 let questionUserMap = new Map;
 
 answersRef.orderBy("platform_user_id", "asc").orderBy("question_id", "asc").get().then(answerSnapshot => {
-  let prevUserId = "";
-  let prevQuestionId = "";
+  let prevData = {};
+  let prevDataKey = "";
+  let count = 0;
   answerSnapshot.forEach(document => {
     if (document.exists) {
       let data = document.data();
       let userId = data.platform_user_id;
       let questionId = data.question_id;
-      if ((userId === prevUserId) && (questionId === prevQuestionId)) {
-        let dataKey = (userId && questionId) ? `${userId}@${questionId}` : undefined
-        if (dataKey && questionUserMap.has(dataKey)) {
-          answerArr = questionUserMap.get(dataKey)
+      let resourceLinkId = data.resource_link_id ? data.resource_link_id : `anonymous`;
+      let dataKey = (userId && questionId && resourceLinkId) ? `${userId}#${questionId}@${resourceLinkId}` : undefined;
 
-          if (!answerArr.includes(data.id)) {
-            answerArr.push(data.id)
+      if (dataKey === prevDataKey) {
+          if (dataKey && questionUserMap.has(dataKey)) {
+            answerArr = questionUserMap.get(dataKey)
+            if (!answerArr.includes(prevData.id)) {
+              answerArr.push(prevData.id)
+            }
+          } else {
+            questionUserMap.set(prevDataKey, [prevData.id]);
           }
-        } else {
-          questionUserMap.set(dataKey, [data.id]);
+      } else {
+        if (prevDataKey && questionUserMap.has(prevDataKey))
+          answerArr = questionUserMap.get(prevDataKey)
+          if (!answerArr.includes(prevData.id)) {
+            answerArr.push(prevData.id)
+          }
         }
       }
-      prevUserId = userId;
-      prevQuestionId = questionId;
+
+      prevData = data;
+      prevDataKey = dataKey;
+
     } else {
       console.error("No answer found with that id!")
     }
+    count++;
   })
 
   for (let [questionUser] of questionUserMap) {
@@ -74,12 +86,11 @@ answersRef.orderBy("platform_user_id", "asc").orderBy("question_id", "asc").get(
         })
       }
     })
-    console.log(resourceArr.length)
   })
-
-  // var file = fs.createWriteStream("multipleAnswerStudents.txt")
-  // multipleAnswers.forEach(item=>{file.write(item + ", \n")})
-  // file.end()
+  console.log(questionUserMap)
+  var file = fs.createWriteStream("multipleAnswerStudents.txt")
+  questionUserMap.forEach(item => { file.write(item + ", \n") })
+  file.end()
 
 })
 
