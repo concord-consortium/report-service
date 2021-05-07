@@ -13,7 +13,8 @@ export interface AnswerMetadata {
 export interface AnswerData extends AnswerMetadata {
   // leaving out everything but the resource_url and run_key which is what we care about
   answer?: any;
-
+  report_state?: any;
+  version?: any;
 }
 
 export const schema = new parquet.ParquetSchema({

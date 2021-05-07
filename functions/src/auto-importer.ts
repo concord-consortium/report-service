@@ -156,7 +156,13 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
       await deleteFile();
       const writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
       for (const answer of answers) {
+        // clean up answer objects for parquet
         answer.answer = JSON.stringify(answer.answer)
+        delete answer.report_state;
+        if (typeof answer.version === "number") {
+          answer.version = "" + answer.version;
+        }
+
         await writer.appendRow(answer);
       }
       await writer.close();
