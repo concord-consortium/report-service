@@ -1,7 +1,15 @@
 # Report Service
 Ingest student runs and activity structure in order to run report queries later.
 
+## Scripts
+
+Includes the export-answers script for copying all student answers from Firestore into S3 as Parquet files
+
+See [scripts/README.md](scripts/README.md)
+
 ## Firebase functions
+
+Includes the API and the auto-update function for student answers.
 
 See [functions/README.md](functions/README.md)
 
