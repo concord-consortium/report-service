@@ -4,6 +4,8 @@ const {Firestore} = require('@google-cloud/firestore');
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
+const parquet = require('parquetjs');
+const { parquetInfo, getSyncDocId, hasLTIMetadata, getHash, schema } = require('../functions/src/shared/s3-answers')
 
 const BUCKET = process.argv[2];     // e.g. concordqa-report-data
 const SOURCE =  process.argv[3];    // e.g. authoring.staging.concord.org
@@ -19,9 +21,6 @@ const BATCH_SIZE = 100;
 const access = util.promisify(fs.access);
 const unlink = util.promisify(fs.unlink);
 const readFile = util.promisify(fs.readFile);
-
-const parquet = require('parquetjs');
-const { parquetInfo, getSyncDocId, schema } = require('../functions/src/shared/s3-answers')
 
 const awsConfig = "./config.json"
 if (!fs.existsSync(awsConfig)) {
@@ -46,25 +45,41 @@ if (!fs.existsSync(outputPath)) {
 // Create a new client
 const firestore = new Firestore();
 
-let query = firestore.collection(`sources/${SOURCE}/answers`);
-let masterQuery = query.limit(BATCH_SIZE)
+const collection = firestore.collection(`sources/${SOURCE}/answers`);
+// we need two queries, one to grab all the answers with lti data, one to grab all the ones with
+// just a runKey. If we tried to include them both in a single query, FB would filter out all
+// the documents that were missing a property value.
+const ltiQuery = collection.limit(BATCH_SIZE)
   .orderBy("resource_url")
   .orderBy("platform_id")
   .orderBy("resource_link_id")
   .orderBy("platform_user_id")
+  .orderBy("id");
+const runkeyQuery = collection.limit(BATCH_SIZE)
   .orderBy("run_key")
-  .orderBy("id")
+  .orderBy("id");
+let currentQuery = ltiQuery;
 
 let count = 0;
 let lastDoc = null;
 let batchCount = 0;
 let batchIndex = 0;
 let lastUserRunKey = undefined;   // id for the a user's whole answer set, whether a run key or an hashed LTI combo
-const answerHash = {};
-const uploadPromises = {};
-
+let answerHash = {};
+let uploadPromises = {};
 // set to true once all uploads have been created and the system is waiting for the uploads to finish
 let waitingForUploadsToFinish = false;
+
+const resetQuery = () => {
+  count = 0;
+  lastDoc = null;
+  batchCount = 0;
+  batchIndex = 0;
+  lastUserRunKey = undefined;
+  answerHash = {};
+  uploadPromises = {};
+  waitingForUploadsToFinish = false;
+}
 
 function uploadAnswers(userRunKey) {
   if (!answerHash[userRunKey] || (answerHash[userRunKey].length === 0)) {
@@ -72,14 +87,16 @@ function uploadAnswers(userRunKey) {
   }
 
   const answers = answerHash[userRunKey];
-  const answer = answers[0];
-  const info = parquetInfo(DIRECTORY, answer);
+  const info = parquetInfo(DIRECTORY, answers[0]);
   if (!info) {
     return;
   }
   const {filename, key} = info;
 
-  const tmpFilePath = path.join(outputPath, filename);
+  // we could be writing to multiple files for the same `[platform_user_id].parquet` at once, destined for different
+  // folders. To avoid trying to write to the same tmpFile, we must hash the entire key.
+  const tmpFileName = `${getHash(key)}.parquet`;
+  const tmpFilePath = path.join(outputPath, tmpFileName);
 
   if (uploadPromises[userRunKey]) {
     console.error("Already uploading", userRunKey)
@@ -110,7 +127,6 @@ function uploadAnswers(userRunKey) {
       const body = await readFile(tmpFilePath)
 
       // write file to s3
-      // console.log("uploading", key)
       await s3.putObject({
         Bucket: BUCKET,
         Key: key,
@@ -143,20 +159,28 @@ function uploadAnswers(userRunKey) {
 function countBatch(query) {
   query.stream().on('data', (documentSnapshot) => {
     const answer = documentSnapshot.data();
+
+    lastDoc = documentSnapshot;
+    ++batchCount;
+
+    if (currentQuery === runkeyQuery && hasLTIMetadata(answer)) {
+      // we've already uploaded this one as part of the ltiQuery
+      return;
+    }
+
     const userRunKey = getSyncDocId(answer);
     answerHash[userRunKey] = answerHash[userRunKey] || [];
     answerHash[userRunKey].push(answer);
     if (lastUserRunKey && (userRunKey !== lastUserRunKey)) {
       uploadAnswers(lastUserRunKey)
     }
+
     lastUserRunKey = userRunKey;
-    lastDoc = documentSnapshot;
     ++count;
-    ++batchCount;
   }).on('end', onEnd);
 }
 
-function finish() {
+function finish(afterFinalUpload) {
   console.log(`Finished: ${batchIndex}, uploads: ${Object.keys(uploadPromises).length}, memory: ${JSON.stringify(process.memoryUsage())}`);
   // flag that we are waiting for the uploads to finish - this changes the uploader to not remove upload promises from the hash it uses
   // to track them so that we can then use Promise.allSettled to wait for them to finish
@@ -164,7 +188,7 @@ function finish() {
   uploadAnswers(lastUserRunKey);
   const promises = Object.values(uploadPromises);
   console.log(`Waiting for ${promises.length} uploads to finish...`);
-  Promise.allSettled(promises).then(() => console.log("Done waiting!"))
+  Promise.allSettled(promises).then(afterFinalUpload)
 }
 
 function onEnd() {
@@ -174,12 +198,21 @@ function onEnd() {
     ++batchIndex;
     // This might be bad because it might be growing the stack
     // but at least it isn't closing around anything extra
-    countBatch(masterQuery.startAfter(lastDoc))
+    countBatch(currentQuery.startAfter(lastDoc))
+  } else if (currentQuery === ltiQuery) {
+    finish(() => {
+      console.log(`Finished LTI Query. Total count was ${count}`);
+      console.log("Starting runKey query");
+      resetQuery();
+      currentQuery = runkeyQuery;
+      countBatch(currentQuery);
+    });
   } else {
-    finish();
-    console.log(`Total count is ${count}`);
+    finish(() => {
+      console.log(`Finished runKey Query. Total count was ${count}`);
+    });
   }
 }
 
 console.log("Starting query with batch size of", BATCH_SIZE);
-countBatch(masterQuery);
+countBatch(currentQuery);

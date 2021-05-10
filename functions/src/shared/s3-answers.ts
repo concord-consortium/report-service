@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const parquet = require('parquetjs');
 
-const getHash = (data: any) => {
+export const getHash = (data: any) => {
   const hash = crypto.createHash('sha256');
   hash.update(JSON.stringify(data));
   return hash.digest('hex');
@@ -81,9 +81,13 @@ export const parquetInfo = (directory: string, answer: AnswerMetadata) => {
   }
 }
 
+export const hasLTIMetadata = (answer: AnswerData) => {
+  return !!(answer.platform_id && answer.resource_link_id && answer.platform_user_id);
+}
+
 // returns just the part needed to identify the answer uniquely
 export const getSyncDocId = (answer: AnswerData) => {
-  if (answer.platform_id && answer.resource_link_id && answer.platform_user_id) {
+  if (hasLTIMetadata(answer)) {
     // urls don't need to be escaped because the document name will be hashed
     const ltiId = `${answer.platform_id}_${answer.resource_link_id}_${answer.platform_user_id}`;
     return getHash(ltiId);
@@ -95,7 +99,7 @@ export const getSyncDocId = (answer: AnswerData) => {
 
 // returns just the part needed to identify the answer uniquely
 export const getAnswerMetadata = (answer: AnswerData) => {
-  if (answer.resource_url && answer.platform_id && answer.resource_link_id && answer.platform_user_id) {
+  if (answer.resource_url && hasLTIMetadata(answer)) {
     return {
       resource_url: answer.resource_url,
       platform_id: answer.platform_id,
