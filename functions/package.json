@@ -4,6 +4,7 @@
   "scripts": {
     "lint": "tslint --project tsconfig.json",
     "build": "tsc",
+    "build:shared": "tsc src/shared/*.ts",
     "serve": "npm run buildinfo && tsc -w & firebase serve --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
