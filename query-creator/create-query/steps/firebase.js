@@ -1,4 +1,5 @@
 const axios = require("axios");
+const URL = require('url');
 
 const sequence120 = require("./firebase-data/sequence-120.json");
 
@@ -11,6 +12,14 @@ exports.getResource = async (runnable, reportServiceSource, demo) => {
   }
 
   const url = `${process.env.REPORT_SERVICE_URL}/resource`
+
+  const queryParams = URL.parse(runnable.url, true).query;
+  if (queryParams && queryParams.activity) {
+    // Activity Player activities that have been imported from LARA have a resource url like
+    // https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.staging.concord.org%2Fapi%2Fv1%2Factivities%2F20753.json&firebase-app=report-service-dev
+    // This changes the above to https://authoring.staging.concord.org/activities/20753
+    runnable.url = queryParams.activity.replace("api/v1/", "").replace(".json", "");
+  }
   const params = {
     source: reportServiceSource,
     url: runnable.url
