@@ -13,96 +13,113 @@ const sourceCollection = "activity-player.concord.org"
 const answersRef = firestore.collection(`sources/${sourceCollection}/answers`)
 let answerArr = [];
 let questionUserMap = new Map;
+let userArr = [];
+
 
 //finds logged in users
 const getLoggedInUsers = () => {
   answersRef
-  .orderBy("platform_id", "asc")
-  .orderBy("resource_link_id", "asc")
-  .orderBy("platform_user_id", "asc")
-  .orderBy("question_id", "asc")
-  .orderBy("id", "asc")
-  .get()
-  .then(answerSnapshot => {
-    let prevData = {};
-    let prevDataKey = "";
-    let count = 0;
-    answerSnapshot.forEach(document => {
-      if (document.exists) {
-        let data = document.data();
-        let questionId = data.question_id;
-        let userId = data.platform_user_id;
-        let resourceLinkId = data.resource_link_id;
-        let platformId = data.platform_id;
-        let dataKey = (userId && questionId && resourceLinkId) ? `${platformId}/${resourceLinkId}&${userId}@${questionId}` : undefined;
+    .orderBy("platform_id", "asc")
+    .orderBy("resource_link_id", "asc")
+    .orderBy("platform_user_id", "asc")
+    .orderBy("question_id", "asc")
+    .orderBy("id", "asc")
+    .get()
+    .then(answerSnapshot => {
+      let prevData = {};
+      let prevDataKey = "";
+      let count = 0;
 
-        if (dataKey === prevDataKey) {
-          if (dataKey && questionUserMap.has(dataKey)) {
-            // console.log(dataKey, "already exists. This data will be deleted: ", data.id);
-            answerArr = questionUserMap.get(dataKey)
-            if (!answerArr.includes(data.id)) {
-              answerArr.push(data.id)
+      answerSnapshot.forEach(document => {
+        if (document.exists) {
+          let data = document.data();
+          let answer = data.answer;
+          if ((typeof answer == "string") && !(answer.includes("percentageViewed"))) {
+            let questionId = data.question_id;
+            let userId = data.platform_user_id;
+            let resourceLinkId = data.resource_link_id;
+            let platformId = data.platform_id;
+            let dataKey = (userId && questionId && resourceLinkId) ? `${platformId}/${resourceLinkId}&${userId}@${questionId}` : undefined;
+
+            if (dataKey === prevDataKey) {
+              if (dataKey && questionUserMap.has(dataKey)) {
+                // console.log(dataKey, "already exists. This data will be deleted: ", data.id);
+                answerArr = questionUserMap.get(dataKey)
+                if (!answerArr.includes(data.id)) {
+                  answerArr.push(data.id)
+                }
+              } else {
+                questionUserMap.set(prevDataKey, [prevData.id, data.id]);
+              }
             }
-          } else {
-            questionUserMap.set(prevDataKey, [prevData.id, data.id]);
+            prevData = data;
+            prevDataKey = dataKey;
+            count++;
+
+            //count users
+            if (!userArr.includes(userId)) {
+              userArr.push(userId)
+            }
           }
+        } else {
+          console.error("No answer found with that id!")
         }
-        prevData = data;
-        prevDataKey = dataKey;
-        count++;
-      } else {
-        console.error("No answer found with that id!")
-      }
+      })
+      console.log("num users: ", userArr.length);
+      console.log(questionUserMap);
+      console.log("num duplicatest: ", questionUserMap.size);
+      // var file = fs.createWriteStream("multipleAnswerStudents.txt")
+      // questionUserMap.forEach(item => { file.write(item + ", \n") })
+      // file.end()
     })
-    console.log(questionUserMap.size)
-    // var file = fs.createWriteStream("multipleAnswerStudents.txt")
-    // questionUserMap.forEach(item => { file.write(item + ", \n") })
-    // file.end()
-  })
 }
 
 const getAnonymousUsers = () => {
   answersRef
-  .orderBy("run_key", "asc")
-  .orderBy("question_id", "asc")
-  .get()
-  .then(answerSnapshot => {
-    let prevData = {};
-    let prevDataKey = "";
-    let count = 0;
-    answerSnapshot.forEach(document => {
-      if (document.exists) {
-        let data = document.data();
-        let questionId = data.question_id;
-        let runKey = data.run_key;
-        let dataKey = runKey && questionId ? `${runKey}@${questionId}` : `${data.resource_link_id}&${data.platform_user_id}@${data.question_id}`;
+    .orderBy("run_key", "asc")
+    .orderBy("question_id", "asc")
+    .get()
+    .then(answerSnapshot => {
+      let prevData = {};
+      let prevDataKey = "";
+      let count = 0;
 
-        if ((!runKey=="") && (dataKey === prevDataKey)) {
-          if (dataKey && questionUserMap.has(dataKey)) {
-            // console.log(dataKey, "already exists. This data will be deleted: ", data.id);
-            answerArr = questionUserMap.get(dataKey)
-            if (!answerArr.includes(data.id)) {
-              answerArr.push(data.id)
+      answerSnapshot.forEach(document => {
+        if (document.exists) {
+          let data = document.data(); let answer = data.answer;
+          if ((typeof answer == "string") && !(answer.includes("percentageViewed"))) {
+            let questionId = data.question_id;
+            let runKey = data.run_key;
+            let dataKey = runKey && questionId ? `${runKey}@${questionId}` : `${data.resource_link_id}&${data.platform_user_id}@${data.question_id}`;
+
+            if ((!runKey == "") && (dataKey === prevDataKey)) {
+              if (dataKey && questionUserMap.has(dataKey)) {
+                // console.log(dataKey, "already exists. This data will be deleted: ", data.id);
+                answerArr = questionUserMap.get(dataKey)
+                if (!answerArr.includes(data.id)) {
+                  answerArr.push(data.id)
+                }
+              } else {
+                questionUserMap.set(prevDataKey, [prevData.id, data.id]);
+              }
             }
-          } else {
-            questionUserMap.set(prevDataKey, [prevData.id, data.id]);
+            prevData = data;
+            prevDataKey = dataKey;
+            count++;
           }
+        } else {
+          console.error("No answer found with that id!")
         }
-        prevData = data;
-        prevDataKey = dataKey;
-        count++;
-      } else {
-        console.error("No answer found with that id!")
-      }
+      })
+      console.log("num users: ", userArr.length);
+      console.log(questionUserMap);
+      console.log("num duplicatest: ", questionUserMap.size);
+      // var file = fs.createWriteStream("multipleAnswerStudents.txt")
+      // questionUserMap.forEach(item => { file.write(item + ", \n") })
+      // file.end()
     })
-    console.log(questionUserMap)
-    console.log(questionUserMap.size)
-    // var file = fs.createWriteStream("multipleAnswerStudents.txt")
-    // questionUserMap.forEach(item => { file.write(item + ", \n") })
-    // file.end()
-  })
 }
 
 getLoggedInUsers();
-// getAnonymousUsers();
+getAnonymousUsers();
 
