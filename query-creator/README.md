@@ -31,7 +31,7 @@ You can find your API Gateway Endpoint URL in the output values displayed after 
 
 ## Use the SAM CLI to build and test locally
 
-Add `QueryCreatorLocalTestUser` credential information to your `~/.aws/credentials` file. This can be done manually by editing the credentials file and adding the following (`aws_access_key_id` and `aws_secret_access_key` cvalues can be obtained from 1Password):
+Add `QueryCreatorLocalTestUser` credential information to your `~/.aws/credentials` file. This can be done manually by editing the credentials file and adding the following (`aws_access_key_id` and `aws_secret_access_key` values can be obtained from 1Password):
 ```
 [QueryCreatorLocalTestUser]
 aws_access_key_id = XXXXXXX
