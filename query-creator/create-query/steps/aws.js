@@ -61,23 +61,35 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workg
 
 exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   const selectColumns = [];
+  const selectColumnPrompts = [];
   const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
   Object.keys(denormalizedResource.questions).forEach(questionId => {
     const type = questionId.split(/_\d+/).shift();
     switch (type) {
       case "image_question":
-        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.image_url') AS ${questionId}_image_url`)
-        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.text') AS ${questionId}_text`)
-        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_answer`)
+        // add question prompt, include empty column because UNION query requires identical number of fields
+        selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_image_url`);
+        selectColumnPrompts.push(`null AS ${questionId}_text`);
+        selectColumnPrompts.push(`null AS ${questionId}_answer`);
+
+        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.image_url') AS ${questionId}_image_url`);
+        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.text') AS ${questionId}_text`);
+        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_answer`);
         break;
       case "open_response":
-        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_text`)
+        // add question prompt, include empty column because UNION query requires identical number of fields
+        selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_text`);
+        selectColumnPrompts.push(`null AS ${questionId}_submitted`);
+
+        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_text`);
         // TODO: only add if can be submitted  (need to check resource structure)
-        selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`)
+        selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
         break;
       case "multiple_choice":
-        selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}_choice`)
+        // add question prompt
+        selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_choice`);
+        selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}_choice`);
         break;
       case "managed_interactive":
       case "mw_interactive":
@@ -90,6 +102,12 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   })
 
   return `WITH activities AS ( SELECT * FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
+
+SELECT
+  ${["null as remote_endpoint"].concat(selectColumnPrompts).join(",\n  ")}
+FROM activities
+
+UNION ALL
 
 SELECT
   ${["remote_endpoint"].concat(selectColumns).join(",\n  ")}
