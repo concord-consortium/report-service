@@ -31,13 +31,36 @@ You can find your API Gateway Endpoint URL in the output values displayed after 
 
 ## Use the SAM CLI to build and test locally
 
+Add `QueryCreatorLocalTestUser` credential information to your `~/.aws/credentials` file. This can be done manually by editing the credentials file and adding the following (`aws_access_key_id` and `aws_secret_access_key` cvalues can be obtained from 1Password):
+```
+[QueryCreatorLocalTestUser]
+aws_access_key_id = XXXXXXX
+aws_secret_access_key = XXXXXXX
+```
+
+Or the `QueryCreatorLocalTestUser` credential information can be configured via the `aws configure` command (requires installation of AWS CLI).
+
+```bash
+query-creator$ aws configure
+```
+
+The following environment variables need to be configured: `JwtHmacSecret`, `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl`. These can be configured system-wide or as default values in the `parameters` section of `template.yml`. For example, `OutputBucket` can be configured as follows:
+```
+  OutputBucket:
+    Type: String
+    Description: Output bucket for Athena queries
+    Default: 'concordqa-report-data'
+```
+
+The environment variable values can be found on the production AWS account under `Cloud formation > Stacks` (for example, the `report-service-query-creator` stack can be used to obtain `JwtHmacSecret`, `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl` values).
+
 Build your application with the `sam build` command.
 
 ```bash
 query-creator$ sam build
 ```
 
-The SAM CLI installs dependencies defined in `hello-world/package.json`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
+The SAM CLI installs dependencies defined in `create-query/package.json`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
 
 Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
 
