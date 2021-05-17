@@ -8,4 +8,5 @@ s3_prefix = "report-service-query-creator"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-
+[default.local_start_api.parameters]
+profile = "QueryCreatorLocalTestUser"
