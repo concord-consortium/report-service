@@ -96,8 +96,6 @@ FROM activities,
 
         const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
         const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
-        console.log(untabbedGeneratedSQLresult);
-        console.log(untabbedExpectedSQLresult);
         expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
     });
 });
