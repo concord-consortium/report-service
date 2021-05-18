@@ -26,31 +26,34 @@ const anonymousUserQuery = answersRef
   .orderBy("run_key", "asc")
   .orderBy("question_id", "asc")
   .orderBy("id", "asc");
+// const anonymousUserQuery = answerRef.orderBy("run_key", "asc").limit(batchSize);
 
 const getLoggedInUserDataKey = (data) => {
+  const questionType = data.question_type;
   const questionId = data.question_id;
   const userId = data.platform_user_id;
   const resourceLinkId = data.resource_link_id;
   const platformId = data.platform_id;
-  return (userId && questionId && resourceLinkId) && `${platformId}/${resourceLinkId}&${userId}@${questionId}`;
+  return (userId && questionId && resourceLinkId) && `${questionType}/${platformId}/${resourceLinkId}&${userId}@${questionId}`;
 }
 
 const getAnonymousUserDataKey = (data) => {
+  const questionType = data.question_type;
   const questionId = data.question_id;
   const runKey = data.run_key;
-  return (runKey && questionId) && `${runKey}@${questionId}`;
+  return (runKey && questionId) && `${questionType}/${runKey}@${questionId}`;
 }
 
-const storeInfo = (data, dataKey, prevId, id) => {
+const storeInfo = (dataKey, prevId, id) => {
   if (!dataKey) return;
   if (questionUserMap.has(dataKey)) {
     // console.log(dataKey, "already exists. This data will be deleted: ", data.id);
-    answerArr = questionUserMap.get(dataKey);
+    answerArr = questionUserMap.get(dataKey)
     if (!answerArr.includes(id)) {
       answerArr.push(id)
     }
   } else {
-    questionUserMap.set(dataKey, [data, prevId, id]);
+    questionUserMap.set(dataKey, [prevId, id]);
   }
 }
 
@@ -59,25 +62,23 @@ const getDocuments = (query) => {
     .then(answerSnapshot => {
       let prevData = {};
       let prevDataKey = "";
-      let count = 0;
 
       answerSnapshot.forEach(document => {
         if (document.exists) {
           let data = document.data();
           let runKey = data.run_key;
-          let questionType = data.questionType;
-          // if ((typeof answer == "string") && !(answer.includes("percentageViewed"))) {
+          let answer = data.answer;
+          if ((typeof answer == "string") && !(answer.includes("percentageViewed"))) {
             let dataKey = runKey === "" ? getLoggedInUserDataKey(data) : getAnonymousUserDataKey(data);
-            (dataKey === prevDataKey) && storeInfo(data, dataKey, prevData.id, data.id)
+            (dataKey === prevDataKey) && storeInfo(dataKey, prevData.id, data.id)
             prevData = data;
             prevDataKey = dataKey || "";
-            count++;
 
             //count users
             if (!userArr.includes(data.platform_user_id)) {
               userArr.push(data.platform_user_id)
             }
-          // }
+          }
         } else {
           console.error("No answer found with that id!")
         }
@@ -87,8 +88,9 @@ const getDocuments = (query) => {
 
 getDocuments(loggedInUserQuery).then(() => {
   getDocuments(anonymousUserQuery).then(() => {
+    const orderedQuestionUserMap = new Map([...questionUserMap.entries()].sort((a,b)=>String(a[0]).localeCompare(b[0])));
     console.log("num users: ", userArr.length);
-    console.log(questionUserMap);
-    console.log("num duplicates: ", questionUserMap.size);
+    console.log(orderedQuestionUserMap);
+    console.log("num duplicates: ", questionUserMap.size, ", ", orderedQuestionUserMap.length);
   })
 });

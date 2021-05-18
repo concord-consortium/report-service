@@ -13,13 +13,14 @@ const sourceCollection = "activity-player.concord.org"
 const answersRef = firestore.collection(`sources/${sourceCollection}/answers`)
 let answerArr = [];
 let questionUserMap = new Map;
+let prevUserId = 0;
 
 //finds logged in users
 const getLoggedInUsers = () => {
   answersRef
   .orderBy("platform_id", "asc")
   .orderBy("resource_link_id", "asc")
-  .orderBy("platform_user_id", "asc")
+  .orderBy("platform_user_id", "asc").startAt(prevUserId).limit(100)
   .orderBy("question_id", "asc")
   .orderBy("id", "asc")
   .get()
@@ -56,6 +57,7 @@ const getLoggedInUsers = () => {
     })
     console.log(questionUserMap)
     console.log(questionUserMap.size)
+    prevUserId = userId;
     // var file = fs.createWriteStream("multipleAnswerStudents.txt")
     // questionUserMap.forEach(item => { file.write(item + ", \n") })
     // file.end()
@@ -104,5 +106,6 @@ const getAnonymousUsers = () => {
   })
 }
 
-// getLoggedInUsers();
-getAnonymousUsers();
+// can only run one of these at a time
+getLoggedInUsers();
+// getAnonymousUsers();
