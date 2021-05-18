@@ -13,16 +13,23 @@ exports.getResource = async (runnable, reportServiceSource, demo) => {
 
   const url = `${process.env.REPORT_SERVICE_URL}/resource`
 
-  const queryParams = URL.parse(runnable.url, true).query;
-  if (queryParams && queryParams.activity) {
+  let runnableUrl = runnable.url;
+  const searchParams = new URL(runnableUrl).searchParams;
+
+  if (searchParams) {
     // Activity Player activities that have been imported from LARA have a resource url like
     // https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.staging.concord.org%2Fapi%2Fv1%2Factivities%2F20753.json&firebase-app=report-service-dev
     // This changes the above to https://authoring.staging.concord.org/activities/20753
-    runnable.url = queryParams.activity.replace("api/v1/", "").replace(".json", "");
+    const sequenceUrl = searchParams.get("sequence");
+    const activityUrl = searchParams.get("activity");
+    if (sequenceUrl || activityUrl) {
+      runnableUrl = sequenceUrl || activityUrl;
+      runnableUrl = runnableUrl.replace("api/v1/", "").replace(".json", "");
+    }
   }
   const params = {
     source: reportServiceSource,
-    url: runnable.url
+    url: runnableUrl
   }
 
   let response
