@@ -1,7 +1,8 @@
-name: Test Firebase rules on PR
+name: Run Tests
 on: push
 jobs:
   test_rules:
+    name: Firestore Access Rule Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -14,6 +15,7 @@ jobs:
       - run: firebase -c ../firebase.json emulators:exec --only firestore "npm test"
         working-directory: tests
   test_query_creator:
+    name: Query Creator Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
