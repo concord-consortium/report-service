@@ -101,16 +101,20 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
     }
   })
 
-  return `WITH activities AS ( SELECT * FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
+  return `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
 
 SELECT
-  ${["null as remote_endpoint"].concat(selectColumnPrompts).join(",\n  ")}
+  ${["null as remote_endpoint,\n  null as num_questions,\n  null as num_answers,\n  null as percent_complete"].concat(selectColumnPrompts).join(",\n  ")}
 FROM activities
 
 UNION ALL
 
 SELECT
-  ${["remote_endpoint"].concat(selectColumns).join(",\n  ")}
+  ${[`remote_endpoint,
+  activities.num_questions,
+  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
+  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete`
+    ].concat(selectColumns).join(",\n  ")}
 FROM activities,
   ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
