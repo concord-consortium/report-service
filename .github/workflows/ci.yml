@@ -13,3 +13,14 @@ jobs:
         working-directory: tests
       - run: firebase -c ../firebase.json emulators:exec --only firestore "npm test"
         working-directory: tests
+  test_query_creator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: '14'
+      - run: npm ci
+        working-directory: query-creator/create-query
+      - run: npm run test
+        working-directory: query-creator/create-query
