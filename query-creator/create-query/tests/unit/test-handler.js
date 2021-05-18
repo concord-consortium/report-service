@@ -58,10 +58,13 @@ describe('Query creation', function () {
             }
          };
         const generatedSQLresult = await aws.generateSQL(testQueryId, testRunnable, testResource, testDenormalizedResource);
-        const expectedSQLresult = `WITH activities AS ( SELECT * FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+        const expectedSQLresult = `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
 
 SELECT
   null as remote_endpoint,
+  null as num_questions,
+  null as num_answers,
+  null as percent_complete,
   activities.questions['multiple_choice_00000'].prompt AS multiple_choice_00000_choice,
   activities.questions['open_response_11111'].prompt AS open_response_11111_text,
   null AS open_response_11111_submitted,
@@ -74,6 +77,9 @@ UNION ALL
 
 SELECT
   remote_endpoint,
+  activities.num_questions,
+  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
+  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete,
   activities.choices['multiple_choice_00000'][json_extract_scalar(kv1['multiple_choice_00000'], '$.choice_ids[0]')].content AS multiple_choice_00000_choice,
   kv1['open_response_11111'] AS open_response_11111_text,
   submitted['open_response_11111'] AS open_response_11111_submitted,
