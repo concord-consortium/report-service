@@ -62,6 +62,11 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workg
 exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   const selectColumns = [];
   const selectColumnPrompts = [];
+  const completionColumns = [
+    "activities.num_questions",
+    "cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers",
+    "round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete"
+  ];
   const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
   Object.keys(denormalizedResource.questions).forEach(questionId => {
@@ -110,11 +115,11 @@ FROM activities
 UNION ALL
 
 SELECT
-  ${[`remote_endpoint,
-  activities.num_questions,
-  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
-  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete`
-    ].concat(selectColumns).join(",\n  ")}
+  ${[
+    "remote_endpoint",
+    ...completionColumns,
+    ...selectColumns
+    ].join(",\n  ")}
 FROM activities,
   ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
