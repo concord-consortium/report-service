@@ -69,6 +69,24 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   ];
   const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
+  const questionIsRequired = (resourceObj, qId) => {
+    let isRequired = false;
+    if (resourceObj.type === "sequence") {
+      resourceObj.children.forEach((activity) => activity.children.forEach((section) => section.children.forEach((page) => page.children.forEach((question) => {
+        if (question.id === qId && question.required) {
+          isRequired = true;
+        }
+      }))));
+    } else if (resourceObj.type === "activity") {
+      resourceObj.children.forEach((section) => section.children.forEach((page) => page.children.forEach((question) => {
+        if (question.id === qId && question.required) {
+          isRequired = true;
+        }
+      })));
+    }
+    return isRequired;
+  }
+
   Object.keys(denormalizedResource.questions).forEach(questionId => {
     const type = questionId.split(/_\d+/).shift();
     switch (type) {
@@ -83,13 +101,18 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
         selectColumns.push(`kv1['${questionId}'] AS ${questionId}_answer`);
         break;
       case "open_response":
+        let isRequired = questionIsRequired(resource, questionId);
+
         // add question prompt, include empty column because UNION query requires identical number of fields
         selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_text`);
-        selectColumnPrompts.push(`null AS ${questionId}_submitted`);
+        if (isRequired) {
+          selectColumnPrompts.push(`null AS ${questionId}_submitted`);
+        }
 
         selectColumns.push(`kv1['${questionId}'] AS ${questionId}_text`);
-        // TODO: only add if can be submitted  (need to check resource structure)
-        selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
+        if (isRequired) {
+          selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
+        }
         break;
       case "multiple_choice":
         // add question prompt
