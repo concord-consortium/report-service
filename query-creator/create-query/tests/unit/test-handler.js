@@ -26,7 +26,24 @@ describe('Query creation', function () {
     it('verifies successful query creation', async () => {
         const testQueryId = "123456789";
         const testRunnable = null; // isn't used yet
-        const testResource = { url: "https://authoring.staging.concord.org/activities/000000" };
+        const testResource = {
+          url: "https://authoring.staging.concord.org/activities/000000",
+          type: "activity",
+          children: [
+            { type: "section",
+              children: [
+                { type: "page",
+                  children: [
+                    { id: "multiple_choice_00000" },
+                    { id: "open_response_11111", required: true },
+                    { id: "open_response_22222", required: false },
+                    { id: "image_question_33333" }
+                  ]
+                }
+              ]
+            }
+          ]
+        };
         const testDenormalizedResource =
         {
             questions: {
@@ -36,7 +53,10 @@ describe('Query creation', function () {
                open_response_11111: {
                   prompt: "open response prompt"
                },
-               image_question_22222: {
+               open_response_22222: {
+                  prompt: "open response prompt 2"
+               },
+               image_question_33333: {
                   prompt: "image response prompt"
                },
             },
@@ -68,9 +88,10 @@ SELECT
   activities.questions['multiple_choice_00000'].prompt AS multiple_choice_00000_choice,
   activities.questions['open_response_11111'].prompt AS open_response_11111_text,
   null AS open_response_11111_submitted,
-  activities.questions['image_question_22222'].prompt AS image_question_22222_image_url,
-  null AS image_question_22222_text,
-  null AS image_question_22222_answer
+  activities.questions['open_response_22222'].prompt AS open_response_22222_text,
+  activities.questions['image_question_33333'].prompt AS image_question_33333_image_url,
+  null AS image_question_33333_text,
+  null AS image_question_33333_answer
 FROM activities
 
 UNION ALL
@@ -83,9 +104,10 @@ SELECT
   activities.choices['multiple_choice_00000'][json_extract_scalar(kv1['multiple_choice_00000'], '$.choice_ids[0]')].content AS multiple_choice_00000_choice,
   kv1['open_response_11111'] AS open_response_11111_text,
   submitted['open_response_11111'] AS open_response_11111_submitted,
-  json_extract_scalar(kv1['image_question_22222'], '$.image_url') AS image_question_22222_image_url,
-  json_extract_scalar(kv1['image_question_22222'], '$.text') AS image_question_22222_text,
-  kv1['image_question_22222'] AS image_question_22222_answer
+  kv1['open_response_22222'] AS open_response_22222_text,
+  json_extract_scalar(kv1['image_question_33333'], '$.image_url') AS image_question_33333_image_url,
+  json_extract_scalar(kv1['image_question_33333'], '$.text') AS image_question_33333_text,
+  kv1['image_question_33333'] AS image_question_33333_answer
 FROM activities,
   ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
