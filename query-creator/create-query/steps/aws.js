@@ -117,7 +117,10 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
       case "multiple_choice":
         // add question prompt
         selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_choice`);
-        selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}_choice`);
+        const questionHasCorrectAnswer = `cardinality(map_filter(activities.choices['${questionId}'], (k, v) -> v.correct)) > 0`;
+        const answerScore = `IF(${questionHasCorrectAnswer}, IF(activities.choices['${questionId}'][x].correct,' (correct)',' (wrong)'), '')`;
+        const choiceIdsAsArray = `CAST(json_extract(kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
+        selectColumns.push(`array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ') AS ${questionId}_choice`);
         break;
       case "managed_interactive":
       case "mw_interactive":
