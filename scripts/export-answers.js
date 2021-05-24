@@ -9,6 +9,13 @@ const { parquetInfo, getSyncDocId, hasLTIMetadata, getHash, schema } = require('
 
 const BUCKET = process.argv[2];     // e.g. concordqa-report-data
 const SOURCE =  process.argv[3];    // e.g. authoring.staging.concord.org
+const DATE_REGEX  = process.argv[4] // optional, e.g. 2021-05*
+                                    // if a regex is included, it will *only* be used if there is a `created` field in the answer.
+                                    // it will not filter on the regex, but will avoid uploading to s3 if the regex doesn't match
+let dateRegex;
+if (DATE_REGEX) {
+  dateRegex = new RegExp(DATE_REGEX);
+}
 
 if (!BUCKET || !SOURCE) {
   console.error("Call script with `node export-answers.js [bucket-name] [source-id]`");
@@ -108,11 +115,20 @@ function uploadAnswers(userRunKey) {
   }
 
   uploadPromises[userRunKey] = new Promise(async (resolve) => {
+    // if we don't have a date_regex, we always upload everything we find. If we do have a date_regex, we assume
+    // we won't upload, unless we find one answer either without a date or with a date matching the regex.
+    let shouldUpload = !dateRegex;
     try {
       // parquetjs can't write to buffers
       await deleteTmpFile();
       var writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
       for (let i = 0; i < answers.length; i++) {
+        if (!shouldUpload && dateRegex) {
+          const created = answers[i].created;
+          if (!created || dateRegex.test(created)) {
+            shouldUpload = true;
+          }
+        }
         // clean up answer objects for parquet
         answers[i].answer = JSON.stringify(answers[i].answer)
         delete answers[i].report_state;
@@ -124,19 +140,24 @@ function uploadAnswers(userRunKey) {
       }
       await writer.close();
 
-      const body = await readFile(tmpFilePath)
+      if (shouldUpload) {
+        console.error(" >>>>>>>>>>> uploading!");
+        const body = await readFile(tmpFilePath)
 
-      // write file to s3
-      await s3.putObject({
-        Bucket: BUCKET,
-        Key: key,
-        Body: body,
-        ContentType: 'application/octet-stream'
-      }, function (err) {
-        if (err) {
-          console.error(`${userRunKey}: ${err.toString()}`)
-        }
-      }).promise();
+        // write file to s3
+        await s3.putObject({
+          Bucket: BUCKET,
+          Key: key,
+          Body: body,
+          ContentType: 'application/octet-stream'
+        }, function (err) {
+          if (err) {
+            console.error(`${userRunKey}: ${err.toString()}`)
+          }
+        }).promise();
+      } else {
+        console.error("skipping");
+      }
     } catch (err) {
       console.error(err);
     } finally {
