@@ -212,16 +212,18 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
     return getSettings()
       .then(({ watchAnswers }) => {
         if (watchAnswers) {
-          // need to get the before location data in case answer was deleted
+          const currentAnswer = change.after.data();
           const previousAnswer = change.before.data();
-          const answerMetadata = previousAnswer && getAnswerMetadata(previousAnswer as AnswerData);
+          // if answer was deleted we use the previousAnswer to get the metadata
+          const latestAnswerWithMetadata = currentAnswer && currentAnswer.resource_url ? currentAnswer : previousAnswer;
+          const answerMetadata = getAnswerMetadata(latestAnswerWithMetadata as AnswerData);
 
           if (!answerMetadata) {
             return null;
           }
 
-          const beforeHash = getHash(change.before.data());
-          const afterHash = getHash(change.after.data());
+          const beforeHash = previousAnswer ? getHash(previousAnswer) : "";
+          const afterHash = currentAnswer ? getHash(currentAnswer) : "";
 
           if (afterHash !== beforeHash) {
             return addSyncDoc(context.params.syncSource, answerMetadata);
