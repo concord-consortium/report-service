@@ -34,7 +34,7 @@ export-answers.js [s3-bucket] [source-key] [created-timestamp-regex]
 
 * s3-bucket: the name of the s3 bucket we're going to put the answers in
 * source-key: the Firestore answers collection
-* created-timestamp-regex: (optional) a regex as a string, e.g. `2021-*`
+* created-timestamp-regex: (optional) a regex as a string, e.g. `2021-(04|05)`
 
   if this is included we will gain a slight speed-up by not uploading answers whose `created` property does not match
   the regex. Note that this is conservative: if an answer does not have a `created` field it will be uploaded, and it

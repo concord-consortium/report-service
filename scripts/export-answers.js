@@ -9,7 +9,7 @@ const { parquetInfo, getSyncDocId, hasLTIMetadata, getHash, schema } = require('
 
 const BUCKET = process.argv[2];     // e.g. concordqa-report-data
 const SOURCE =  process.argv[3];    // e.g. authoring.staging.concord.org
-const DATE_REGEX  = process.argv[4] // optional, e.g. 2021-05*
+const DATE_REGEX  = process.argv[4] // optional, e.g. `2021-(04|05)`
                                     // if a regex is included, it will *only* be used if there is a `created` field in the answer.
                                     // it will not filter on the regex, but will avoid uploading to s3 if the regex doesn't match
 let dateRegex;
