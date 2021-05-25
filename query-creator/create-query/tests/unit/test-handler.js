@@ -2,6 +2,7 @@
 
 const app = require('../../app.js');
 const aws = require('../../steps/aws.js');
+const firebase = require('../../steps/firebase.js');
 const chai = require('chai');
 const expect = chai.expect;
 var event, context;
@@ -34,85 +35,25 @@ describe('Query creation', function () {
               children: [
                 { type: "page",
                   children: [
-                    { id: "multiple_choice_00000" },
-                    { id: "multiple_choice_01111" },
-                    { id: "multiple_choice_02222" },
-                    { id: "open_response_11111", required: true },
-                    { id: "open_response_22222", required: false },
-                    { id: "image_question_33333" }
+                    { id: "multiple_choice_00000", type: "multiple_choice", prompt: "mc prompt 1",
+                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+                    },
+                    { id: "multiple_choice_01000", type: "multiple_choice", prompt: "mc prompt 2",
+                      choices: [{ content: "a", correct: false, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+                    },
+                    { id: "multiple_choice_02000", type: "multiple_choice", prompt: "mc prompt 3",
+                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: true, id: 2 }, { content: "c", correct: false, id: 3 }]
+                    },
+                    { id: "open_response_11111", type: "open_response", prompt: "open response prompt 1", required: true },
+                    { id: "open_response_22222", type: "open_response", prompt: "open response prompt 2", required: false },
+                    { id: "image_question_33333", type: "image_question", prompt: "image response prompt"}
                   ]
                 }
               ]
             }
           ]
         };
-        const testDenormalizedResource =
-        {
-          questions: {
-            multiple_choice_00000: {
-              prompt: "mc prompt 1"
-            },
-            multiple_choice_01000: {
-              prompt: "mc prompt 2"
-            },
-            multiple_choice_02000: {
-              prompt: "mc prompt 3"
-            },
-            open_response_11111: {
-              prompt: "open response prompt"
-            },
-            open_response_22222: {
-              prompt: "open response prompt 2"
-            },
-            image_question_33333: {
-              prompt: "image response prompt"
-            },
-          },
-          choices: {
-            multiple_choice_00000: {
-              mc_00001: {
-                "content": "a",
-                "correct": true
-              },
-              mc_00002: {
-                "content": "b",
-                "correct": false
-              },
-              mc_00003: {
-                "content": "c",
-                "correct": false
-              }
-            },
-            multiple_choice_01000: {
-              mc_01001: {
-                "content": "a",
-                "correct": false
-              },
-              mc_01002: {
-                "content": "b",
-                "correct": false
-              },
-              mc_01003: {
-                "content": "c",
-                "correct": false
-              }
-            },
-            multiple_choice_02000: {
-              mc_02001: {
-                "content": "a",
-                "correct": true
-              },
-              mc_02002: {
-                "content": "b",
-                "correct": true
-              },
-              mc_02003: {
-                "content": "c",
-                "correct": false
-              }
-            },
-          }
-        };
+        const testDenormalizedResource = firebase.denormalizeResource(testResource);
         const generatedSQLresult = await aws.generateSQL(testQueryId, testRunnable, testResource, testDenormalizedResource);
         const expectedSQLresult = `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
 
@@ -139,9 +80,9 @@ SELECT
   activities.num_questions,
   cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
   round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete,
-  array_join(transform(CAST(json_extract(kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_00000'][x].content, IF(cardinality(map_filter(activities.choices['multiple_choice_00000'], (k, v) -> v.correct)) > 0, IF(activities.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'), ''))),', ') AS multiple_choice_00000_choice,
-  array_join(transform(CAST(json_extract(kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_01000'][x].content, IF(cardinality(map_filter(activities.choices['multiple_choice_01000'], (k, v) -> v.correct)) > 0, IF(activities.choices['multiple_choice_01000'][x].correct,' (correct)',' (wrong)'), ''))),', ') AS multiple_choice_01000_choice,
-  array_join(transform(CAST(json_extract(kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_02000'][x].content, IF(cardinality(map_filter(activities.choices['multiple_choice_02000'], (k, v) -> v.correct)) > 0, IF(activities.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'), ''))),', ') AS multiple_choice_02000_choice,
+  array_join(transform(CAST(json_extract(kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_00000'][x].content, IF(activities.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_00000_choice,
+  array_join(transform(CAST(json_extract(kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_01000'][x].content, ''))),', ') AS multiple_choice_01000_choice,
+  array_join(transform(CAST(json_extract(kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_02000'][x].content, IF(activities.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_02000_choice,
   kv1['open_response_11111'] AS open_response_11111_text,
   submitted['open_response_11111'] AS open_response_11111_submitted,
   kv1['open_response_22222'] AS open_response_22222_text,
