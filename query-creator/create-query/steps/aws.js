@@ -69,24 +69,6 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   ];
   const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
-  const questionIsRequired = (resourceObj, qId) => {
-    let isRequired = false;
-    if (resourceObj.type === "sequence") {
-      resourceObj.children.forEach((activity) => activity.children.forEach((section) => section.children.forEach((page) => page.children.forEach((question) => {
-        if (question.id === qId && question.required) {
-          isRequired = true;
-        }
-      }))));
-    } else if (resourceObj.type === "activity") {
-      resourceObj.children.forEach((section) => section.children.forEach((page) => page.children.forEach((question) => {
-        if (question.id === qId && question.required) {
-          isRequired = true;
-        }
-      })));
-    }
-    return isRequired;
-  }
-
   Object.keys(denormalizedResource.questions).forEach(questionId => {
     const type = questionId.split(/_\d+/).shift();
     switch (type) {
@@ -101,7 +83,7 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
         selectColumns.push(`kv1['${questionId}'] AS ${questionId}_answer`);
         break;
       case "open_response":
-        let isRequired = questionIsRequired(resource, questionId);
+        const isRequired = denormalizedResource.questions[questionId].required;
 
         // add question prompt, include empty column because UNION query requires identical number of fields
         selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_text`);
@@ -117,7 +99,17 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
       case "multiple_choice":
         // add question prompt
         selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_choice`);
-        selectColumns.push(`activities.choices['${questionId}'][json_extract_scalar(kv1['${questionId}'], '$.choice_ids[0]')].content AS ${questionId}_choice`);
+
+        let questionHasCorrectAnswer = false;
+        for (const choice in denormalizedResource.choices[questionId]) {
+          if (denormalizedResource.choices[questionId][choice].correct) {
+            questionHasCorrectAnswer = true;
+          }
+        }
+
+        const answerScore = questionHasCorrectAnswer ? `IF(activities.choices['${questionId}'][x].correct,' (correct)',' (wrong)')` : `''`;
+        const choiceIdsAsArray = `CAST(json_extract(kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
+        selectColumns.push(`array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ') AS ${questionId}_choice`);
         break;
       case "managed_interactive":
       case "mw_interactive":
