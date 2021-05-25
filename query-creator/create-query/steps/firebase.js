@@ -1,5 +1,5 @@
 const axios = require("axios");
-const URL = require('url');
+const { URL } = require('url');
 
 const sequence120 = require("./firebase-data/sequence-120.json");
 
