@@ -141,7 +141,6 @@ function uploadAnswers(userRunKey) {
       await writer.close();
 
       if (shouldUpload) {
-        console.error(" >>>>>>>>>>> uploading!");
         const body = await readFile(tmpFilePath)
 
         // write file to s3
@@ -155,8 +154,6 @@ function uploadAnswers(userRunKey) {
             console.error(`${userRunKey}: ${err.toString()}`)
           }
         }).promise();
-      } else {
-        console.error("skipping");
       }
     } catch (err) {
       console.error(err);
