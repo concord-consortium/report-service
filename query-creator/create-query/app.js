@@ -17,14 +17,11 @@ exports.lambdaHandler = async (event, context) => {
       throw new Error("Missing reportServiceSource in the report url");
     }
 
-    // see if we are in demo mode which uses built in request bodies and firebase data
-    const demo = !!params.demo;
-
     // ensure all the environment variables exist
     envVars.validate();
 
-    // get the post body and validate the HMAC and format of the json payload
-    const body = request.getBody(event, demo);
+    // get the post body
+    const body = request.getBody(event);
     const json = request.validateJSON(body);
     const runnables = request.getRunnables(json);
     const user = json.user;
@@ -45,7 +42,7 @@ exports.lambdaHandler = async (event, context) => {
       await aws.uploadLearnerData(queryId, runnable.learners, workgroup);
 
       // get and denormalize the resource (activity or sequence) from Firebase
-      const resource = await firebase.getResource(runnable, reportServiceSource, demo);
+      const resource = await firebase.getResource(runnable, reportServiceSource);
       const denormalizedResource = firebase.denormalizeResource(resource);
 
       // upload the denormalized resource to s3 and tie it to the workgroup
