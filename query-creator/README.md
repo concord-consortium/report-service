@@ -88,6 +88,21 @@ The SAM CLI reads the application template to determine the API's routes and the
             Method: get
 ```
 
+### Testing locally with the portal running locally
+
+When the portal makes its request to the query-creator, it passes a `reportServiceUrl` that points back to the
+API endpoint we can use to make the requests for the learner data.
+
+However, if the portal is running in Docker and the SAM application is as well, it's tricky to get them to talk
+to each other.
+
+While there is probably a much better Docker-ish way to solve this, one hacky solution is to
+
+1. Install [ngrok](https://ngrok.com/), or a similar service to allow you to create a public url for your local servers
+2. Take note of the port that the app is running on in your Docker UI
+3. Publish that port with ngrok and get back a public url
+4. Hardcode `{public_url}/api/v1/report_learners_es/external_report_learners_from_jwt` in the query-creator app as the `reportServiceUrl`
+
 ## Add a resource to your application
 The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
 
