@@ -44,9 +44,13 @@ describe('Query creation', function () {
                     { id: "multiple_choice_02000", type: "multiple_choice", prompt: "mc prompt 3",
                       choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: true, id: 2 }, { content: "c", correct: false, id: 3 }]
                     },
-                    { id: "open_response_11111", type: "open_response", prompt: "open response prompt 1", required: true },
-                    { id: "open_response_22222", type: "open_response", prompt: "open response prompt 2", required: false },
-                    { id: "image_question_33333", type: "image_question", prompt: "image response prompt"}
+                    { id: "multiple_choice_03000", type: "multiple_choice", prompt: "mc prompt 1", required: true,
+                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+                    },
+                    { id: "open_response_11111", type: "open_response", prompt: "open response prompt 1", required: false },
+                    { id: "open_response_22222", type: "open_response", prompt: "open response prompt 2", required: true },
+                    { id: "image_question_33333", type: "image_question", prompt: "image response prompt 1", required: false },
+                    { id: "image_question_44444", type: "image_question", prompt: "image response prompt 2", required: true }
                   ]
                 }
               ]
@@ -65,12 +69,18 @@ SELECT
   activities.questions['multiple_choice_00000'].prompt AS multiple_choice_00000_choice,
   activities.questions['multiple_choice_01000'].prompt AS multiple_choice_01000_choice,
   activities.questions['multiple_choice_02000'].prompt AS multiple_choice_02000_choice,
+  activities.questions['multiple_choice_03000'].prompt AS multiple_choice_03000_choice,
+  null AS multiple_choice_03000_submitted,
   activities.questions['open_response_11111'].prompt AS open_response_11111_text,
-  null AS open_response_11111_submitted,
   activities.questions['open_response_22222'].prompt AS open_response_22222_text,
+  null AS open_response_22222_submitted,
   activities.questions['image_question_33333'].prompt AS image_question_33333_image_url,
   null AS image_question_33333_text,
-  null AS image_question_33333_answer
+  null AS image_question_33333_answer,
+  activities.questions['image_question_44444'].prompt AS image_question_44444_image_url,
+  null AS image_question_44444_text,
+  null AS image_question_44444_answer,
+  null AS image_question_44444_submitted
 FROM activities
 
 UNION ALL
@@ -83,12 +93,18 @@ SELECT
   array_join(transform(CAST(json_extract(kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_00000'][x].content, IF(activities.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_00000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_01000'][x].content, '')),', ') AS multiple_choice_01000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_02000'][x].content, IF(activities.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_02000_choice,
+  array_join(transform(CAST(json_extract(kv1['multiple_choice_03000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_03000'][x].content, IF(activities.choices['multiple_choice_03000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_03000_choice,
+  submitted['multiple_choice_03000'] AS multiple_choice_03000_submitted,
   kv1['open_response_11111'] AS open_response_11111_text,
-  submitted['open_response_11111'] AS open_response_11111_submitted,
   kv1['open_response_22222'] AS open_response_22222_text,
+  submitted['open_response_22222'] AS open_response_22222_submitted,
   json_extract_scalar(kv1['image_question_33333'], '$.image_url') AS image_question_33333_image_url,
   json_extract_scalar(kv1['image_question_33333'], '$.text') AS image_question_33333_text,
-  kv1['image_question_33333'] AS image_question_33333_answer
+  kv1['image_question_33333'] AS image_question_33333_answer,
+  json_extract_scalar(kv1['image_question_44444'], '$.image_url') AS image_question_44444_image_url,
+  json_extract_scalar(kv1['image_question_44444'], '$.text') AS image_question_44444_text,
+  kv1['image_question_44444'] AS image_question_44444_answer,
+  submitted['image_question_44444'] AS image_question_44444_submitted
 FROM activities,
   ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a

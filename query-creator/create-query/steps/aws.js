@@ -71,20 +71,25 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
 
   Object.keys(denormalizedResource.questions).forEach(questionId => {
     const type = questionId.split(/_\d+/).shift();
+    const isRequired = denormalizedResource.questions[questionId].required;
     switch (type) {
       case "image_question":
         // add question prompt, include empty column because UNION query requires identical number of fields
         selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_image_url`);
         selectColumnPrompts.push(`null AS ${questionId}_text`);
         selectColumnPrompts.push(`null AS ${questionId}_answer`);
+        if (isRequired) {
+          selectColumnPrompts.push(`null AS ${questionId}_submitted`);
+        }
 
         selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.image_url') AS ${questionId}_image_url`);
         selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.text') AS ${questionId}_text`);
         selectColumns.push(`kv1['${questionId}'] AS ${questionId}_answer`);
+        if (isRequired) {
+          selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
+        }
         break;
       case "open_response":
-        const isRequired = denormalizedResource.questions[questionId].required;
-
         // add question prompt, include empty column because UNION query requires identical number of fields
         selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_text`);
         if (isRequired) {
@@ -99,6 +104,9 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
       case "multiple_choice":
         // add question prompt
         selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_choice`);
+        if (isRequired) {
+          selectColumnPrompts.push(`null AS ${questionId}_submitted`);
+        }
 
         let questionHasCorrectAnswer = false;
         for (const choice in denormalizedResource.choices[questionId]) {
@@ -110,6 +118,9 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
         const answerScore = questionHasCorrectAnswer ? `IF(activities.choices['${questionId}'][x].correct,' (correct)',' (wrong)')` : `''`;
         const choiceIdsAsArray = `CAST(json_extract(kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
         selectColumns.push(`array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ') AS ${questionId}_choice`);
+        if (isRequired) {
+          selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
+        }
         break;
       case "managed_interactive":
       case "mw_interactive":
