@@ -2,6 +2,8 @@ const AWS = require("aws-sdk");
 const { v4: uuidv4 } = require('uuid');
 const request = require("./request");
 
+const PAGE_SIZE = 1000;
+
 exports.ensureWorkgroup = async (user) => {
   const athena = new AWS.Athena({apiVersion: '2017-05-18'});
   const workgroupName = `${user.id} ${user.email}`.replace(/[^a-z0-9]/g, "-")
@@ -61,10 +63,11 @@ const uploadLearnerData = async (queryId, learners, workgroup) => {
  *
  * @returns queryIdsPerRunnable as {[runnable_url]: queryId}
  */
-exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, paginationSize, workgroup) => {
+exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, workgroup) => {
   const queryIdsPerRunnable = {};     // {[runnable_url]: queryId}
   const queryParams = {
     query,
+    page_size: PAGE_SIZE,
     start_from: 0
   };
   let foundAllLearners = false;
@@ -87,7 +90,7 @@ exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, paginatio
         await uploadLearnerData(queryId, learners, workgroup);
       };
 
-      if (res.json.learners.length < paginationSize) {
+      if (res.json.learners.length < PAGE_SIZE) {
         foundAllLearners = true;
       } else {
         totalLearnersFound += res.json.learners.length;

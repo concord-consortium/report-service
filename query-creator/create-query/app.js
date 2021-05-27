@@ -22,12 +22,12 @@ exports.lambdaHandler = async (event, context) => {
     const body = request.getBody(event);
     request.validateRequestBody(body);
     const { json, jwt } = body;
-    const { query, learnersApiUrl, paginationSize, user } = json;
+    const { query, learnersApiUrl, user } = json;
     // ensure create athena workgroup is created for the user and is added to token service
     const workgroup = await aws.ensureWorkgroup(user);
     await tokenService.addWorkgroup(workgroup);
 
-    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, paginationSize, workgroup);
+    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, workgroup);
 
     const debugSQL = [];
 
