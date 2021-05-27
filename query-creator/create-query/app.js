@@ -1,5 +1,3 @@
-const { v4: uuidv4 } = require('uuid');
-
 const envVars = require("./steps/env-vars");
 const request = require("./steps/request");
 const firebase = require("./steps/firebase");
@@ -22,34 +20,30 @@ exports.lambdaHandler = async (event, context) => {
 
     // get the post body
     const body = request.getBody(event);
-    const json = request.validateJSON(body);
-    const runnables = request.getRunnables(json);
-    const user = json.user;
-
+    request.validateRequestBody(body);
+    const { json, jwt } = body;
+    const { query, learnersApiUrlxx, paginationSize, user } = json;
+    learnersApiUrl = "http://4d9f5154e993.ngrok.io/api/v1/report_learners_es/external_report_learners_from_jwt";
     // ensure create athena workgroup is created for the user and is added to token service
     const workgroup = await aws.ensureWorkgroup(user);
     await tokenService.addWorkgroup(workgroup);
 
+    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, paginationSize, workgroup);
+
     const debugSQL = [];
 
-    for (let index = 0; index < runnables.length; index++) {
-      const runnable = runnables[index];
-
-      // single id that ties together the uploaded files to s3 and the Athena query
-      const queryId = uuidv4()
-
-      // upload the learner data
-      await aws.uploadLearnerData(queryId, runnable.learners, workgroup);
+    for (const runnableUrl in queryIdsPerRunnable) {
+      const queryId = queryIdsPerRunnable[runnableUrl];
 
       // get and denormalize the resource (activity or sequence) from Firebase
-      const resource = await firebase.getResource(runnable, reportServiceSource);
+      const resource = await firebase.getResource(runnableUrl, reportServiceSource);
       const denormalizedResource = firebase.denormalizeResource(resource);
 
       // upload the denormalized resource to s3 and tie it to the workgroup
       await aws.uploadDenormalizedResource(queryId, denormalizedResource, workgroup);
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, runnable, resource, denormalizedResource)
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource)
 
       // create the athena query in the workgroup
       const query = await aws.createQuery(queryId, user, sql, workgroup)

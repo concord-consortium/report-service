@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const axios = require("axios");
 const queryString = require('query-string');
 
 exports.getBody = (event) => {
@@ -9,7 +9,13 @@ exports.getBody = (event) => {
   return queryString.parse(event.body)
 }
 
-exports.validateJSON = (body) => {
+/**
+ * Throws errors if the request body is malformed, and parses the json property in-place.
+ */
+exports.validateRequestBody = (body) => {
+  if (!body.jwt) {
+    throw new Error("Missing JWT");
+  }
   let json = body.json;
   if (!json) {
     throw new Error("Missing json body parameter");
@@ -21,30 +27,33 @@ exports.validateJSON = (body) => {
     throw new Error("Unable to parse json parameter");
   }
 
-  if (json.version !== "1.1") {
-    throw new Error(`Request version is ${json.version}, 1.1 required`);
+  if (json.version !== "2") {
+    throw new Error(`Request version is ${json.version}, 2 required`);
   }
 
-  if (!json.learners) {
-    throw new Error("No learners found in json parameter")
-  }
-
-  if (!json.user) {
-    throw new Error("No user info found in json parameter")
-  }
-  if (!json.user.id) {
-    throw new Error("No user id found in json parameter")
-  }
-  if (!json.user.email) {
-    throw new Error("No user email found in json parameter")
-  }
-
-  return json;
+  body.json = json;
 }
 
-exports.getRunnables = (json) => {
+exports.getLearnerDataWithJwt = (reportServiceUrl, queryParams, jwt) => {
+  return axios.post(reportServiceUrl, queryParams,
+    {
+      headers: {
+        "Authorization": `Bearer/JWT ${jwt}`
+      }
+    }
+  ).then((response) => {
+    return response.data;
+  }, (error) => {
+    throw error;
+  });
+}
+
+/**
+ * Returns [{runnableUrl, learners[]}, ...]
+ */
+exports.getLearnersPerRunnable = (learners) => {
   // get unique runnable urls
-  const runnableUrls = json.learners
+  const runnableUrls = learners
     .map(l => l.runnable_url)
     .filter(runnableUrl => runnableUrl !== undefined)
     .filter((runnableUrl, index, self) => self.indexOf(runnableUrl) === index)
@@ -53,10 +62,10 @@ exports.getRunnables = (json) => {
   }
   return runnableUrls.map(runnableUrl => {
     const runnable = {
-      url: runnableUrl,
+      runnableUrl,
       learners: []
     }
-    json.learners.forEach(learner => {
+    learners.forEach(learner => {
       if (learner.runnable_url === runnableUrl) {
         runnable.learners.push(learner)
       }

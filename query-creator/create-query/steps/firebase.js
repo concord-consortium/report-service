@@ -1,12 +1,9 @@
 const axios = require("axios");
 const { URL } = require('url');
 
-const sequence120 = require("./firebase-data/sequence-120.json");
-
-exports.getResource = async (runnable, reportServiceSource) => {
+exports.getResource = async (runnableUrl, reportServiceSource) => {
   const reportServiceUrl = `${process.env.REPORT_SERVICE_URL}/resource`
 
-  let runnableUrl = runnable.url;
   const searchParams = new URL(runnableUrl).searchParams;
 
   if (searchParams) {

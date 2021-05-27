@@ -1,4 +1,6 @@
 const AWS = require("aws-sdk");
+const { v4: uuidv4 } = require('uuid');
+const request = require("./request");
 
 exports.ensureWorkgroup = async (user) => {
   const athena = new AWS.Athena({apiVersion: '2017-05-18'});
@@ -36,7 +38,8 @@ exports.ensureWorkgroup = async (user) => {
   return workgroup.WorkGroup;
 }
 
-exports.uploadLearnerData = async (queryId, learners, workgroup) => {
+const uploadLearnerData = async (queryId, learners, workgroup) => {
+  const uuid = uuidv4();
   const body = learners
     .map(l => JSON.stringify(l))
     .join("\n");
@@ -44,9 +47,57 @@ exports.uploadLearnerData = async (queryId, learners, workgroup) => {
   await s3.putObject({
     Bucket: process.env.OUTPUT_BUCKET,
     Body: body,
-    Key: `learners/${queryId}/${queryId}.json`
+    Key: `learners/${queryId}/${uuid}.json`
   }).promise()
   // TODO: tie the uploaded file to the workgroup
+}
+
+/**
+ * Fetches all the learner details from the portal, given a jwt, query and learnersApiUrl.
+ * This may take several requests to the portal, as this data is paginated.
+ * Each time a set of learners is returned, the learners are sorted by runnableUrl, and are uploaded to an
+ * S3 bucket `learners/{queryId}`, where queryId is unique per runnableUrl. This data may be uploaded to
+ * several files in this folder.
+ *
+ * @returns queryIdsPerRunnable as {[runnable_url]: queryId}
+ */
+exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, paginationSize, workgroup) => {
+  const queryIdsPerRunnable = {};     // {[runnable_url]: queryId}
+  const queryParams = {
+    query,
+    start_from: 0
+  };
+  let foundAllLearners = false;
+  let totalLearnersFound = 0;
+  while (!foundAllLearners) {
+    const res = await request.getLearnerDataWithJwt(learnersApiUrl, queryParams, jwt);
+    if (res.json.learners) {
+      // sort the learners by their runnable_urls, create a queryId for each runnable, and
+      // upload a set of learners for that queryId.
+      // The queryId ties together the uploaded files to s3 and the Athena query
+      const learnersPerRunnable = request.getLearnersPerRunnable(res.json.learners);
+      for (const {runnableUrl, learners} of learnersPerRunnable) {
+        // each runnable_url gets its own queryId, but because we're paginating through our learners,
+        // we may have already seen this runnable_url.
+        let queryId = queryIdsPerRunnable[runnableUrl];
+        if (!queryId) {
+          queryId = uuidv4();
+          queryIdsPerRunnable[runnableUrl] = queryId;
+        }
+        await uploadLearnerData(queryId, learners, workgroup);
+      };
+
+      if (res.json.learners.length < paginationSize) {
+        foundAllLearners = true;
+      } else {
+        totalLearnersFound += res.json.learners.length;
+        queryParams.start_from = totalLearnersFound;
+      }
+    } else {
+      throw new Error("Malformed response from the portal: " + JSON.stringify(res));
+    }
+  }
+  return queryIdsPerRunnable;
 }
 
 exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workgroup) => {
@@ -59,7 +110,7 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workg
   // TODO: tie the uploaded file to the workgroup
 }
 
-exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
+exports.generateSQL = (queryId, resource, denormalizedResource) => {
   const selectColumns = [];
   const selectColumnPrompts = [];
   const completionColumns = [
