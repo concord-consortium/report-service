@@ -22,8 +22,7 @@ exports.lambdaHandler = async (event, context) => {
     const body = request.getBody(event);
     request.validateRequestBody(body);
     const { json, jwt } = body;
-    const { query, learnersApiUrlxx, paginationSize, user } = json;
-    learnersApiUrl = "http://4d9f5154e993.ngrok.io/api/v1/report_learners_es/external_report_learners_from_jwt";
+    const { query, learnersApiUrl, paginationSize, user } = json;
     // ensure create athena workgroup is created for the user and is added to token service
     const workgroup = await aws.ensureWorkgroup(user);
     await tokenService.addWorkgroup(workgroup);
