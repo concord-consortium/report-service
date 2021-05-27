@@ -44,7 +44,7 @@ Or the `QueryCreatorLocalTestUser` credential information can be configured via 
 query-creator$ aws configure
 ```
 
-The following environment variables need to be configured: `JwtHmacSecret`, `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl`. These can be configured system-wide or as default values in the `parameters` section of `template.yml`. For example, `OutputBucket` can be configured as follows:
+The following environment variables need to be configured: `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl`. These can be configured system-wide or as default values in the `parameters` section of `template.yml`. For example, `OutputBucket` can be configured as follows:
 ```
   OutputBucket:
     Type: String
@@ -52,7 +52,7 @@ The following environment variables need to be configured: `JwtHmacSecret`, `Out
     Default: 'concordqa-report-data'
 ```
 
-The environment variable values can be found on the production AWS account under `Cloud formation > Stacks` (for example, the `report-service-query-creator` stack can be used to obtain `JwtHmacSecret`, `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl` values).
+The environment variable values can be found on the production AWS account under `Cloud formation > Stacks` (for example, the `report-service-query-creator` stack can be used to obtain `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl` values).
 
 Build your application with the `sam build` command.
 

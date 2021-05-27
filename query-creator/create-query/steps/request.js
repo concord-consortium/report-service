@@ -15,21 +15,6 @@ exports.validateJSON = (body) => {
     throw new Error("Missing json body parameter");
   }
 
-  const signature = body.signature;
-  if (!signature) {
-    throw new Error("Missing signature body parameter");
-  }
-
-  const hmac = crypto.createHmac('sha256', process.env.JWT_HMAC_SECRET);
-  hmac.update(json);
-  const signatureBuffer = new Buffer(signature);
-  const digestBuffer = new Buffer(hmac.digest('hex'));
-
-  if ((signatureBuffer.length !== digestBuffer.length) || !crypto.timingSafeEqual(signatureBuffer, digestBuffer)) {
-    console.log("digestBuffer", digestBuffer.toString())
-    throw new Error("Invalid signature for json parameter");
-  }
-
   try {
     json = JSON.parse(json);
   } catch (e) {

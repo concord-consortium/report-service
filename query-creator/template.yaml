@@ -4,9 +4,6 @@ Description: >
   query-creator
 
 Parameters:
-  JwtHmacSecret:
-    Type: String
-    Description: Secret to verify request
   OutputBucket:
     Type: String
     Description: Output bucket for Athena queries
@@ -23,7 +20,6 @@ Globals:
     Timeout: 300
     Environment:
       Variables:
-        JWT_HMAC_SECRET: !Ref JwtHmacSecret
         OUTPUT_BUCKET: !Ref OutputBucket
         REPORT_SERVICE_TOKEN: !Ref ReportServiceToken
         REPORT_SERVICE_URL: !Ref ReportServiceUrl
