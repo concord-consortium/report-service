@@ -167,6 +167,7 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
     )
 
     CREATE EXTERNAL TABLE IF NOT EXISTS learners (
+      learner_id: string,
       run_remote_endpoint string,
       class_id int,
       runnable_url string,
@@ -174,7 +175,7 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
       class string,
       school string,
       user_id string,
-      perm_forms string,
+      permission_forms string,
       username string,
       student_name string,
       teachers array<struct<user_id: string, name: string, district: string, state: string, email: string>>,
