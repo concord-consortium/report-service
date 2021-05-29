@@ -50,7 +50,12 @@ describe('Query creation', function () {
                     { id: "open_response_11111", type: "open_response", prompt: "open response prompt 1", required: false },
                     { id: "open_response_22222", type: "open_response", prompt: "open response prompt 2", required: true },
                     { id: "image_question_33333", type: "image_question", prompt: "image response prompt 1", required: false },
-                    { id: "image_question_44444", type: "image_question", prompt: "image response prompt 2", required: true }
+                    { id: "image_question_44444", type: "image_question", prompt: "image response prompt 2", required: true },
+                    { id: "managed_interactive_55555", type: "open_response", prompt: "AP open response prompt", required: false },
+                    { id: "managed_interactive_66666", type: "multiple_choice", prompt: "AP mc prompt", required: false,
+                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+                    },
+                    { id: "managed_interactive_77777", type: "image_question", prompt: "AP image prompt", required: false}
                   ]
                 }
               ]
@@ -80,7 +85,12 @@ SELECT
   activities.questions['image_question_44444'].prompt AS image_question_44444_image_url,
   null AS image_question_44444_text,
   null AS image_question_44444_answer,
-  null AS image_question_44444_submitted
+  null AS image_question_44444_submitted,
+  activities.questions['managed_interactive_55555'].prompt AS managed_interactive_55555_text,
+  activities.questions['managed_interactive_66666'].prompt AS managed_interactive_66666_choice,
+  activities.questions['managed_interactive_77777'].prompt AS managed_interactive_77777_image_url,
+  null AS managed_interactive_77777_text,
+  null AS managed_interactive_77777_answer
 FROM activities
 
 UNION ALL
@@ -104,7 +114,12 @@ SELECT
   json_extract_scalar(kv1['image_question_44444'], '$.image_url') AS image_question_44444_image_url,
   json_extract_scalar(kv1['image_question_44444'], '$.text') AS image_question_44444_text,
   kv1['image_question_44444'] AS image_question_44444_answer,
-  submitted['image_question_44444'] AS image_question_44444_submitted
+  submitted['image_question_44444'] AS image_question_44444_submitted,
+  kv1['managed_interactive_55555'] AS managed_interactive_55555_text,
+  array_join(transform(CAST(json_extract(kv1['managed_interactive_66666'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['managed_interactive_66666'][x].content, IF(activities.choices['managed_interactive_66666'][x].correct,' (correct)',' (wrong)'))),', ') AS managed_interactive_66666_choice,
+  json_extract_scalar(kv1['managed_interactive_77777'], '$.image_url') AS managed_interactive_77777_image_url,
+  json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
+  kv1['managed_interactive_77777'] AS managed_interactive_77777_answer
 FROM activities,
   ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a

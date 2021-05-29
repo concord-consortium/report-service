@@ -80,7 +80,8 @@ const denormalizeActivity = (activity, denormalized) => {
       page.children.forEach(question => {
         denormalized.questions[question.id] = {
           prompt: question.prompt,
-          required: question.required ? question.required : false
+          required: question.required ? question.required : false,
+          type: question.type
         }
         if (question.type === "multiple_choice") {
           denormalized.choices[question.id] = {}

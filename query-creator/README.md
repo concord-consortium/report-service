@@ -136,7 +136,7 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
     ```
     CREATE EXTERNAL TABLE IF NOT EXISTS activity_structure (
       choices map<string,map<string,struct<content:string,correct:boolean>>>,
-      questions map<string,struct<prompt:string>>
+      questions map<string,struct<prompt:string,required:boolean,type:string>>
     )
     PARTITIONED BY
     (

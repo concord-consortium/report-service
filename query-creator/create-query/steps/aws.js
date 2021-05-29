@@ -70,8 +70,9 @@ exports.generateSQL = (queryId, runnable, resource, denormalizedResource) => {
   const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
   Object.keys(denormalizedResource.questions).forEach(questionId => {
-    const type = questionId.split(/_\d+/).shift();
+    const type = denormalizedResource.questions[questionId].type;
     const isRequired = denormalizedResource.questions[questionId].required;
+
     switch (type) {
       case "image_question":
         // add question prompt, include empty column because UNION query requires identical number of fields
