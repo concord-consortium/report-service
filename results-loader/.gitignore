@@ -1,0 +1,10 @@
+coverage
+coverage-cypress
+dist
+node_modules
+npm-error.log
+.DS_Store
+.nyc_output
+
+# Editors
+.idea
