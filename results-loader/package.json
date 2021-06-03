@@ -1,0 +1,125 @@
+{
+  "name": "results-loader",
+  "version": "0.0.1",
+  "description": "Concord Consortium results loader",
+  "main": "index.js",
+  "jest": {
+    "testURL": "https://results-loader.unexisting.url.com",
+    "setupFilesAfterEnv": [
+      "<rootDir>src/setupTests.js"
+    ],
+    "transform": {
+      "^.+\\.tsx?$": "ts-jest"
+    },
+    "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/cypress/"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "src/utilities/test-utils.ts"
+    ],
+    "moduleNameMapper": {
+      "\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$": "<rootDir>/__mocks__/fileMock.js",
+      "\\.(css|less|sass)$": "identity-obj-proxy"
+    },
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx",
+      "json",
+      "node"
+    ]
+  },
+  "scripts": {
+    "start": "webpack serve",
+    "build": "npm-run-all lint:build build:webpack",
+    "build:webpack": "webpack --mode production",
+    "lint": "eslint \"./src/**/*.{js,jsx,ts,tsx}\"",
+    "lint:build": "eslint -c \".eslintrc.build.js\" \"./src/**/*.{js,jsx,ts,tsx}\"",
+    "lint:fix": "eslint --fix \"./src/**/*.{js,jsx,ts,tsx}\"",
+    "test": "jest",
+    "test:all": "npm-run-all build test start",
+    "test:coverage": "jest --coverage",
+    "test:debug": "node --nolazy --inspect-brk ./node_modules/.bin/jest --runInBand --no-cache",
+    "test:watch": "jest --watch",
+    "test:coverage:watch": "jest --coverage --watchAll",
+    "test:cypress": "cypress run",
+    "test:cypress:open": "cypress open",
+    "test:full": "npm-run-all test test:cypress"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/concord-consortium/report-service.git"
+  },
+  "author": "Concord Consortium",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/concord-consortium/report-service/issues"
+  },
+  "homepage": "https://github.com/concord-consortium/report-service/#readme",
+  "nyc": {
+    "extends": "@istanbuljs/nyc-config-typescript",
+    "all": true,
+    "report-dir": "coverage-cypress"
+  },
+  "devDependencies": {
+    "@cypress/code-coverage": "^3.9.4",
+    "@cypress/webpack-preprocessor": "^5.7.0",
+    "@istanbuljs/nyc-config-typescript": "^1.0.1",
+    "@svgr/webpack": "^5.5.0",
+    "@testing-library/react-hooks": "^3.7.0",
+    "@types/enzyme": "^3.10.8",
+    "@types/enzyme-adapter-react-16": "^1.0.6",
+    "@types/jest": "^26.0.22",
+    "@types/react": "^17.0.3",
+    "@types/react-dom": "^17.0.3",
+    "@typescript-eslint/eslint-plugin": "^4.22.0",
+    "@typescript-eslint/parser": "^4.22.0",
+    "autoprefixer": "^10.2.5",
+    "babel-core": "^6.26.3",
+    "babel-jest": "^26.6.3",
+    "clean-webpack-plugin": "^3.0.0",
+    "copy-webpack-plugin": "^6.4.1",
+    "css-loader": "^5.2.1",
+    "cypress": "^7.1.0",
+    "enzyme": "^3.11.0",
+    "enzyme-adapter-react-16": "^1.15.6",
+    "eslint": "^7.24.0",
+    "eslint-config-react": "^1.1.7",
+    "eslint-loader": "^4.0.2",
+    "eslint-plugin-chai-friendly": "^0.6.0",
+    "eslint-plugin-cypress": "^2.11.2",
+    "eslint-plugin-eslint-comments": "^3.2.0",
+    "eslint-plugin-json": "^2.1.2",
+    "eslint-plugin-react": "^7.23.2",
+    "eslint-plugin-react-hooks": "^4.2.0",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.3.1",
+    "identity-obj-proxy": "^3.0.0",
+    "istanbul-instrumenter-loader": "^3.0.1",
+    "istanbul-lib-coverage": "^3.0.0",
+    "jest": "^26.6.3",
+    "mini-css-extract-plugin": "^1.4.1",
+    "node-sass": "^5.0.0",
+    "npm-run-all": "^4.1.5",
+    "postcss-loader": "^4.2.0",
+    "sass-loader": "^10.1.1",
+    "script-loader": "^0.7.2",
+    "style-loader": "^2.0.0",
+    "ts-jest": "^26.5.5",
+    "ts-loader": "^8.1.0",
+    "ts-node": "^9.1.1",
+    "typescript": "^4.2.4",
+    "wait-on": "^5.3.0",
+    "webpack": "^5.33.2",
+    "webpack-cli": "^4.6.0",
+    "webpack-dev-server": "^3.11.2"
+  },
+  "dependencies": {
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  }
+}
