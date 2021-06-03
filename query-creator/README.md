@@ -2,7 +2,7 @@
 
 This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI.
 
-## Deploying
+## Developing
 
 The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
 
@@ -12,14 +12,47 @@ To use the SAM CLI, you need the following tools.
 * Node.js - [Install Node.js 10](https://nodejs.org/en/), including the NPM package management tool.
 * Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
 
-To build and deploy your application for the first time, run the following in your shell:
+## Deploying
 
-```bash
-sam build
-sam deploy --guided
+Deploying currently involves three steps:
+
+1. Switching to the appropriate role in the CLI
+2. Running the deploy script
+3. Copying in secrets from the CloudFormation stack
+
+### Deploying staging
+
+The following profile needs to be added to the ~/.aws/config file that is created by the CLI, to allow you to switch
+to the AdminConcordQA role. It assumes that there is already a profile named `default` with admin privilages in the
+main account:
+
+```
+[profile concord-qa]
+role_arn = arn:aws:iam::816253370536:role/AdminConcordQA
+source_profile = default
+region = us-east-1
 ```
 
-The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts:
+1. Switch to the QA role: `export AWS_PROFILE="concord-qa"`
+2. Run the deploy script with the staging properties: `sam deploy --guided --config-env=staging`
+3. Accept all the defaults (just hit enter) except
+  1. For any non-filled-in secrets (e.g. the ReportServiceToken) find the report-service-query-creator CloudFormation
+     stack under the QA account, switch to the Parameters tab, and copy and paste the values
+  2. For "CreateQueryFunction may not have authorization defined, Is this okay?" answer `y`
+4. If there aren't unexpected changes staged, answer `y` to "Deploy this changeset?"
+5. If new secrets were written to the samconfig.toml file, edit them out before commiting changes
+
+### Deploying production
+
+1. Switch to your default role: `export AWS_PROFILE="default"`
+2. Run the deploy script with the production properties: `sam deploy --guided --config-env=production`
+
+Follow the rest of the steps from step 3 of "Deploying staging", using the CloudFormation stack from the
+production account.
+
+### Deployment properties
+
+These should all be defind in the samconfig.toml, but here is what they mean:
 
 * **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
 * **AWS Region**: The AWS region you want to deploy your app to.
