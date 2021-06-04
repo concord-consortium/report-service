@@ -1,19 +1,9 @@
 const axios = require("axios");
 const { URL } = require('url');
 
-const sequence120 = require("./firebase-data/sequence-120.json");
-
-exports.getResource = async (runnable, reportServiceSource, demo) => {
-  if (demo) {
-    if (runnable.url === "https://authoring.staging.concord.org/sequences/120") {
-      return Promise.resolve(sequence120);
-    }
-    throw new Error(`Unable to find ${runnable.url}`)
-  }
-
+exports.getResource = async (runnableUrl, reportServiceSource) => {
   const reportServiceUrl = `${process.env.REPORT_SERVICE_URL}/resource`
 
-  let runnableUrl = runnable.url;
   const searchParams = new URL(runnableUrl).searchParams;
 
   if (searchParams) {

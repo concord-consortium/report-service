@@ -26,7 +26,6 @@ describe('Tests index', function () {
 describe('Query creation', function () {
     it('verifies successful query creation', async () => {
         const testQueryId = "123456789";
-        const testRunnable = null; // isn't used yet
         const testResource = {
           url: "https://authoring.staging.concord.org/activities/000000",
           type: "activity",
@@ -63,7 +62,7 @@ describe('Query creation', function () {
           ]
         };
         const testDenormalizedResource = firebase.denormalizeResource(testResource);
-        const generatedSQLresult = await aws.generateSQL(testQueryId, testRunnable, testResource, testDenormalizedResource);
+        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource);
         const expectedSQLresult = `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
 
 SELECT

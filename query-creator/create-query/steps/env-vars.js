@@ -4,9 +4,6 @@ exports.validate = () => {
     throw new Error(`Missing required ${name} environment variable`);
   }
 
-  if (!process.env.JWT_HMAC_SECRET) {
-    missingVar("JWT_HMAC_SECRET");
-  }
   if (!process.env.OUTPUT_BUCKET) {
     missingVar("OUTPUT_BUCKET");
   }
