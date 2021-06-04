@@ -1,12 +1,26 @@
 version = 0.1
-[default]
-[default.deploy]
-[default.deploy.parameters]
+
+[staging]
+[staging.deploy]
+[staging.deploy.parameters]
 stack_name = "report-service-query-creator"
 s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-wt2wsqi9ar09"
 s3_prefix = "report-service-query-creator"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
+parameter_overrides = "OutputBucket=\"concordqa-report-data\" ReportServiceUrl=\"https://us-central1-report-service-dev.cloudfunctions.net/api\""
+
+[production]
+[production.deploy]
+[production.deploy.parameters]
+stack_name = "report-service-query-creator"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1fugzou65cjxx"
+s3_prefix = "report-service-query-creator"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "OutputBucket=\"concord-report-data\" ReportServiceUrl=\"https://us-central1-report-service-pro.cloudfunctions.net/api\""
+
 [default.local_start_api.parameters]
 profile = "QueryCreatorLocalTestUser"
