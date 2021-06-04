@@ -23,7 +23,7 @@ Deploying currently involves three steps:
 ### Deploying staging
 
 The following profile needs to be added to the ~/.aws/config file that is created by the CLI, to allow you to switch
-to the AdminConcordQA role. It assumes that there is already a profile named `default` with admin privilages in the
+to the AdminConcordQA role. It assumes that there is already a profile named `default` with admin privileges in the
 main account:
 
 ```
@@ -40,7 +40,7 @@ region = us-east-1
      stack under the QA account, switch to the Parameters tab, and copy and paste the values
   2. For "CreateQueryFunction may not have authorization defined, Is this okay?" answer `y`
 4. If there aren't unexpected changes staged, answer `y` to "Deploy this changeset?"
-5. If new secrets were written to the samconfig.toml file, edit them out before commiting changes
+5. If new secrets were written to the samconfig.toml file, edit them out before committing changes
 
 ### Deploying production
 
@@ -52,7 +52,7 @@ production account.
 
 ### Deployment properties
 
-These should all be defind in the samconfig.toml, but here is what they mean:
+These should all be defined in the samconfig.toml, but here is what they mean:
 
 * **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
 * **AWS Region**: The AWS region you want to deploy your app to.
