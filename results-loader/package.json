@@ -35,6 +35,8 @@
   },
   "scripts": {
     "start": "webpack serve",
+    "start:secure": "webpack serve --https --cert ~/.localhost-ssl/localhost.pem --key ~/.localhost-ssl/localhost.key",
+    "start:secure:no-certs": "webpack serve --https",
     "build": "npm-run-all lint:build build:webpack",
     "build:webpack": "webpack --mode production",
     "lint": "eslint \"./src/**/*.{js,jsx,ts,tsx}\"",
