@@ -11,13 +11,19 @@ export const App = () => {
   const portalUrl = "https://learn.staging.concord.org";
   const oauthClientName = "athena-results-loader";
   const [portalAccessToken, setPortalAccessToken] = useState("");
+  const [portalAccessTokenError, setPortalAccessTokenError] = useState("");
 
   const firebaseAppName = "token-service";
   const [firebaseJwt, setFirebaseJwt] = useState("");
 
 
   useEffect(() => {
-    setPortalAccessToken(readPortalAccessToken(portalUrl, oauthClientName));
+    const portalAccessTokenReturn = readPortalAccessToken(portalUrl, oauthClientName);
+    if (portalAccessTokenReturn.accessToken) {
+      setPortalAccessToken(portalAccessTokenReturn.accessToken);
+    } else if (portalAccessTokenReturn.error) {
+      setPortalAccessTokenError(portalAccessTokenReturn.error);
+    }
   }, []);
 
   useEffect(() => {
@@ -31,7 +37,7 @@ export const App = () => {
       <Header />
       <div className="content">
         { !portalAccessToken
-          ? "Authorizing in Portal..."
+          ? portalAccessTokenError ? `Portal Error: ${portalAccessTokenError}` : "Authorizing in Portal..."
           : <>
               <div className="info">{`Portal Access Token: ${portalAccessToken}`}</div>
               { !firebaseJwt
