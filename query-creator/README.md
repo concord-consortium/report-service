@@ -200,7 +200,7 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
     )
 
     CREATE EXTERNAL TABLE IF NOT EXISTS learners (
-      learner_id: string,
+      learner_id string,
       run_remote_endpoint string,
       class_id int,
       runnable_url string,
