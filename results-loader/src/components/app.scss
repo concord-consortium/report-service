@@ -28,5 +28,13 @@
     min-height: 400px;
     padding: 20px;
     box-sizing: border-box;
+    width: 100%;
+
+    .info {
+      margin: 10px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   }
 }

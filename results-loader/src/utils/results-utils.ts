@@ -29,3 +29,11 @@ export const readPortalAccessToken = (portalUrl: string, oauthClientName: string
   }
   return accessToken || "";
 };
+
+export const getFirebaseJwt = (portalUrl: string, portalAccessToken: string, firebaseAppName: string): Promise<string> => {
+  const authHeader = { Authorization: `Bearer ${portalAccessToken}` };
+  const firebaseTokenGettingUrl = `${portalUrl}/api/v1/jwt/firebase?firebase_app=${firebaseAppName}`;
+  return fetch(firebaseTokenGettingUrl, { headers: authHeader })
+    .then(response => response.json())
+    .then(json => json.token);
+};
