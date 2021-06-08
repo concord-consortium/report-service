@@ -1,4 +1,5 @@
 import ClientOAuth2 from "client-oauth2";
+import { TokenServiceClient, EnvironmentName, ResourceType, Resource, Credentials } from "@concord-consortium/token-service";
 
 const PORTAL_AUTH_PATH = "/auth/oauth_authorize";
 
@@ -42,4 +43,29 @@ export const getFirebaseJwt = (portalUrl: string, portalAccessToken: string, fir
   return fetch(firebaseTokenGettingUrl, { headers: authHeader })
     .then(response => response.json())
     .then(json => json.token);
+};
+
+interface IGetCredentials {
+  resource: Resource;
+  firebaseJwt?: string;
+  tokenServiceEnv: EnvironmentName;
+}
+export const getCredentials = async ({resource, firebaseJwt,
+  tokenServiceEnv}: IGetCredentials): Promise<Credentials> => {
+
+  // The jwt will be ignored if there is a readWriteToken on the resource
+  const client = new TokenServiceClient({ env: tokenServiceEnv, jwt: firebaseJwt })
+  const readWriteToken = client.getReadWriteToken(resource) || "";
+
+  return readWriteToken ? await client.getCredentials(resource.id, readWriteToken) :  await client.getCredentials(resource.id);
+}
+
+export const listResources = async (firebaseJwt: string, amOwner: boolean,
+  tokenServiceEnv: EnvironmentName, resourceType: ResourceType) => {
+  const client = new TokenServiceClient({ jwt: firebaseJwt, env: tokenServiceEnv });
+  return client.listResources({
+    type: resourceType,
+    tool: "example-app", // TODO: this needs to be set to valid string based on the app that created the resource
+    amOwner: amOwner ? "true" : "false"
+  });
 };

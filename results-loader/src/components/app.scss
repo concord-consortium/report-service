@@ -35,6 +35,10 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+
+      .sub-info {
+        margin-left: 20px;
+      }
     }
   }
 }
