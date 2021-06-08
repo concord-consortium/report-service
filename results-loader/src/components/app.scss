@@ -1,3 +1,5 @@
+@import "./vars.scss";
+
 #app {
   position: fixed;
   top: 0;
@@ -5,9 +7,34 @@
   right: 0;
   bottom: 0;
   display: flex;
-  align-items: center;
   justify-content: center;
-  color: #242424;
-  background-color: #dfdfdf;
+  color: $cc-charcoal;
+  background-color: $cc-teal;
+  overflow-y: auto;
 }
 
+.app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: fit-content;
+  padding: 40px;
+  font-size: 16px;
+
+  .content {
+    background-color: white;
+    width: 100%;
+    min-height: 400px;
+    padding: 20px;
+    box-sizing: border-box;
+    width: 100%;
+
+    .info {
+      margin: 10px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
