@@ -179,6 +179,8 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
 ## AWS Glue/Athena Setup
 
 1. Create a `report-service` database in AWS Glue.
+2. If running on production, replace all instances of `concordqa-report-data` below with `concord-report-data`, or
+   any other location as appropriate
 2. In Athena with the `report-service` database selected run the following:
 
     ```
@@ -191,16 +193,16 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
         structure_id STRING
     )
     ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
-    LOCATION "s3://concord-report-data/activity-structure/"
+    LOCATION "s3://concordqa-report-data/activity-structure/"
     TBLPROPERTIES
     (
         "projection.enabled" = "true",
         "projection.structure_id.type" = "injected",
-        "storage.location.template" = "s3://concord-report-data/activity-structure/${structure_id}"
+        "storage.location.template" = "s3://concordqa-report-data/activity-structure/${structure_id}"
     )
 
     CREATE EXTERNAL TABLE IF NOT EXISTS learners (
-      learner_id: string,
+      learner_id string,
       run_remote_endpoint string,
       class_id int,
       runnable_url string,
@@ -212,19 +214,19 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
       username string,
       student_name string,
       teachers array<struct<user_id: string, name: string, district: string, state: string, email: string>>,
-      last_run timestamp
+      last_run string
     )
     PARTITIONED BY
     (
         query_id STRING
     )
     ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
-    LOCATION "s3://concord-report-data/learners/"
+    LOCATION "s3://concordqa-report-data/learners/"
     TBLPROPERTIES
     (
         "projection.enabled" = "true",
         "projection.query_id.type" = "injected",
-        "storage.location.template" = "s3://concord-report-data/learners/${query_id}"
+        "storage.location.template" = "s3://concordqa-report-data/learners/${query_id}"
     )
 
     CREATE EXTERNAL TABLE IF NOT EXISTS partitioned_answers (
@@ -253,11 +255,11 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
         escaped_url STRING
     )
     ROW FORMAT SERDE 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-    LOCATION "s3://concord-report-data/partitioned-answers/"
+    LOCATION "s3://concordqa-report-data/partitioned-answers/"
     TBLPROPERTIES
     (
         "projection.enabled" = "true",
         "projection.escaped_url.type" = "injected",
-        "storage.location.template" = "s3://concord-report-data/partitioned-answers/${escaped_url}"
+        "storage.location.template" = "s3://concordqa-report-data/partitioned-answers/${escaped_url}"
     )
     ```

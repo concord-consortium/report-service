@@ -187,10 +187,38 @@ exports.generateSQL = (queryId, resource, denormalizedResource) => {
     }
   })
 
+  const metadataColumns = [
+    "runnable_url",
+    "learner_id",
+    "student_id",
+    "user_id",
+    "student_name",
+    "username",
+    "school",
+    "class",
+    "class_id",
+    "permission_forms",
+    "last_run",
+  ]
+  const nullAsMetadata = metadataColumns.map(md => `  null as ${md}`).join(",\n") + ",\n"
+  const assignMetadata = metadataColumns.map(md => `arbitrary(l.${md}) ${md}`).join(",")
+
+  const teacherMetadataColumns = [
+    ["teacher_user_ids", "user_id"],
+    ["teacher_names", "name"],
+    ["teacher_districts", "district"],
+    ["teacher_states", "state"],
+    ["teacher_emails", "email"]
+  ]
+  const teacherMetadataColumnsLabels = teacherMetadataColumns.map(tmd => tmd[0])
+  const nullAsTeacherMetadata = teacherMetadataColumnsLabels.map(md => `  null as ${md}`).join(",\n") + ",\n"
+  const assignTeacherMetaData = teacherMetadataColumns.map(tmd => `array_join(transform(teachers, teacher -> teacher.${tmd[1]}), ',') as ${tmd[0]}`)
+  const assignTeacherVar = "arbitrary(l.teachers) teachers"
+
   return `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
 
 SELECT
-  ${["null as remote_endpoint,\n  null as num_questions,\n  null as num_answers,\n  null as percent_complete"].concat(selectColumnPrompts).join(",\n  ")}
+  ${[`null as remote_endpoint,\n${nullAsMetadata}${nullAsTeacherMetadata}  null as num_questions,\n  null as num_answers,\n  null as percent_complete`].concat(selectColumnPrompts).join(",\n  ")}
 FROM activities
 
 UNION ALL
@@ -198,11 +226,13 @@ UNION ALL
 SELECT
   ${[
     "remote_endpoint",
+    ...metadataColumns,
+    ...assignTeacherMetaData,
     ...completionColumns,
     ...selectColumns
     ].join(",\n  ")}
 FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+  ( SELECT l.run_remote_endpoint remote_endpoint, ${assignMetadata}, ${assignTeacherVar}, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
     INNER JOIN "report-service"."learners" l
     ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
