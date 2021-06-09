@@ -198,6 +198,7 @@ exports.generateSQL = (queryId, resource, denormalizedResource) => {
     "class",
     "class_id",
     "permission_forms",
+    "last_run",
   ]
   const nullAsMetadata = metadataColumns.map(md => `  null as ${md}`).join(",\n") + ",\n"
   const assignMetadata = metadataColumns.map(md => `arbitrary(l.${md}) ${md}`).join(",")

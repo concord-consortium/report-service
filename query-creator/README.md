@@ -214,7 +214,7 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
       username string,
       student_name string,
       teachers array<struct<user_id: string, name: string, district: string, state: string, email: string>>,
-      last_run timestamp
+      last_run string
     )
     PARTITIONED BY
     (
