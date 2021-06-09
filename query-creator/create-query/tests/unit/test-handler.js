@@ -67,6 +67,22 @@ describe('Query creation', function () {
 
 SELECT
   null as remote_endpoint,
+  null as runnable_url,
+  null as learner_id,
+  null as student_id,
+  null as user_id,
+  null as student_name,
+  null as username,
+  null as school,
+  null as class,
+  null as class_id,
+  null as permission_forms,
+  null as last_run,
+  null as teacher_user_ids,
+  null as teacher_names,
+  null as teacher_districts,
+  null as teacher_states,
+  null as teacher_emails,
   null as num_questions,
   null as num_answers,
   null as percent_complete,
@@ -96,6 +112,22 @@ UNION ALL
 
 SELECT
   remote_endpoint,
+  runnable_url,
+  learner_id,
+  student_id,
+  user_id,
+  student_name,
+  username,
+  school,
+  class,
+  class_id,
+  permission_forms,
+  last_run,
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails,
   activities.num_questions,
   cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
   round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete,
@@ -120,7 +152,7 @@ SELECT
   json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
   kv1['managed_interactive_77777'] AS managed_interactive_77777_answer
 FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
     INNER JOIN "report-service"."learners" l
     ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
