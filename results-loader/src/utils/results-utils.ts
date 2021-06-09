@@ -52,12 +52,9 @@ interface IGetCredentials {
 }
 export const getCredentials = async ({resource, firebaseJwt,
   tokenServiceEnv}: IGetCredentials): Promise<Credentials> => {
-
   // The jwt will be ignored if there is a readWriteToken on the resource
   const client = new TokenServiceClient({ env: tokenServiceEnv, jwt: firebaseJwt });
-  const readWriteToken = client.getReadWriteToken(resource) || "";
-
-  return readWriteToken ? await client.getCredentials(resource.id, readWriteToken) :  await client.getCredentials(resource.id);
+  return client.getCredentials(resource.id);
 };
 
 export const listResources = async (firebaseJwt: string, amOwner: boolean,
