@@ -37,6 +37,7 @@
     "start": "webpack serve",
     "start:secure": "webpack serve --https --cert ~/.localhost-ssl/localhost.pem --key ~/.localhost-ssl/localhost.key",
     "start:secure:no-certs": "webpack serve --https",
+    "start:secure-windows": "webpack serve --https --inline --hot --content-base dist/ --cert ./.localhost-ssl/localhost.pem --key ./.localhost-ssl/localhost.key",
     "build": "npm-run-all lint:build build:webpack",
     "build:webpack": "webpack --mode production",
     "lint": "eslint \"./src/**/*.{js,jsx,ts,tsx}\"",
@@ -122,6 +123,7 @@
   },
   "dependencies": {
     "@concord-consortium/token-service": "^2.0.0-pre.1",
+    "aws-sdk": "^2.924.0",
     "client-oauth2": "^4.3.3",
     "react": "^17.0.2",
     "react-dom": "^17.0.2"
