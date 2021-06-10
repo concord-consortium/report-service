@@ -24,6 +24,7 @@ jobs:
         with:
           flags: jest
   cypress:
+    if: ${{ false }}  # disable for now
     runs-on: ubuntu-latest
     strategy:
       # when one test fails, DO NOT cancel the other
@@ -64,7 +65,7 @@ jobs:
     name: S3 Deploy
     needs:
       - build_test
-      - cypress
+      # - cypress
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
