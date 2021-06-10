@@ -12,7 +12,7 @@ export const App = () => {
   // const resourceType = "s3Folder";
 
   const portalUrl = "https://learn.staging.concord.org";
-  const oauthClientName = "athena-results-loader";
+  const oauthClientName = "athena-researcher-reports";
   const [portalAccessTokenStatus, setPortalAccessTokenStatus] = useState("");
   const [portalAccessToken, setPortalAccessToken] = useState("");
 

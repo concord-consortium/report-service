@@ -1,10 +1,10 @@
 {
-  "name": "results-loader",
+  "name": "researcher-reports",
   "version": "0.0.1",
   "description": "Concord Consortium results loader",
   "main": "index.js",
   "jest": {
-    "testURL": "https://results-loader.unexisting.url.com",
+    "testURL": "https://researcher-reports.unexisting.url.com",
     "setupFilesAfterEnv": [
       "<rootDir>src/setupTests.js"
     ],
