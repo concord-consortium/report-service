@@ -1,5 +1,9 @@
-name: Run Tests
-on: push
+name: Run Firestore and QueryCreator Tests
+on:
+  push:
+    paths:
+      - 'functions/**'
+      - 'query-creator/**'
 jobs:
   test_rules:
     name: Firestore Access Rule Tests
