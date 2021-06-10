@@ -24,9 +24,9 @@ You *do not* need to build to deploy the code, that is automatic.  See more info
 Production releases to S3 are based on the contents of the /dist folder and are built automatically by GitHub Actions
 for each branch pushed to GitHub and each merge into production.
 
-Merges into production are deployed to http://results-loader.concord.org.
+Merges into production are deployed to http://researcher-reports.concord.org.
 
-Other branches are deployed to http://results-loader.concord.org/branch/<name>.
+Other branches are deployed to http://researcher-reports.concord.org/branch/<name>.
 
 To deploy a production release:
 

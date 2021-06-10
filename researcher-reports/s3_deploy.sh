@@ -3,11 +3,11 @@
 # Typically this is the Project name.
 # The trailing slash is important
 # Can be set to an empty string for working at the top level of the bucket
-S3_BUCKET_PREFIX='results-loader/'
+S3_BUCKET_PREFIX='researcher-reports/'
 # AWS CloudFront distribution ID
 DISTRIBUTION_ID='E1YPVV3YLYS4J7'
 # AWS CloudFront distribution domain
-DISTRIBUTION_DOMAIN='results-loader.concord.org'
+DISTRIBUTION_DOMAIN='researcher-reports.concord.org'
 # name of branch to deploy to root of site
 ROOT_BRANCH='production'
 # Bucket to deploy to, typically this is 'model-resources', but some projects
