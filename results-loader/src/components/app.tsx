@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Resource, ResourceType, Credentials } from "@concord-consortium/token-service";
+import { Resource, ResourceType, Credentials, AthenaResource } from "@concord-consortium/token-service";
+import * as AWS from "aws-sdk";
 import { Header } from "./header";
+import { QueryItem } from "./query-item";
 import { readPortalAccessToken, getFirebaseJwt, listResources, getCredentials } from "../utils/results-utils";
 
 import "./app.scss";
@@ -83,6 +85,27 @@ export const App = () => {
     }
   }, [portalAccessToken, firebaseJwt, currentResource]);
 
+  const [queriesStatus, setQueriesStatus] = useState("");
+  const [queries, setQueries] = useState<string[] | undefined>();
+
+  useEffect(() => {
+    const handleListQueryExecutions = async () => {
+      if (!credentials || !currentResource) return;
+      setQueriesStatus("Loading queries...");
+      const { region } = currentResource as AthenaResource;
+      const { accessKeyId, secretAccessKey, sessionToken } = credentials;
+      const athena = new AWS.Athena({ region, accessKeyId, secretAccessKey, sessionToken });
+
+      const results = await athena.listQueryExecutions({
+        WorkGroup: `${currentResource.name}-${currentResource.id}`
+      }).promise();
+
+      setQueries(results.QueryExecutionIds);
+    };
+    handleListQueryExecutions();
+
+  }, [credentials, currentResource]);
+
   return (
     <div className="app">
       <Header />
@@ -115,6 +138,13 @@ export const App = () => {
               <div className="sub-info">session token: ${credentials.sessionToken.slice(0, 40)}...</div>
             </div>
           : <div>{credentialsStatus}</div>
+        }
+        { queries && <div className="info">Queries: </div>}
+        { queries
+          ? credentials && currentResource && queries?.map((query, i) =>
+              <QueryItem key={`query-${i}`} queryExecutionId={query} credentials={credentials} currentResource={currentResource} />
+            )
+          : <div>{queriesStatus}</div>
         }
       </div>
     </div>
