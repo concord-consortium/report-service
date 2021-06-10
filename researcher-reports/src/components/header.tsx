@@ -7,7 +7,7 @@ export const Header: React.FC = () => {
   return (
     <div className="header">
       <img src={Icon}/>
-      Report Results Loader
+      Researcher Reports
     </div>
   );
 };

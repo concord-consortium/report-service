@@ -1,4 +1,4 @@
-# Results Loader
+# Researcher Reports
 
 ## Development
 
@@ -66,6 +66,6 @@ Inside of your `package.json` file:
 
 ## License
 
-Results Loader are Copyright 2021 (c) by the Concord Consortium and is distributed under the [MIT license](http://www.opensource.org/licenses/MIT).
+Researcher Reports are Copyright 2021 (c) by the Concord Consortium and is distributed under the [MIT license](http://www.opensource.org/licenses/MIT).
 
 See license.md for the complete license text.

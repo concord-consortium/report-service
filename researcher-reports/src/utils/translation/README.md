@@ -1,6 +1,6 @@
-# Results Loader Localization
+# Researcher Reports Localization
 
-The modules within `utils/translation` can be used to add text localization to results loader.
+The modules within `utils/translation` can be used to add text localization to Researcher Reports.
 
 ### How to use
 

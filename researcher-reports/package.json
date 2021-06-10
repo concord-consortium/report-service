@@ -1,7 +1,7 @@
 {
   "name": "researcher-reports",
   "version": "0.0.1",
-  "description": "Concord Consortium results loader",
+  "description": "Concord Consortium researcher reports",
   "main": "index.js",
   "jest": {
     "testURL": "https://researcher-reports.unexisting.url.com",
