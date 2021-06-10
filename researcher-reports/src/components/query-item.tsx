@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import * as AWS from "aws-sdk";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const AmazonS3URI = require("amazon-s3-uri");
 import { Resource, Credentials, AthenaResource } from "@concord-consortium/token-service";
 
 import "./query-item.scss";
@@ -14,7 +16,11 @@ export const QueryItem: React.FC<IProps> = (props) => {
   const { queryExecutionId, credentials, currentResource } = props;
   const [queryExecutionStatus, setQueryExecutionStatus] = useState("Loading query information...");
   const [submissionDateTime, setSubmissionDateTime] = useState("");
-  const [outputLocation, setOutputLocation] = useState("");
+  const [outputLocationBucket, setOutputLocationBucket] = useState("");
+  const [outputLocationKey, setOutputLocationKey] = useState("");
+  const [outputLocationRegion, setOutputLocationRegion] = useState("");
+  const [downloadURLStatus, setDownloadURLStatus] = useState("");
+  const [downloadURL, setDownloadURL] = useState("");
 
   useEffect(() => {
     const handleGetQueryExecution = async () => {
@@ -27,24 +33,58 @@ export const QueryItem: React.FC<IProps> = (props) => {
       }).promise();
 
       setQueryExecutionStatus("");
+
       setSubmissionDateTime(results.QueryExecution?.Status?.SubmissionDateTime?.toUTCString() || "error");
-      setOutputLocation(results.QueryExecution?.ResultConfiguration?.OutputLocation || "error");
+
+      const outputLocation = results.QueryExecution?.ResultConfiguration?.OutputLocation;
+
+      // get and store information needed to create signed URL
+      const URIinfo = AmazonS3URI(outputLocation);
+      setOutputLocationBucket(URIinfo.bucket);
+      setOutputLocationKey(URIinfo.key);
+      setOutputLocationRegion(URIinfo.region);
     };
 
     handleGetQueryExecution();
-  }, [credentials, currentResource, queryExecutionId]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleGetSignedDownloadLink = () => {
+    setDownloadURLStatus("Generating download URL...");
+    const myConfig = new AWS.Config({
+      credentials, region: outputLocationRegion
+    });
+    const s3 = new AWS.S3(myConfig);
+    const signedUrlExpireSeconds = 60 * 10; // 10 minutes
+    const url = s3.getSignedUrl("getObject", {
+      Bucket: outputLocationBucket,
+      Key: outputLocationKey,
+      Expires: signedUrlExpireSeconds
+    });
+    if (url) {
+      setDownloadURL(url);
+      setDownloadURLStatus("");
+    } else {
+      setDownloadURLStatus("Error generating download URL...");
+    }
+  };
 
   return (
     <div className="query-item">
       { queryExecutionStatus
         ? queryExecutionStatus
-        : <>
-            <div>
-              <div className="item-info">{`Creation date: ${submissionDateTime}`}</div>
-              <div className="item-info">{`Output location: ${outputLocation}`}</div>
-            </div>
-            <button>Generate Download Link</button>
-          </>
+        : <div className="info-container">
+            <div className="item-info">{`Creation date: ${submissionDateTime}`}</div>
+            { !downloadURL
+              ? <button onClick={handleGetSignedDownloadLink}>Generate CSV Download Link</button>
+              : <>
+                  <div className="item-info">Download CSV:</div>
+                  { downloadURLStatus
+                    ? <div className="item-info">{downloadURLStatus}</div>
+                    : <div className="item-info"><a href={downloadURL}>{downloadURL}</a></div>
+                  }
+                </>
+            }
+          </div>
       }
     </div>
   );

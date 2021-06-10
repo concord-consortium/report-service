@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   height: 60px;
-  width: 100%;
+  width: calc(100% - 80px);
   font-size: 24px;
   font-weight: bold;
   background-color: $cc-teal-light4;
