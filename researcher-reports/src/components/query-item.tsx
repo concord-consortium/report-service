@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import * as AWS from "aws-sdk";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const AmazonS3URI = require("amazon-s3-uri");
+import AmazonS3URI from "amazon-s3-uri";
 import { Resource, Credentials, AthenaResource } from "@concord-consortium/token-service";
 
 import "./query-item.scss";
