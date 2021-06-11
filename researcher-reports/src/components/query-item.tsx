@@ -32,17 +32,25 @@ export const QueryItem: React.FC<IProps> = (props) => {
         QueryExecutionId: queryExecutionId
       }).promise();
 
-      setQueryExecutionStatus("");
-
-      setSubmissionDateTime(results.QueryExecution?.Status?.SubmissionDateTime?.toUTCString() || "error");
+      setSubmissionDateTime(results.QueryExecution?.Status?.SubmissionDateTime?.toUTCString()
+       || "Error getting query submission date and time");
 
       const outputLocation = results.QueryExecution?.ResultConfiguration?.OutputLocation;
 
       // get and store information needed to create signed URL
-      const URIinfo = AmazonS3URI(outputLocation);
-      setOutputLocationBucket(URIinfo.bucket);
-      setOutputLocationKey(URIinfo.key);
-      setOutputLocationRegion(URIinfo.region);
+      if (outputLocation) {
+        const URIinfo = AmazonS3URI(outputLocation);
+        if (URIinfo.bucket && URIinfo.key && URIinfo.region) {
+          setOutputLocationBucket(URIinfo.bucket);
+          setOutputLocationKey(URIinfo.key);
+          setOutputLocationRegion(URIinfo.region);
+          setQueryExecutionStatus("");
+        } else {
+          setQueryExecutionStatus("Error getting query output location URI info");
+        }
+      } else {
+        setQueryExecutionStatus("Error getting query output location");
+      }
     };
 
     handleGetQueryExecution();
