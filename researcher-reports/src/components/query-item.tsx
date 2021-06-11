@@ -77,7 +77,7 @@ export const QueryItem: React.FC<IProps> = (props) => {
             { !downloadURL
               ? <button onClick={handleGetSignedDownloadLink}>Generate CSV Download Link</button>
               : <>
-                  <div className="item-info">Download CSV:</div>
+                  <div className="item-info">Download CSV (link valid for 10 minutes):</div>
                   { downloadURLStatus
                     ? <div className="item-info">{downloadURLStatus}</div>
                     : <div className="item-info"><a href={downloadURL}>{downloadURL}</a></div>
