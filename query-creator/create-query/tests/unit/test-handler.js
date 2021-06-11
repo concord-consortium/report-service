@@ -54,7 +54,9 @@ describe('Query creation', function () {
                     { id: "managed_interactive_66666", type: "multiple_choice", prompt: "AP mc prompt", required: false,
                       choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
                     },
-                    { id: "managed_interactive_77777", type: "image_question", prompt: "AP image prompt", required: false}
+                    { id: "managed_interactive_77777", type: "image_question", prompt: "AP image prompt", required: false},
+                    { id: "managed_interactive_88888", type: "iframe_interactive"},
+                    { id: "managed_interactive_99999", type: "unknown_type"}
                   ]
                 }
               ]
@@ -105,7 +107,9 @@ SELECT
   activities.questions['managed_interactive_66666'].prompt AS managed_interactive_66666_choice,
   activities.questions['managed_interactive_77777'].prompt AS managed_interactive_77777_image_url,
   null AS managed_interactive_77777_text,
-  null AS managed_interactive_77777_answer
+  null AS managed_interactive_77777_answer,
+  null AS managed_interactive_88888_json,
+  null AS managed_interactive_99999_json
 FROM activities
 
 UNION ALL
@@ -150,7 +154,9 @@ SELECT
   array_join(transform(CAST(json_extract(kv1['managed_interactive_66666'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['managed_interactive_66666'][x].content, IF(activities.choices['managed_interactive_66666'][x].correct,' (correct)',' (wrong)'))),', ') AS managed_interactive_66666_choice,
   json_extract_scalar(kv1['managed_interactive_77777'], '$.image_url') AS managed_interactive_77777_image_url,
   json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
-  kv1['managed_interactive_77777'] AS managed_interactive_77777_answer
+  kv1['managed_interactive_77777'] AS managed_interactive_77777_answer,
+  kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
+  kv1['managed_interactive_99999'] AS managed_interactive_99999_json
 FROM activities,
   ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
