@@ -177,11 +177,15 @@ exports.generateSQL = (queryId, resource, denormalizedResource) => {
           selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
         }
         break;
+      case "iframe_interactive":
+        selectColumnPrompts.push(`null AS ${questionId}_json`);
+        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_json`);
+        break;
       case "managed_interactive":
       case "mw_interactive":
-        // TODO: add support for custom report fields
-        break;
       default:
+        selectColumnPrompts.push(`null AS ${questionId}_json`);
+        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_json`);
         console.info(`Unknown question type: ${type}`);
         break;
     }
