@@ -11,6 +11,7 @@
   color: $cc-charcoal;
   background-color: $cc-teal;
   overflow-y: auto;
+  user-select: text;
 }
 
 .app {
@@ -19,16 +20,15 @@
   align-items: center;
   width: 100%;
   height: fit-content;
-  padding: 40px;
+  padding: 40px 0;
   font-size: 16px;
 
   .content {
     background-color: white;
-    width: 100%;
     min-height: 400px;
     padding: 20px;
     box-sizing: border-box;
-    width: 100%;
+    width: calc(100% - 80px);
 
     .info {
       margin: 10px 0;

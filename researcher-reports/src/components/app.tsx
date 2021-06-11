@@ -142,8 +142,12 @@ export const App = () => {
         { queries && <div className="info">Queries: </div>}
         { queries
           ? credentials && currentResource && queries?.map((query, i) =>
-              <QueryItem key={`query-${i}`} queryExecutionId={query} credentials={credentials} currentResource={currentResource} />
-            )
+            <QueryItem
+              key={`query-${i}`}
+              queryExecutionId={query}
+              credentials={credentials}
+              currentResource={currentResource}
+            /> )
           : <div>{queriesStatus}</div>
         }
       </div>

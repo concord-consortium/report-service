@@ -123,6 +123,7 @@
   },
   "dependencies": {
     "@concord-consortium/token-service": "^2.0.0-pre.1",
+    "amazon-s3-uri": "^0.1.1",
     "aws-sdk": "^2.924.0",
     "client-oauth2": "^4.3.3",
     "react": "^17.0.2",
