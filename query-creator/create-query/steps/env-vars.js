@@ -13,4 +13,7 @@ exports.validate = () => {
   if (!process.env.REPORT_SERVICE_URL) {
     missingVar("REPORT_SERVICE_URL");
   }
+  if (!process.env.RESEARCHER_REPORTS_URL) {
+    missingVar("RESEARCHER_REPORTS_URL");
+  }
 }
