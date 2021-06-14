@@ -50,9 +50,7 @@ exports.lambdaHandler = async (event, context) => {
       const sql = aws.generateSQL(queryId, resource, denormalizedResource)
 
       // create the athena query in the workgroup
-      const query = await aws.createQuery(queryId, user, sql, workgroup)
-
-      debugSQL.push(`-- ${resource.id}\n\n${sql}`);
+      await aws.startQueryExecution(sql, workgroupName)
     }
 
     // TODO: redirect the user to the result loader

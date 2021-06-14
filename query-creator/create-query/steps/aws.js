@@ -266,3 +266,15 @@ exports.createQuery = async (queryId, user, sql, workgroup) => {
 
   return Promise.resolve(undefined)
 }
+
+exports.startQueryExecution = async (sql, workgroupName) => {
+  const athena = new AWS.Athena({apiVersion: '2017-05-18'});
+  var params = {
+    QueryString: sql,
+    QueryExecutionContext: {
+      Database: "report-service"
+    },
+    WorkGroup: workgroupName
+  };
+  return athena.startQueryExecution(params).promise();
+}
