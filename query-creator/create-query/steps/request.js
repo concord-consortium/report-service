@@ -34,8 +34,8 @@ exports.validateRequestBody = (body) => {
   body.json = json;
 }
 
-exports.getLearnerDataWithJwt = (reportServiceUrl, queryParams, jwt) => {
-  return axios.post(reportServiceUrl, queryParams,
+exports.getLearnerDataWithJwt = (learnersApiUrl, queryParams, jwt) => {
+  return axios.post(learnersApiUrl, queryParams,
     {
       headers: {
         "Authorization": `Bearer/JWT ${jwt}`
