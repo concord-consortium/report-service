@@ -10,9 +10,6 @@ import "./app.scss";
 type ResourceMap = {[key: string]: Resource};
 
 export const App = () => {
-  // const tokenServiceEnv = "staging";
-  // const resourceType = "s3Folder";
-
   const portalUrl = "https://learn.staging.concord.org";
   const oauthClientName = "athena-researcher-reports";
   const [portalAccessTokenStatus, setPortalAccessTokenStatus] = useState("");
@@ -26,7 +23,6 @@ export const App = () => {
   const [resourcesStatus, setResourcesStatus] = useState("");
   const [resources, setResources] = useState({} as ResourceMap);
   const [currentResource, setCurrentResource] = useState<Resource | undefined>();
-  const resourceType = "athenaWorkgroup";
 
   const [credentialsStatus, setCredentialsStatus] = useState("");
   const [credentials, setCredentials] = useState<Credentials | undefined>();
@@ -51,7 +47,7 @@ export const App = () => {
   useEffect(() => {
     const handleListMyResources = async () => {
       setResourcesStatus("Loading resources...");
-      const resourceList = await listResources(firebaseJwt, true, tokenServiceEnv, resourceType as ResourceType);
+      const resourceList = await listResources(firebaseJwt, tokenServiceEnv);
       if(resourceList.length === 0) {
         setResourcesStatus("No resources found");
       } else {

@@ -57,12 +57,11 @@ export const getCredentials = async ({resource, firebaseJwt,
   return client.getCredentials(resource.id);
 };
 
-export const listResources = async (firebaseJwt: string, amOwner: boolean,
-  tokenServiceEnv: EnvironmentName, resourceType: ResourceType) => {
+export const listResources = async (firebaseJwt: string, tokenServiceEnv: EnvironmentName) => {
   const client = new TokenServiceClient({ jwt: firebaseJwt, env: tokenServiceEnv });
   return client.listResources({
-    type: resourceType,
+    type: "athenaWorkgroup",
     tool: "researcher-report",
-    amOwner: amOwner ? "true" : "false"
+    amOwner: "true"
   });
 };
