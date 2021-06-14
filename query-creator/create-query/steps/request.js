@@ -73,3 +73,12 @@ exports.getLearnersPerRunnable = (learners) => {
     return runnable
   })
 }
+
+exports.getFirebaseJwt = async (portalUrl, jwt) => {
+  const authHeader = {
+    "Authorization": `Bearer/JWT ${jwt}`
+  };
+  const firebaseTokenGettingUrl = `${portalUrl}/api/v1/jwt/firebase?firebase_app=token-service`;
+  return axios.get(firebaseTokenGettingUrl, { headers: authHeader })
+    .then(response => response.data.token)
+};

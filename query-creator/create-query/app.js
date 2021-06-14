@@ -27,7 +27,11 @@ exports.lambdaHandler = async (event, context) => {
     const workgroup = await aws.ensureWorkgroup(user);
     await tokenService.addWorkgroup(workgroup);
 
-    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, workgroup);
+    const portalUrl = learnersApiUrl.match(/(.*)\/api\/v[0-9]+/)[1];
+
+    const firebaseToken = await request.getFirebaseJwt(portalUrl, jwt);
+
+    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
 
     const debugSQL = [];
 
