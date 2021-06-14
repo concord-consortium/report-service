@@ -11,6 +11,8 @@ exports.lambdaHandler = async (event, context) => {
 
     // get the report service source from the url
     const reportServiceSource = params.reportServiceSource;
+    const debugSQL = params.debugSQL || false;
+
     if (!reportServiceSource) {
       throw new Error("Missing reportServiceSource in the report url");
     }
@@ -34,7 +36,7 @@ exports.lambdaHandler = async (event, context) => {
 
     const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
 
-    const debugSQL = [];
+    const sqlOutput = [];
 
     for (const runnableUrl in queryIdsPerRunnable) {
       const queryId = queryIdsPerRunnable[runnableUrl];
@@ -49,14 +51,20 @@ exports.lambdaHandler = async (event, context) => {
       // generate the sql for the query
       const sql = aws.generateSQL(queryId, resource, denormalizedResource)
 
-      // create the athena query in the workgroup
-      await aws.startQueryExecution(sql, workgroupName)
+      if (debugSQL) {
+        sqlOutput.push(`-- ${resource.id}\n\n${sql}`);
+      } else {
+        // create the athena query in the workgroup
+        await aws.startQueryExecution(sql, workgroupName)
+      }
     }
+
+    const message = sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success"
 
     // TODO: redirect the user to the result loader
     return {
       statusCode: 200,
-      body: debugSQL.join("\n\n------\n\n")
+      body: message
     }
   } catch (err) {
     console.log(err);
