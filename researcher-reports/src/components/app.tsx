@@ -3,14 +3,14 @@ import { Resource, ResourceType, Credentials, AthenaResource } from "@concord-co
 import * as AWS from "aws-sdk";
 import { Header } from "./header";
 import { QueryItem } from "./query-item";
-import { readPortalAccessToken, getFirebaseJwt, listResources, getCredentials } from "../utils/results-utils";
+import { readPortalAccessToken, getFirebaseJwt, listResources, getCredentials, getURLParam } from "../utils/results-utils";
 
 import "./app.scss";
 
 type ResourceMap = {[key: string]: Resource};
 
 export const App = () => {
-  const portalUrl = "https://learn.staging.concord.org";
+  const portalUrl = getURLParam("portal") || "https://learn.concord.org";
   const oauthClientName = "athena-researcher-reports";
   const [portalAccessTokenStatus, setPortalAccessTokenStatus] = useState("");
   const [portalAccessToken, setPortalAccessToken] = useState("");

@@ -3,7 +3,7 @@ import { TokenServiceClient, EnvironmentName, ResourceType, Resource, Credential
 
 const PORTAL_AUTH_PATH = "/auth/oauth_authorize";
 
-const getURLParam = (name: string) => {
+export const getURLParam = (name: string) => {
   const url = (self || window).location.href;
   name = name.replace(/[[]]/g, "\\$&");
   const regex = new RegExp(`[#?&]${name}(=([^&#]*)|&|#|$)`);
@@ -31,7 +31,9 @@ export const readPortalAccessToken = (portalUrl: string, oauthClientName: string
     // c.f. https://stackoverflow.com/questions/22753052/remove-url-parameters-without-refreshing-page
     if (window.history?.pushState !== undefined) {
       // if pushstate exists, add a new state to the history, this changes the url without reloading the page
-      window.history.pushState({}, document.title, window.location.pathname);
+      // preserve the portal url parameter
+      const appUrl = window.location.pathname + "?portal=" + getURLParam("portal");
+      window.history.pushState({}, document.title, appUrl);
     }
   }
   return {accessToken: accessToken || "", error};
