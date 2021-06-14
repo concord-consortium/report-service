@@ -71,12 +71,14 @@ exports.lambdaHandler = async (event, context) => {
         body: message
       }
     } else {
-      message += "\n\nRedirecting to " + process.env.RESEARCHER_REPORTS_URL
+      const escapedPortalUrl = encodeURIComponent(portalUrl)
+      const reportsUrl =  `${process.env.RESEARCHER_REPORTS_URL}?portal=${escapedPortalUrl}`
+      message += "\n\nRedirecting to " + reportsUrl;
 
       return {
         statusCode: 302,
         headers: {
-          Location: process.env.RESEARCHER_REPORTS_URL,
+          Location: reportsUrl,
         },
         body: message
       }
