@@ -7,8 +7,10 @@
   "author": "SAM CLI",
   "license": "MIT",
   "dependencies": {
+    "@concord-consortium/token-service": "^2.0.0-pre.2",
     "aws-sdk": "^2.702.0",
     "axios": "^0.21.1",
+    "node-fetch": "^2.6.1",
     "query-string": "^6.13.1",
     "uuid": "^8.1.0"
   },

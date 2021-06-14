@@ -4,9 +4,9 @@ const request = require("./request");
 
 const PAGE_SIZE = 1000;
 
-exports.ensureWorkgroup = async (user) => {
+exports.ensureWorkgroup = async (resource, user) => {
   const athena = new AWS.Athena({apiVersion: '2017-05-18'});
-  const workgroupName = `${user.id} ${user.email}`.replace(/[^a-z0-9]/g, "-")
+  const workgroupName = `${resource.name}-${resource.id}`;
 
   let workgroup
   try {
@@ -15,19 +15,11 @@ exports.ensureWorkgroup = async (user) => {
     workgroup = await athena.createWorkGroup({
       Name: workgroupName,
       Configuration: {
-        // BytesScannedCutoffPerQuery: 'NUMBER_VALUE',
-        // EnforceWorkGroupConfiguration: true || false,
-        // PublishCloudWatchMetricsEnabled: true || false,
-        // RequesterPaysEnabled: true || false,
         ResultConfiguration: {
-          // EncryptionConfiguration: {
-          //  EncryptionOption: SSE_S3 | SSE_KMS | CSE_KMS, // required
-          //  KmsKey: 'STRING_VALUE'
-          // },
           OutputLocation: `s3://${process.env.OUTPUT_BUCKET}/workgroup-output/${workgroupName}`
         }
       },
-      Description: `Report service workgroup for ${user.email}`,
+      Description: resource.description,
       Tags: [
         {
           Key: "email",
@@ -37,10 +29,10 @@ exports.ensureWorkgroup = async (user) => {
     }).promise()
   }
 
-  return workgroup.WorkGroup;
+  return workgroupName;
 }
 
-const uploadLearnerData = async (queryId, learners, workgroup) => {
+const uploadLearnerData = async (queryId, learners) => {
   const uuid = uuidv4();
   const body = learners
     .map(l => JSON.stringify(l))
@@ -63,7 +55,7 @@ const uploadLearnerData = async (queryId, learners, workgroup) => {
  *
  * @returns queryIdsPerRunnable as {[runnable_url]: queryId}
  */
-exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, workgroup) => {
+exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl) => {
   const queryIdsPerRunnable = {};     // {[runnable_url]: queryId}
   const queryParams = {
     query,
@@ -87,7 +79,7 @@ exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, workgroup
           queryId = uuidv4();
           queryIdsPerRunnable[runnableUrl] = queryId;
         }
-        await uploadLearnerData(queryId, learners, workgroup);
+        await uploadLearnerData(queryId, learners);
       };
 
       if (res.json.learners.length < PAGE_SIZE) {
@@ -103,7 +95,7 @@ exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, workgroup
   return queryIdsPerRunnable;
 }
 
-exports.uploadDenormalizedResource = async (queryId, denormalizedResource, workgroup) => {
+exports.uploadDenormalizedResource = async (queryId, denormalizedResource) => {
   const s3 = new AWS.S3({apiVersion: '2006-03-01'});
   await s3.putObject({
     Bucket: process.env.OUTPUT_BUCKET,

@@ -23,13 +23,14 @@ exports.lambdaHandler = async (event, context) => {
     request.validateRequestBody(body);
     const { json, jwt } = body;
     const { query, learnersApiUrl, user } = json;
-    // ensure create athena workgroup is created for the user and is added to token service
-    const workgroup = await aws.ensureWorkgroup(user);
-    await tokenService.addWorkgroup(workgroup);
+    let { email } = user;
 
     const portalUrl = learnersApiUrl.match(/(.*)\/api\/v[0-9]+/)[1];
 
     const firebaseToken = await request.getFirebaseJwt(portalUrl, jwt);
+
+    const resource = await tokenService.findOrCreateResource(firebaseToken, email, portalUrl);
+    const workgroupName = await aws.ensureWorkgroup(resource, user);
 
     const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
 
@@ -43,7 +44,7 @@ exports.lambdaHandler = async (event, context) => {
       const denormalizedResource = firebase.denormalizeResource(resource);
 
       // upload the denormalized resource to s3 and tie it to the workgroup
-      await aws.uploadDenormalizedResource(queryId, denormalizedResource, workgroup);
+      await aws.uploadDenormalizedResource(queryId, denormalizedResource);
 
       // generate the sql for the query
       const sql = aws.generateSQL(queryId, resource, denormalizedResource)
