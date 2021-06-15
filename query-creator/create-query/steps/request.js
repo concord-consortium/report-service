@@ -74,7 +74,7 @@ exports.getLearnersPerRunnable = (learners) => {
   })
 }
 
-exports.getFirebaseJwt = async (portalUrl, jwt) => {
+exports.getTokenServiceJwt = async (portalUrl, jwt) => {
   const authHeader = {
     "Authorization": `Bearer/JWT ${jwt}`
   };

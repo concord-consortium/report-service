@@ -5,8 +5,8 @@ const tokenServiceEnv = "staging";
 const resourceType = "athenaWorkgroup";
 const resourceTool = "researcher-report";
 
-exports.findOrCreateResource = async (firebaseJwt, email, portalUrl) => {
-  const client = new TokenServiceClient({ jwt: firebaseJwt, env: tokenServiceEnv, fetch});
+exports.findOrCreateResource = async (tokenServiceJwt, email, portalUrl) => {
+  const client = new TokenServiceClient({ jwt: tokenServiceJwt, env: tokenServiceEnv, fetch});
 
   let resource;
   const escapedEmail = email.replace(/[^\w]/g,'-');

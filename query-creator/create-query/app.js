@@ -29,9 +29,9 @@ exports.lambdaHandler = async (event, context) => {
 
     const portalUrl = learnersApiUrl.match(/(.*)\/api\/v[0-9]+/)[1];
 
-    const firebaseToken = await request.getFirebaseJwt(portalUrl, jwt);
+    const tokenServiceJwt = await request.getTokenServiceJwt(portalUrl, jwt);
 
-    const resource = await tokenService.findOrCreateResource(firebaseToken, email, portalUrl);
+    const resource = await tokenService.findOrCreateResource(tokenServiceJwt, email, portalUrl);
     const workgroupName = await aws.ensureWorkgroup(resource, user);
 
     const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
