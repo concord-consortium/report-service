@@ -11,8 +11,14 @@ exports.lambdaHandler = async (event, context) => {
 
     // get the report service source from the url
     const reportServiceSource = params.reportServiceSource;
+    const debugSQL = params.debugSQL || false;
+    const tokenServiceEnv = params.tokenServiceEnv;
+
     if (!reportServiceSource) {
       throw new Error("Missing reportServiceSource in the report url");
+    }
+    if (!tokenServiceEnv) {
+      throw new Error("Missing tokenServiceEnv in the report url");
     }
 
     // ensure all the environment variables exist
@@ -23,13 +29,18 @@ exports.lambdaHandler = async (event, context) => {
     request.validateRequestBody(body);
     const { json, jwt } = body;
     const { query, learnersApiUrl, user } = json;
-    // ensure create athena workgroup is created for the user and is added to token service
-    const workgroup = await aws.ensureWorkgroup(user);
-    await tokenService.addWorkgroup(workgroup);
+    let { email } = user;
 
-    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, workgroup);
+    const portalUrl = learnersApiUrl.match(/(.*)\/api\/v[0-9]+/)[1];
 
-    const debugSQL = [];
+    const tokenServiceJwt = await request.getTokenServiceJwt(portalUrl, jwt);
+
+    const resource = await tokenService.findOrCreateResource(tokenServiceJwt, tokenServiceEnv, email, portalUrl);
+    const workgroupName = await aws.ensureWorkgroup(resource, user);
+
+    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
+
+    const sqlOutput = [];
 
     for (const runnableUrl in queryIdsPerRunnable) {
       const queryId = queryIdsPerRunnable[runnableUrl];
@@ -39,21 +50,25 @@ exports.lambdaHandler = async (event, context) => {
       const denormalizedResource = firebase.denormalizeResource(resource);
 
       // upload the denormalized resource to s3 and tie it to the workgroup
-      await aws.uploadDenormalizedResource(queryId, denormalizedResource, workgroup);
+      await aws.uploadDenormalizedResource(queryId, denormalizedResource);
 
       // generate the sql for the query
       const sql = aws.generateSQL(queryId, resource, denormalizedResource)
 
-      // create the athena query in the workgroup
-      const query = await aws.createQuery(queryId, user, sql, workgroup)
-
-      debugSQL.push(`-- ${resource.id}\n\n${sql}`);
+      if (debugSQL) {
+        sqlOutput.push(`-- ${resource.id}\n\n${sql}`);
+      } else {
+        // create the athena query in the workgroup
+        await aws.startQueryExecution(sql, workgroupName)
+      }
     }
+
+    const message = sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success"
 
     // TODO: redirect the user to the result loader
     return {
       statusCode: 200,
-      body: debugSQL.join("\n\n------\n\n")
+      body: message
     }
   } catch (err) {
     console.log(err);

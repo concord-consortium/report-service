@@ -62,7 +62,7 @@ export const listResources = async (firebaseJwt: string, amOwner: boolean,
   const client = new TokenServiceClient({ jwt: firebaseJwt, env: tokenServiceEnv });
   return client.listResources({
     type: resourceType,
-    tool: "example-app", // TODO: this needs to be set to valid string based on the app that created the resource
+    tool: "researcher-report",
     amOwner: amOwner ? "true" : "false"
   });
 };
