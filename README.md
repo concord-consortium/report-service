@@ -1,17 +1,44 @@
 # Report Service
-Ingest student runs and activity structure in order to run report queries later.
 
-## Scripts
+This repo contains a seriers of related projects that enable researchers to run reports on portal learner data.
 
-Includes the export-answers script for copying all student answers from Firestore into S3 as Parquet files
+A detailed description of the system can be found at https://docs.google.com/document/d/1F4ozfQOjzZfMMYdGiPp0MGWpAxjTbMa6lDIvPSnuNcI/
 
-See [scripts/README.md](scripts/README.md)
+The high-level parts:
 
-## Firebase functions
+* **Scripts**: Pushes old learner data from Firestore into S3, for access by Athena. See
+    [scripts/README.md](scripts/README.md)
+* **Functions**: Keeps new learner data synced to S3, as well as activity structures. See
+     [functions/README.md](functions/README.md)
+* **Query-Creator**: A Lambda application written with AWS SAM which is launched by the portal as an
+    external report. It collects together all the data that Athena will need to run a query, constructs
+    the SQL for the query, and kicks off an Athena query under a personal workgroup for the researcher.
+    See [query-creator/README.md](query-creator/README.md)
+* **Reseacher-Reports**: An application a researcher can use to list their reports and generate a
+    short-lived url to download the data. See [researcher-reports/README.md](researcher-reports/README.md)
 
-Includes the API and the auto-update function for student answers.
+## Setting up a new report on a portal
 
-See [functions/README.md](functions/README.md)
+1. Add new new external report from the portal's admin section. The URL should be to the query-creator
+   API endpoint, plus two url parameters, `reportServiceSource`, which points to the source used for the
+   report service API, and `tokenServiceEnv`, which is the env name for the token-service. E.g.
+   ```
+     https://bn84q7k6u0.execute-api.us-east-1.amazonaws.com/Prod/create-query/?reportServiceSource=authoring.staging.concord.org&tokenServiceEnv=staging
+   ```
+2. Ensure there is a resourceSettings doc for the tool `researcher-report` for the appropriate token-service
+   env. For example, the one for staging is at
+   https://console.firebase.google.com/project/token-service-staging/firestore/data~2Fstaging:resourceSettings~2FmIVQo4W7ZwjGr0v4in8W
+3. Ensure there is an Auth client in the portal (for in the admin section) for the researcher-reports app
+   that includes the portal domain as a url parameter in the Allowed Redirect URIs list. For portals that
+   launch reports from another domain, that other domain should be included as well. E.g.
+   ```
+     https://researcher-reports.concord.org/?portal=https%3A%2F%2Flearn.concord.org
+     https://researcher-reports.concord.org/?portal=https%3A%2F%2Flearn-report.concord.org
+   ```
+
+
+## Other stuff
+
 
 ### Anonymous Reports
 
