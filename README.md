@@ -8,8 +8,9 @@ The high-level parts:
 
 * **Scripts**: Pushes old learner data from Firestore into S3, for access by Athena. See
     [scripts/README.md](scripts/README.md)
-* **Functions**: Keeps new learner data synced to S3, as well as activity structures. See
-     [functions/README.md](functions/README.md)
+* **Functions**: Keeps new learner data synced to S3. This also provides the API used LARA to
+    send learner data and activity structure to FireStore, and an API used by the portal to move
+    learner data from one class to another. See [functions/README.md](functions/README.md)
 * **Query-Creator**: A Lambda application written with AWS SAM which is launched by the portal as an
     external report. It collects together all the data that Athena will need to run a query, constructs
     the SQL for the query, and kicks off an Athena query under a personal workgroup for the researcher.
@@ -28,6 +29,7 @@ The high-level parts:
 2. Ensure there is a resourceSettings doc for the tool `researcher-report` for the appropriate token-service
    env. For example, the one for staging is at
    https://console.firebase.google.com/project/token-service-staging/firestore/data~2Fstaging:resourceSettings~2FmIVQo4W7ZwjGr0v4in8W
+   See https://github.com/concord-consortium/token-service/#creating-new-athenaworkgrouptools for details.
 3. Ensure there is an Auth client in the portal (for in the admin section) for the researcher-reports app
    that includes the portal domain as a url parameter in the Allowed Redirect URIs list. For portals that
    launch reports from another domain, that other domain should be included as well. E.g.
