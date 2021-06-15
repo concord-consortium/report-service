@@ -1,6 +1,6 @@
 # Report Service
 
-This repo contains a seriers of related projects that enable researchers to run reports on portal learner data.
+This repo contains a series of related projects that enable researchers to run reports on portal learner data.
 
 A detailed description of the system can be found at https://docs.google.com/document/d/1F4ozfQOjzZfMMYdGiPp0MGWpAxjTbMa6lDIvPSnuNcI/
 
@@ -14,12 +14,12 @@ The high-level parts:
     external report. It collects together all the data that Athena will need to run a query, constructs
     the SQL for the query, and kicks off an Athena query under a personal workgroup for the researcher.
     See [query-creator/README.md](query-creator/README.md)
-* **Reseacher-Reports**: An application a researcher can use to list their reports and generate a
+* **Researcher-Reports**: An application a researcher can use to list their reports and generate a
     short-lived url to download the data. See [researcher-reports/README.md](researcher-reports/README.md)
 
 ## Setting up a new report on a portal
 
-1. Add new new external report from the portal's admin section. The URL should be to the query-creator
+1. Add new external report from the portal's admin section. The URL should be to the query-creator
    API endpoint, plus two url parameters, `reportServiceSource`, which points to the source used for the
    report service API, and `tokenServiceEnv`, which is the env name for the token-service. E.g.
    ```
