@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Resource, ResourceType, Credentials, AthenaResource } from "@concord-consortium/token-service";
+import { Resource, Credentials, AthenaResource } from "@concord-consortium/token-service";
 import * as AWS from "aws-sdk";
 import { Header } from "./header";
 import { QueryItem } from "./query-item";
@@ -35,14 +35,14 @@ export const App = () => {
     } else if (portalAccessTokenReturn.error) {
       setPortalAccessTokenStatus(portalAccessTokenReturn.error);
     }
-  }, []);
+  }, [portalUrl]);
 
   useEffect(() => {
     if (portalAccessToken) {
       setFirebaseJwtStatus("Getting Firebase JWT...");
       getFirebaseJwt(portalUrl, portalAccessToken, firebaseAppName).then(token => setFirebaseJwt(token));
     }
-  }, [portalAccessToken]);
+  }, [portalAccessToken, portalUrl]);
 
   useEffect(() => {
     const handleListMyResources = async () => {

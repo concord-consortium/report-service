@@ -1,5 +1,5 @@
 import ClientOAuth2 from "client-oauth2";
-import { TokenServiceClient, EnvironmentName, ResourceType, Resource, Credentials } from "@concord-consortium/token-service";
+import { TokenServiceClient, EnvironmentName, Resource, Credentials } from "@concord-consortium/token-service";
 
 const PORTAL_AUTH_PATH = "/auth/oauth_authorize";
 
