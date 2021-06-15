@@ -63,12 +63,25 @@ exports.lambdaHandler = async (event, context) => {
       }
     }
 
-    const message = sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success"
+    let message = sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success"
 
-    // TODO: redirect the user to the result loader
-    return {
-      statusCode: 200,
-      body: message
+    if (debugSQL) {
+      return {
+        statusCode: 200,
+        body: message
+      }
+    } else {
+      const escapedPortalUrl = encodeURIComponent(portalUrl)
+      const reportsUrl =  `${process.env.RESEARCHER_REPORTS_URL}?portal=${escapedPortalUrl}`
+      message += "\n\nRedirecting to " + reportsUrl;
+
+      return {
+        statusCode: 302,
+        headers: {
+          Location: reportsUrl,
+        },
+        body: message
+      }
     }
   } catch (err) {
     console.log(err);

@@ -1,9 +1,9 @@
 import ClientOAuth2 from "client-oauth2";
-import { TokenServiceClient, EnvironmentName, ResourceType, Resource, Credentials } from "@concord-consortium/token-service";
+import { TokenServiceClient, EnvironmentName, Resource, Credentials } from "@concord-consortium/token-service";
 
 const PORTAL_AUTH_PATH = "/auth/oauth_authorize";
 
-const getURLParam = (name: string) => {
+export const getURLParam = (name: string) => {
   const url = (self || window).location.href;
   name = name.replace(/[[]]/g, "\\$&");
   const regex = new RegExp(`[#?&]${name}(=([^&#]*)|&|#|$)`);
@@ -31,7 +31,9 @@ export const readPortalAccessToken = (portalUrl: string, oauthClientName: string
     // c.f. https://stackoverflow.com/questions/22753052/remove-url-parameters-without-refreshing-page
     if (window.history?.pushState !== undefined) {
       // if pushstate exists, add a new state to the history, this changes the url without reloading the page
-      window.history.pushState({}, document.title, window.location.pathname);
+      // preserve the portal url parameter
+      const appUrl = window.location.pathname + "?portal=" + getURLParam("portal");
+      window.history.pushState({}, document.title, appUrl);
     }
   }
   return {accessToken: accessToken || "", error};
@@ -57,12 +59,11 @@ export const getCredentials = async ({resource, firebaseJwt,
   return client.getCredentials(resource.id);
 };
 
-export const listResources = async (firebaseJwt: string, amOwner: boolean,
-  tokenServiceEnv: EnvironmentName, resourceType: ResourceType) => {
+export const listResources = async (firebaseJwt: string, tokenServiceEnv: EnvironmentName) => {
   const client = new TokenServiceClient({ jwt: firebaseJwt, env: tokenServiceEnv });
   return client.listResources({
-    type: resourceType,
+    type: "athenaWorkgroup",
     tool: "researcher-report",
-    amOwner: amOwner ? "true" : "false"
+    amOwner: "true"
   });
 };

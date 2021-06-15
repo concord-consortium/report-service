@@ -1,19 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Resource, ResourceType, Credentials, AthenaResource } from "@concord-consortium/token-service";
+import { Resource, Credentials, AthenaResource } from "@concord-consortium/token-service";
 import * as AWS from "aws-sdk";
 import { Header } from "./header";
 import { QueryItem } from "./query-item";
-import { readPortalAccessToken, getFirebaseJwt, listResources, getCredentials } from "../utils/results-utils";
+import { readPortalAccessToken, getFirebaseJwt, listResources, getCredentials, getURLParam } from "../utils/results-utils";
 
 import "./app.scss";
 
 type ResourceMap = {[key: string]: Resource};
 
 export const App = () => {
-  // const tokenServiceEnv = "staging";
-  // const resourceType = "s3Folder";
-
-  const portalUrl = "https://learn.staging.concord.org";
+  const portalUrl = getURLParam("portal") || "https://learn.concord.org";
   const oauthClientName = "athena-researcher-reports";
   const [portalAccessTokenStatus, setPortalAccessTokenStatus] = useState("");
   const [portalAccessToken, setPortalAccessToken] = useState("");
@@ -26,7 +23,6 @@ export const App = () => {
   const [resourcesStatus, setResourcesStatus] = useState("");
   const [resources, setResources] = useState({} as ResourceMap);
   const [currentResource, setCurrentResource] = useState<Resource | undefined>();
-  const resourceType = "athenaWorkgroup";
 
   const [credentialsStatus, setCredentialsStatus] = useState("");
   const [credentials, setCredentials] = useState<Credentials | undefined>();
@@ -39,19 +35,19 @@ export const App = () => {
     } else if (portalAccessTokenReturn.error) {
       setPortalAccessTokenStatus(portalAccessTokenReturn.error);
     }
-  }, []);
+  }, [portalUrl]);
 
   useEffect(() => {
     if (portalAccessToken) {
       setFirebaseJwtStatus("Getting Firebase JWT...");
       getFirebaseJwt(portalUrl, portalAccessToken, firebaseAppName).then(token => setFirebaseJwt(token));
     }
-  }, [portalAccessToken]);
+  }, [portalAccessToken, portalUrl]);
 
   useEffect(() => {
     const handleListMyResources = async () => {
       setResourcesStatus("Loading resources...");
-      const resourceList = await listResources(firebaseJwt, true, tokenServiceEnv, resourceType as ResourceType);
+      const resourceList = await listResources(firebaseJwt, tokenServiceEnv);
       if(resourceList.length === 0) {
         setResourcesStatus("No resources found");
       } else {
