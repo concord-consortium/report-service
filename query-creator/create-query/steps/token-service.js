@@ -1,11 +1,10 @@
 const fetch = require("node-fetch");
 const TokenServiceClient = require("@concord-consortium/token-service").TokenServiceClient;
 
-const tokenServiceEnv = "staging";
 const resourceType = "athenaWorkgroup";
 const resourceTool = "researcher-report";
 
-exports.findOrCreateResource = async (tokenServiceJwt, email, portalUrl) => {
+exports.findOrCreateResource = async (tokenServiceJwt, tokenServiceEnv, email, portalUrl) => {
   const client = new TokenServiceClient({ jwt: tokenServiceJwt, env: tokenServiceEnv, fetch});
 
   let resource;
