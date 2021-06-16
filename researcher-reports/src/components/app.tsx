@@ -87,7 +87,7 @@ export const App = () => {
   useEffect(() => {
     const handleListQueryExecutions = async () => {
       if (!credentials || !currentResource) return;
-      setQueriesStatus("Loading queries...");
+      setQueriesStatus("Loading reports...");
       const { region } = currentResource as AthenaResource;
       const { accessKeyId, secretAccessKey, sessionToken } = credentials;
       const athena = new AWS.Athena({ region, accessKeyId, secretAccessKey, sessionToken });
@@ -106,46 +106,51 @@ export const App = () => {
     <div className="app">
       <Header />
       <div className="content">
-        { portalAccessToken
-          ? <div className="info">{`Portal Access Token: ${portalAccessToken}`}</div>
-          : <div>{portalAccessTokenStatus}</div>
-        }
-        { firebaseJwt
-          ? <div className="info">{`Firebase JWT: ${firebaseJwt.slice(0, 40)}...`}</div>
-          : <div>{firebaseJwtStatus}</div>
-        }
-        { Object.keys(resources).length > 0 &&
-          <div className="info">
-            {Object.keys(resources).length} Athena workgroup resource{Object.keys(resources).length > 1 ? "s" : ""} found
-          </div>
-        }
-        { currentResource
-          ? <div className="info">Athena workgroup current resource:
-              <div className="sub-info">id: {currentResource.id}</div>
-              <div className="sub-info">name: {currentResource.name}</div>
-              <div className="sub-info">description: {currentResource.description}</div>
+        <div className="container">
+          <div className="container-title">Reports</div>
+          { queries
+            ? credentials && currentResource && queries?.map((query, i) =>
+              <QueryItem
+                key={`query-${i}`}
+                queryExecutionId={query}
+                credentials={credentials}
+                currentResource={currentResource}
+              /> )
+            : <div>{queriesStatus}</div>
+          }
+        </div>
+        <div className="container">
+          <div className="container-title">Report Access Status</div>
+          { portalAccessToken
+            ? <div className="info">{`Portal Access Token: ${portalAccessToken}`}</div>
+            : <div>{portalAccessTokenStatus}</div>
+          }
+          { firebaseJwt
+            ? <div className="info">{`Firebase JWT: ${firebaseJwt.slice(0, 40)}...`}</div>
+            : <div>{firebaseJwtStatus}</div>
+          }
+          { Object.keys(resources).length > 0 &&
+            <div className="info">
+              {Object.keys(resources).length} Athena workgroup resource{Object.keys(resources).length > 1 ? "s" : ""} found
             </div>
-          : <div>{resourcesStatus}</div>
-        }
-        { credentials
-          ? <div className="info">Athena workgroup current resource credentials:
-              <div className="sub-info">access key id: {credentials.accessKeyId}</div>
-              <div className="sub-info">secret access key: {credentials.secretAccessKey}</div>
-              <div className="sub-info">session token: ${credentials.sessionToken.slice(0, 40)}...</div>
-            </div>
-          : <div>{credentialsStatus}</div>
-        }
-        { queries && <div className="info">Queries: </div>}
-        { queries
-          ? credentials && currentResource && queries?.map((query, i) =>
-            <QueryItem
-              key={`query-${i}`}
-              queryExecutionId={query}
-              credentials={credentials}
-              currentResource={currentResource}
-            /> )
-          : <div>{queriesStatus}</div>
-        }
+          }
+          { currentResource
+            ? <div className="info">Athena workgroup current resource:
+                <div className="sub-info">id: {currentResource.id}</div>
+                <div className="sub-info">name: {currentResource.name}</div>
+                <div className="sub-info">description: {currentResource.description}</div>
+              </div>
+            : <div>{resourcesStatus}</div>
+          }
+          { credentials
+            ? <div className="info">Athena workgroup current resource credentials:
+                <div className="sub-info">access key id: {credentials.accessKeyId}</div>
+                <div className="sub-info">secret access key: {credentials.secretAccessKey}</div>
+                <div className="sub-info">session token: ${credentials.sessionToken.slice(0, 40)}...</div>
+              </div>
+            : <div>{credentialsStatus}</div>
+          }
+        </div>
       </div>
     </div>
   );
