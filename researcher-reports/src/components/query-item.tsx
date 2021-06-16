@@ -15,6 +15,7 @@ export const QueryItem: React.FC<IProps> = (props) => {
   const { queryExecutionId, credentials, currentResource } = props;
   const [queryExecutionStatus, setQueryExecutionStatus] = useState("Loading query information...");
   const [submissionDateTime, setSubmissionDateTime] = useState("");
+  const [queryCompletionStatus, setQueryCompletionStatus] = useState("");
   const [outputLocationBucket, setOutputLocationBucket] = useState("");
   const [outputLocationKey, setOutputLocationKey] = useState("");
   const [outputLocationRegion, setOutputLocationRegion] = useState("");
@@ -33,6 +34,7 @@ export const QueryItem: React.FC<IProps> = (props) => {
 
       setSubmissionDateTime(results.QueryExecution?.Status?.SubmissionDateTime?.toUTCString()
        || "Error getting query submission date and time");
+      setQueryCompletionStatus(results.QueryExecution?.Status?.State || "unknown");
 
       const outputLocation = results.QueryExecution?.ResultConfiguration?.OutputLocation;
 
@@ -81,6 +83,7 @@ export const QueryItem: React.FC<IProps> = (props) => {
         ? queryExecutionStatus
         : <div className="info-container">
             <div className="item-info">{`Creation date: ${submissionDateTime}`}</div>
+            <div className="item-info">{`Completion status: ${queryCompletionStatus.toLowerCase()}`}</div>
             { !downloadURL
               ? <button onClick={handleGetSignedDownloadLink}>Generate CSV Download Link</button>
               : <>
