@@ -7,7 +7,7 @@
   "author": "SAM CLI",
   "license": "MIT",
   "dependencies": {
-    "@concord-consortium/token-service": "^2.0.0-pre.3",
+    "@concord-consortium/token-service": "^2.0.0-pre.5",
     "aws-sdk": "^2.702.0",
     "axios": "^0.21.1",
     "node-fetch": "^2.6.1",
