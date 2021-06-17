@@ -211,7 +211,10 @@ exports.generateSQL = (queryId, resource, denormalizedResource) => {
   const assignTeacherMetaData = teacherMetadataColumns.map(tmd => `array_join(transform(teachers, teacher -> teacher.${tmd[1]}), ',') as ${tmd[0]}`)
   const assignTeacherVar = "arbitrary(l.teachers) teachers"
 
-  return `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
+  return `-- name ${resource.name}
+-- type ${resource.type}
+
+WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
 
 SELECT
   ${[`null as remote_endpoint,\n${nullAsMetadata}${nullAsTeacherMetadata}  null as num_questions,\n  null as num_answers,\n  null as percent_complete`].concat(selectColumnPrompts).join(",\n  ")}
