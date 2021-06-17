@@ -56,7 +56,7 @@ exports.lambdaHandler = async (event, context) => {
       const sql = aws.generateSQL(queryId, resource, denormalizedResource)
 
       if (debugSQL) {
-        sqlOutput.push(`-- ${resource.id}\n\n${sql}`);
+        sqlOutput.push(`-- id ${resource.id}\n${sql}`);
       } else {
         // create the athena query in the workgroup
         await aws.startQueryExecution(sql, workgroupName)

@@ -14,6 +14,8 @@ interface IProps {
 export const QueryItem: React.FC<IProps> = (props) => {
   const { queryExecutionId, credentials, currentResource } = props;
   const [queryExecutionStatus, setQueryExecutionStatus] = useState("Loading query information...");
+  const [resourceName, setResourceName] = useState("");
+  const [resourceType, setResourceType] = useState("");
   const [submissionDateTime, setSubmissionDateTime] = useState("");
   const [queryCompletionStatus, setQueryCompletionStatus] = useState("");
   const [outputLocationBucket, setOutputLocationBucket] = useState("");
@@ -31,6 +33,20 @@ export const QueryItem: React.FC<IProps> = (props) => {
       const results = await athena.getQueryExecution({
         QueryExecutionId: queryExecutionId
       }).promise();
+
+      const query = results.QueryExecution?.Query;
+      const nameLoc = query?.search("-- name");
+      const typeLoc = query?.search("-- type");
+      if (nameLoc !== undefined && nameLoc >= 0) {
+        const nameStartStr = query?.substring(nameLoc + 8);
+        const _resourceName = nameStartStr?.substring(0, nameStartStr.search(/\n/));
+        _resourceName && setResourceName(_resourceName);
+      }
+      if (typeLoc !== undefined && typeLoc >= 0) {
+        const typeStartStr = query?.substring(typeLoc + 8);
+        const _resourceType = typeStartStr?.substring(0, typeStartStr.search(/\n/));
+        _resourceType && setResourceType(_resourceType);
+      }
 
       setSubmissionDateTime(results.QueryExecution?.Status?.SubmissionDateTime?.toUTCString()
        || "Error getting query submission date and time");
@@ -82,6 +98,8 @@ export const QueryItem: React.FC<IProps> = (props) => {
       { queryExecutionStatus
         ? queryExecutionStatus
         : <div className="info-container">
+            {resourceName && <div className="item-info">{`Name: ${resourceName}`}</div>}
+            {resourceType && <div className="item-info">{`Type: ${resourceType}`}</div>}
             <div className="item-info">{`Creation date: ${submissionDateTime}`}</div>
             <div className="item-info">{`Completion status: ${queryCompletionStatus.toLowerCase()}`}</div>
             { !downloadURL
