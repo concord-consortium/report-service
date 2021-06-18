@@ -7,6 +7,46 @@ const chai = require('chai');
 const expect = chai.expect;
 var event, context;
 
+const testQueryId = "123456789";
+const testResource = {
+  url: "https://authoring.staging.concord.org/activities/000000",
+  name: "test activity",
+  type: "activity",
+  children: [
+    { type: "section",
+      children: [
+        { type: "page",
+          children: [
+            { id: "multiple_choice_00000", type: "multiple_choice", prompt: "mc prompt 1",
+              choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+            },
+            { id: "multiple_choice_01000", type: "multiple_choice", prompt: "mc prompt 2",
+              choices: [{ content: "a", correct: false, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+            },
+            { id: "multiple_choice_02000", type: "multiple_choice", prompt: "mc prompt 3",
+              choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: true, id: 2 }, { content: "c", correct: false, id: 3 }]
+            },
+            { id: "multiple_choice_03000", type: "multiple_choice", prompt: "mc prompt 1", required: true,
+              choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+            },
+            { id: "open_response_11111", type: "open_response", prompt: "open response prompt 1", required: false },
+            { id: "open_response_22222", type: "open_response", prompt: "open response prompt 2", required: true },
+            { id: "image_question_33333", type: "image_question", prompt: "image response prompt 1", required: false },
+            { id: "image_question_44444", type: "image_question", prompt: "image response prompt 2", required: true },
+            { id: "managed_interactive_55555", type: "open_response", prompt: "AP open response prompt", required: false },
+            { id: "managed_interactive_66666", type: "multiple_choice", prompt: "AP mc prompt", required: false,
+              choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
+            },
+            { id: "managed_interactive_77777", type: "image_question", prompt: "AP image prompt", required: false},
+            { id: "managed_interactive_88888", type: "iframe_interactive"},
+            { id: "managed_interactive_99999", type: "unknown_type"}
+          ]
+        }
+      ]
+    }
+  ]
+};
+
 describe('Tests index', function () {
     it('verifies successful response', async () => {
         const result = await app.lambdaHandler(event, context)
@@ -25,47 +65,8 @@ describe('Tests index', function () {
 
 describe('Query creation', function () {
     it('verifies successful query creation', async () => {
-        const testQueryId = "123456789";
-        const testResource = {
-          url: "https://authoring.staging.concord.org/activities/000000",
-          name: "test activity",
-          type: "activity",
-          children: [
-            { type: "section",
-              children: [
-                { type: "page",
-                  children: [
-                    { id: "multiple_choice_00000", type: "multiple_choice", prompt: "mc prompt 1",
-                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
-                    },
-                    { id: "multiple_choice_01000", type: "multiple_choice", prompt: "mc prompt 2",
-                      choices: [{ content: "a", correct: false, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
-                    },
-                    { id: "multiple_choice_02000", type: "multiple_choice", prompt: "mc prompt 3",
-                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: true, id: 2 }, { content: "c", correct: false, id: 3 }]
-                    },
-                    { id: "multiple_choice_03000", type: "multiple_choice", prompt: "mc prompt 1", required: true,
-                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
-                    },
-                    { id: "open_response_11111", type: "open_response", prompt: "open response prompt 1", required: false },
-                    { id: "open_response_22222", type: "open_response", prompt: "open response prompt 2", required: true },
-                    { id: "image_question_33333", type: "image_question", prompt: "image response prompt 1", required: false },
-                    { id: "image_question_44444", type: "image_question", prompt: "image response prompt 2", required: true },
-                    { id: "managed_interactive_55555", type: "open_response", prompt: "AP open response prompt", required: false },
-                    { id: "managed_interactive_66666", type: "multiple_choice", prompt: "AP mc prompt", required: false,
-                      choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
-                    },
-                    { id: "managed_interactive_77777", type: "image_question", prompt: "AP image prompt", required: false},
-                    { id: "managed_interactive_88888", type: "iframe_interactive"},
-                    { id: "managed_interactive_99999", type: "unknown_type"}
-                  ]
-                }
-              ]
-            }
-          ]
-        };
         const testDenormalizedResource = firebase.denormalizeResource(testResource);
-        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource);
+        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false);
         const expectedSQLresult = `-- name test activity
 -- type activity
 
@@ -173,4 +174,48 @@ FROM activities,
         const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
         expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
     });
+});
+
+describe('Query creation usage report', function () {
+  it('verifies successful query creation in usage report mode', async () => {
+      const testDenormalizedResource = firebase.denormalizeResource(testResource);
+      const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, true);
+      const expectedSQLresult = `-- name test activity
+-- type activity
+
+WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+
+SELECT
+  remote_endpoint,
+  runnable_url,
+  learner_id,
+  student_id,
+  user_id,
+  student_name,
+  username,
+  school,
+  class,
+  class_id,
+  permission_forms,
+  last_run,
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails,
+  activities.num_questions,
+  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
+  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete
+FROM activities,
+  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+    FROM "report-service"."partitioned_answers" a
+    INNER JOIN "report-service"."learners" l
+    ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
+    WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+    GROUP BY l.run_remote_endpoint )`;
+
+      const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
+      const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
+      expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+  });
 });
