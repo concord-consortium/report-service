@@ -31,8 +31,14 @@ export const readPortalAccessToken = (portalUrl: string, oauthClientName: string
     // c.f. https://stackoverflow.com/questions/22753052/remove-url-parameters-without-refreshing-page
     if (window.history?.pushState !== undefined) {
       // if pushstate exists, add a new state to the history, this changes the url without reloading the page
-      // preserve the portal url parameter
-      const appUrl = window.location.pathname + "?portal=" + getURLParam("portal");
+      // preserve the portal url.
+      // We only preserve url param if it was passed in, so we don't change the url unnecessarily
+      const escapedPortalUrl = getURLParam("portal");
+      const query = new URLSearchParams();
+      if (escapedPortalUrl) {
+        query.set("portal", escapedPortalUrl);
+      }
+      const appUrl = `${window.location.pathname}?${query.toString()}`;
       window.history.pushState({}, document.title, appUrl);
     }
   }
