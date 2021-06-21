@@ -19,7 +19,9 @@ export const App = () => {
   const [firebaseJwtStatus, setFirebaseJwtStatus] = useState("");
   const [firebaseJwt, setFirebaseJwt] = useState("");
 
-  const tokenServiceEnv = "staging";
+  // use "production" token service env only if we're on the production url
+  const isProduction = window.location.host === "researcher-reports.concord.org" && window.location.pathname.indexOf("branch") < 0;
+  const tokenServiceEnv = isProduction ?"production" : "staging";
   const [resourcesStatus, setResourcesStatus] = useState("");
   const [resources, setResources] = useState({} as ResourceMap);
   const [currentResource, setCurrentResource] = useState<Resource | undefined>();
@@ -62,7 +64,7 @@ export const App = () => {
     if (portalAccessToken && firebaseJwt) {
       handleListMyResources();
     }
-  }, [portalAccessToken, firebaseJwt]);
+  }, [portalAccessToken, firebaseJwt, tokenServiceEnv]);
 
   useEffect(() => {
     const handleGetCredentials = async () => {
@@ -79,7 +81,7 @@ export const App = () => {
     if (portalAccessToken && firebaseJwt && currentResource) {
       handleGetCredentials();
     }
-  }, [portalAccessToken, firebaseJwt, currentResource]);
+  }, [portalAccessToken, firebaseJwt, currentResource, tokenServiceEnv]);
 
   const [queriesStatus, setQueriesStatus] = useState("");
   const [queries, setQueries] = useState<string[] | undefined>();
