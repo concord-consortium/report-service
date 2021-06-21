@@ -64,7 +64,7 @@ export const App = () => {
     if (portalAccessToken && firebaseJwt) {
       handleListMyResources();
     }
-  }, [portalAccessToken, firebaseJwt]);
+  }, [portalAccessToken, firebaseJwt, tokenServiceEnv]);
 
   useEffect(() => {
     const handleGetCredentials = async () => {
@@ -81,7 +81,7 @@ export const App = () => {
     if (portalAccessToken && firebaseJwt && currentResource) {
       handleGetCredentials();
     }
-  }, [portalAccessToken, firebaseJwt, currentResource]);
+  }, [portalAccessToken, firebaseJwt, currentResource, tokenServiceEnv]);
 
   const [queriesStatus, setQueriesStatus] = useState("");
   const [queries, setQueries] = useState<string[] | undefined>();
