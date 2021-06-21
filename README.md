@@ -38,9 +38,24 @@ The high-level parts:
      https://researcher-reports.concord.org/?portal=https%3A%2F%2Flearn-report.concord.org
    ```
 
+## Notes on inter-app environment variables, query parameters, and staging/production versions
+
+There are two deployed versions of the Query Creator, one for staging (deployed under the AdminConcordQA account) and
+one for production. The Query Creator app requires a `RESEARCHER_REPORTS_URL`. By default, the SAM template that
+is used on deployment sets this to `researcher-reports.concord.org/` on production and `.../branch/master/` on staging.
+
+The Query Creator gets launched with a url that includes two url parameters, `reportServiceSource`, which points to the
+source used for the report service API, and `tokenServiceEnv`, which is the env name for the token-service. This second
+parameter needs to be set to `staging` or `production`.
+
+The JWT that is sent to the Query Creator contains a `learnersApiUrl` which is used to extract a `portalUrl`.
+
+After the query is initiated on Athena, the Query Creator will redirect to the `RESEARCHER_REPORTS_URL` with the
+query parameter `portal={portalUrl}`. This is needed by the Researcher Report to log the user into the correct portal.
+The Researcher Report also needs to know the `tokenServiceEnv`, but this is hard-coded in the app to be `production`
+when the app is running on the production url, and `staging` otherwise.
 
 ## Other stuff
-
 
 ### Anonymous Reports
 
