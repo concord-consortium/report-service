@@ -105,7 +105,7 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource) => {
   // TODO: tie the uploaded file to the workgroup
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource) => {
+exports.generateSQL = (queryId, resource, denormalizedResource, usageReport) => {
   const selectColumns = [];
   const selectColumnPrompts = [];
   const completionColumns = [
@@ -115,7 +115,7 @@ exports.generateSQL = (queryId, resource, denormalizedResource) => {
   ];
   const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
-  Object.keys(denormalizedResource.questions).forEach(questionId => {
+  !usageReport && Object.keys(denormalizedResource.questions).forEach(questionId => {
     const type = denormalizedResource.questions[questionId].type;
     const isRequired = denormalizedResource.questions[questionId].required;
 
@@ -211,17 +211,20 @@ exports.generateSQL = (queryId, resource, denormalizedResource) => {
   const assignTeacherMetaData = teacherMetadataColumns.map(tmd => `array_join(transform(teachers, teacher -> teacher.${tmd[1]}), ',') as ${tmd[0]}`)
   const assignTeacherVar = "arbitrary(l.teachers) teachers"
 
-  return `-- name ${resource.name}
--- type ${resource.type}
-
-WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
-
+  const promptsUnion = usageReport ? "" :
+`
 SELECT
   ${[`null as remote_endpoint,\n${nullAsMetadata}${nullAsTeacherMetadata}  null as num_questions,\n  null as num_answers,\n  null as percent_complete`].concat(selectColumnPrompts).join(",\n  ")}
 FROM activities
 
 UNION ALL
+`;
 
+  return `-- name ${resource.name}
+-- type ${resource.type}
+
+WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
+${promptsUnion}
 SELECT
   ${[
     "remote_endpoint",

@@ -13,6 +13,7 @@ exports.lambdaHandler = async (event, context) => {
     const reportServiceSource = params.reportServiceSource;
     const debugSQL = params.debugSQL || false;
     const tokenServiceEnv = params.tokenServiceEnv;
+    const usageReport = params.usageReport || false;
 
     if (!reportServiceSource) {
       throw new Error("Missing reportServiceSource in the report url");
@@ -53,7 +54,7 @@ exports.lambdaHandler = async (event, context) => {
       await aws.uploadDenormalizedResource(queryId, denormalizedResource);
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, resource, denormalizedResource)
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport);
 
       if (debugSQL) {
         sqlOutput.push(`-- id ${resource.id}\n${sql}`);
