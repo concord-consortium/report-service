@@ -1,17 +1,61 @@
 # Report Service
-Ingest student runs and activity structure in order to run report queries later.
 
-## Scripts
+This repo contains a series of related projects that enable researchers to run reports on portal learner data.
 
-Includes the export-answers script for copying all student answers from Firestore into S3 as Parquet files
+A detailed description of the system can be found at https://docs.google.com/document/d/1F4ozfQOjzZfMMYdGiPp0MGWpAxjTbMa6lDIvPSnuNcI/
 
-See [scripts/README.md](scripts/README.md)
+The high-level parts:
 
-## Firebase functions
+* **Scripts**: Pushes old learner data from Firestore into S3, for access by Athena. See
+    [scripts/README.md](scripts/README.md)
+* **Functions**: Keeps new learner data synced to S3. This also provides the API used by LARA to
+    send learner data and activity structure to FireStore, and an API used by the portal to move
+    learner data from one class to another. See [functions/README.md](functions/README.md)
+* **Query-Creator**: A Lambda application written with AWS SAM which is launched by the portal as an
+    external report. It collects together all the data that Athena will need to run a query, constructs
+    the SQL for the query, and kicks off an Athena query under a personal workgroup for the researcher.
+    See [query-creator/README.md](query-creator/README.md)
+* **Researcher-Reports**: An application a researcher can use to list their reports and generate a
+    short-lived url to download the data. See [researcher-reports/README.md](researcher-reports/README.md)
 
-Includes the API and the auto-update function for student answers.
+## Setting up a new report on a portal
 
-See [functions/README.md](functions/README.md)
+1. Add new external report from the portal's admin section. The URL should be to the query-creator
+   API endpoint, plus two url parameters, `reportServiceSource`, which points to the source used for the
+   report service API, and `tokenServiceEnv`, which is the env name for the token-service. E.g.
+   ```
+     https://bn84q7k6u0.execute-api.us-east-1.amazonaws.com/Prod/create-query/?reportServiceSource=authoring.staging.concord.org&tokenServiceEnv=staging
+   ```
+2. Ensure there is a resourceSettings doc for the tool `researcher-report` for the appropriate token-service
+   env. For example, the one for staging is at
+   https://console.firebase.google.com/project/token-service-staging/firestore/data~2Fstaging:resourceSettings~2FmIVQo4W7ZwjGr0v4in8W
+   See https://github.com/concord-consortium/token-service/#creating-new-athenaworkgrouptools for details.
+3. Ensure there is an Auth client in the portal (found in the admin section) for the researcher-reports app
+   that includes the portal domain as a url parameter in the Allowed Redirect URIs list. For portals that
+   launch reports from another domain, that other domain should be included as well. E.g.
+   ```
+     https://researcher-reports.concord.org/?portal=https%3A%2F%2Flearn.concord.org
+     https://researcher-reports.concord.org/?portal=https%3A%2F%2Flearn-report.concord.org
+   ```
+
+## Notes on inter-app environment variables, query parameters, and staging/production versions
+
+There are two deployed versions of the Query Creator, one for staging (deployed under the AdminConcordQA account) and
+one for production. The Query Creator app requires a `RESEARCHER_REPORTS_URL`. By default, the SAM template that
+is used on deployment sets this to `researcher-reports.concord.org/` on production and `.../branch/master/` on staging.
+
+The Query Creator gets launched with a url that includes two url parameters, `reportServiceSource`, which points to the
+source used for the report service API, and `tokenServiceEnv`, which is the env name for the token-service. This second
+parameter needs to be set to `staging` or `production`.
+
+The JWT that is sent to the Query Creator contains a `learnersApiUrl` which is used to extract a `portalUrl`.
+
+After the query is initiated on Athena, the Query Creator will redirect to the `RESEARCHER_REPORTS_URL` with the
+query parameter `portal={portalUrl}`. This is needed by the Researcher Report to log the user into the correct portal.
+The Researcher Report also needs to know the `tokenServiceEnv`, but this is hard-coded in the app to be `production`
+when the app is running on the production url, and `staging` otherwise.
+
+## Other stuff
 
 ### Anonymous Reports
 
