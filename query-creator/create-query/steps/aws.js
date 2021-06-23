@@ -105,17 +105,20 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource) => {
   // TODO: tie the uploaded file to the workgroup
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource, usageReport) => {
+exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl) => {
+  const hasResource = !!resource;
   const selectColumns = [];
   const selectColumnPrompts = [];
-  const completionColumns = [
-    "activities.num_questions",
-    "cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers",
-    "round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete"
-  ];
-  const escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
+  const completionColumns = hasResource
+    ? [
+        "activities.num_questions",
+        "cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers",
+        "round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete"
+      ]
+    : [];
+  const escapedUrl = hasResource ? resource.url.replace(/[^a-z0-9]/g, "-") : runnableUrl.replace(/[^a-z0-9]/g, "-");
 
-  !usageReport && Object.keys(denormalizedResource.questions).forEach(questionId => {
+  (!usageReport && hasResource) && Object.keys(denormalizedResource.questions).forEach(questionId => {
     const type = denormalizedResource.questions[questionId].type;
     const isRequired = denormalizedResource.questions[questionId].required;
 
@@ -211,7 +214,7 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport) => 
   const assignTeacherMetaData = teacherMetadataColumns.map(tmd => `array_join(transform(teachers, teacher -> teacher.${tmd[1]}), ',') as ${tmd[0]}`)
   const assignTeacherVar = "arbitrary(l.teachers) teachers"
 
-  const promptsUnion = usageReport ? "" :
+  const promptsUnion = (usageReport || !hasResource) ? "" :
 `
 SELECT
   ${[`null as remote_endpoint,\n${nullAsMetadata}${nullAsTeacherMetadata}  null as num_questions,\n  null as num_answers,\n  null as percent_complete`].concat(selectColumnPrompts).join(",\n  ")}
@@ -220,10 +223,10 @@ FROM activities
 UNION ALL
 `;
 
-  return `-- name ${resource.name}
--- type ${resource.type}
+  return `-- name ${hasResource ? resource.name : runnableUrl}
+-- type ${hasResource ? resource.type : "assignment"}
 
-WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )
+${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )` : ""}
 ${promptsUnion}
 SELECT
   ${[
@@ -233,12 +236,13 @@ SELECT
     ...completionColumns,
     ...selectColumns
     ].join(",\n  ")}
-FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, ${assignMetadata}, ${assignTeacherVar}, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
-    FROM "report-service"."partitioned_answers" a
-    INNER JOIN "report-service"."learners" l
+FROM${hasResource ? ` activities,` : ""}
+  ( SELECT l.run_remote_endpoint remote_endpoint, ${assignMetadata}, ${assignTeacherVar}${hasResource ? `, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted` : ""}
+    FROM ${hasResource ? `"report-service"."partitioned_answers" a` : `"report-service"."learners" l`}
+${hasResource ? `    INNER JOIN "report-service"."learners" l
     ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
-    WHERE a.escaped_url = '${escapedUrl}'
+    WHERE a.escaped_url = '${escapedUrl}'`
+    : `    WHERE l.query_id = '${queryId}'`}
     GROUP BY l.run_remote_endpoint )`
 }
 

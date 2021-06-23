@@ -219,3 +219,43 @@ FROM activities,
       expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
   });
 });
+
+
+
+describe('Query creation unreportable runnable', function () {
+  it('verifies successful query creation of unreportable runnable', async () => {
+      const generatedSQLresult = await aws.generateSQL(testQueryId, undefined, undefined, false, "www.test.url");
+      const expectedSQLresult = `-- name www.test.url
+-- type assignment
+
+
+
+SELECT
+  remote_endpoint,
+  runnable_url,
+  learner_id,
+  student_id,
+  user_id,
+  student_name,
+  username,
+  school,
+  class,
+  class_id,
+  permission_forms,
+  last_run,
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails
+FROM
+  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers
+    FROM "report-service"."learners" l
+    WHERE l.query_id = '123456789'
+    GROUP BY l.run_remote_endpoint )`;
+
+      const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
+      const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
+      expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+  });
+});

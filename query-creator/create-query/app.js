@@ -47,17 +47,24 @@ exports.lambdaHandler = async (event, context) => {
       const queryId = queryIdsPerRunnable[runnableUrl];
 
       // get and denormalize the resource (activity or sequence) from Firebase
-      const resource = await firebase.getResource(runnableUrl, reportServiceSource);
-      const denormalizedResource = firebase.denormalizeResource(resource);
+      let resource;
+      let denormalizedResource;
+      try {
+        resource = await firebase.getResource(runnableUrl, reportServiceSource);
+        denormalizedResource = firebase.denormalizeResource(resource);
 
-      // upload the denormalized resource to s3 and tie it to the workgroup
-      await aws.uploadDenormalizedResource(queryId, denormalizedResource);
+        // upload the denormalized resource to s3 and tie it to the workgroup
+        await aws.uploadDenormalizedResource(queryId, denormalizedResource);
+      } catch (err) {
+        // no valid resource, we will attempt to create a usage report with just the learner data
+        console.log(err);
+      }
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport);
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl);
 
       if (debugSQL) {
-        sqlOutput.push(`-- id ${resource.id}\n${sql}`);
+        sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
       } else {
         // create the athena query in the workgroup
         await aws.startQueryExecution(sql, workgroupName)
