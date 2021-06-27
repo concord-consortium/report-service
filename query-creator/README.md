@@ -64,6 +64,8 @@ You can find your API Gateway Endpoint URL in the output values displayed after 
 
 ## Use the SAM CLI to build and test locally
 
+### Setup the credentials
+
 Add `QueryCreatorLocalTestUser` credential information to your `~/.aws/credentials` file. This can be done manually by editing the credentials file and adding the following (`aws_access_key_id` and `aws_secret_access_key` values can be obtained from 1Password):
 ```
 [QueryCreatorLocalTestUser]
@@ -77,15 +79,16 @@ Or the `QueryCreatorLocalTestUser` credential information can be configured via 
 query-creator$ aws configure
 ```
 
-The following environment variables need to be configured: `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl`. These can be configured system-wide or as default values in the `parameters` section of `template.yml`. For example, `OutputBucket` can be configured as follows:
-```
-  OutputBucket:
-    Type: String
-    Description: Output bucket for Athena queries
-    Default: 'concordqa-report-data'
-```
+### Setup application environment variables
 
-The environment variable values can be found on the production AWS account under `Cloud formation > Stacks` (for example, the `report-service-query-creator` stack can be used to obtain `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl` values).
+Copy `env.sample.json` to `env.json`
+The `REPORT_SERVICE_TOKEN` value in `env.json` should be replaced with the actual value.
+This value can be found in the QA AWS account under `Cloud formation > Stacks -> report-service-query-creator`
+Look at the parameters of the `report-service-query-creator` to find the value.
+
+Note: The `sam local start-api` command is configured to look for the `env.json` by `samconfig.toml`
+
+### Build application
 
 Build your application with the `sam build` command.
 
@@ -95,6 +98,8 @@ query-creator$ sam build
 
 The SAM CLI installs dependencies defined in `create-query/package.json`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
 
+### Test a single function
+
 Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
 
 Run functions locally and invoke them with the `sam local invoke` command.
@@ -102,6 +107,8 @@ Run functions locally and invoke them with the `sam local invoke` command.
 ```bash
 query-creator$ sam local invoke CreateQueryFunction --event events/event.json
 ```
+
+### Test the full API
 
 The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
 
