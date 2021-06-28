@@ -82,11 +82,11 @@ query-creator$ aws configure
 ### Setup application environment variables
 
 Copy `env.sample.json` to `env.json`
-The `REPORT_SERVICE_TOKEN` value in `env.json` should be replaced with the actual value.
-This value can be found in the QA AWS account under `Cloud formation > Stacks -> report-service-query-creator`
+Replace the `REPORT_SERVICE_TOKEN` value in `env.json` with the actual value.
+This value can be found in the QA AWS account under `Cloud formation > Stacks -> report-service-query-creator`.
 Look at the parameters of the `report-service-query-creator` to find the value.
 
-Note: The `sam local start-api` command is configured to look for the `env.json` by `samconfig.toml`
+Note: The `sam local start-api` command is configured to look for the `env.json` by `samconfig.toml`.
 
 ### Build application
 
