@@ -282,14 +282,6 @@ UNION ALL
 `;
     }
 
-    // const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted`;
-
-    // groupedSubSelect = `SELECT ${groupingSelect}, ${answerMaps}
-    // FROM "report-service"."partitioned_answers" a
-    // INNER JOIN "report-service"."learners" l
-    // ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
-    // WHERE a.escaped_url = '${escapedUrl}'
-    // GROUP BY l.run_remote_endpoint`;
   } else {
     groupedSubSelect = `
   ( SELECT ${groupingSelect}
