@@ -105,88 +105,77 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource) => {
   // TODO: tie the uploaded file to the workgroup
 }
 
+// Column format of:
+// { name: "column name", value: "main value on each row", header: "optional first row value"}
+const selectFromColumn = (column) => {
+  if (column.value === column.name) {
+    return column.value
+  } else {
+    return `${column.value} AS ${column.name}`
+  }
+}
+
+const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
+  const type = question.type;
+  const isRequired = question.required;
+
+  const columns = [];
+
+  switch (type) {
+    case "image_question":
+      columns.push({name: `${questionId}_image_url`,
+                    value: `json_extract_scalar(kv1['${questionId}'], '$.image_url')`,
+                    header: `activities.questions['${questionId}'].prompt`});
+      columns.push({name: `${questionId}_text`,
+                    value: `json_extract_scalar(kv1['${questionId}'], '$.text')`});
+      columns.push({name: `${questionId}_answer`,
+                    value: `kv1['${questionId}']`});
+      break;
+    case "open_response":
+      columns.push({name: `${questionId}_text`,
+                    value: `kv1['${questionId}']`,
+                    header: `activities.questions['${questionId}'].prompt`});
+      break;
+    case "multiple_choice":
+      let questionHasCorrectAnswer = false;
+      for (const choice in denormalizedResource.choices[questionId]) {
+        if (denormalizedResource.choices[questionId][choice].correct) {
+          questionHasCorrectAnswer = true;
+        }
+      }
+
+      const answerScore = questionHasCorrectAnswer ? `IF(activities.choices['${questionId}'][x].correct,' (correct)',' (wrong)')` : `''`;
+      const choiceIdsAsArray = `CAST(json_extract(kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
+
+      columns.push({name: `${questionId}_choice`,
+                    value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ')`,
+                    header: `activities.questions['${questionId}'].prompt`});
+      break;
+    case "iframe_interactive":
+      columns.push({name: `${questionId}_json`,
+                    value: `kv1['${questionId}']`});
+      break;
+    case "managed_interactive":
+    case "mw_interactive":
+    default:
+      columns.push({name: `${questionId}_json`,
+                    value: `kv1['${questionId}']`});
+      console.info(`Unknown question type: ${type}`);
+      break;
+  }
+
+  if (isRequired) {
+    columns.push({name: `${questionId}_submitted`,
+                  value: `submitted['${questionId}']`})
+  }
+  return columns;
+}
+
 exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl) => {
   const hasResource = !!resource;
-  const selectColumns = [];
-  const selectColumnPrompts = [];
-  const completionColumns = hasResource
-    ? [
-        "activities.num_questions",
-        "cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers",
-        "round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete"
-      ]
-    : [];
-  const escapedUrl = hasResource ? resource.url.replace(/[^a-z0-9]/g, "-") : runnableUrl.replace(/[^a-z0-9]/g, "-");
+  let escapedUrl;
 
-  (!usageReport && hasResource) && Object.keys(denormalizedResource.questions).forEach(questionId => {
-    const type = denormalizedResource.questions[questionId].type;
-    const isRequired = denormalizedResource.questions[questionId].required;
-
-    switch (type) {
-      case "image_question":
-        // add question prompt, include empty column because UNION query requires identical number of fields
-        selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_image_url`);
-        selectColumnPrompts.push(`null AS ${questionId}_text`);
-        selectColumnPrompts.push(`null AS ${questionId}_answer`);
-        if (isRequired) {
-          selectColumnPrompts.push(`null AS ${questionId}_submitted`);
-        }
-
-        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.image_url') AS ${questionId}_image_url`);
-        selectColumns.push(`json_extract_scalar(kv1['${questionId}'], '$.text') AS ${questionId}_text`);
-        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_answer`);
-        if (isRequired) {
-          selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
-        }
-        break;
-      case "open_response":
-        // add question prompt, include empty column because UNION query requires identical number of fields
-        selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_text`);
-        if (isRequired) {
-          selectColumnPrompts.push(`null AS ${questionId}_submitted`);
-        }
-
-        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_text`);
-        if (isRequired) {
-          selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
-        }
-        break;
-      case "multiple_choice":
-        // add question prompt
-        selectColumnPrompts.push(`activities.questions['${questionId}'].prompt AS ${questionId}_choice`);
-        if (isRequired) {
-          selectColumnPrompts.push(`null AS ${questionId}_submitted`);
-        }
-
-        let questionHasCorrectAnswer = false;
-        for (const choice in denormalizedResource.choices[questionId]) {
-          if (denormalizedResource.choices[questionId][choice].correct) {
-            questionHasCorrectAnswer = true;
-          }
-        }
-
-        const answerScore = questionHasCorrectAnswer ? `IF(activities.choices['${questionId}'][x].correct,' (correct)',' (wrong)')` : `''`;
-        const choiceIdsAsArray = `CAST(json_extract(kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
-        selectColumns.push(`array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ') AS ${questionId}_choice`);
-        if (isRequired) {
-          selectColumns.push(`submitted['${questionId}'] AS ${questionId}_submitted`);
-        }
-        break;
-      case "iframe_interactive":
-        selectColumnPrompts.push(`null AS ${questionId}_json`);
-        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_json`);
-        break;
-      case "managed_interactive":
-      case "mw_interactive":
-      default:
-        selectColumnPrompts.push(`null AS ${questionId}_json`);
-        selectColumns.push(`kv1['${questionId}'] AS ${questionId}_json`);
-        console.info(`Unknown question type: ${type}`);
-        break;
-    }
-  })
-
-  const metadataColumns = [
+  const metadataColumnNames = [
     "runnable_url",
     "learner_id",
     "student_id",
@@ -199,51 +188,110 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
     "permission_forms",
     "last_run",
   ]
-  const nullAsMetadata = metadataColumns.map(md => `  null as ${md}`).join(",\n") + ",\n"
-  const assignMetadata = metadataColumns.map(md => `arbitrary(l.${md}) ${md}`).join(",")
+  const metadataColumnsForGrouping = metadataColumnNames.map(md => {
+    return {
+      name: md,
+      value: `arbitrary(l.${md})`
+    }
+  });
+  const metadataColumns = metadataColumnNames.map(md => {
+    return {
+      name: md,
+      value: md
+    }
+  });
 
-  const teacherMetadataColumns = [
+  const teacherMetadataColumnDefinitions = [
     ["teacher_user_ids", "user_id"],
     ["teacher_names", "name"],
     ["teacher_districts", "district"],
     ["teacher_states", "state"],
     ["teacher_emails", "email"]
   ]
-  const teacherMetadataColumnsLabels = teacherMetadataColumns.map(tmd => tmd[0])
-  const nullAsTeacherMetadata = teacherMetadataColumnsLabels.map(md => `  null as ${md}`).join(",\n") + ",\n"
-  const assignTeacherMetaData = teacherMetadataColumns.map(tmd => `array_join(transform(teachers, teacher -> teacher.${tmd[1]}), ',') as ${tmd[0]}`)
+  const teacherMetadataColumns = teacherMetadataColumnDefinitions.map(tmd => {
+    return {
+      name: tmd[0],
+      value: `array_join(transform(teachers, teacher -> teacher.${tmd[1]}), ',')`
+    }
+  });
   const assignTeacherVar = "arbitrary(l.teachers) teachers"
 
-  const promptsUnion = (usageReport || !hasResource) ? "" :
-`
+  const allColumns = [
+    {name: "remote_endpoint",
+     value: "remote_endpoint"},
+    ...metadataColumns,
+    ...teacherMetadataColumns,
+  ];
+
+  const groupingSelectMetadataColumns = metadataColumnsForGrouping.map(selectFromColumn).join(", ");
+
+  const groupingSelect = `l.run_remote_endpoint remote_endpoint, ${groupingSelectMetadataColumns}, ${assignTeacherVar}`
+
+  let headerRowUnion = "";
+  let groupedSubSelect;
+  if (hasResource) {
+    const completionColumns = [
+      {name: "num_questions",
+       value: "activities.num_questions"},
+      {name: "num_answers",
+       value: "cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))"},
+      {name: "percent_complete",
+       value: "round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1)"}
+    ]
+    allColumns.push(...completionColumns);
+    escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
+
+    if (!usageReport) {
+      const questionsColumns = [];
+      Object.keys(denormalizedResource.questions).forEach(questionId => {
+        const question = denormalizedResource.questions[questionId];
+        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource)
+        questionsColumns.push(...questionColumns);
+      });
+      allColumns.push(...questionsColumns);
+
+      headerRowSelect = allColumns.map(column => {
+        const value = column.header || "null";
+        return `${value} AS ${column.name}`;
+      }).join(",\n  ");
+
+      headerRowUnion = `
 SELECT
-  ${[`null as remote_endpoint,\n${nullAsMetadata}${nullAsTeacherMetadata}  null as num_questions,\n  null as num_answers,\n  null as percent_complete`].concat(selectColumnPrompts).join(",\n  ")}
+  ${headerRowSelect}
 FROM activities
 
 UNION ALL
 `;
+    }
+
+    const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted`;
+
+    groupedSubSelect = `SELECT ${groupingSelect}, ${answerMaps}
+    FROM "report-service"."partitioned_answers" a
+    INNER JOIN "report-service"."learners" l
+    ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
+    WHERE a.escaped_url = '${escapedUrl}'
+    GROUP BY l.run_remote_endpoint`;
+  } else {
+    escapedUrl = runnableUrl.replace(/[^a-z0-9]/g, "-");
+
+    groupedSubSelect = `SELECT ${groupingSelect}
+    FROM "report-service"."learners" l
+    WHERE l.query_id = '${queryId}'
+    GROUP BY l.run_remote_endpoint`;
+  }
+
+  const mainSelect = allColumns.map(selectFromColumn).join(",\n  ");
 
   return `-- name ${hasResource ? resource.name : runnableUrl}
 -- type ${hasResource ? resource.type : "assignment"}
 
-${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )` : ""}
-${promptsUnion}
+${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )` : ""}
+${headerRowUnion}
 SELECT
-  ${[
-    "remote_endpoint",
-    ...metadataColumns,
-    ...assignTeacherMetaData,
-    ...completionColumns,
-    ...selectColumns
-    ].join(",\n  ")}
+  ${mainSelect}
 FROM${hasResource ? ` activities,` : ""}
-  ( SELECT l.run_remote_endpoint remote_endpoint, ${assignMetadata}, ${assignTeacherVar}${hasResource ? `, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted` : ""}
-    FROM ${hasResource ? `"report-service"."partitioned_answers" a` : `"report-service"."learners" l`}
-${hasResource ? `    INNER JOIN "report-service"."learners" l
-    ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
-    WHERE a.escaped_url = '${escapedUrl}'`
-    : `    WHERE l.query_id = '${queryId}'`}
-    GROUP BY l.run_remote_endpoint )`
+  ( ${groupedSubSelect} )`
 }
 
 /*
