@@ -70,29 +70,29 @@ describe('Query creation', function () {
         const expectedSQLresult = `-- name test activity
 -- type activity
 
-WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
 
 SELECT
-  null as remote_endpoint,
-  null as runnable_url,
-  null as learner_id,
-  null as student_id,
-  null as user_id,
-  null as student_name,
-  null as username,
-  null as school,
-  null as class,
-  null as class_id,
-  null as permission_forms,
-  null as last_run,
-  null as teacher_user_ids,
-  null as teacher_names,
-  null as teacher_districts,
-  null as teacher_states,
-  null as teacher_emails,
-  null as num_questions,
-  null as num_answers,
-  null as percent_complete,
+  null AS remote_endpoint,
+  null AS runnable_url,
+  null AS learner_id,
+  null AS student_id,
+  null AS user_id,
+  null AS student_name,
+  null AS username,
+  null AS school,
+  null AS class,
+  null AS class_id,
+  null AS permission_forms,
+  null AS last_run,
+  null AS teacher_user_ids,
+  null AS teacher_names,
+  null AS teacher_districts,
+  null AS teacher_states,
+  null AS teacher_emails,
+  null AS num_questions,
+  null AS num_answers,
+  null AS percent_complete,
   activities.questions['multiple_choice_00000'].prompt AS multiple_choice_00000_choice,
   activities.questions['multiple_choice_01000'].prompt AS multiple_choice_01000_choice,
   activities.questions['multiple_choice_02000'].prompt AS multiple_choice_02000_choice,
@@ -132,14 +132,14 @@ SELECT
   class_id,
   permission_forms,
   last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails,
-  activities.num_questions,
-  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
-  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete,
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
+  activities.num_questions AS num_questions,
+  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) AS num_answers,
+  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) AS percent_complete,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_00000'][x].content, IF(activities.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_00000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_01000'][x].content, '')),', ') AS multiple_choice_01000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_02000'][x].content, IF(activities.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_02000_choice,
@@ -163,7 +163,7 @@ SELECT
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
 FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) AS runnable_url, arbitrary(l.learner_id) AS learner_id, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.last_run) AS last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
     INNER JOIN "report-service"."learners" l
     ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
@@ -183,7 +183,7 @@ describe('Query creation usage report', function () {
       const expectedSQLresult = `-- name test activity
 -- type activity
 
-WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
 
 SELECT
   remote_endpoint,
@@ -198,16 +198,16 @@ SELECT
   class_id,
   permission_forms,
   last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails,
-  activities.num_questions,
-  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
-  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
+  activities.num_questions AS num_questions,
+  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) AS num_answers,
+  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) AS percent_complete
 FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) AS runnable_url, arbitrary(l.learner_id) AS learner_id, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.last_run) AS last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
     FROM "report-service"."partitioned_answers" a
     INNER JOIN "report-service"."learners" l
     ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
@@ -243,13 +243,13 @@ SELECT
   class_id,
   permission_forms,
   last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails
 FROM
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers
+  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) AS runnable_url, arbitrary(l.learner_id) AS learner_id, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.last_run) AS last_run, arbitrary(l.teachers) teachers
     FROM "report-service"."learners" l
     WHERE l.query_id = '123456789'
     GROUP BY l.run_remote_endpoint )`;
