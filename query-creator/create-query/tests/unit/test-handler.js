@@ -70,7 +70,21 @@ describe('Query creation', function () {
         const expectedSQLresult = `-- name test activity
 -- type activity
 
-WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
+
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+  FROM "report-service"."partitioned_answers" a
+  INNER JOIN "report-service"."learners" l
+  ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
+  WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+  GROUP BY l.run_remote_endpoint ),
+
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
+  FROM activities, "report-service"."learners" l
+  LEFT JOIN grouped_answers
+  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
+  WHERE l.query_id = '123456789' )
 
 SELECT
   null AS remote_endpoint,
@@ -138,8 +152,8 @@ SELECT
   array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
   array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
   activities.num_questions AS num_questions,
-  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) AS num_answers,
-  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) AS percent_complete,
+  num_answers,
+  round(100.0 * num_answers / activities.num_questions, 1) AS percent_complete,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_00000'][x].content, IF(activities.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_00000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_01000'][x].content, '')),', ') AS multiple_choice_01000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_02000'][x].content, IF(activities.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_02000_choice,
@@ -162,13 +176,7 @@ SELECT
   kv1['managed_interactive_77777'] AS managed_interactive_77777_answer,
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
-FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) AS runnable_url, arbitrary(l.learner_id) AS learner_id, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.last_run) AS last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
-    FROM "report-service"."partitioned_answers" a
-    INNER JOIN "report-service"."learners" l
-    ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
-    WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
-    GROUP BY l.run_remote_endpoint )`;
+FROM activities, learners_and_answers`;
 
         const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
         const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
@@ -183,7 +191,22 @@ describe('Query creation usage report', function () {
       const expectedSQLresult = `-- name test activity
 -- type activity
 
-WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
+
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+  FROM "report-service"."partitioned_answers" a
+  INNER JOIN "report-service"."learners" l
+  ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
+  WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+  GROUP BY l.run_remote_endpoint ),
+
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
+  FROM activities, "report-service"."learners" l
+  LEFT JOIN grouped_answers
+  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
+  WHERE l.query_id = '123456789' )\
+
 
 SELECT
   remote_endpoint,
@@ -204,15 +227,9 @@ SELECT
   array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
   array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
   activities.num_questions AS num_questions,
-  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) AS num_answers,
-  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) AS percent_complete
-FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) AS runnable_url, arbitrary(l.learner_id) AS learner_id, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.last_run) AS last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
-    FROM "report-service"."partitioned_answers" a
-    INNER JOIN "report-service"."learners" l
-    ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
-    WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
-    GROUP BY l.run_remote_endpoint )`;
+  num_answers,
+  round(100.0 * num_answers / activities.num_questions, 1) AS percent_complete
+FROM activities, learners_and_answers`;
 
       const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
       const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
@@ -220,13 +237,13 @@ FROM activities,
   });
 });
 
-
-
 describe('Query creation unreportable runnable', function () {
   it('verifies successful query creation of unreportable runnable', async () => {
       const generatedSQLresult = await aws.generateSQL(testQueryId, undefined, undefined, false, "www.test.url");
       const expectedSQLresult = `-- name www.test.url
 -- type assignment
+
+
 
 
 

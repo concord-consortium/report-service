@@ -173,7 +173,9 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
 
 exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl) => {
   const hasResource = !!resource;
-  let escapedUrl;
+  const escapedUrl = hasResource
+    ? resource.url.replace(/[^a-z0-9]/g, "-")
+    : runnableUrl.replace(/[^a-z0-9]/g, "-");
 
   const metadataColumnNames = [
     "runnable_url",
@@ -226,6 +228,25 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
   const groupingSelectMetadataColumns = metadataColumnsForGrouping.map(selectFromColumn).join(", ");
 
   const groupingSelect = `l.run_remote_endpoint remote_endpoint, ${groupingSelectMetadataColumns}, ${assignTeacherVar}`
+  const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted`;
+
+  const groupedAnswers = hasResource ? `
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
+  FROM "report-service"."partitioned_answers" a
+  INNER JOIN "report-service"."learners" l
+  ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
+  WHERE a.escaped_url = '${escapedUrl}'
+  GROUP BY l.run_remote_endpoint ),`
+  : "";
+
+  const learnersAndAnswers = hasResource ? `
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
+  FROM activities, "report-service"."learners" l
+  LEFT JOIN grouped_answers
+  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
+  WHERE l.query_id = '${queryId}' )`
+  : "";
 
   let headerRowUnion = "";
   let groupedSubSelect;
@@ -234,12 +255,11 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
       {name: "num_questions",
        value: "activities.num_questions"},
       {name: "num_answers",
-       value: "cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))"},
+       value: "num_answers"},
       {name: "percent_complete",
-       value: "round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1)"}
+       value: "round(100.0 * num_answers / activities.num_questions, 1)"}
     ]
     allColumns.push(...completionColumns);
-    escapedUrl = resource.url.replace(/[^a-z0-9]/g, "-");
 
     if (!usageReport) {
       const questionsColumns = [];
@@ -264,21 +284,12 @@ UNION ALL
 `;
     }
 
-    const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted`;
-
-    groupedSubSelect = `SELECT ${groupingSelect}, ${answerMaps}
-    FROM "report-service"."partitioned_answers" a
-    INNER JOIN "report-service"."learners" l
-    ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
-    WHERE a.escaped_url = '${escapedUrl}'
-    GROUP BY l.run_remote_endpoint`;
   } else {
-    escapedUrl = runnableUrl.replace(/[^a-z0-9]/g, "-");
-
-    groupedSubSelect = `SELECT ${groupingSelect}
+    groupedSubSelect = `
+  ( SELECT ${groupingSelect}
     FROM "report-service"."learners" l
     WHERE l.query_id = '${queryId}'
-    GROUP BY l.run_remote_endpoint`;
+    GROUP BY l.run_remote_endpoint )`;
   }
 
   const mainSelect = allColumns.map(selectFromColumn).join(",\n  ");
@@ -286,12 +297,13 @@ UNION ALL
   return `-- name ${hasResource ? resource.name : runnableUrl}
 -- type ${hasResource ? resource.type : "assignment"}
 
-${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' )` : ""}
+${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' ),` : ""}
+${groupedAnswers}
+${learnersAndAnswers}
 ${headerRowUnion}
 SELECT
   ${mainSelect}
-FROM${hasResource ? ` activities,` : ""}
-  ( ${groupedSubSelect} )`
+FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
 }
 
 /*
