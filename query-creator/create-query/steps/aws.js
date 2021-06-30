@@ -230,7 +230,8 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
   const groupingSelect = `l.run_remote_endpoint remote_endpoint, ${groupingSelectMetadataColumns}, ${assignTeacherVar}`
   const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted`;
 
-  const groupedAnswers = hasResource ? `grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
+  const groupedAnswers = hasResource ? `
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
   FROM "report-service"."partitioned_answers" a
   INNER JOIN "report-service"."learners" l
   ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
@@ -238,7 +239,8 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
   GROUP BY l.run_remote_endpoint ),`
   : "";
 
-  const learnersAndAnswers = hasResource ? `learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+  const learnersAndAnswers = hasResource ? `
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
@@ -296,9 +298,7 @@ UNION ALL
 -- type ${hasResource ? resource.type : "assignment"}
 
 ${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' ),` : ""}
-
 ${groupedAnswers}
-
 ${learnersAndAnswers}
 ${headerRowUnion}
 SELECT

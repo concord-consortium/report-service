@@ -247,8 +247,6 @@ describe('Query creation unreportable runnable', function () {
 
 
 
-
-
 SELECT
   remote_endpoint,
   runnable_url,
