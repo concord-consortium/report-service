@@ -2,7 +2,7 @@ const AWS = require("aws-sdk");
 const { v4: uuidv4 } = require('uuid');
 const request = require("./request");
 
-const PAGE_SIZE = 1000;
+const PAGE_SIZE = 2000;
 
 exports.ensureWorkgroup = async (resource, user) => {
   const athena = new AWS.Athena({apiVersion: '2017-05-18'});
@@ -59,11 +59,9 @@ exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl) => {
   const queryIdsPerRunnable = {};     // {[runnable_url]: queryId}
   const queryParams = {
     query,
-    page_size: PAGE_SIZE,
-    start_from: 0
+    page_size: PAGE_SIZE
   };
   let foundAllLearners = false;
-  let totalLearnersFound = 0;
   while (!foundAllLearners) {
     const res = await request.getLearnerDataWithJwt(learnersApiUrl, queryParams, jwt);
     if (res.json.learners) {
@@ -82,11 +80,10 @@ exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl) => {
         await uploadLearnerData(queryId, learners);
       };
 
-      if (res.json.learners.length < PAGE_SIZE) {
+      if (res.json.learners.length < PAGE_SIZE && res.json.lastHitSortValue) {
         foundAllLearners = true;
       } else {
-        totalLearnersFound += res.json.learners.length;
-        queryParams.start_from = totalLearnersFound;
+        queryParams.search_after = res.json.lastHitSortValue;
       }
     } else {
       throw new Error("Malformed response from the portal: " + JSON.stringify(res));
