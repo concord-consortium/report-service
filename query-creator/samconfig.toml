@@ -24,3 +24,4 @@ parameter_overrides = "OutputBucket=\"concord-report-data\" ReportServiceUrl=\"h
 
 [default.local_start_api.parameters]
 profile = "QueryCreatorLocalTestUser"
+env_vars = "env.json"
