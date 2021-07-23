@@ -9,7 +9,7 @@ s3_prefix = "report-service-query-creator"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "OutputBucket=\"concordqa-report-data\" ReportServiceUrl=\"https://us-central1-report-service-dev.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/branch/master/\""
+parameter_overrides = "OutputBucket=\"concordqa-report-data\" FirebaseApp=\"report-service-dev\" ReportServiceUrl=\"https://us-central1-report-service-dev.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/branch/master/\""
 
 [production]
 [production.deploy]
@@ -20,7 +20,7 @@ s3_prefix = "report-service-query-creator"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "OutputBucket=\"concord-report-data\" ReportServiceUrl=\"https://us-central1-report-service-pro.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/\""
+parameter_overrides = "OutputBucket=\"concord-report-data\" FirebaseApp=\"report-service-pro\" ReportServiceUrl=\"https://us-central1-report-service-pro.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/\""
 
 [default.local_start_api.parameters]
 profile = "QueryCreatorLocalTestUser"

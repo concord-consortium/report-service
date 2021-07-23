@@ -77,7 +77,7 @@ Or the `QueryCreatorLocalTestUser` credential information can be configured via 
 query-creator$ aws configure
 ```
 
-The following environment variables need to be configured: `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl`. These can be configured system-wide or as default values in the `parameters` section of `template.yml`. For example, `OutputBucket` can be configured as follows:
+The following environment variables need to be configured: `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl`, `FirebaseApp`. These can be configured system-wide or as default values in the `parameters` section of `template.yml`. For example, `OutputBucket` can be configured as follows:
 ```
   OutputBucket:
     Type: String
