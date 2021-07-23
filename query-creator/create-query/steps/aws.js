@@ -112,7 +112,7 @@ const selectFromColumn = (column) => {
   }
 }
 
-const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
+const getColumnsForQuestion = (questionId, question, denormalizedResource, createModelUrl) => {
   const type = question.type;
   const isRequired = question.required;
 
@@ -151,6 +151,12 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
     case "iframe_interactive":
       columns.push({name: `${questionId}_json`,
                     value: `kv1['${questionId}']`});
+
+      const modelUrl = createModelUrl(questionId);
+      const conditionalModelUrl = `CASE WHEN kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
+
+      columns.push({name: `${questionId}_url`,
+                    value: conditionalModelUrl});
       break;
     case "managed_interactive":
     case "mw_interactive":
@@ -168,7 +174,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
   return columns;
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl) => {
+exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, createModelUrl) => {
   const hasResource = !!resource;
   const escapedUrl = hasResource
     ? resource.url.replace(/[^a-z0-9]/g, "-")
@@ -237,7 +243,7 @@ grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
   : "";
 
   const learnersAndAnswers = hasResource ? `
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
@@ -262,7 +268,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       const questionsColumns = [];
       Object.keys(denormalizedResource.questions).forEach(questionId => {
         const question = denormalizedResource.questions[questionId];
-        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource)
+        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, createModelUrl)
         questionsColumns.push(...questionColumns);
       });
       allColumns.push(...questionsColumns);

@@ -210,6 +210,7 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
       class string,
       school string,
       user_id string,
+      offering_id string,
       permission_forms string,
       username string,
       student_name string,

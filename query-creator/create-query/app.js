@@ -4,8 +4,12 @@ const firebase = require("./steps/firebase");
 const aws = require("./steps/aws");
 const tokenService = require("./steps/token-service");
 
-exports.lambdaHandler = async (event, context) => {
+const portalToAuthDomainMap = {
+  "https://learn-report.staging.concord.org": "https://learn.staging.concord.org",
+  "https://learn-report.concord.org": "https://learn.concord.org"
+}
 
+exports.lambdaHandler = async (event, context) => {
   try {
     const params = event.queryStringParameters || {};
 
@@ -34,12 +38,30 @@ exports.lambdaHandler = async (event, context) => {
 
     const portalUrl = learnersApiUrl.match(/(.*)\/api\/v[0-9]+/)[1];
 
+    const authDomain = portalToAuthDomainMap[portalUrl] || portalUrl;
+
     const tokenServiceJwt = await request.getTokenServiceJwt(portalUrl, jwt);
 
     const resource = await tokenService.findOrCreateResource(tokenServiceJwt, tokenServiceEnv, email, portalUrl);
     const workgroupName = await aws.ensureWorkgroup(resource, user);
 
     const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
+
+    const createModelUrl = (modelId) => {
+      return [`concat(`,
+        `'https://portal-report.concord.org/branch/master/index.html`,
+        `?auth-domain=${encodeURIComponent(authDomain)}`,
+        `&firebase-app=${process.env.FIREBASE_APP}`,
+        `&iframeQuestionId=${modelId}`,
+        `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
+        ` cast(class_id as varchar), `,
+        `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
+        ` cast(offering_id as varchar), `,
+        `'&studentId=',`,
+        ` cast(user_id as varchar)`,
+        `)`
+      ].join("");
+    }
 
     const sqlOutput = [];
 
@@ -61,7 +83,7 @@ exports.lambdaHandler = async (event, context) => {
       }
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl);
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, createModelUrl);
 
       if (debugSQL) {
         sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
