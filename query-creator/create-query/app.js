@@ -47,22 +47,6 @@ exports.lambdaHandler = async (event, context) => {
 
     const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
 
-    const createModelUrl = (modelId) => {
-      return [`concat(`,
-        `'https://portal-report.concord.org/branch/master/index.html`,
-        `?auth-domain=${encodeURIComponent(authDomain)}`,
-        `&firebase-app=${process.env.FIREBASE_APP}`,
-        `&iframeQuestionId=${modelId}`,
-        `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
-        ` cast(class_id as varchar), `,
-        `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
-        ` cast(offering_id as varchar), `,
-        `'&studentId=',`,
-        ` cast(user_id as varchar)`,
-        `)`
-      ].join("");
-    }
-
     const sqlOutput = [];
 
     for (const runnableUrl in queryIdsPerRunnable) {
@@ -83,7 +67,7 @@ exports.lambdaHandler = async (event, context) => {
       }
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, createModelUrl);
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain);
 
       if (debugSQL) {
         sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);

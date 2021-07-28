@@ -7,7 +7,8 @@ const chai = require('chai');
 const expect = chai.expect;
 var event, context;
 
-const createModelUrl = () => "model-url";
+process.env.FIREBASE_APP = 'report-service-test';
+process.env.PORTAL_REPORT_URL = 'https://portal-report.test'
 
 const testQueryId = "123456789";
 const testResource = {
@@ -68,7 +69,7 @@ describe('Tests index', function () {
 describe('Query creation', function () {
     it('verifies successful query creation', async () => {
         const testDenormalizedResource = firebase.denormalizeResource(testResource);
-        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false, "", createModelUrl);
+        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false, "", "fake-auth-domain");
         const expectedSQLresult = `-- name test activity
 -- type activity
 
@@ -178,7 +179,7 @@ SELECT
   json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
   kv1['managed_interactive_77777'] AS managed_interactive_77777_answer,
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
-  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE model-url END AS managed_interactive_88888_url,
+  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR)) END AS managed_interactive_88888_url,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
 FROM activities, learners_and_answers`;
 
@@ -191,7 +192,7 @@ FROM activities, learners_and_answers`;
 describe('Query creation usage report', function () {
   it('verifies successful query creation in usage report mode', async () => {
       const testDenormalizedResource = firebase.denormalizeResource(testResource);
-      const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, true, "", createModelUrl);
+      const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, true, "", "fake-auth-domain");
       const expectedSQLresult = `-- name test activity
 -- type activity
 
@@ -243,7 +244,7 @@ FROM activities, learners_and_answers`;
 
 describe('Query creation unreportable runnable', function () {
   it('verifies successful query creation of unreportable runnable', async () => {
-      const generatedSQLresult = await aws.generateSQL(testQueryId, undefined, undefined, false, "www.test.url", createModelUrl);
+      const generatedSQLresult = await aws.generateSQL(testQueryId, undefined, undefined, false, "www.test.url", "fake-auth-domain");
       const expectedSQLresult = `-- name www.test.url
 -- type assignment
 

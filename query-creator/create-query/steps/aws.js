@@ -112,7 +112,7 @@ const selectFromColumn = (column) => {
   }
 }
 
-const getColumnsForQuestion = (questionId, question, denormalizedResource, createModelUrl) => {
+const getColumnsForQuestion = (questionId, question, denormalizedResource, authDomain) => {
   const type = question.type;
   const isRequired = question.required;
 
@@ -152,7 +152,20 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, creat
       columns.push({name: `${questionId}_json`,
                     value: `kv1['${questionId}']`});
 
-      const modelUrl = createModelUrl(questionId);
+      const modelUrl = [`CONCAT(`,
+        `'${process.env.PORTAL_REPORT_URL}`,
+        `?auth-domain=${encodeURIComponent(authDomain)}`,
+        `&firebase-app=${process.env.FIREBASE_APP}`,
+        `&iframeQuestionId=${questionId}`,
+        `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
+        ` CAST(class_id AS VARCHAR), `,
+        `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
+        ` CAST(offering_id AS VARCHAR), `,
+        `'&studentId=',`,
+        ` CAST(user_id AS VARCHAR)`,
+        `)`
+      ].join("")
+
       const conditionalModelUrl = `CASE WHEN kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
 
       columns.push({name: `${questionId}_url`,
@@ -174,7 +187,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, creat
   return columns;
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, createModelUrl) => {
+exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain) => {
   const hasResource = !!resource;
   const escapedUrl = hasResource
     ? resource.url.replace(/[^a-z0-9]/g, "-")
@@ -268,7 +281,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       const questionsColumns = [];
       Object.keys(denormalizedResource.questions).forEach(questionId => {
         const question = denormalizedResource.questions[questionId];
-        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, createModelUrl)
+        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain)
         questionsColumns.push(...questionColumns);
       });
       allColumns.push(...questionsColumns);
