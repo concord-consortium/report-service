@@ -4,8 +4,12 @@ const firebase = require("./steps/firebase");
 const aws = require("./steps/aws");
 const tokenService = require("./steps/token-service");
 
-exports.lambdaHandler = async (event, context) => {
+const portalToAuthDomainMap = {
+  "https://learn-report.staging.concord.org": "https://learn.staging.concord.org",
+  "https://learn-report.concord.org": "https://learn.concord.org"
+}
 
+exports.lambdaHandler = async (event, context) => {
   try {
     const params = event.queryStringParameters || {};
 
@@ -34,6 +38,8 @@ exports.lambdaHandler = async (event, context) => {
 
     const portalUrl = learnersApiUrl.match(/(.*)\/api\/v[0-9]+/)[1];
 
+    const authDomain = portalToAuthDomainMap[portalUrl] || portalUrl;
+
     const tokenServiceJwt = await request.getTokenServiceJwt(portalUrl, jwt);
 
     const resource = await tokenService.findOrCreateResource(tokenServiceJwt, tokenServiceEnv, email, portalUrl);
@@ -61,7 +67,7 @@ exports.lambdaHandler = async (event, context) => {
       }
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl);
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain);
 
       if (debugSQL) {
         sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);

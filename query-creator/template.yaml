@@ -17,6 +17,12 @@ Parameters:
     Type: String
     Description: URL for researcher reports app
     Default: https://localhost:8080
+  FirebaseApp:
+    Type: String
+    Description: Firebase app name
+  PortalReportUrl:
+    Type: String
+    Description: Url to the Portal Report where reseachers can load learner's models
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -28,6 +34,8 @@ Globals:
         REPORT_SERVICE_TOKEN: !Ref ReportServiceToken
         REPORT_SERVICE_URL: !Ref ReportServiceUrl
         RESEARCHER_REPORTS_URL: !Ref ResearcherReportsUrl
+        FIREBASE_APP: !Ref FirebaseApp
+        PORTAL_REPORT_URL: !Ref PortalReportUrl
 
 Resources:
   CreateQueryFunction:

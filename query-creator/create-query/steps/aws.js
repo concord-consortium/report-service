@@ -112,7 +112,7 @@ const selectFromColumn = (column) => {
   }
 }
 
-const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
+const getColumnsForQuestion = (questionId, question, denormalizedResource, authDomain) => {
   const type = question.type;
   const isRequired = question.required;
 
@@ -151,6 +151,25 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
     case "iframe_interactive":
       columns.push({name: `${questionId}_json`,
                     value: `kv1['${questionId}']`});
+
+      const modelUrl = [`CONCAT(`,
+        `'${process.env.PORTAL_REPORT_URL}`,
+        `?auth-domain=${encodeURIComponent(authDomain)}`,
+        `&firebase-app=${process.env.FIREBASE_APP}`,
+        `&iframeQuestionId=${questionId}`,
+        `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
+        ` CAST(class_id AS VARCHAR), `,
+        `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
+        ` CAST(offering_id AS VARCHAR), `,
+        `'&studentId=',`,
+        ` CAST(user_id AS VARCHAR)`,
+        `)`
+      ].join("")
+
+      const conditionalModelUrl = `CASE WHEN kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
+
+      columns.push({name: `${questionId}_url`,
+                    value: conditionalModelUrl});
       break;
     case "managed_interactive":
     case "mw_interactive":
@@ -168,7 +187,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource) => {
   return columns;
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl) => {
+exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain) => {
   const hasResource = !!resource;
   const escapedUrl = hasResource
     ? resource.url.replace(/[^a-z0-9]/g, "-")
@@ -237,7 +256,7 @@ grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
   : "";
 
   const learnersAndAnswers = hasResource ? `
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
@@ -262,7 +281,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       const questionsColumns = [];
       Object.keys(denormalizedResource.questions).forEach(questionId => {
         const question = denormalizedResource.questions[questionId];
-        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource)
+        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain)
         questionsColumns.push(...questionColumns);
       });
       allColumns.push(...questionsColumns);
