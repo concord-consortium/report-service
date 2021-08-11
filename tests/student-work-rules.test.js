@@ -368,6 +368,130 @@ function testStudentWork(path, label) {
       });
     });
   });
+
+  describe("with a logged in researcher", () => {
+    let testApp = null;
+
+    beforeAll(() => {
+      testApp = firebase.initializeTestApp({
+        projectId: "report-service-dev",
+        auth: {
+          // The platform_user_id, offering_id, and target_user_id are integers in the JWT
+          // I'm not sure if FB converts them but in these tests the have been mocked as
+          // strings
+          user_id: "not_sure_what_this_is",
+          user_type: "user",
+          platform_id: "https://portal.concord.org",
+          platform_user_id: "3456",
+          class_hash: "qwerty",
+          offering_id: "1234",
+          target_user_id: "7890"
+        }
+      });
+    });
+
+    afterAll(async () => {
+      await testApp.delete();
+    });
+
+    const invalidResearcherAnswer = {
+      platform_id: "https://portal.concord.org",
+      context_id: "qwerty",
+      platform_user_id: "3456"
+    };
+
+    it(`cannot create ${label}s`, async () => {
+      await firebase.assertFails(testApp.firestore()
+        .collection(path)
+        .add(invalidResearcherAnswer));
+    });
+
+    it(`can read target student ${label}s in same context`, async () => {
+      const query = testApp.firestore()
+        .collection(path)
+        .where("platform_id", "==", "https://portal.concord.org")
+        .where("context_id", "==", "qwerty")
+        .where("platform_user_id", "==", "7890");
+      await firebase.assertSucceeds(query.get());
+    });
+
+    it(`cannot read ${label}s in same context, without target student`, async () => {
+      const query = testApp.firestore()
+        .collection(path)
+        .where("platform_id", "==", "https://portal.concord.org")
+        .where("context_id", "==", "qwerty");
+      await firebase.assertFails(query.get());
+    });
+
+    it(`cannot read target student ${label}s in different context`, async () => {
+      const query = await testApp.firestore()
+        .collection(path)
+        .where("platform_id", "==", "https://portal.concord.org")
+        .where("context_id", "==", "qwerty-other")
+        .where("platform_user_id", "==", "7890");
+      await firebase.assertFails(query.get());
+    });
+
+    it(`cannot read different target student ${label}s in same context`, async () => {
+      const query = await testApp.firestore()
+        .collection(path)
+        .where("platform_id", "==", "https://portal.concord.org")
+        .where("context_id", "==", "qwerty")
+        .where("platform_user_id", "==", "9999");
+      await firebase.assertFails(query.get());
+    });
+
+    it(`cannot read ${label}s from a different platform`, async () => {
+      const query = await testApp.firestore()
+        .collection(path)
+        .where("platform_id", "==", "https://portal.staging.concord.org")
+        .where("context_id", "==", "qwerty")
+        .where("platform_user_id", "==", "7890");
+      await firebase.assertFails(query.get());
+    });
+
+    describe(`with an existing student ${label}`, () => {
+
+      beforeAll(async () => {
+        const testAppStudent = firebase.initializeTestApp({
+          projectId: "report-service-dev",
+          auth: {
+            user_id: "not_sure_what_this_is",
+            user_type: "learner",
+            platform_id: "https://portal.concord.org",
+            platform_user_id: 7890,
+            class_hash: "qwerty"
+          }
+        });
+
+        await testAppStudent.firestore()
+          .collection(path)
+          .add({
+            platform_id: "https://portal.concord.org",
+            context_id: "qwerty",
+            platform_user_id: "7890"
+          });
+
+        await testAppStudent.delete();
+      });
+
+      it(`cannot update student ${label}`, async () => {
+        expect.assertions(1);
+        const query = await testApp.firestore()
+          .collection(path)
+          .where("platform_id", "==", "https://portal.concord.org")
+          .where("context_id", "==", "qwerty")
+          .where("platform_user_id", "==", "7890");
+        const querySnapshot = await query.get();
+        expect(querySnapshot.empty).toBe(false);
+        const studentAnswerRef = querySnapshot.docs[0].ref;
+
+        await firebase.assertFails(studentAnswerRef.update({
+          teacherInfo: "should not work"
+        }));
+      });
+    });
+  });
 }
 
 describe("Answers", () =>

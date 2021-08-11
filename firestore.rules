@@ -33,6 +33,14 @@ service cloud.firestore {
         && request.auth.token.platform_id == res.data.platform_id;
     }
 
+    // Check for researchers: users with a class_hash and target_user_id
+    function researcherOfOwner(res) {
+      return request.auth.token.user_type == 'user'
+        && string(request.auth.token.target_user_id) == string(res.data.platform_user_id)
+        && request.auth.token.class_hash == res.data.context_id
+        && request.auth.token.platform_id == res.data.platform_id;
+    }
+
     function notChangingIdentifyingProps() {
       // Make sure the learner isn't changing the document's identifying properties
       return string(request.resource.data.platform_user_id) == string(request.auth.token.platform_user_id)
@@ -55,18 +63,21 @@ service cloud.firestore {
     }
 
     function anonymousCreate() {
-      return request.resource.data.run_key.size() > 10
+      return ('run_key' in request.resource.data)
+        && request.resource.data.run_key.size() > 10
         // Make sure anonymous answers don't have platform_ids
         && !('platform_id' in request.resource.data);
     }
 
     // Anyone can read any anonymous docs with a valid run_key
     function anonymousRead() {
-      return resource.data.run_key.size() > 10
+      return ('run_key' in resource.data)
+        && resource.data.run_key.size() > 10
     }
 
     function anonymousUpdate() {
-      return resource.data.run_key.size() > 10
+      return ('run_key' in resource.data)
+        && resource.data.run_key.size() > 10
         // Make sure they can't change the run key of an existing document
         && resource.data.run_key == request.resource.data.run_key
         // Make sure anonymous answers don't have platform_ids
@@ -81,7 +92,8 @@ service cloud.firestore {
     function studentWorkRead() {
       return anonymousRead()
         || teacherOfContext()
-        || learnerOwner(resource);
+        || learnerOwner(resource)
+        || researcherOfOwner(resource);
     }
 
     function studentWorkUpdate() {
