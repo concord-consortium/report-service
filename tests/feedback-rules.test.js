@@ -158,6 +158,169 @@ function testFeedback(path, label, perStudent) {
 
   });
 
+  describe("with a logged in researcher", () => {
+    let testApp = null;
+    let testAppOtherClass = null;
+
+    beforeAll(() => {
+      testApp = firebase.initializeTestApp({
+        projectId: "report-service-dev",
+        auth: {
+          user_id: "not_sure_what_this_is",
+          user_type: "user",
+          platform_id: "https://portal.concord.org",
+          platform_user_id: 1234,
+          target_user_id: 7890,
+          class_hash: "qwerty"
+        }
+      });
+
+      testAppOtherClass = firebase.initializeTestApp({
+        projectId: "report-service-dev",
+        auth: {
+          user_id: "not_sure_what_this_is",
+          user_type: "user",
+          platform_id: "https://portal.concord.org",
+          platform_user_id: 1234,
+          target_user_id: 7890,
+          class_hash: "different-qwerty"
+        }
+      });
+    })
+
+    afterAll(async () => {
+      await testApp.delete();
+      await testAppOtherClass.delete();
+    });
+
+    const validFeedback = {
+      platformId: "https://portal.concord.org",
+      contextId: "qwerty",
+      platformStudentId: "7890"
+    };
+
+    it(`fails to creates ${label}s that match the auth`, async () => {
+      await firebase.assertFails(testApp.firestore()
+        .collection(path)
+        .add(validFeedback));
+    });
+
+    it(`fails to create ${label}s that with incorrect contextId`, async () => {
+      await firebase.assertFails(testApp.firestore()
+        .collection(path)
+        .add({
+            ...validFeedback,
+            contextId: "incorrect context id"
+        }));
+    });
+
+    it(`can read ${label}s with the same contextId`, async () => {
+      // query document
+      let query = await testApp.firestore()
+        .collection(path)
+        .where("platformId", "==", "https://portal.concord.org")
+        .where("contextId", "==", "qwerty");
+
+      if (perStudent) {
+        query = query.where("platformStudentId", "==", "7890");
+      }
+
+      await firebase.assertSucceeds(query.get());
+    });
+
+    it(`cannot read ${label}s from a different contextId`, async () => {
+      let query = await testApp.firestore()
+        .collection(path)
+        .where("platformId", "==", "https://portal.concord.org")
+        .where("contextId", "==", "different-qwerty");
+
+      if (perStudent) {
+        query = query.where("platformStudentId", "==", "7890");
+      }
+
+      await firebase.assertFails(query.get());
+    });
+
+    it(`cannot read ${label}s from a different platform`, async () => {
+      let query = await testApp.firestore()
+        .collection(path)
+        .where("platformId", "==", "https://portal.staging.concord.org")
+        .where("contextId", "==", "qwerty");
+
+      if (perStudent) {
+        query = query.where("platformStudentId", "==", "7890");
+      }
+
+      await firebase.assertFails(query.get());
+    });
+
+    if (perStudent) {
+      it(`cannot read ${label}s from a different student`, async () => {
+        const query = await testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.concord.org")
+          .where("contextId", "==", "qwerty")
+          .where("platformStudentId", "==", "9999");
+
+        await firebase.assertFails(query.get());
+      });
+    }
+
+    describe(`with an existing ${label}`, () => {
+      let feedbackDoc = null;
+
+      beforeAll(async () => {
+        const testAppTeacher = firebase.initializeTestApp({
+          projectId: "report-service-dev",
+          auth: {
+            user_id: "not_sure_what_this_is",
+            user_type: "teacher",
+            platform_id: "https://portal.concord.org",
+            platform_user_id: "5678",
+            class_hash: "qwerty"
+          }
+        });
+
+        await testAppTeacher.firestore()
+          .collection(path)
+          .add(validFeedback);
+
+        await testAppTeacher.delete();
+
+        let query = await testApp.firestore()
+          .collection(path)
+          .where("platformId", "==", "https://portal.concord.org")
+          .where("contextId", "==", "qwerty")
+          .where("platformStudentId", "==", "7890");
+
+        const querySnapshot = await query.get();
+        expect(querySnapshot.empty).toBe(false);
+        feedbackDoc = querySnapshot.docs[0].ref;
+      })
+
+      it(`cannot update a ${label} with new content`, async () => {
+        await firebase.assertFails(feedbackDoc.
+          update({
+            fakeProperty: "some value"
+          }));
+      });
+
+      it(`cannot change the platform_id of a ${label}`, async () => {
+        await firebase.assertFails(feedbackDoc.
+          update({
+            platformId: "invalid platform_id"
+          }));
+      });
+
+      it(`cannot change the context_id of a ${label}`, async () => {
+        await firebase.assertFails(feedbackDoc.
+          update({
+            contextId: "invalid context_id"
+          }));
+      });
+    });
+  });
+
   describe("with a logged in student", () => {
     let testApp = null;
 

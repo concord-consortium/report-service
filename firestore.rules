@@ -155,18 +155,25 @@ service cloud.firestore {
         && request.auth.token.platform_id == resource.data.platformId;
     }
 
+    function authorizedTarget() {
+      return string(request.auth.token.target_user_id) == string(resource.data.platformStudentId)
+        && request.auth.token.platform_id == resource.data.platformId;
+    }
+
     // Make sure teachers can only create feedbacks in their current context
     function feedbackCreate() {
       return request.auth.token.user_type == 'teacher'
         && authorizedContext(request.resource);
     }
 
-    // Make sure learners can only read feedbacks directed at them, and
-    // teachers can only read feedbacks in their context
+    // learners can only read feedbacks directed at them
+    // teachers can read all feedbacks in their context
+    // users need a context and target and can only read feedback in that context for that target
     // Note: this isn't used for feedback settings
     function feedbackRead() {
       return (request.auth.token.user_type == 'teacher' && authorizedContext(resource))
-        || (request.auth.token.user_type == 'learner' && authorizedStudent()) ;
+        || (request.auth.token.user_type == 'learner' && authorizedStudent())
+        || (request.auth.token.user_type == 'user' && authorizedTarget() && authorizedContext(resource)) ;
     }
 
     // Make sure the teacher can't change the identifying properties of
