@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "report-service-dev"
+    "default": "report-service-dev",
+    "production": "report-service-pro"
   }
 }
