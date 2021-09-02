@@ -2,7 +2,7 @@ const AWS = require("aws-sdk");
 const { v4: uuidv4 } = require('uuid');
 const request = require("./request");
 
-const PAGE_SIZE = 2000;
+const PAGE_SIZE = 5000;
 
 exports.ensureWorkgroup = async (resource, user) => {
   const athena = new AWS.Athena({apiVersion: '2017-05-18'});
@@ -63,12 +63,16 @@ exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl) => {
   };
   let foundAllLearners = false;
   while (!foundAllLearners) {
+    console.time(`request.getLearnerDataWithJwt ${learnersApiUrl} / ${JSON.stringify(queryParams)}`);
     const res = await request.getLearnerDataWithJwt(learnersApiUrl, queryParams, jwt);
+    console.timeEnd(`request.getLearnerDataWithJwt ${learnersApiUrl} / ${JSON.stringify(queryParams)}`);
     if (res.json.learners) {
       // sort the learners by their runnable_urls, create a queryId for each runnable, and
       // upload a set of learners for that queryId.
       // The queryId ties together the uploaded files to s3 and the Athena query
+      console.time(`request.getLearnersPerRunnable ${res.json.learners.length}`);
       const learnersPerRunnable = request.getLearnersPerRunnable(res.json.learners);
+      console.timeEnd(`request.getLearnersPerRunnable ${res.json.learners.length}`);
       for (const {runnableUrl, learners} of learnersPerRunnable) {
         // each runnable_url gets its own queryId, but because we're paginating through our learners,
         // we may have already seen this runnable_url.
@@ -77,13 +81,17 @@ exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl) => {
           queryId = uuidv4();
           queryIdsPerRunnable[runnableUrl] = queryId;
         }
+        console.time(`uploadLearnerData ${queryId}`);
         await uploadLearnerData(queryId, learners);
+        console.timeEnd(`uploadLearnerData ${queryId}`);
       };
 
       if (res.json.learners.length < PAGE_SIZE && res.json.lastHitSortValue) {
+        console.log(`FOUND ALL LEARNERS (learners: ${res.json.learners.length} / lastHitSortValue: ${res.json.lastHitSortValue})`)
         foundAllLearners = true;
       } else {
         queryParams.search_after = res.json.lastHitSortValue;
+        console.log(`DID NOT FIND ALL LEARNERS, LOOPING (lastHitSortValue: ${res.json.lastHitSortValue})`)
       }
     } else {
       throw new Error("Malformed response from the portal: " + JSON.stringify(res));

@@ -11,6 +11,7 @@ const portalToAuthDomainMap = {
 
 exports.lambdaHandler = async (event, context) => {
   try {
+    console.time("before for loop");
     const params = event.queryStringParameters || {};
 
     // get the report service source from the url
@@ -30,8 +31,12 @@ exports.lambdaHandler = async (event, context) => {
     envVars.validate();
 
     // get the post body
+    console.time("request.getBody");
     const body = request.getBody(event);
+    console.timeEnd("request.getBody");
+    console.time("request.validateRequestBody");
     request.validateRequestBody(body);
+    console.timeEnd("request.validateRequestBody");
     const { json, jwt } = body;
     const { query, learnersApiUrl, user } = json;
     let { email } = user;
@@ -40,41 +45,70 @@ exports.lambdaHandler = async (event, context) => {
 
     const authDomain = portalToAuthDomainMap[portalUrl] || portalUrl;
 
+    console.time("request.getTokenServiceJwt");
     const tokenServiceJwt = await request.getTokenServiceJwt(portalUrl, jwt);
+    console.timeEnd("request.getTokenServiceJwt");
 
+    console.time("tokenService.findOrCreateResource");
     const resource = await tokenService.findOrCreateResource(tokenServiceJwt, tokenServiceEnv, email, portalUrl);
-    const workgroupName = await aws.ensureWorkgroup(resource, user);
+    console.timeEnd("tokenService.findOrCreateResource");
 
+    console.time("aws.ensureWorkgroup");
+    const workgroupName = await aws.ensureWorkgroup(resource, user);
+    console.timeEnd("aws.ensureWorkgroup");
+
+    console.time("aws.fetchAndUploadLearnerData");
     const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
+    console.timeEnd("aws.fetchAndUploadLearnerData");
 
     const sqlOutput = [];
 
+    console.timeEnd("before for loop");
     for (const runnableUrl in queryIdsPerRunnable) {
+      console.log("for loop", runnableUrl);
+      console.time("full for loop");
       const queryId = queryIdsPerRunnable[runnableUrl];
 
       // get and denormalize the resource (activity or sequence) from Firebase
       let resource;
       let denormalizedResource;
       try {
+        console.log("start firebase.getResource", runnableUrl, reportServiceSource);
+        console.time("firebase.getResource", runnableUrl, reportServiceSource)
         resource = await firebase.getResource(runnableUrl, reportServiceSource);
+        console.timeEnd("firebase.getResource", runnableUrl, reportServiceSource);
+
+        console.log("start denormalizeResource");
+        console.time("denormalizeResource");
         denormalizedResource = firebase.denormalizeResource(resource);
+        console.timeEnd("denormalizeResource");
 
         // upload the denormalized resource to s3 and tie it to the workgroup
+        console.log("start uploadDenormalizedResource");
+        console.time("uploadDenormalizedResource");
         await aws.uploadDenormalizedResource(queryId, denormalizedResource);
+        console.timeEnd("uploadDenormalizedResource");
       } catch (err) {
         // no valid resource, we will attempt to create a usage report with just the learner data
         console.log(err);
       }
 
       // generate the sql for the query
+      console.log("start generateSQL");
+      console.time("generateSQL");
       const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain);
+      console.timeEnd("generateSQL");
 
       if (debugSQL) {
         sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
       } else {
         // create the athena query in the workgroup
+        console.log("start startQueryExecution");
+        console.time("startQueryExecution");
         await aws.startQueryExecution(sql, workgroupName)
+        console.timeEnd("startQueryExecution");
       }
+      console.timeEnd("full for loop");
     }
 
     let message = sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success"
