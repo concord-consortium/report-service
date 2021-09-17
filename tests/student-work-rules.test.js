@@ -168,7 +168,7 @@ function testStudentWork(path, label) {
       await firebase.assertSucceeds(query.get());
     });
 
-    it(`cannot read ${label}s from a different student`, async () => {
+    it(`cannot read ${label}s from a different student if it wasn't shared with the class`, async () => {
       const query = await testApp.firestore()
         .collection(path)
         .where("platform_id", "==", "https://portal.concord.org")
@@ -176,6 +176,28 @@ function testStudentWork(path, label) {
         .where("context_id", "==", "qwerty");
 
       await firebase.assertFails(query.get());
+    });
+
+    it(`cannot read ${label}s from a different student if it was shared with the context, but the context ID doesn't match`, async () => {
+      const query = await testApp.firestore()
+        .collection(path)
+        .where("platform_id", "==", "https://portal.concord.org")
+        .where("platform_user_id", "==", "2345")
+        .where("context_id", "==", "different-qwerty")
+        .where("shared_with", "==", "context");
+
+      await firebase.assertFails(query.get());
+    });
+
+    it(`can read ${label}s from a different student if it was shared with the context and the context ID match`, async () => {
+      const query = await testApp.firestore()
+        .collection(path)
+        .where("platform_id", "==", "https://portal.concord.org")
+        .where("platform_user_id", "==", "2345")
+        .where("context_id", "==", "qwerty")
+        .where("shared_with", "==", "context");
+
+      await firebase.assertSucceeds(query.get());
     });
 
     it(`cannot read ${label}s from a different platform`, async () => {
