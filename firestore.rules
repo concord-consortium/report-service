@@ -25,6 +25,14 @@ service cloud.firestore {
         && request.auth.token.platform_id == resource.data.platform_id;
     }
 
+    // Check if answer has been explicitly shared by the owner of the answer (shared_with: context) and
+    // if the user who is trying to read the answer is member of the same context as the author.
+    function answerSharedAndMemberOfContext() {
+      return request.auth.token.class_hash == resource.data.context_id
+        && request.auth.token.platform_id == resource.data.platform_id
+        && resource.data.shared_with == "context";
+    }
+
     // Note: this conditional is used in read rules, which do not require a
     // matching context_id, so the context_id is not enforced here
     function learnerOwner(res) {
@@ -92,6 +100,7 @@ service cloud.firestore {
     function studentWorkRead() {
       return anonymousRead()
         || teacherOfContext()
+        || answerSharedAndMemberOfContext()
         || learnerOwner(resource)
         || researcherOfOwner(resource);
     }
