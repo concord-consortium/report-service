@@ -113,14 +113,14 @@ describe('Query creation', function () {
 
 WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
 
-grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
   FROM "report-service"."partitioned_answers" a
   INNER JOIN "report-service"."learners" l
   ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
   WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
   GROUP BY l.run_remote_endpoint ),
 
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
@@ -217,7 +217,7 @@ SELECT
   json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
   kv1['managed_interactive_77777'] AS managed_interactive_77777_answer,
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
-  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR), '&answersSourceKey=',  source_key) END AS managed_interactive_88888_url,
+  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR), '&answersSourceKey=',  source_key['managed_interactive_88888']) END AS managed_interactive_88888_url,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
 FROM activities, learners_and_answers`;
 
@@ -236,14 +236,14 @@ describe('Query creation usage report', function () {
 
 WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
 
-grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
   FROM "report-service"."partitioned_answers" a
   INNER JOIN "report-service"."learners" l
   ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
   WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
   GROUP BY l.run_remote_endpoint ),
 
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
