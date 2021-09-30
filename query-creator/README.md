@@ -160,12 +160,12 @@ You can find more information and examples about filtering Lambda function logs 
 
 ## Unit tests
 
-Tests are defined in the `hello-world/tests` folder in this project. Use NPM to install the [Mocha test framework](https://mochajs.org/) and run unit tests.
+Tests are defined in the `create-query/tests` folder in this project. Use NPM to install the [Mocha test framework](https://mochajs.org/) and run unit tests.
 
 ```bash
-query-creator$ cd hello-world
-hello-world$ npm install
-hello-world$ npm run test
+query-creator$ cd create-query
+create-query$ npm install
+create-query$ npm run test
 ```
 
 ## Cleanup

@@ -112,7 +112,7 @@ const selectFromColumn = (column) => {
   }
 }
 
-const getColumnsForQuestion = (questionId, question, denormalizedResource, authDomain) => {
+const getColumnsForQuestion = (questionId, question, denormalizedResource, authDomain, sourceKey) => {
   const type = question.type;
   const isRequired = question.required;
 
@@ -156,13 +156,16 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
         `'${process.env.PORTAL_REPORT_URL}`,
         `?auth-domain=${encodeURIComponent(authDomain)}`,
         `&firebase-app=${process.env.FIREBASE_APP}`,
+        `&sourceKey=${sourceKey}`,
         `&iframeQuestionId=${questionId}`,
         `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
         ` CAST(class_id AS VARCHAR), `,
         `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
         ` CAST(offering_id AS VARCHAR), `,
         `'&studentId=',`,
-        ` CAST(user_id AS VARCHAR)`,
+        ` CAST(user_id AS VARCHAR), `,
+        `'&answersSourceKey=', `,
+        ` source_key['${questionId}']`,
         `)`
       ].join("")
 
@@ -187,7 +190,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
   return columns;
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain) => {
+exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain, sourceKey) => {
   const hasResource = !!resource;
   const escapedUrl = hasResource
     ? resource.url.replace(/[^a-z0-9]/g, "-")
@@ -244,7 +247,11 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
   const groupingSelectMetadataColumns = metadataColumnsForGrouping.map(selectFromColumn).join(", ");
 
   const groupingSelect = `l.run_remote_endpoint remote_endpoint, ${groupingSelectMetadataColumns}, ${assignTeacherVar}`
-  const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted`;
+  // The source_key map is just used to add an answersSourceKey to the interactive urls
+  // It might be possible there will be some answers with different source_keys, however this will be rare
+  // since most assignments are not mixed from LARA runtime and AP runtime. But we might
+  // migrate some activities from LARA to the AP.
+  const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key`;
 
   const groupedAnswers = hasResource ? `
 grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
@@ -256,7 +263,7 @@ grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
   : "";
 
   const learnersAndAnswers = hasResource ? `
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
@@ -281,7 +288,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       const questionsColumns = [];
       Object.keys(denormalizedResource.questions).forEach(questionId => {
         const question = denormalizedResource.questions[questionId];
-        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain)
+        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain, sourceKey)
         questionsColumns.push(...questionColumns);
       });
       allColumns.push(...questionsColumns);
