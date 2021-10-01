@@ -4,11 +4,47 @@ const app = require('../../app.js');
 const aws = require('../../steps/aws.js');
 const firebase = require('../../steps/firebase.js');
 const chai = require('chai');
+const queryString = require('query-string');
+const nock = require('nock');
+
 const expect = chai.expect;
-var event, context;
+const event = {
+  queryStringParameters: {
+    reportServiceSource: 'test-source',
+    tokenServiceEnv: 'dev'
+  },
+  body: queryString.stringify({
+    jwt: 'fake-jwt',
+    json: JSON.stringify({
+      version: "2",
+      query: "",
+      learnersApiUrl: "https://example.com/api/v1/",
+      user: {
+        email: "user@example.com"
+      }
+    })
+  })
+};
+const context = {};
 
 process.env.FIREBASE_APP = 'report-service-test';
-process.env.PORTAL_REPORT_URL = 'https://portal-report.test'
+process.env.PORTAL_REPORT_URL = 'https://portal-report.test';
+process.env.OUTPUT_BUCKET = 'fake-bucket';
+process.env.REPORT_SERVICE_TOKEN = 'fake-token';
+process.env.REPORT_SERVICE_URL = 'https://example.com';
+process.env.RESEARCHER_REPORTS_URL = 'https://example.com';
+
+// This matches the the request to get a token service jwt
+const scopeExample = nock('https://example.com')
+  .get('/api/v1/jwt/firebase?firebase_app=token-service')
+  .reply(200, 'jwt response');
+
+// This is the token service request,
+// it would be better to mock the token service rather than using nock
+const scopeLocalhost = nock('http://localhost:5000')
+  .get('/api/v1/resources/?type=athenaWorkgroup&tool=researcher-report&name=user-example-com&amOwner=true&env=dev')
+  // .get(/.*/)
+  .reply(200, '{ "fake": "response" }');
 
 const testQueryId = "123456789";
 const testResource = {
@@ -51,14 +87,16 @@ const testResource = {
 };
 
 describe('Tests index', function () {
-    it('verifies successful response', async () => {
+    it('verifies a response', async () => {
         const result = await app.lambdaHandler(event, context)
 
         expect(result).to.be.an('object');
-        // expect(result.statusCode).to.equal(200);
         expect(result.body).to.be.an('string');
-
         let response = JSON.parse(result.body);
+
+        // NOTE: Currently the test does not mock enough so the result is actually
+        // a 500.
+        // expect(result.statusCode).to.equal(200);
 
         expect(response).to.be.an('object');
         // expect(response.message).to.be.equal("create query");
@@ -69,20 +107,20 @@ describe('Tests index', function () {
 describe('Query creation', function () {
     it('verifies successful query creation', async () => {
         const testDenormalizedResource = firebase.denormalizeResource(testResource);
-        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false, "", "fake-auth-domain");
+        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false, "", "fake-auth-domain", 'fake-source-key');
         const expectedSQLresult = `-- name test activity
 -- type activity
 
 WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
 
-grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
   FROM "report-service"."partitioned_answers" a
   INNER JOIN "report-service"."learners" l
   ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
   WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
   GROUP BY l.run_remote_endpoint ),
 
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
@@ -179,7 +217,7 @@ SELECT
   json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
   kv1['managed_interactive_77777'] AS managed_interactive_77777_answer,
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
-  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR)) END AS managed_interactive_88888_url,
+  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR), '&answersSourceKey=',  source_key['managed_interactive_88888']) END AS managed_interactive_88888_url,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
 FROM activities, learners_and_answers`;
 
@@ -198,14 +236,14 @@ describe('Query creation usage report', function () {
 
 WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
 
-grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
   FROM "report-service"."partitioned_answers" a
   INNER JOIN "report-service"."learners" l
   ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
   WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
   GROUP BY l.run_remote_endpoint ),
 
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted,
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers

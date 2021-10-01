@@ -67,7 +67,7 @@ exports.lambdaHandler = async (event, context) => {
       }
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain);
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain, reportServiceSource);
 
       if (debugSQL) {
         sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
