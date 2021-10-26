@@ -1,10 +1,12 @@
 import fs from "fs"
 import path from "path"
 import util from "util"
+import https from "https"
 import crypto from "crypto";
 import { performance } from 'perf_hooks';
 import * as functions from "firebase-functions";
 import admin, { firestore } from "firebase-admin";
+import axios from "axios";
 
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
@@ -15,6 +17,10 @@ const unlink = util.promisify(fs.unlink);
 const readFile = util.promisify(fs.readFile);
 
 import { AnswerData, schema, parquetInfo, AnswerMetadata, getAnswerMetadata, getSyncDocId } from "./shared/s3-answers"
+
+interface PartialCollaborationData {
+  collaborators: {platform_user_id: string}[]
+}
 
 /*
 
@@ -41,12 +47,14 @@ interface AutoImporterSettings {
   watchAnswers: boolean;
   setNeedSync: boolean;
   sync: boolean;
+  portalSecret: string | null;
 }
 
 const defaultSettings: AutoImporterSettings = {
   watchAnswers: true,
   setNeedSync: true,
   sync: true,
+  portalSecret: null
 }
 
 interface S3SyncInfo {
@@ -102,7 +110,9 @@ const getSettings = () => {
  */
 const addSyncDoc = (syncSource: string, answerMetadata: AnswerMetadata) => {
   const syncDocId = getHash(getSyncDocId(answerMetadata));
-  if (!syncDocId || !answerMetadata) return;
+  if (!syncDocId || !answerMetadata) {
+    return Promise.resolve()
+  };
 
   const syncDocRef = getAnswerSyncCollection(syncSource).doc(syncDocId);
   let syncDocData: SyncData = {
@@ -188,7 +198,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
         fileWriterTotalTime,
         s3SendFileTotalTime
       }
-    } catch (err) {
+    } catch (err: any) {
       reject(err.toString());
     } finally {
       await deleteFile();
@@ -206,18 +216,137 @@ const deleteFromS3 = (answerMetadata: AnswerMetadata) => {
   return s3Client().send(deleteObjectCommand)
 }
 
+const escapeKey = (s: string) => s.replace(/[.$[\]#/]/g, "_")
+
+const verifyCollaborationDataOwner = (collaboratorsDataUrl: string, data: PartialCollaborationData, platformUserId: string) => {
+  // for now there is no "owner" specified in the data so we just look to see if they are one of the collaborators
+  const collaborator = data.collaborators.find(c => c.platform_user_id === platformUserId)
+  if (!collaborator) {
+    functions.logger.error(`verifyCollaborationDataOwner: ${platformUserId} was not found in ${collaboratorsDataUrl}`);
+  }
+  return !!collaborator
+}
+
+const fetchCollaborationData = async (collaboratorsDataUrl: string, portalSecret: string): Promise<PartialCollaborationData | null> => {
+  try {
+    // for local development ignore self-signed certificates
+    const agent = new https.Agent({rejectUnauthorized: false});
+    const resp = await axios.get(collaboratorsDataUrl, {
+      headers: {"Authorization": `Bearer ${portalSecret}`},
+      httpsAgent: agent
+    })
+    return {collaborators: (resp.data as any)}
+  } catch (err) {
+    functions.logger.error("fetchCollaborationData", err);
+    return null;
+  }
+}
+
+const getCollaborationData = async (collaboratorsDataUrl: string, platformUserId: string): Promise<PartialCollaborationData | null> => {
+  // let collaborationData: PartialCollaborationData | undefined
+
+  // check cache first
+  const ref = admin.firestore().collection("collaborationDataCache").doc(escapeKey(collaboratorsDataUrl))
+  const snapshot = await ref.get()
+
+  let collaborationData = snapshot.data() as PartialCollaborationData | undefined | null
+  if (collaborationData && collaborationData.collaborators) {
+    // make sure the caller is the owner of the collaboration data
+    if (verifyCollaborationDataOwner(collaboratorsDataUrl, collaborationData, platformUserId)) {
+      return collaborationData
+    } else {
+      return null
+    }
+  } else {
+    // get the collaboration data from the portal
+    const { portalSecret } = await getSettings();
+    if (!portalSecret) {
+      functions.logger.error("getCollaborationData: no portalSecret found in settings");
+      return null;
+    }
+
+    // fetch and verify the owner of the collaboration data
+    collaborationData = await fetchCollaborationData(collaboratorsDataUrl, portalSecret);
+    if (!collaborationData || !verifyCollaborationDataOwner(collaboratorsDataUrl, collaborationData, platformUserId)) {
+      return null;
+    }
+
+    // cache the data if not found
+    await ref.set(collaborationData);
+
+    return collaborationData;
+  }
+}
+
+const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMetadata: AnswerData) => {
+  const {collaborators_data_url, platform_id, platform_user_id, collaboration_owner, resource_link_id, question_id} = answerMetadata
+
+  // skip if this is an overwrite of collaboration owner answer (to prevent infinite loops) or the required data isn't in the answer
+  if (collaboration_owner || !collaborators_data_url || !platform_id || !platform_user_id || !resource_link_id || !question_id) {
+    return Promise.resolve()
+  }
+
+  // get (and cache collaborators data)
+  return getCollaborationData(collaborators_data_url, platform_user_id)
+    .then(collaborationData => {
+      const promises: Promise<any>[] = [];
+      if (collaborationData) {
+        // update the collaboration owner answer with collaboration_owner: true
+        promises.push(getAnswersCollection(syncSource).doc(answerId).set({collaboration_owner: true}, {merge: true}))
+
+        // write the answer to all the other collaborators without the url and rewriting the platform_user_id
+        collaborationData.collaborators.forEach(collaborator => {
+          if (collaborator.platform_user_id !== platform_user_id) {
+            const existingAnswerQuery = getAnswersCollection(syncSource)
+              .where("platform_id", "==", platform_id)
+              .where("platform_user_id", "==", collaborator.platform_user_id)
+              .where("resource_link_id", "==", resource_link_id)
+              .where("question_id", "==", question_id);
+
+            const queryPromise = existingAnswerQuery
+              .get()
+              .then((querySnapshot): Promise<any> => {
+                const othersAnswerMetadata = Object.assign({}, answerMetadata, {platform_user_id: collaborator.platform_user_id})
+                delete othersAnswerMetadata.collaborators_data_url
+
+                if (querySnapshot.size === 0) {
+                  functions.logger.error("handleCollaborativeUrl: adding other user document", {othersAnswerMetadata});
+                  return getAnswersCollection(syncSource).add(othersAnswerMetadata)
+                } else if (querySnapshot.size === 1) {
+                  functions.logger.error("handleCollaborativeUrl: setting other user document", {othersAnswerMetadata});
+                  return querySnapshot.docs[0].ref.set(othersAnswerMetadata)
+                } else {
+                  functions.logger.error("handleCollaborativeUrl: more than one collaborator answer document found", {syncSource, platform_id, platform_user_id, resource_link_id, question_id});
+                  return Promise.resolve();
+                }
+              });
+
+            promises.push(queryPromise);
+            return queryPromise;
+          }
+          return;
+        })
+      }
+      return Promise.all(promises)
+    })
+}
+
 export const createSyncDocAfterAnswerWritten = functions.firestore
   .document(`${answersPathAllSources}/{answerId}`) // NOTE: {answerId} is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
       .then(({ watchAnswers }) => {
         if (watchAnswers) {
-          const currentAnswer = change.after.data();
-          const previousAnswer = change.before.data();
+          const currentAnswer = change.after.data() as AnswerData | undefined;
+          const previousAnswer = change.before.data() as AnswerData | undefined;
+
           // if answer was deleted we use the previousAnswer to get the metadata
           const latestAnswerWithMetadata = currentAnswer && currentAnswer.resource_url ? currentAnswer : previousAnswer;
-          const answerMetadata = getAnswerMetadata(latestAnswerWithMetadata as AnswerData);
+          if (!latestAnswerWithMetadata) {
+            return null;
+          }
 
+          const answerMetadata = getAnswerMetadata(latestAnswerWithMetadata);
           if (!answerMetadata) {
             return null;
           }
@@ -226,7 +355,11 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
           const afterHash = currentAnswer ? getHash(currentAnswer) : "";
 
           if (afterHash !== beforeHash) {
-            return addSyncDoc(context.params.syncSource, answerMetadata);
+            const {syncSource, answerId} = context.params
+            return addSyncDoc(syncSource, answerMetadata).then(() => {
+              // only handle collaborative url if answer changed
+              return handleCollaborativeUrl(syncSource, answerId, latestAnswerWithMetadata).then(() => null)
+            })
           }
         }
 
