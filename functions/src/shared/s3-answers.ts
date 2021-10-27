@@ -18,7 +18,7 @@ export interface AnswerMetadata {
   run_key?: string;
   // collaboration info
   collaborators_data_url?: string;
-  collaboration_owner?: boolean;
+  collaboration_owner_id?: string;
 }
 
 export interface AnswerData extends AnswerMetadata {

@@ -28,7 +28,11 @@ HOW THIS WORKS:
 
 1. createSyncDocAfterAnswerWritten runs on every write of an answer.  If the answer changes or is deleted a "sync doc"
    is created or updated whose name is a unique key for the learner-assignment (either a hash of the LTI data or a
-    runKey) along with a boolean "updated". For logging purposes, it will also add a last_answer_updated timestamp.
+   runKey) along with a boolean "updated". For logging purposes, it will also add a last_answer_updated timestamp.
+   If a collaborators_data_url is present in the answer (set by the Activity Player) the collaborators_data_url is loaded
+   (and cached) and the answer documents are created/updated for each collaborator found in the result.  Each collaborator
+   answer has an additional collaboration_owner_id field added that has the value of the platform_user_id of the original
+   answer.
 2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with updated = true.  Each document that is
    found has a needs_sync field set to the current server time and has updated set to false.
 3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
@@ -93,6 +97,8 @@ const getAnswerSyncCollection = (syncSource: string) => admin.firestore().collec
 // adding a single field index exemption to the firestore setup
 const getAnswerSyncAllSourcesCollection = () => admin.firestore().collectionGroup("answers_async");
 
+const escapeKey = (s: string) => s.replace(/[.$[\]#/]/g, "_")
+
 const getSettings = () => {
   return admin.firestore()
     .collection("settings")
@@ -100,6 +106,18 @@ const getSettings = () => {
     .get()
     .then((doc) => (doc.data() as AutoImporterSettings) || defaultSettings)
     .catch(() => defaultSettings)
+}
+
+const getPortalSecret = (platformId: string) => {
+  return admin.firestore()
+    .collection("settings")
+    .doc("portalSecrets")
+    .get()
+    .then((doc) => {
+      const map = doc.data() as Record<string, string>
+      return map[escapeKey(platformId)] || null
+    })
+    .catch(() => null)
 }
 
 /**
@@ -216,7 +234,14 @@ const deleteFromS3 = (answerMetadata: AnswerMetadata) => {
   return s3Client().send(deleteObjectCommand)
 }
 
-const escapeKey = (s: string) => s.replace(/[.$[\]#/]/g, "_")
+export const isValidCollaboratorsDataUrl = (url: string) => {
+  return /^https?:\/\/[^/]*\.concord\.org\//.test(url) || /^https?:\/\/[^/]*\.rigse\.docker\//.test(url)
+}
+
+export const getPlatformIdFromUrl = (url: string) => {
+  const m = url.match(/https?:\/\/[^/]+/)
+  return m ? m[0] : null
+}
 
 const verifyCollaborationDataOwner = (collaboratorsDataUrl: string, data: PartialCollaborationData, platformUserId: string) => {
   // for now there is no "owner" specified in the data so we just look to see if they are one of the collaborators
@@ -258,10 +283,16 @@ const getCollaborationData = async (collaboratorsDataUrl: string, platformUserId
       return null
     }
   } else {
+    const platformId = getPlatformIdFromUrl(collaboratorsDataUrl)
+    if (!platformId) {
+      functions.logger.error(`getCollaborationData: unable to extract plaform id from ${collaboratorsDataUrl}`);
+      return null;
+    }
+
     // get the collaboration data from the portal
-    const { portalSecret } = await getSettings();
+    const portalSecret = await getPortalSecret(platformId);
     if (!portalSecret) {
-      functions.logger.error("getCollaborationData: no portalSecret found in settings");
+      functions.logger.error(`getCollaborationData: no portalSecret found for ${platformId}`);
       return null;
     }
 
@@ -279,10 +310,16 @@ const getCollaborationData = async (collaboratorsDataUrl: string, platformUserId
 }
 
 const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMetadata: AnswerData) => {
-  const {collaborators_data_url, platform_id, platform_user_id, collaboration_owner, resource_link_id, question_id} = answerMetadata
+  const {collaborators_data_url, platform_id, platform_user_id, collaboration_owner_id, resource_link_id, question_id} = answerMetadata
 
   // skip if this is an overwrite of collaboration owner answer (to prevent infinite loops) or the required data isn't in the answer
-  if (collaboration_owner || !collaborators_data_url || !platform_id || !platform_user_id || !resource_link_id || !question_id) {
+  if (collaboration_owner_id || !collaborators_data_url || !platform_id || !platform_user_id || !resource_link_id || !question_id) {
+    return Promise.resolve()
+  }
+
+  // filter out invalid urls
+  if (!isValidCollaboratorsDataUrl(collaborators_data_url)) {
+    functions.logger.error(`handleCollaborativeUrl: invalid collaborators_data_url: ${collaborators_data_url}`);
     return Promise.resolve()
   }
 
@@ -291,8 +328,8 @@ const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMeta
     .then(collaborationData => {
       const promises: Promise<any>[] = [];
       if (collaborationData) {
-        // update the collaboration owner answer with collaboration_owner: true
-        promises.push(getAnswersCollection(syncSource).doc(answerId).set({collaboration_owner: true}, {merge: true}))
+        // update the collaboration owner answer with collaboration_owner_id: true
+        promises.push(getAnswersCollection(syncSource).doc(answerId).set({collaboration_owner_id: platform_user_id}, {merge: true}))
 
         // write the answer to all the other collaborators without the url and rewriting the platform_user_id
         collaborationData.collaborators.forEach(collaborator => {
@@ -306,14 +343,13 @@ const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMeta
             const queryPromise = existingAnswerQuery
               .get()
               .then((querySnapshot): Promise<any> => {
-                const othersAnswerMetadata = Object.assign({}, answerMetadata, {platform_user_id: collaborator.platform_user_id})
-                delete othersAnswerMetadata.collaborators_data_url
+                const othersAnswerMetadata = Object.assign({}, answerMetadata, {platform_user_id: collaborator.platform_user_id, collaboration_owner_id: platform_user_id})
 
                 if (querySnapshot.size === 0) {
-                  functions.logger.error("handleCollaborativeUrl: adding other user document", {othersAnswerMetadata});
+                  functions.logger.info("handleCollaborativeUrl: adding other user document", {othersAnswerMetadata});
                   return getAnswersCollection(syncSource).add(othersAnswerMetadata)
                 } else if (querySnapshot.size === 1) {
-                  functions.logger.error("handleCollaborativeUrl: setting other user document", {othersAnswerMetadata});
+                  functions.logger.info("handleCollaborativeUrl: setting other user document", {othersAnswerMetadata});
                   return querySnapshot.docs[0].ref.set(othersAnswerMetadata)
                 } else {
                   functions.logger.error("handleCollaborativeUrl: more than one collaborator answer document found", {syncSource, platform_id, platform_user_id, resource_link_id, question_id});

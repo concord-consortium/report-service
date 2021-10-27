@@ -8,9 +8,9 @@ The high-level parts:
 
 * **Scripts**: Pushes old learner data from Firestore into S3, for access by Athena. See
     [scripts/README.md](scripts/README.md)
-* **Functions**: Keeps new learner data synced to S3. This also provides the API used by LARA to
-    send learner data and activity structure to FireStore, and an API used by the portal to move
-    learner data from one class to another. See [functions/README.md](functions/README.md)
+* **Functions**: Keeps new learner data synced to S3 and updates collaborator answers.
+    The functions also provide the API used by LARA to send learner data and activity structure to FireStore,
+    and an API used by the portal to move learner data from one class to another. See [functions/README.md](functions/README.md).
 * **Query-Creator**: A Lambda application written with AWS SAM which is launched by the portal as an
     external report. It collects together all the data that Athena will need to run a query, constructs
     the SQL for the query, and kicks off an Athena query under a personal workgroup for the researcher.
