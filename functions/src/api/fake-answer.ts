@@ -23,7 +23,6 @@ export default (req: Request, res: Response) => {
     resource_link_id: "1",
     platform_user_id: "2",
     question_id: `fake_question_${id}`,
-    collaborators_data_url: "",
     ...extraData
   }
 

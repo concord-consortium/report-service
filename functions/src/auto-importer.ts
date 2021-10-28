@@ -234,13 +234,27 @@ const deleteFromS3 = (answerMetadata: AnswerMetadata) => {
   return s3Client().send(deleteObjectCommand)
 }
 
-export const isValidCollaboratorsDataUrl = (url: string) => {
-  return /^https?:\/\/[^/]*\.concord\.org\//.test(url) || /^https?:\/\/[^/]*\.rigse\.docker\//.test(url)
+export const getDomain = (name: string, url: string) => {
+  const domainRegex = /^https?:\/\/([^/]+)/i;
+  const match = url.trim().toLowerCase().match(domainRegex)
+  if (!match) {
+    functions.logger.error(`getDomain: ${name} is not an url: ${url}`)
+    return null
+  }
+  return match[1]
 }
 
-export const getPlatformIdFromUrl = (url: string) => {
-  const m = url.match(/https?:\/\/[^/]+/)
-  return m ? m[0] : null
+export const checkIfDomainsMatch = (platformId: string, collaboratorsDataUrl: string) => {
+  const platformIdDomain = getDomain("platform_id", platformId)
+  const collaboratorsDataUrlDomain = getDomain("collaborators_data_url", collaboratorsDataUrl)
+  if (!platformIdDomain || !collaboratorsDataUrlDomain) {
+    return false
+  }
+  const matches = platformIdDomain === collaboratorsDataUrlDomain
+  if (!matches) {
+    functions.logger.error(`checkIfDomainsMatch: collaborators_data_url domain doesn't match platform_id domain: '${collaboratorsDataUrlDomain}' !== '${platformIdDomain}'`);
+  }
+  return matches
 }
 
 const verifyCollaborationDataOwner = (collaboratorsDataUrl: string, data: PartialCollaborationData, platformUserId: string) => {
@@ -267,9 +281,7 @@ const fetchCollaborationData = async (collaboratorsDataUrl: string, portalSecret
   }
 }
 
-const getCollaborationData = async (collaboratorsDataUrl: string, platformUserId: string): Promise<PartialCollaborationData | null> => {
-  // let collaborationData: PartialCollaborationData | undefined
-
+const getCollaborationData = async (collaboratorsDataUrl: string, platformId: string, platformUserId: string): Promise<PartialCollaborationData | null> => {
   // check cache first
   const ref = admin.firestore().collection("collaborationDataCache").doc(escapeKey(collaboratorsDataUrl))
   const snapshot = await ref.get()
@@ -283,12 +295,6 @@ const getCollaborationData = async (collaboratorsDataUrl: string, platformUserId
       return null
     }
   } else {
-    const platformId = getPlatformIdFromUrl(collaboratorsDataUrl)
-    if (!platformId) {
-      functions.logger.error(`getCollaborationData: unable to extract plaform id from ${collaboratorsDataUrl}`);
-      return null;
-    }
-
     // get the collaboration data from the portal
     const portalSecret = await getPortalSecret(platformId);
     if (!portalSecret) {
@@ -312,26 +318,26 @@ const getCollaborationData = async (collaboratorsDataUrl: string, platformUserId
 const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMetadata: AnswerData) => {
   const {collaborators_data_url, platform_id, platform_user_id, collaboration_owner_id, resource_link_id, question_id} = answerMetadata
 
-  // skip if this is an overwrite of collaboration owner answer (to prevent infinite loops) or the required data isn't in the answer
-  if (collaboration_owner_id || !collaborators_data_url || !platform_id || !platform_user_id || !resource_link_id || !question_id) {
+  if (!collaboration_owner_id || !collaborators_data_url || !platform_id || !platform_user_id || !resource_link_id || !question_id) {
+    return Promise.resolve()
+  }
+
+  // only update follower answers from the collaboration owner to prevent infinite loops
+  if (collaboration_owner_id !== platform_user_id) {
     return Promise.resolve()
   }
 
   // filter out invalid urls
-  if (!isValidCollaboratorsDataUrl(collaborators_data_url)) {
-    functions.logger.error(`handleCollaborativeUrl: invalid collaborators_data_url: ${collaborators_data_url}`);
+  if (!checkIfDomainsMatch(platform_id, collaborators_data_url)) {
     return Promise.resolve()
   }
 
   // get (and cache collaborators data)
-  return getCollaborationData(collaborators_data_url, platform_user_id)
+  return getCollaborationData(collaborators_data_url, platform_id, platform_user_id)
     .then(collaborationData => {
       const promises: Promise<any>[] = [];
       if (collaborationData) {
-        // update the collaboration owner answer with collaboration_owner_id: true
-        promises.push(getAnswersCollection(syncSource).doc(answerId).set({collaboration_owner_id: platform_user_id}, {merge: true}))
-
-        // write the answer to all the other collaborators without the url and rewriting the platform_user_id
+        // write the answer to all the other collaborators
         collaborationData.collaborators.forEach(collaborator => {
           if (collaborator.platform_user_id !== platform_user_id) {
             const existingAnswerQuery = getAnswersCollection(syncSource)
@@ -343,7 +349,7 @@ const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMeta
             const queryPromise = existingAnswerQuery
               .get()
               .then((querySnapshot): Promise<any> => {
-                const othersAnswerMetadata = Object.assign({}, answerMetadata, {platform_user_id: collaborator.platform_user_id, collaboration_owner_id: platform_user_id})
+                const othersAnswerMetadata = Object.assign({}, answerMetadata, {platform_user_id: collaborator.platform_user_id})
 
                 if (querySnapshot.size === 0) {
                   functions.logger.info("handleCollaborativeUrl: adding other user document", {othersAnswerMetadata});
