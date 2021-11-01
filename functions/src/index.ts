@@ -10,6 +10,7 @@ import importRun from "./api/import-run"
 import importStructure from "./api/import-structure"
 import moveStudentWork from "./api/move-student-work"
 import getResource from "./api/get-resource"
+import fakeAnswer from "./api/fake-answer"
 
 import {
   createSyncDocAfterAnswerWritten,
@@ -32,7 +33,7 @@ api.get("/", (req, res) => {
     version: packageJSON.version,
     buildInfo,
     methods: {
-      "POST import_run": "Imports a run, requires a bearer token",
+      "POST import_run": "Imports a run, requires a bearer token!!",
       "POST import_structure": "Imports the structure, requires a bearer token",
       "POST move_student_work": "Moves a students work from one class to another, requires a bearer token.",
       "GET resource?source=<SOURCE>&url=<URL>": "Returns a resource under source with given url"
@@ -43,6 +44,8 @@ api.post("/import_run", importRun)
 api.post("/import_structure", importStructure)
 api.post("/move_student_work", moveStudentWork)
 api.get("/resource", getResource)
+// TODO: comment out for final PR
+api.get("/fakeAnswer", fakeAnswer)
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.

@@ -1,10 +1,12 @@
 import fs from "fs"
 import path from "path"
 import util from "util"
+import https from "https"
 import crypto from "crypto";
 import { performance } from 'perf_hooks';
 import * as functions from "firebase-functions";
 import admin, { firestore } from "firebase-admin";
+import axios from "axios";
 
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
@@ -16,13 +18,21 @@ const readFile = util.promisify(fs.readFile);
 
 import { AnswerData, schema, parquetInfo, AnswerMetadata, getAnswerMetadata, getSyncDocId } from "./shared/s3-answers"
 
+interface PartialCollaborationData {
+  collaborators: {platform_user_id: string}[]
+}
+
 /*
 
 HOW THIS WORKS:
 
 1. createSyncDocAfterAnswerWritten runs on every write of an answer.  If the answer changes or is deleted a "sync doc"
    is created or updated whose name is a unique key for the learner-assignment (either a hash of the LTI data or a
-    runKey) along with a boolean "updated". For logging purposes, it will also add a last_answer_updated timestamp.
+   runKey) along with a boolean "updated". For logging purposes, it will also add a last_answer_updated timestamp.
+   If a collaborators_data_url is present in the answer (set by the Activity Player) the collaborators_data_url is loaded
+   (and cached) and the answer documents are created/updated for each collaborator found in the result.  Each collaborator
+   answer has an additional collaboration_owner_id field added that has the value of the platform_user_id of the original
+   answer.
 2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with updated = true.  Each document that is
    found has a needs_sync field set to the current server time and has updated set to false.
 3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
@@ -41,12 +51,14 @@ interface AutoImporterSettings {
   watchAnswers: boolean;
   setNeedSync: boolean;
   sync: boolean;
+  portalSecret: string | null;
 }
 
 const defaultSettings: AutoImporterSettings = {
   watchAnswers: true,
   setNeedSync: true,
   sync: true,
+  portalSecret: null
 }
 
 interface S3SyncInfo {
@@ -85,6 +97,8 @@ const getAnswerSyncCollection = (syncSource: string) => admin.firestore().collec
 // adding a single field index exemption to the firestore setup
 const getAnswerSyncAllSourcesCollection = () => admin.firestore().collectionGroup("answers_async");
 
+const escapeKey = (s: string) => s.replace(/[.$[\]#/]/g, "_")
+
 const getSettings = () => {
   return admin.firestore()
     .collection("settings")
@@ -92,6 +106,18 @@ const getSettings = () => {
     .get()
     .then((doc) => (doc.data() as AutoImporterSettings) || defaultSettings)
     .catch(() => defaultSettings)
+}
+
+const getPortalSecret = (platformId: string) => {
+  return admin.firestore()
+    .collection("settings")
+    .doc("portalSecrets")
+    .get()
+    .then((doc) => {
+      const map = doc.data() as Record<string, string>
+      return map[escapeKey(platformId)] || null
+    })
+    .catch(() => null)
 }
 
 /**
@@ -102,7 +128,9 @@ const getSettings = () => {
  */
 const addSyncDoc = (syncSource: string, answerMetadata: AnswerMetadata) => {
   const syncDocId = getHash(getSyncDocId(answerMetadata));
-  if (!syncDocId || !answerMetadata) return;
+  if (!syncDocId || !answerMetadata) {
+    return Promise.resolve()
+  };
 
   const syncDocRef = getAnswerSyncCollection(syncSource).doc(syncDocId);
   let syncDocData: SyncData = {
@@ -188,7 +216,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
         fileWriterTotalTime,
         s3SendFileTotalTime
       }
-    } catch (err) {
+    } catch (err: any) {
       reject(err.toString());
     } finally {
       await deleteFile();
@@ -206,18 +234,161 @@ const deleteFromS3 = (answerMetadata: AnswerMetadata) => {
   return s3Client().send(deleteObjectCommand)
 }
 
+export const getDomain = (name: string, url: string) => {
+  const domainRegex = /^https?:\/\/([^/]+)/i;
+  const match = url.trim().toLowerCase().match(domainRegex)
+  if (!match) {
+    functions.logger.error(`getDomain: ${name} is not an url: ${url}`)
+    return null
+  }
+  return match[1]
+}
+
+export const checkIfDomainsMatch = (platformId: string, collaboratorsDataUrl: string) => {
+  const platformIdDomain = getDomain("platform_id", platformId)
+  const collaboratorsDataUrlDomain = getDomain("collaborators_data_url", collaboratorsDataUrl)
+  if (!platformIdDomain || !collaboratorsDataUrlDomain) {
+    return false
+  }
+  const matches = platformIdDomain === collaboratorsDataUrlDomain
+  if (!matches) {
+    functions.logger.error(`checkIfDomainsMatch: collaborators_data_url domain doesn't match platform_id domain: '${collaboratorsDataUrlDomain}' !== '${platformIdDomain}'`);
+  }
+  return matches
+}
+
+const verifyCollaborationDataOwner = (collaboratorsDataUrl: string, data: PartialCollaborationData, platformUserId: string) => {
+  // for now there is no "owner" specified in the data so we just look to see if they are one of the collaborators
+  const collaborator = data.collaborators.find(c => c.platform_user_id === platformUserId)
+  if (!collaborator) {
+    functions.logger.error(`verifyCollaborationDataOwner: ${platformUserId} was not found in ${collaboratorsDataUrl}`);
+  }
+  return !!collaborator
+}
+
+const fetchCollaborationData = async (collaboratorsDataUrl: string, portalSecret: string): Promise<PartialCollaborationData | null> => {
+  try {
+    // for local development ignore self-signed certificates
+    const agent = new https.Agent({rejectUnauthorized: false});
+    const resp = await axios.get(collaboratorsDataUrl, {
+      headers: {"Authorization": `Bearer ${portalSecret}`},
+      httpsAgent: agent
+    })
+    return {collaborators: (resp.data as any)}
+  } catch (err) {
+    functions.logger.error("fetchCollaborationData", err);
+    return null;
+  }
+}
+
+const getCollaborationData = async (collaboratorsDataUrl: string, platformId: string, platformUserId: string): Promise<PartialCollaborationData | null> => {
+  // check cache first
+  const ref = admin.firestore().collection("collaborationDataCache").doc(escapeKey(collaboratorsDataUrl))
+  const snapshot = await ref.get()
+
+  let collaborationData = snapshot.data() as PartialCollaborationData | undefined | null
+  if (collaborationData && collaborationData.collaborators) {
+    // make sure the caller is the owner of the collaboration data
+    if (verifyCollaborationDataOwner(collaboratorsDataUrl, collaborationData, platformUserId)) {
+      return collaborationData
+    } else {
+      return null
+    }
+  } else {
+    // get the collaboration data from the portal
+    const portalSecret = await getPortalSecret(platformId);
+    if (!portalSecret) {
+      functions.logger.error(`getCollaborationData: no portalSecret found for ${platformId}`);
+      return null;
+    }
+
+    // fetch and verify the owner of the collaboration data
+    collaborationData = await fetchCollaborationData(collaboratorsDataUrl, portalSecret);
+    if (!collaborationData || !verifyCollaborationDataOwner(collaboratorsDataUrl, collaborationData, platformUserId)) {
+      return null;
+    }
+
+    // cache the data if not found
+    await ref.set(collaborationData);
+
+    return collaborationData;
+  }
+}
+
+const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMetadata: AnswerData) => {
+  const {collaborators_data_url, platform_id, platform_user_id, collaboration_owner_id, resource_link_id, question_id} = answerMetadata
+
+  if (!collaboration_owner_id || !collaborators_data_url || !platform_id || !platform_user_id || !resource_link_id || !question_id) {
+    return Promise.resolve()
+  }
+
+  // only update follower answers from the collaboration owner to prevent infinite loops
+  if (collaboration_owner_id !== platform_user_id) {
+    return Promise.resolve()
+  }
+
+  // filter out invalid urls
+  if (!checkIfDomainsMatch(platform_id, collaborators_data_url)) {
+    return Promise.resolve()
+  }
+
+  // get (and cache collaborators data)
+  return getCollaborationData(collaborators_data_url, platform_id, platform_user_id)
+    .then(collaborationData => {
+      const promises: Promise<any>[] = [];
+      if (collaborationData) {
+        // write the answer to all the other collaborators
+        collaborationData.collaborators.forEach(collaborator => {
+          if (collaborator.platform_user_id !== platform_user_id) {
+            const existingAnswerQuery = getAnswersCollection(syncSource)
+              .where("platform_id", "==", platform_id)
+              .where("platform_user_id", "==", collaborator.platform_user_id)
+              .where("resource_link_id", "==", resource_link_id)
+              .where("question_id", "==", question_id);
+
+            const queryPromise = existingAnswerQuery
+              .get()
+              .then((querySnapshot): Promise<any> => {
+                const othersAnswerMetadata = Object.assign({}, answerMetadata, {platform_user_id: collaborator.platform_user_id})
+
+                if (querySnapshot.size === 0) {
+                  functions.logger.info("handleCollaborativeUrl: adding other user document", {othersAnswerMetadata});
+                  return getAnswersCollection(syncSource).add(othersAnswerMetadata)
+                } else if (querySnapshot.size === 1) {
+                  functions.logger.info("handleCollaborativeUrl: setting other user document", {othersAnswerMetadata});
+                  return querySnapshot.docs[0].ref.set(othersAnswerMetadata)
+                } else {
+                  functions.logger.error("handleCollaborativeUrl: more than one collaborator answer document found", {syncSource, platform_id, platform_user_id, resource_link_id, question_id});
+                  return Promise.resolve();
+                }
+              });
+
+            promises.push(queryPromise);
+            return queryPromise;
+          }
+          return;
+        })
+      }
+      return Promise.all(promises)
+    })
+}
+
 export const createSyncDocAfterAnswerWritten = functions.firestore
   .document(`${answersPathAllSources}/{answerId}`) // NOTE: {answerId} is a wildcard passed to Firebase
   .onWrite((change, context) => {
     return getSettings()
       .then(({ watchAnswers }) => {
         if (watchAnswers) {
-          const currentAnswer = change.after.data();
-          const previousAnswer = change.before.data();
+          const currentAnswer = change.after.data() as AnswerData | undefined;
+          const previousAnswer = change.before.data() as AnswerData | undefined;
+
           // if answer was deleted we use the previousAnswer to get the metadata
           const latestAnswerWithMetadata = currentAnswer && currentAnswer.resource_url ? currentAnswer : previousAnswer;
-          const answerMetadata = getAnswerMetadata(latestAnswerWithMetadata as AnswerData);
+          if (!latestAnswerWithMetadata) {
+            return null;
+          }
 
+          const answerMetadata = getAnswerMetadata(latestAnswerWithMetadata);
           if (!answerMetadata) {
             return null;
           }
@@ -226,7 +397,11 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
           const afterHash = currentAnswer ? getHash(currentAnswer) : "";
 
           if (afterHash !== beforeHash) {
-            return addSyncDoc(context.params.syncSource, answerMetadata);
+            const {syncSource, answerId} = context.params
+            return addSyncDoc(syncSource, answerMetadata).then(() => {
+              // only handle collaborative url if answer changed
+              return handleCollaborativeUrl(syncSource, answerId, latestAnswerWithMetadata).then(() => null)
+            })
           }
         }
 
