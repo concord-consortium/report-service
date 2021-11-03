@@ -8,6 +8,8 @@ import * as functions from "firebase-functions";
 import admin, { firestore } from "firebase-admin";
 import axios from "axios";
 
+const { v4: uuidv4 } = require('uuid');
+
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const parquet = require('parquetjs');
@@ -349,14 +351,18 @@ const handleCollaborativeUrl = (syncSource: string, answerId: string, answerMeta
             const queryPromise = existingAnswerQuery
               .get()
               .then((querySnapshot): Promise<any> => {
-                const othersAnswerMetadata = Object.assign({}, answerMetadata, {platform_user_id: collaborator.platform_user_id})
+                let othersAnswerMetadata: any = {...answerMetadata, platform_user_id: collaborator.platform_user_id};
 
                 if (querySnapshot.size === 0) {
-                  functions.logger.info("handleCollaborativeUrl: adding other user document", {othersAnswerMetadata});
-                  return getAnswersCollection(syncSource).add(othersAnswerMetadata)
+                  const id = uuidv4();
+                  othersAnswerMetadata = {...othersAnswerMetadata, id}
+                  functions.logger.info("handleCollaborativeUrl: adding other user document", {id, othersAnswerMetadata});
+                  return getAnswersCollection(syncSource).doc(id).set(othersAnswerMetadata)
                 } else if (querySnapshot.size === 1) {
-                  functions.logger.info("handleCollaborativeUrl: setting other user document", {othersAnswerMetadata});
-                  return querySnapshot.docs[0].ref.set(othersAnswerMetadata)
+                  const doc = querySnapshot.docs[0]
+                  othersAnswerMetadata = {...othersAnswerMetadata, id: doc.id}
+                  functions.logger.info("handleCollaborativeUrl: setting other user document", {id: doc.id, othersAnswerMetadata});
+                  return doc.ref.set(othersAnswerMetadata)
                 } else {
                   functions.logger.error("handleCollaborativeUrl: more than one collaborator answer document found", {syncSource, platform_id, platform_user_id, resource_link_id, question_id});
                   return Promise.resolve();
