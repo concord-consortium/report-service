@@ -117,7 +117,16 @@ query-creator$ sam local start-api
 query-creator$ curl http://localhost:3000/
 ```
 
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
+Instead of running `sam build` and `sam local start-api` you could try using an npm
+module called [samwatch](https://github.com/mxitgo/samwatch):
+
+```bash
+query-creator$ npm install samwatch -g
+query-creator$ samwatch
+```
+
+
+The SAM CLI reads the application template (`query-creator/template.yaml`)to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
 
 ```yaml
       Events:

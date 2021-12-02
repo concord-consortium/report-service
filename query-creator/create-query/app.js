@@ -18,6 +18,7 @@ exports.lambdaHandler = async (event, context) => {
     const debugSQL = params.debugSQL || false;
     const tokenServiceEnv = params.tokenServiceEnv;
     const usageReport = params.usageReport || false;
+    const useLogs = params.useLogs || false;
 
     if (!reportServiceSource) {
       throw new Error("Missing reportServiceSource in the report url");
@@ -49,7 +50,7 @@ exports.lambdaHandler = async (event, context) => {
 
     const sqlOutput = [];
 
-    for (const runnableUrl in queryIdsPerRunnable) {
+    const doLearnerAnswerReporting = async (runnableUrl) => {
       const queryId = queryIdsPerRunnable[runnableUrl];
 
       // get and denormalize the resource (activity or sequence) from Firebase
@@ -74,6 +75,30 @@ exports.lambdaHandler = async (event, context) => {
       } else {
         // create the athena query in the workgroup
         await aws.startQueryExecution(sql, workgroupName)
+      }
+    }
+
+    const doLearnerLogReporting= async (runnableUrl) => {
+      const queryId = queryIdsPerRunnable[runnableUrl];
+
+      // generate the sql for the query
+      const sql = aws.generateLogSQL(queryId, runnableUrl, authDomain, reportServiceSource);
+
+      if (debugSQL) {
+        sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
+        console.log("OK We ran the LOG part")
+      } else {
+        // create the athena query in the workgroup
+        await aws.startQueryExecution(sql, workgroupName)
+      }
+    };
+
+    for (const runnableUrl in queryIdsPerRunnable) {
+      if(useLogs) {
+        await doLearnerLogReporting(runnableUrl);
+      }
+      else {
+        await doLearnerAnswerReporting(runnableUrl);
       }
     }
 

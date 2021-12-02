@@ -1,0 +1,16 @@
+
+{
+  "query": {
+    "teachers": "7",
+    "format": "json",
+    "controller": "api/v1/report_learners_es",
+    "action": "external_report_query_jwt"
+  },
+  "type": "learners",
+  "version": "2",
+  "user": {
+    "id": "https://learn-report.staging.concord.org/users/22",
+    "email": "knowuh+teacher@gmail.com"
+  },
+  "learnersApiUrl": "https://learn-report.staging.concord.org/api/v1/report_learners_es/external_report_learners_from_jwt"
+}

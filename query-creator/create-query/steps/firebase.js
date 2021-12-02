@@ -33,6 +33,9 @@ exports.getResource = async (runnableUrl, reportServiceSource) => {
       }
     )
   } catch (e) {
+    console.log(e);
+    console.log(`\n\n---Bearer ${process.env.REPORT_SERVICE_TOKEN}\n---\n\n`);
+    console.log(params);
     throw new Error(`Unable to get resource at ${reportServiceUrl} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${e.response ? JSON.stringify(e.response.data) : "no response"}`)
   }
   const result = response.data
