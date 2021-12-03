@@ -85,8 +85,7 @@ exports.lambdaHandler = async (event, context) => {
       const sql = aws.generateLogSQL(queryId, runnableUrl, authDomain, reportServiceSource);
 
       if (debugSQL) {
-        sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
-        console.log("OK We ran the LOG part")
+        sqlOutput.push(`-- url ${runnableUrl}\n${sql}`);
       } else {
         // create the athena query in the workgroup
         await aws.startQueryExecution(sql, workgroupName)

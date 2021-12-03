@@ -341,15 +341,19 @@ FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
 */
 
 exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
-  const escapedUrl = runnableUrl.replace(/[^a-z0-9]/g, "-");
   return `
-    SELECT * FROM "log_ingester_qa"."logs_by_time" where "run_remote_endpoint" is NOT NULL limit 100;
+  -- name ${runnableUrl}
+  -- type learner event log ⎯ [qid: ${queryId}]
+  SELECT *
+  FROM "log_ingester_qa"."logs_by_time" log
+  INNER JOIN "report-service"."learners" learner
+  ON
+    (
+      learner.query_id = '${queryId}'
+      AND
+      learner.run_remote_endpoint = log.run_remote_endpoint
+    )
   `;
-  // return `
-  //   SELECT ${groupingSelect}
-  //   FROM "report-service"."learners" l
-  //   WHERE l.query_id = '${queryId}'
-  //   GROUP BY l.run_remote_endpoint )`;
 };
 
 
