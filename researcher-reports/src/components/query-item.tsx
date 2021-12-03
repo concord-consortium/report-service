@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import * as AWS from "aws-sdk";
 import AmazonS3URI from "amazon-s3-uri";
 import { Resource, Credentials, AthenaResource } from "@concord-consortium/token-service";
-
+import dateFormat from "dateformat";
 import "./query-item.scss";
 
 interface IProps {
@@ -10,6 +10,14 @@ interface IProps {
   credentials: Credentials;
   currentResource: Resource;
 }
+
+const formatDate = ( args: {time: Date|null|undefined, defaultString: string} ) => {
+  const { time, defaultString } = args;
+  if (!time) {
+    return defaultString || "";
+  }
+  return dateFormat(time, "yyyy-mm-dd (dddd) ⎯ h:MM:ss tt Z");
+};
 
 export const QueryItem: React.FC<IProps> = (props) => {
   const { queryExecutionId, credentials, currentResource } = props;
@@ -48,8 +56,12 @@ export const QueryItem: React.FC<IProps> = (props) => {
         _resourceType && setResourceType(_resourceType);
       }
 
-      setSubmissionDateTime(results.QueryExecution?.Status?.SubmissionDateTime?.toUTCString()
-       || "Error getting query submission date and time");
+      setSubmissionDateTime(
+        formatDate({
+          time: (results.QueryExecution?.Status?.SubmissionDateTime),
+          defaultString: "Error getting query submission date and time"
+        })
+      );
       setQueryCompletionStatus(results.QueryExecution?.Status?.State || "unknown");
 
       const outputLocation = results.QueryExecution?.ResultConfiguration?.OutputLocation;
