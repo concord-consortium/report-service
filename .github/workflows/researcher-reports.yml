@@ -15,7 +15,6 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '14'
-          check-latest: true
       - name: Install Dependencies
         run: npm ci
       - name: Build
