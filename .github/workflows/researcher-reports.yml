@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - 'researcher-reports/**'
+      - '.github/workflows/**'
 defaults:
   run:
     working-directory: researcher-reports
