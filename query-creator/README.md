@@ -62,6 +62,17 @@ These should all be defined in the samconfig.toml, but here is what they mean:
 
 You can find your API Gateway Endpoint URL in the output values displayed after deployment.
 
+### Adding new configuration parameters to template.yaml
+
+If you add new parameters to `template.yaml` you will need to run `sam build` before you deploy. The process for
+adding new parameters, and deploying with new parameters set looks like this:
+
+1. Add your new configuration parameters to `template.yaml`
+2. run `sam build`
+3. `sam deploy --guided --config-env=<staging|production>`. You should be prompted for a value of your new parameter.
+4. Running deploy like this will also populate `samconfig.toml` with your values if answer `Y` to the prompt `Save arguments to configuration file?`
+5. Remember to remove sensitive configuration values from `samconfig.toml` before checking in code if you use this approach.
+
 ## Use the SAM CLI to build and test locally
 
 ### Setup the credentials
@@ -186,6 +197,15 @@ See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-applica
 
 Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond create query samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
 
+
+## Query-Creator query parameters:
+
+You can change the behavior of the query-creator using the following query params:
+
+- `reportServiceSource` : which lara instance to point at. eg: `authoring.staging.concord.org`
+- `tokenServiceEnv` : which token service to use eg: `staging`
+- `useLogs` : run a learner log report for the selected resources. Omit for answer report, set to any value for Log report.
+- `debugSQL` : don't run the query, just show the generated sql. Omit to run the query, set to any value for SQL debugging.
 
 ## AWS Glue/Athena Setup
 
