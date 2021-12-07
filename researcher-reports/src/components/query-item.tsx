@@ -32,11 +32,30 @@ export const QueryItem: React.FC<IProps> = (props) => {
   const [downloadURLStatus, setDownloadURLStatus] = useState("");
   const [downloadURL, setDownloadURL] = useState("");
 
+  const { region } = currentResource as AthenaResource;
+  const { accessKeyId, secretAccessKey, sessionToken } = credentials;
+  const athena = new AWS.Athena({ region, accessKeyId, secretAccessKey, sessionToken });
+  const pollingInterval = 5 * 1000; // how frequently to check on queries.
+
+  // Poll every 5 seconds for updates on jobs that haven't succeeded or failed yet:
+  useEffect(() => {
+    async function checkStatus() {
+      const results = await athena.getQueryExecution({
+        QueryExecutionId: queryExecutionId
+      }).promise();
+      setQueryCompletionStatus(results.QueryExecution?.Status?.State || "unknown")
+    }
+    const queryDone = queryCompletionStatus == "succeeded" || queryCompletionStatus == "failed";
+    if(!queryDone) {
+      const id = setInterval(checkStatus, pollingInterval);
+      return () => {
+        clearInterval(id);
+      };
+    }
+  }, [queryCompletionStatus]);
+
   useEffect(() => {
     const handleGetQueryExecution = async () => {
-      const { region } = currentResource as AthenaResource;
-      const { accessKeyId, secretAccessKey, sessionToken } = credentials;
-      const athena = new AWS.Athena({ region, accessKeyId, secretAccessKey, sessionToken });
 
       const results = await athena.getQueryExecution({
         QueryExecutionId: queryExecutionId
