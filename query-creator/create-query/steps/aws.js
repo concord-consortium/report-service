@@ -340,6 +340,24 @@ FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
     GROUP BY l.run_remote_endpoint )`
 */
 
+exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
+  return `
+  -- name ${runnableUrl}
+  -- type learner event log ⎯ [qid: ${queryId}]
+  SELECT *
+  FROM "log_ingester_qa"."logs_by_time" log
+  INNER JOIN "report-service"."learners" learner
+  ON
+    (
+      learner.query_id = '${queryId}'
+      AND
+      learner.run_remote_endpoint = log.run_remote_endpoint
+    )
+  `;
+};
+
+
+
 exports.createQuery = async (queryId, user, sql, workgroup) => {
   /*
 
