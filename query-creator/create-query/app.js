@@ -19,6 +19,7 @@ exports.lambdaHandler = async (event, context) => {
     const tokenServiceEnv = params.tokenServiceEnv;
     const usageReport = params.usageReport || false;
     const useLogs = params.useLogs || false;
+    const endpoint_only = params.endpoint_only || false
 
     if (!reportServiceSource) {
       throw new Error("Missing reportServiceSource in the report url");
@@ -46,7 +47,7 @@ exports.lambdaHandler = async (event, context) => {
     const resource = await tokenService.findOrCreateResource(tokenServiceJwt, tokenServiceEnv, email, portalUrl);
     const workgroupName = await aws.ensureWorkgroup(resource, user);
 
-    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
+    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, endpoint_only);
 
     const sqlOutput = [];
 
