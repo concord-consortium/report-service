@@ -154,9 +154,16 @@ to each other.
 While there is probably a much better Docker-ish way to solve this, one hacky solution is to
 
 1. Install [ngrok](https://ngrok.com/), or a similar service to allow you to create a public url for your local servers
-2. Take note of the port that the app is running on in your Docker UI
-3. Publish that port with ngrok and get back a public url
-4. Hardcode `{public_url}/api/v1/report_learners_es/external_report_learners_from_jwt` in the query-creator app as the `reportServiceUrl`
+2. Take note of the port that the `app` is running on in your portal Docker UI.
+3. run `npx ngrok https <portal-app-port-number>` eg: `npx ngrok https 65059` to proxy your docker portal server.
+4. Ngrok will tell you on the command line the public URL for your docker server. Copy the https url It should look something like: `https://73bd-162-245-141-223.ngrok.io/`.
+5. Ngrok will also provide a "Web Interface" which allows you to inspect network requests at `http://127.0.0.1:4040/`
+6. You should now log into your local portal using the public https ngrok URL. Its likely Chrome will complain. You should be able to get the browser to load the page, by clicking through all the warnings.
+7. Ensure you have the correct auth-clients, external-reports, and firebase apps configured for your local portal setup. Here is a partial list of things you should copy from learn.staging:
+  1. auth-client: copy the **athena-researcher-reports** `admin/auth-client` from learn.staging.
+  2. Make a new `admins/external_reports` resource. It should use the `DEFAULT_REPORT_SERVICE_CLIENT` auth-client. Its a `researcher-learner` report type. It should `Use Query JWT`. You can try copying the info from an **Athena Reports** external report from learn.staging.
+  3. Make a new firebase app by copying the configuration from the **token-service** in learn.staging's `admin/firebase_apps`
+8. Enjoy!
 
 ## Add a resource to your application
 The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.

@@ -55,11 +55,12 @@ const uploadLearnerData = async (queryId, learners) => {
  *
  * @returns queryIdsPerRunnable as {[runnable_url]: queryId}
  */
-exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl) => {
+exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, endpointOnly=false) => {
   const queryIdsPerRunnable = {};     // {[runnable_url]: queryId}
   const queryParams = {
     query,
-    page_size: PAGE_SIZE
+    page_size: PAGE_SIZE,
+    endpoint_only: endpointOnly
   };
   let foundAllLearners = false;
   while (!foundAllLearners) {
