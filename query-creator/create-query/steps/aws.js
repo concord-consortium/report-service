@@ -55,12 +55,12 @@ const uploadLearnerData = async (queryId, learners) => {
  *
  * @returns queryIdsPerRunnable as {[runnable_url]: queryId}
  */
-exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, endpointOnly=false) => {
+exports.fetchAndUploadLearnerData = async (jwt, query, learnersApiUrl, narrowLearners=false) => {
   const queryIdsPerRunnable = {};     // {[runnable_url]: queryId}
   const queryParams = {
     query,
     page_size: PAGE_SIZE,
-    endpoint_only: endpointOnly
+    endpoint_only: narrowLearners
   };
   let foundAllLearners = false;
   while (!foundAllLearners) {
@@ -341,6 +341,9 @@ FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
     GROUP BY l.run_remote_endpoint )`
 */
 
+/*
+Generates a very wide row including all fields from the log and learner.
+*/
 exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
   return `
   -- name ${runnableUrl}
@@ -357,6 +360,24 @@ exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
   `;
 };
 
+/*
+Generates a smaller row of event details only, no portal info.
+*/
+exports.generateNarrowLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
+  return `
+  -- name ${runnableUrl}
+  -- type learner event log ⎯ [qid: ${queryId}]
+  SELECT log.*
+  FROM "log_ingester_qa"."logs_by_time" log
+  INNER JOIN "report-service"."learners" learner
+  ON
+    (
+      learner.query_id = '${queryId}'
+      AND
+      learner.run_remote_endpoint = log.run_remote_endpoint
+    )
+  `;
+};
 
 
 exports.createQuery = async (queryId, user, sql, workgroup) => {

@@ -19,7 +19,7 @@ exports.lambdaHandler = async (event, context) => {
     const tokenServiceEnv = params.tokenServiceEnv;
     const usageReport = params.usageReport || false;
     const useLogs = params.useLogs || false;
-    const endpointOnly = params.endpointOnly || false
+    const narrowLearners = params.narrowLearners || false
 
     if (!reportServiceSource) {
       throw new Error("Missing reportServiceSource in the report url");
@@ -47,7 +47,7 @@ exports.lambdaHandler = async (event, context) => {
     const resource = await tokenService.findOrCreateResource(tokenServiceJwt, tokenServiceEnv, email, portalUrl);
     const workgroupName = await aws.ensureWorkgroup(resource, user);
 
-    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, endpointOnly);
+    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, narrowLearners);
 
     const sqlOutput = [];
 
@@ -83,7 +83,9 @@ exports.lambdaHandler = async (event, context) => {
       const queryId = queryIdsPerRunnable[runnableUrl];
 
       // generate the sql for the query
-      const sql = aws.generateLogSQL(queryId, runnableUrl, authDomain, reportServiceSource);
+      const sql = narrowLearners
+        ? aws.generateNarrowLogSQL(queryId, runnableUrl, authDomain, reportServiceSource)
+        : aws.generateLogSQL(queryId, runnableUrl, authDomain, reportServiceSource);
 
       if (debugSQL) {
         sqlOutput.push(`-- url ${runnableUrl}\n${sql}`);
