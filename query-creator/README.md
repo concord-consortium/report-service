@@ -212,7 +212,9 @@ You can change the behavior of the query-creator using the following query param
 - `reportServiceSource` : which lara instance to point at. eg: `authoring.staging.concord.org`
 - `tokenServiceEnv` : which token service to use eg: `staging`
 - `useLogs` : run a learner log report for the selected resources. Omit for answer report, set to any value for Log report.
+- `narrowLearners`: For more efficient log reporting: don't reconstitute Learner data (like teachers, classes, &etc)
 - `debugSQL` : don't run the query, just show the generated sql. Omit to run the query, set to any value for SQL debugging.
+
 
 ## AWS Glue/Athena Setup
 
