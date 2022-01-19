@@ -26,6 +26,9 @@ Parameters:
   PortalReportUrl:
     Type: String
     Description: Url to the Portal Report where reseachers can load learner's models
+  LogAthenaDBName:
+    Type: String
+    Description: The Athena Database Name
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -39,6 +42,7 @@ Globals:
         RESEARCHER_REPORTS_URL: !Ref ResearcherReportsUrl
         FIREBASE_APP: !Ref FirebaseApp
         PORTAL_REPORT_URL: !Ref PortalReportUrl
+        LOG_ATHENA_DB_NAME: !Ref LogAthenaDBName
 
 Resources:
   CreateQueryFunction:

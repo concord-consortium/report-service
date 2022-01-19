@@ -16,4 +16,7 @@ exports.validate = () => {
   if (!process.env.RESEARCHER_REPORTS_URL) {
     missingVar("RESEARCHER_REPORTS_URL");
   }
+  if (!process.env.LOG_ATHENA_DB_NAME) {
+    missingVar("LOG_ATHENA_DB_NAME");
+  }
 }
