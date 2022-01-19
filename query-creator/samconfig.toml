@@ -9,7 +9,7 @@ s3_prefix = "report-service-query-creator"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "OutputBucket=\"concordqa-report-data\" LogInputBucket=\"log-ingester-qa\"  ReportServiceUrl=\"https://us-central1-report-service-dev.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/branch/master/\" FirebaseApp=\"report-service-dev\" PortalReportUrl=\"https://portal-report.concord.org/branch/master/index.html\""
+parameter_overrides = "OutputBucket=\"concordqa-report-data\" LogInputBucket=\"log-ingester-qa\"  ReportServiceUrl=\"https://us-central1-report-service-dev.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/branch/master/\" FirebaseApp=\"report-service-dev\" PortalReportUrl=\"https://portal-report.concord.org/branch/master/index.html\" LogAthenaDBName=\"log_ingester_qa\""
 image_repositories = []
 
 [production]
@@ -21,7 +21,8 @@ s3_prefix = "report-service-query-creator"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "LogInputBucket=\"log-ingester-production\" OutputBucket=\"concord-report-data\" FirebaseApp=\"report-service-pro\" PortalReportUrl=\"https://portal-report.concord.org/branch/master/index.html\" ReportServiceUrl=\"https://us-central1-report-service-pro.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/\""
+parameter_overrides = "OutputBucket=\"concord-report-data\" LogInputBucket=\"log-ingester-production\"  ReportServiceUrl=\"https://us-central1-report-service-pro.cloudfunctions.net/api\" ResearcherReportsUrl=\"https://researcher-reports.concord.org/\" FirebaseApp=\"report-service-pro\" PortalReportUrl=\"https://portal-report.concord.org/branch/master/index.html\" LogAthenaDBName=\"log_ingester_production\""
+image_repositories = []
 
 [default.local_start_api.parameters]
 profile = "QueryCreatorLocalTestUser"

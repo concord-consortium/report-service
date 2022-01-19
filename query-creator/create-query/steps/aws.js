@@ -345,11 +345,12 @@ FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
 Generates a very wide row including all fields from the log and learner.
 */
 exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
+  const logDb = process.env.LOG_ATHENA_DB_NAME;
   return `
   -- name ${runnableUrl}
   -- type learner event log ⎯ [qid: ${queryId}]
   SELECT *
-  FROM "log_ingester_qa"."logs_by_time" log
+  FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner
   ON
     (
@@ -364,11 +365,12 @@ exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
 Generates a smaller row of event details only, no portal info.
 */
 exports.generateNarrowLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
+  const logDb = process.env.LOG_ATHENA_DB_NAME;
   return `
   -- name ${runnableUrl}
   -- type learner event log ⎯ [qid: ${queryId}]
   SELECT log.*
-  FROM "log_ingester_qa"."logs_by_time" log
+  FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner
   ON
     (
