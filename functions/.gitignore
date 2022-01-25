@@ -15,3 +15,6 @@ node_modules/
 .runtimeconfig.json
 
 build-info.json
+
+# saved emulator data
+emulator-data/

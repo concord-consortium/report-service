@@ -4,8 +4,12 @@ const firebase = require("./steps/firebase");
 const aws = require("./steps/aws");
 const tokenService = require("./steps/token-service");
 
-exports.lambdaHandler = async (event, context) => {
+const portalToAuthDomainMap = {
+  "https://learn-report.staging.concord.org": "https://learn.staging.concord.org",
+  "https://learn-report.concord.org": "https://learn.concord.org"
+}
 
+exports.lambdaHandler = async (event, context) => {
   try {
     const params = event.queryStringParameters || {};
 
@@ -14,6 +18,8 @@ exports.lambdaHandler = async (event, context) => {
     const debugSQL = params.debugSQL || false;
     const tokenServiceEnv = params.tokenServiceEnv;
     const usageReport = params.usageReport || false;
+    const useLogs = params.useLogs || false;
+    const narrowLearners = params.narrowLearners || false
 
     if (!reportServiceSource) {
       throw new Error("Missing reportServiceSource in the report url");
@@ -34,33 +40,67 @@ exports.lambdaHandler = async (event, context) => {
 
     const portalUrl = learnersApiUrl.match(/(.*)\/api\/v[0-9]+/)[1];
 
+    const authDomain = portalToAuthDomainMap[portalUrl] || portalUrl;
+
     const tokenServiceJwt = await request.getTokenServiceJwt(portalUrl, jwt);
 
     const resource = await tokenService.findOrCreateResource(tokenServiceJwt, tokenServiceEnv, email, portalUrl);
     const workgroupName = await aws.ensureWorkgroup(resource, user);
 
-    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl);
+    const queryIdsPerRunnable = await aws.fetchAndUploadLearnerData(jwt, query, learnersApiUrl, narrowLearners);
 
     const sqlOutput = [];
 
-    for (const runnableUrl in queryIdsPerRunnable) {
+    const doLearnerAnswerReporting = async (runnableUrl) => {
       const queryId = queryIdsPerRunnable[runnableUrl];
 
       // get and denormalize the resource (activity or sequence) from Firebase
-      const resource = await firebase.getResource(runnableUrl, reportServiceSource);
-      const denormalizedResource = firebase.denormalizeResource(resource);
+      let resource;
+      let denormalizedResource;
+      try {
+        resource = await firebase.getResource(runnableUrl, reportServiceSource);
+        denormalizedResource = firebase.denormalizeResource(resource);
 
-      // upload the denormalized resource to s3 and tie it to the workgroup
-      await aws.uploadDenormalizedResource(queryId, denormalizedResource);
+        // upload the denormalized resource to s3 and tie it to the workgroup
+        await aws.uploadDenormalizedResource(queryId, denormalizedResource);
+      } catch (err) {
+        // no valid resource, we will attempt to create a usage report with just the learner data
+        console.log(err);
+      }
 
       // generate the sql for the query
-      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport);
+      const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain, reportServiceSource);
 
       if (debugSQL) {
-        sqlOutput.push(`-- id ${resource.id}\n${sql}`);
+        sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
       } else {
         // create the athena query in the workgroup
         await aws.startQueryExecution(sql, workgroupName)
+      }
+    }
+
+    const doLearnerLogReporting= async (runnableUrl) => {
+      const queryId = queryIdsPerRunnable[runnableUrl];
+
+      // generate the sql for the query
+      const sql = narrowLearners
+        ? aws.generateNarrowLogSQL(queryId, runnableUrl, authDomain, reportServiceSource)
+        : aws.generateLogSQL(queryId, runnableUrl, authDomain, reportServiceSource);
+
+      if (debugSQL) {
+        sqlOutput.push(`-- url ${runnableUrl}\n${sql}`);
+      } else {
+        // create the athena query in the workgroup
+        await aws.startQueryExecution(sql, workgroupName)
+      }
+    };
+
+    for (const runnableUrl in queryIdsPerRunnable) {
+      if(useLogs) {
+        await doLearnerLogReporting(runnableUrl);
+      }
+      else {
+        await doLearnerAnswerReporting(runnableUrl);
       }
     }
 

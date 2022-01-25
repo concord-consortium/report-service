@@ -7,6 +7,9 @@ Parameters:
   OutputBucket:
     Type: String
     Description: Output bucket for Athena queries
+  LogInputBucket:
+    Type: String
+    Description: Input bucket for Learner Log Athena queries
   ReportServiceToken:
     Type: String
     Description: Bearer token for report service
@@ -17,6 +20,15 @@ Parameters:
     Type: String
     Description: URL for researcher reports app
     Default: https://localhost:8080
+  FirebaseApp:
+    Type: String
+    Description: Firebase app name
+  PortalReportUrl:
+    Type: String
+    Description: Url to the Portal Report where reseachers can load learner's models
+  LogAthenaDBName:
+    Type: String
+    Description: The Athena Database Name
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -28,6 +40,9 @@ Globals:
         REPORT_SERVICE_TOKEN: !Ref ReportServiceToken
         REPORT_SERVICE_URL: !Ref ReportServiceUrl
         RESEARCHER_REPORTS_URL: !Ref ResearcherReportsUrl
+        FIREBASE_APP: !Ref FirebaseApp
+        PORTAL_REPORT_URL: !Ref PortalReportUrl
+        LOG_ATHENA_DB_NAME: !Ref LogAthenaDBName
 
 Resources:
   CreateQueryFunction:
@@ -53,7 +68,7 @@ Resources:
           - athena:TagResource
           Resource: '*'
       - Statement:
-        - Sid: QueryCreatorS3Policy
+        - Sid: QueryCreatorS3OutputPolicy
           Effect: Allow
           Action:
           - s3:GetBucketLocation
@@ -64,6 +79,16 @@ Resources:
           Resource:
           - !Sub 'arn:${AWS::Partition}:s3:::${OutputBucket}'
           - !Sub 'arn:${AWS::Partition}:s3:::${OutputBucket}/*'
+      - Statement:
+        - Sid: QueryCreatorS3LogInputPolicy
+          Effect: Allow
+          Action:
+          - s3:GetBucketLocation
+          - s3:GetObject
+          - s3:ListBucket
+          Resource:
+          - !Sub 'arn:${AWS::Partition}:s3:::${LogInputBucket}'
+          - !Sub 'arn:${AWS::Partition}:s3:::${LogInputBucket}/*'
       - Statement:
         - Sid: QueryCreatorGluePolicy
           Effect: Allow

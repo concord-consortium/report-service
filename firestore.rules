@@ -25,11 +25,27 @@ service cloud.firestore {
         && request.auth.token.platform_id == resource.data.platform_id;
     }
 
+    // Check if answer has been explicitly shared by the owner of the answer (shared_with: context) and
+    // if the user who is trying to read the answer is member of the same context as the author.
+    function answerSharedAndMemberOfContext() {
+      return request.auth.token.class_hash == resource.data.context_id
+        && request.auth.token.platform_id == resource.data.platform_id
+        && resource.data.shared_with == "context";
+    }
+
     // Note: this conditional is used in read rules, which do not require a
     // matching context_id, so the context_id is not enforced here
     function learnerOwner(res) {
       return request.auth.token.user_type == 'learner'
         && string(request.auth.token.platform_user_id) == string(res.data.platform_user_id)
+        && request.auth.token.platform_id == res.data.platform_id;
+    }
+
+    // Check for researchers: users with a class_hash and target_user_id
+    function researcherOfOwner(res) {
+      return request.auth.token.user_type == 'user'
+        && string(request.auth.token.target_user_id) == string(res.data.platform_user_id)
+        && request.auth.token.class_hash == res.data.context_id
         && request.auth.token.platform_id == res.data.platform_id;
     }
 
@@ -55,18 +71,21 @@ service cloud.firestore {
     }
 
     function anonymousCreate() {
-      return request.resource.data.run_key.size() > 10
+      return ('run_key' in request.resource.data)
+        && request.resource.data.run_key.size() > 10
         // Make sure anonymous answers don't have platform_ids
         && !('platform_id' in request.resource.data);
     }
 
     // Anyone can read any anonymous docs with a valid run_key
     function anonymousRead() {
-      return resource.data.run_key.size() > 10
+      return ('run_key' in resource.data)
+        && resource.data.run_key.size() > 10
     }
 
     function anonymousUpdate() {
-      return resource.data.run_key.size() > 10
+      return ('run_key' in resource.data)
+        && resource.data.run_key.size() > 10
         // Make sure they can't change the run key of an existing document
         && resource.data.run_key == request.resource.data.run_key
         // Make sure anonymous answers don't have platform_ids
@@ -81,7 +100,9 @@ service cloud.firestore {
     function studentWorkRead() {
       return anonymousRead()
         || teacherOfContext()
-        || learnerOwner(resource);
+        || answerSharedAndMemberOfContext()
+        || learnerOwner(resource)
+        || researcherOfOwner(resource);
     }
 
     function studentWorkUpdate() {
@@ -143,18 +164,25 @@ service cloud.firestore {
         && request.auth.token.platform_id == resource.data.platformId;
     }
 
+    function authorizedTarget() {
+      return string(request.auth.token.target_user_id) == string(resource.data.platformStudentId)
+        && request.auth.token.platform_id == resource.data.platformId;
+    }
+
     // Make sure teachers can only create feedbacks in their current context
     function feedbackCreate() {
       return request.auth.token.user_type == 'teacher'
         && authorizedContext(request.resource);
     }
 
-    // Make sure learners can only read feedbacks directed at them, and
-    // teachers can only read feedbacks in their context
+    // learners can only read feedbacks directed at them
+    // teachers can read all feedbacks in their context
+    // users need a context and target and can only read feedback in that context for that target
     // Note: this isn't used for feedback settings
     function feedbackRead() {
       return (request.auth.token.user_type == 'teacher' && authorizedContext(resource))
-        || (request.auth.token.user_type == 'learner' && authorizedStudent()) ;
+        || (request.auth.token.user_type == 'learner' && authorizedStudent())
+        || (request.auth.token.user_type == 'user' && authorizedTarget() && authorizedContext(resource)) ;
     }
 
     // Make sure the teacher can't change the identifying properties of

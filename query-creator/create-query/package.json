@@ -9,7 +9,7 @@
   "dependencies": {
     "@concord-consortium/token-service": "^2.0.0-pre.5",
     "aws-sdk": "^2.702.0",
-    "axios": "^0.21.1",
+    "axios": "^0.21.2",
     "node-fetch": "^2.6.1",
     "query-string": "^6.13.1",
     "uuid": "^8.1.0"
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "chai": "^4.2.0",
-    "mocha": "^6.1.4"
+    "mocha": "^6.1.4",
+    "nock": "^13.1.3"
   }
 }

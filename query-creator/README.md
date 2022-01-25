@@ -62,7 +62,20 @@ These should all be defined in the samconfig.toml, but here is what they mean:
 
 You can find your API Gateway Endpoint URL in the output values displayed after deployment.
 
+### Adding new configuration parameters to template.yaml
+
+If you add new parameters to `template.yaml` you will need to run `sam build` before you deploy. The process for
+adding new parameters, and deploying with new parameters set looks like this:
+
+1. Add your new configuration parameters to `template.yaml`
+2. run `sam build`
+3. `sam deploy --guided --config-env=<staging|production>`. You should be prompted for a value of your new parameter.
+4. Running deploy like this will also populate `samconfig.toml` with your values if answer `Y` to the prompt `Save arguments to configuration file?`
+5. Remember to remove sensitive configuration values from `samconfig.toml` before checking in code if you use this approach.
+
 ## Use the SAM CLI to build and test locally
+
+### Setup the credentials
 
 Add `QueryCreatorLocalTestUser` credential information to your `~/.aws/credentials` file. This can be done manually by editing the credentials file and adding the following (`aws_access_key_id` and `aws_secret_access_key` values can be obtained from 1Password):
 ```
@@ -77,15 +90,16 @@ Or the `QueryCreatorLocalTestUser` credential information can be configured via 
 query-creator$ aws configure
 ```
 
-The following environment variables need to be configured: `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl`. These can be configured system-wide or as default values in the `parameters` section of `template.yml`. For example, `OutputBucket` can be configured as follows:
-```
-  OutputBucket:
-    Type: String
-    Description: Output bucket for Athena queries
-    Default: 'concordqa-report-data'
-```
+### Setup application environment variables
 
-The environment variable values can be found on the production AWS account under `Cloud formation > Stacks` (for example, the `report-service-query-creator` stack can be used to obtain `OutputBucket`, `ReportServiceToken`, `ReportServiceUrl` values).
+Copy `env.sample.json` to `env.json`
+Replace the `REPORT_SERVICE_TOKEN` value in `env.json` with the actual value.
+This value can be found in the QA AWS account under `Cloud formation > Stacks -> report-service-query-creator`.
+Look at the parameters of the `report-service-query-creator` to find the value.
+
+Note: The `sam local start-api` command is configured to look for the `env.json` by `samconfig.toml`.
+
+### Build application
 
 Build your application with the `sam build` command.
 
@@ -95,6 +109,8 @@ query-creator$ sam build
 
 The SAM CLI installs dependencies defined in `create-query/package.json`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
 
+### Test a single function
+
 Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
 
 Run functions locally and invoke them with the `sam local invoke` command.
@@ -103,6 +119,8 @@ Run functions locally and invoke them with the `sam local invoke` command.
 query-creator$ sam local invoke CreateQueryFunction --event events/event.json
 ```
 
+### Test the full API
+
 The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
 
 ```bash
@@ -110,7 +128,11 @@ query-creator$ sam local start-api
 query-creator$ curl http://localhost:3000/
 ```
 
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
+To increase productivity you might edit JS files directly within the `.aws-sam/build/` folder.
+!!But remember to copy those draft changes back to the source folder, and save them in git!!
+
+
+The SAM CLI reads the application template (`query-creator/template.yaml`)to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
 
 ```yaml
       Events:
@@ -132,9 +154,16 @@ to each other.
 While there is probably a much better Docker-ish way to solve this, one hacky solution is to
 
 1. Install [ngrok](https://ngrok.com/), or a similar service to allow you to create a public url for your local servers
-2. Take note of the port that the app is running on in your Docker UI
-3. Publish that port with ngrok and get back a public url
-4. Hardcode `{public_url}/api/v1/report_learners_es/external_report_learners_from_jwt` in the query-creator app as the `reportServiceUrl`
+2. Take note of the port that the `app` is running on in your portal Docker UI.
+3. run `npx ngrok https <portal-app-port-number>` eg: `npx ngrok https 65059` to proxy your docker portal server.
+4. Ngrok will tell you on the command line the public URL for your docker server. Copy the https url It should look something like: `https://73bd-162-245-141-223.ngrok.io/`.
+5. Ngrok will also provide a "Web Interface" which allows you to inspect network requests at `http://127.0.0.1:4040/`
+6. You should now log into your local portal using the public https ngrok URL. Its likely Chrome will complain. You should be able to get the browser to load the page, by clicking through all the warnings.
+7. Ensure you have the correct auth-clients, external-reports, and firebase apps configured for your local portal setup. Here is a partial list of things you should copy from learn.staging:
+  1. auth-client: copy the **athena-researcher-reports** `admin/auth-client` from learn.staging.
+  2. Make a new `admins/external_reports` resource. It should use the `DEFAULT_REPORT_SERVICE_CLIENT` auth-client. Its a `researcher-learner` report type. It should `Use Query JWT`. You can try copying the info from an **Athena Reports** external report from learn.staging.
+  3. Make a new firebase app by copying the configuration from the **token-service** in learn.staging's `admin/firebase_apps`
+8. Enjoy!
 
 ## Add a resource to your application
 The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
@@ -153,12 +182,12 @@ You can find more information and examples about filtering Lambda function logs 
 
 ## Unit tests
 
-Tests are defined in the `hello-world/tests` folder in this project. Use NPM to install the [Mocha test framework](https://mochajs.org/) and run unit tests.
+Tests are defined in the `create-query/tests` folder in this project. Use NPM to install the [Mocha test framework](https://mochajs.org/) and run unit tests.
 
 ```bash
-query-creator$ cd hello-world
-hello-world$ npm install
-hello-world$ npm run test
+query-creator$ cd create-query
+create-query$ npm install
+create-query$ npm run test
 ```
 
 ## Cleanup
@@ -174,6 +203,17 @@ aws cloudformation delete-stack --stack-name query-creator
 See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
 
 Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond create query samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
+
+
+## Query-Creator query parameters:
+
+You can change the behavior of the query-creator using the following query params:
+
+- `reportServiceSource` : which lara instance to point at. eg: `authoring.staging.concord.org`
+- `tokenServiceEnv` : which token service to use eg: `staging`
+- `useLogs` : run a learner log report for the selected resources. Omit for answer report, set to any value for Log report.
+- `narrowLearners`: For more efficient log reporting: don't reconstitute Learner data (like teachers, classes, &etc)
+- `debugSQL` : don't run the query, just show the generated sql. Omit to run the query, set to any value for SQL debugging.
 
 
 ## AWS Glue/Athena Setup
@@ -210,6 +250,7 @@ Next, you can use AWS Serverless Application Repository to deploy ready to use A
       class string,
       school string,
       user_id string,
+      offering_id string,
       permission_forms string,
       username string,
       student_name string,

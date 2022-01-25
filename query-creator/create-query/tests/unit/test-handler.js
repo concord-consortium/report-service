@@ -4,8 +4,47 @@ const app = require('../../app.js');
 const aws = require('../../steps/aws.js');
 const firebase = require('../../steps/firebase.js');
 const chai = require('chai');
+const queryString = require('query-string');
+const nock = require('nock');
+
 const expect = chai.expect;
-var event, context;
+const event = {
+  queryStringParameters: {
+    reportServiceSource: 'test-source',
+    tokenServiceEnv: 'dev'
+  },
+  body: queryString.stringify({
+    jwt: 'fake-jwt',
+    json: JSON.stringify({
+      version: "2",
+      query: "",
+      learnersApiUrl: "https://example.com/api/v1/",
+      user: {
+        email: "user@example.com"
+      }
+    })
+  })
+};
+const context = {};
+
+process.env.FIREBASE_APP = 'report-service-test';
+process.env.PORTAL_REPORT_URL = 'https://portal-report.test';
+process.env.OUTPUT_BUCKET = 'fake-bucket';
+process.env.REPORT_SERVICE_TOKEN = 'fake-token';
+process.env.REPORT_SERVICE_URL = 'https://example.com';
+process.env.RESEARCHER_REPORTS_URL = 'https://example.com';
+
+// This matches the the request to get a token service jwt
+const scopeExample = nock('https://example.com')
+  .get('/api/v1/jwt/firebase?firebase_app=token-service')
+  .reply(200, 'jwt response');
+
+// This is the token service request,
+// it would be better to mock the token service rather than using nock
+const scopeLocalhost = nock('http://localhost:5000')
+  .get('/api/v1/resources/?type=athenaWorkgroup&tool=researcher-report&name=user-example-com&amOwner=true&env=dev')
+  // .get(/.*/)
+  .reply(200, '{ "fake": "response" }');
 
 const testQueryId = "123456789";
 const testResource = {
@@ -48,14 +87,16 @@ const testResource = {
 };
 
 describe('Tests index', function () {
-    it('verifies successful response', async () => {
+    it('verifies a response', async () => {
         const result = await app.lambdaHandler(event, context)
 
         expect(result).to.be.an('object');
-        // expect(result.statusCode).to.equal(200);
         expect(result.body).to.be.an('string');
-
         let response = JSON.parse(result.body);
+
+        // NOTE: Currently the test does not mock enough so the result is actually
+        // a 500.
+        // expect(result.statusCode).to.equal(200);
 
         expect(response).to.be.an('object');
         // expect(response.message).to.be.equal("create query");
@@ -66,33 +107,47 @@ describe('Tests index', function () {
 describe('Query creation', function () {
     it('verifies successful query creation', async () => {
         const testDenormalizedResource = firebase.denormalizeResource(testResource);
-        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false);
+        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false, "", "fake-auth-domain", 'fake-source-key');
         const expectedSQLresult = `-- name test activity
 -- type activity
 
-WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
+
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
+  FROM "report-service"."partitioned_answers" a
+  INNER JOIN "report-service"."learners" l
+  ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
+  WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+  GROUP BY l.run_remote_endpoint ),
+
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
+  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
+  FROM activities, "report-service"."learners" l
+  LEFT JOIN grouped_answers
+  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
+  WHERE l.query_id = '123456789' )
 
 SELECT
-  null as remote_endpoint,
-  null as runnable_url,
-  null as learner_id,
-  null as student_id,
-  null as user_id,
-  null as student_name,
-  null as username,
-  null as school,
-  null as class,
-  null as class_id,
-  null as permission_forms,
-  null as last_run,
-  null as teacher_user_ids,
-  null as teacher_names,
-  null as teacher_districts,
-  null as teacher_states,
-  null as teacher_emails,
-  null as num_questions,
-  null as num_answers,
-  null as percent_complete,
+  null AS remote_endpoint,
+  null AS runnable_url,
+  null AS learner_id,
+  null AS student_id,
+  null AS user_id,
+  null AS student_name,
+  null AS username,
+  null AS school,
+  null AS class,
+  null AS class_id,
+  null AS permission_forms,
+  null AS last_run,
+  null AS teacher_user_ids,
+  null AS teacher_names,
+  null AS teacher_districts,
+  null AS teacher_states,
+  null AS teacher_emails,
+  null AS num_questions,
+  null AS num_answers,
+  null AS percent_complete,
   activities.questions['multiple_choice_00000'].prompt AS multiple_choice_00000_choice,
   activities.questions['multiple_choice_01000'].prompt AS multiple_choice_01000_choice,
   activities.questions['multiple_choice_02000'].prompt AS multiple_choice_02000_choice,
@@ -114,6 +169,7 @@ SELECT
   null AS managed_interactive_77777_text,
   null AS managed_interactive_77777_answer,
   null AS managed_interactive_88888_json,
+  null AS managed_interactive_88888_url,
   null AS managed_interactive_99999_json
 FROM activities
 
@@ -132,14 +188,14 @@ SELECT
   class_id,
   permission_forms,
   last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails,
-  activities.num_questions,
-  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
-  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete,
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
+  activities.num_questions AS num_questions,
+  num_answers,
+  round(100.0 * num_answers / activities.num_questions, 1) AS percent_complete,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_00000'][x].content, IF(activities.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_00000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_01000'][x].content, '')),', ') AS multiple_choice_01000_choice,
   array_join(transform(CAST(json_extract(kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_02000'][x].content, IF(activities.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_02000_choice,
@@ -161,14 +217,9 @@ SELECT
   json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
   kv1['managed_interactive_77777'] AS managed_interactive_77777_answer,
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
+  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR), '&answersSourceKey=',  source_key['managed_interactive_88888']) END AS managed_interactive_88888_url,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
-FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
-    FROM "report-service"."partitioned_answers" a
-    INNER JOIN "report-service"."learners" l
-    ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
-    WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
-    GROUP BY l.run_remote_endpoint )`;
+FROM activities, learners_and_answers`;
 
         const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
         const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
@@ -179,11 +230,26 @@ FROM activities,
 describe('Query creation usage report', function () {
   it('verifies successful query creation in usage report mode', async () => {
       const testDenormalizedResource = firebase.denormalizeResource(testResource);
-      const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, true);
+      const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, true, "", "fake-auth-domain");
       const expectedSQLresult = `-- name test activity
 -- type activity
 
-WITH activities AS ( SELECT *, cardinality(questions) as num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' )
+WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
+
+grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
+  FROM "report-service"."partitioned_answers" a
+  INNER JOIN "report-service"."learners" l
+  ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
+  WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+  GROUP BY l.run_remote_endpoint ),
+
+learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
+  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers
+  FROM activities, "report-service"."learners" l
+  LEFT JOIN grouped_answers
+  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
+  WHERE l.query_id = '123456789' )\
+
 
 SELECT
   remote_endpoint,
@@ -198,20 +264,54 @@ SELECT
   class_id,
   permission_forms,
   last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') as teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') as teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') as teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') as teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') as teacher_emails,
-  activities.num_questions,
-  cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) as num_answers,
-  round(100.0 * cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions))) / activities.num_questions, 1) as percent_complete
-FROM activities,
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) runnable_url,arbitrary(l.learner_id) learner_id,arbitrary(l.student_id) student_id,arbitrary(l.user_id) user_id,arbitrary(l.student_name) student_name,arbitrary(l.username) username,arbitrary(l.school) school,arbitrary(l.class) class,arbitrary(l.class_id) class_id,arbitrary(l.permission_forms) permission_forms,arbitrary(l.last_run) last_run, arbitrary(l.teachers) teachers, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted
-    FROM "report-service"."partitioned_answers" a
-    INNER JOIN "report-service"."learners" l
-    ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
-    WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
+  activities.num_questions AS num_questions,
+  num_answers,
+  round(100.0 * num_answers / activities.num_questions, 1) AS percent_complete
+FROM activities, learners_and_answers`;
+
+      const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
+      const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
+      expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+  });
+});
+
+describe('Query creation unreportable runnable', function () {
+  it('verifies successful query creation of unreportable runnable', async () => {
+      const generatedSQLresult = await aws.generateSQL(testQueryId, undefined, undefined, false, "www.test.url", "fake-auth-domain");
+      const expectedSQLresult = `-- name www.test.url
+-- type assignment
+
+
+
+
+
+SELECT
+  remote_endpoint,
+  runnable_url,
+  learner_id,
+  student_id,
+  user_id,
+  student_name,
+  username,
+  school,
+  class,
+  class_id,
+  permission_forms,
+  last_run,
+  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
+  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
+  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
+  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
+  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails
+FROM
+  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) AS runnable_url, arbitrary(l.learner_id) AS learner_id, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.last_run) AS last_run, arbitrary(l.teachers) teachers
+    FROM "report-service"."learners" l
+    WHERE l.query_id = '123456789'
     GROUP BY l.run_remote_endpoint )`;
 
       const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");

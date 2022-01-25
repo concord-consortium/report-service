@@ -9,12 +9,16 @@ export const getHash = (data: any) => {
 
 export interface AnswerMetadata {
   resource_url: string;
+  question_id: string;
   // logged-in user
   platform_id?: string;
   resource_link_id?: string;
   platform_user_id?: string;
   // anonymous user
   run_key?: string;
+  // collaboration info
+  collaborators_data_url?: string;
+  collaboration_owner_id?: string;
 }
 
 export interface AnswerData extends AnswerMetadata {
@@ -104,12 +108,14 @@ export const getAnswerMetadata = (answer: AnswerData) => {
       resource_url: answer.resource_url,
       platform_id: answer.platform_id,
       resource_link_id: answer.resource_link_id,
-      platform_user_id: answer.platform_user_id
+      platform_user_id: answer.platform_user_id,
+      question_id: answer.question_id
     };
-  } else if (answer.resource_url && answer.run_key) {
+  } else if (answer.resource_url && answer.run_key && answer.question_id) {
     return {
       resource_url: answer.resource_url,
-      run_key: answer.run_key
+      run_key: answer.run_key,
+      question_id: answer.question_id
     };
   }
   return null;
