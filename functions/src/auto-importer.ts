@@ -420,10 +420,12 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
     .then(({ setNeedSync }) => {
       if (setNeedSync) {
         return getAnswerSyncAllSourcesCollection()
+                  .limit(10000)
                   .where("updated", "==", true)
                   .get()
                   .then((querySnapshot) => {
                     const promises: Promise<FirebaseFirestore.WriteResult>[] = [];
+                    functions.logger.info("querySnapshot size: ", querySnapshot.size);
                     querySnapshot.forEach((doc) => {
                       // use a timestamp instead of a boolean for sync so that we trigger a write
                       promises.push(doc.ref.update({
@@ -432,7 +434,8 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
                       } as PartialSyncData));
                     });
                     return Promise.all(promises);
-                  });
+                  })
+                  .catch(functions.logger.error);
       }
       return null;
     });
