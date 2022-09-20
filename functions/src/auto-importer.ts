@@ -47,7 +47,8 @@ HOW THIS WORKS:
 const answerDirectory = "partitioned-answers"
 const region = "us-east-1"
 
-const monitorSyncDocSchedule = "every 4 minutes"
+const monitorSyncDocSchedule = "every 2 minutes"
+const timeoutLimitMS = 60000;
 
 interface AutoImporterSettings {
   watchAnswers: boolean;
@@ -416,24 +417,35 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
   });
 
 export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSchedule).onRun((context) => {
+  const startTime = Date.now();
   return getSettings()
     .then(({ setNeedSync }) => {
       if (setNeedSync) {
         return getAnswerSyncAllSourcesCollection()
-                  .limit(10000)
+                  .limit(2000)
                   .where("updated", "==", true)
                   .get()
                   .then((querySnapshot) => {
+                    const readTime = Date.now() - startTime;
+                    functions.logger.info(`Read time: ${readTime} ms.`);
                     const promises: Promise<FirebaseFirestore.WriteResult>[] = [];
                     functions.logger.info("querySnapshot size: ", querySnapshot.size);
+                    let updatedDocsCount = 0;
                     querySnapshot.forEach((doc) => {
-                      // use a timestamp instead of a boolean for sync so that we trigger a write
-                      promises.push(doc.ref.update({
-                        need_sync: firestore.Timestamp.now(),
-                        updated: false
-                      } as PartialSyncData));
+                      if (Date.now() - startTime < timeoutLimitMS - 3000) {
+                        // use a timestamp instead of a boolean for sync so that we trigger a write
+                        promises.push(doc.ref.update({
+                          need_sync: firestore.Timestamp.now(),
+                          updated: false
+                        } as PartialSyncData));
+                        updatedDocsCount++;
+                      }
                     });
-                    return Promise.all(promises);
+                    return Promise.all(promises).then(() => {
+                      const writeTime = Date.now() - startTime - readTime;
+                      functions.logger.info(`Write time: ${writeTime} ms.`);
+                      functions.logger.info(`Updated ${updatedDocsCount} documents.`);
+                    });
                   })
                   .catch(functions.logger.error);
       }
