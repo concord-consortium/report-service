@@ -36,18 +36,18 @@ HOW THIS WORKS:
    answer has an additional collaboration_owner_id field added that has the value of the platform_user_id of the original
    answer.
 2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with updated = true.  Each document that is
-   found has a needs_sync field set to the current server time and has updated set to false.
-3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
-   never synced before, or needs_sync > did_sync, it will gather up all the answers for that learner-assignment and post
+   found has a need_sync field set to the current server time and has updated set to false.
+3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the need_sync field exists and either the doc has
+   never synced before, or need_sync > did_sync, it will gather up all the answers for that learner-assignment and post
    them to s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync
-   timestamp. For logging purposes, it will also set a start_sync timestamp the momement it starts handling the sync_doc,
+   timestamp. For logging purposes, it will also set a start_sync timestamp the moment it starts handling the sync_doc,
    and when it finishes it will add some timing info.
 */
 
 const answerDirectory = "partitioned-answers"
 const region = "us-east-1"
 
-const monitorSyncDocSchedule = "every 2 minutes"
+const monitorSyncDocSchedule = "every 3 minutes"
 const timeoutLimitMS = 60000;
 
 interface AutoImporterSettings {
@@ -422,7 +422,7 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
     .then(({ setNeedSync }) => {
       if (setNeedSync) {
         return getAnswerSyncAllSourcesCollection()
-                  .limit(2000)
+                  .limit(1300)
                   .where("updated", "==", true)
                   .get()
                   .then((querySnapshot) => {
