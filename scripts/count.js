@@ -32,7 +32,8 @@ const isInDateRange = (answerUpdated) => {
 
 const unprocessedDocs = [];
 const firestore = new Firestore();
-const collection = firestore.collection(`sources/${SOURCE}/answers_async`).where("updated", "==", false);
+const collection = firestore.collection(`sources/${SOURCE}/answers_async`)
+                            .where("last_answer_updated", ">=", new Date("2022-09-01"));
 const traverser = createTraverser(collection, {
                                                 batchSize: 500,
                                                 maxConcurrentBatchCount: 20
