@@ -5,9 +5,9 @@ const { createTraverser } = require('@firecode/admin');
 
 
 const SOURCE =  process.argv[2];    // e.g. activity-player.concord.org
-const MAX_DOC_COUNT = parseInt(process.argv[3], 10); // e.g. 100
-const START_DATE = process.argv[4]; // e.g. 2022-09-26
-const END_DATE = process.argv[5]; // e.g. 2022-09-27
+const START_DATE = process.argv[3]; // e.g. 2022-09-26
+const END_DATE = process.argv[4]; // e.g. 2022-09-27
+const MAX_DOC_COUNT = process.argv[5] ? parseInt(process.argv[5], 10) : Infinity; // e.g. 100
 
 if (!SOURCE) {
   console.error("Call script with `node export-answers.js [source-id] [start-date] [end-date]`");
