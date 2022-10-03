@@ -508,10 +508,7 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
 
                 if (answers.length) {
                   syncToS3(answers as AnswerData[])
-                    .then(() => {
-                      setDidSync;
-                      functions.logger.info(`${answers.length} answers synced to S3. Sync doc ID: ${syncDocId}`);
-                    })
+                    .then(setDidSync)
                     .catch((err) => {
                       functions.logger.error(`Error syncing to S3. Sync doc ID: ${syncDocId}. Error: ${err}`);
                     });
