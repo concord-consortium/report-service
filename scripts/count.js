@@ -3,6 +3,12 @@ const { Firestore, doc, getDoc } = require('@google-cloud/firestore');
 const fs = require('fs');
 const { createTraverser } = require('@firecode/admin');
 
+/*
+This script can be used to get a count of documents in a Firestore collection.
+It uses https://github.com/kafkas/firecode to efficiently traverse collections.
+It's currently configured to count sync docs that fall within a specified date 
+range, but could be modified to count other documents that meet other criteria.
+*/
 
 const SOURCE =  process.argv[2];    // e.g. activity-player.concord.org
 const START_DATE = process.argv[3]; // e.g. 2022-09-26
@@ -45,21 +51,17 @@ const countSyncDocs = async () => {
       batchDocs.map(async (doc) => {
         const data = doc.data();
         const lastAnswerIsInDateRange = isInDateRange(data.last_answer_updated.toDate().toDateString());
-        // const needSyncMoreRecentThanDidSync = data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync));
-        // const needSyncMoreRecentThanStartSync = data.need_sync && (!data.start_sync || (data.need_sync > data.start_sync));
-        if (
-          lastAnswerIsInDateRange
-        ) {
+        if (lastAnswerIsInDateRange) {
           doc.ref.update({ updated: true });
           targetDocs.push(doc.ref.id);
         }
       })
-    );
-    console.log(`Batch ${batchIndex} done! We checked ${batchSize} sync docs in this batch.`);
+    ).catch((e) => { console.log("Error: ", e); });
+    console.log(`Batch ${batchIndex} done! We checked ${batchSize} docs in this batch.`);
   });
   
-  console.log(`Traversal done. We checked ${docCount} sync docs in ${batchCount} batches.`);
-  console.log("Matching Docs", targetDocs.length);
+  console.log(`Traversal done. We checked ${docCount} docs in ${batchCount} batches.`);
+  console.log("Matching doc count:", targetDocs.length);
 }
 
 countSyncDocs();

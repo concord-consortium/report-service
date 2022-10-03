@@ -74,3 +74,30 @@ In order to run the script on production, it is useful to run it on a Lightsail 
     screen -r [processname]   # return to a screen
     ```
 12. Run the `node export-answers.js` as in the section above
+
+# Running on Google Cloud Virtual Machine
+
+It can also be useful to offload the running of scripts to a virtual machine in Google Cloud. They will usually run faster there.
+
+1. Log in to Google Cloud at https://cloud.google.com/ and go to the Console.
+
+2. Click the Compute Engine option, then click "Create Instance".
+
+3. Select the Marketplace option and search for "nodejs". Select the Free filter, then choose Node.js - Google Click to Deploy, and click the Launch button.
+
+4. Name the instance, set the Zone value to match the Firestore instance's zone (currently `us-central1` for report-service-pro), and then set Series to "E2" and Machine Type to "e2-standard-8", then click the Deploy button.
+
+4. With the VM running, SSH into it. You can SSH via a web browser window from the VM console by selecting SSH > Open in browser window.
+
+5. Once you're connected, git clone the repo: `git clone https://github.com/concord-consortium/report-service.git && cd report-service`
+
+6. npm install and build the shared scripts
+    ```
+    cd functions
+    npm install
+    npm run build:shared
+    cd ../scripts
+    npm install
+   ```
+
+7. Run scripts, e.g., `node export-answers.js`
