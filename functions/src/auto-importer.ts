@@ -508,18 +508,26 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
 
                 if (answers.length) {
                   syncToS3(answers as AnswerData[])
-                    .then(setDidSync)
+                    .then(() => {
+                      setDidSync;
+                      functions.logger.info(`${answers.length} answers synced to S3. Sync doc ID: ${syncDocId}`);
+                    })
                     .catch((err) => {
                       functions.logger.error(`Error syncing to S3. Sync doc ID: ${syncDocId}. Error: ${err}`);
                     });
                 } else {
                   // if the learner has no answers associated with this run, delete the doc
                   deleteFromS3(data.answer_metadata)
+                    .then(() => {
+                      functions.logger.info(`Answers deleted from S3. Sync doc ID: ${syncDocId}`);
+                    })
                     .catch((err) => {
                       functions.logger.error(`Error deleting from S3. Sync doc ID: ${syncDocId}. Error: ${err}`);
                     });
                 }
               });
+          } else {
+            functions.logger.info(`No syncing required. Sync doc ID: ${syncDocId}`);
           }
         }
         return null;
