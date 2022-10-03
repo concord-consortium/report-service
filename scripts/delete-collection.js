@@ -5,6 +5,7 @@ const { createTraverser } = require('@firecode/admin');
 
 
 const SOURCE =  process.argv[2]; // e.g. activity-player.concord.org
+const MAX_DOC_COUNT = process.argv[5] ? parseInt(process.argv[5], 10) : Infinity; // e.g. 100
 
 if (!SOURCE) {
   console.error("Call script with `node export-answers.js [source-id]`");
@@ -22,7 +23,8 @@ const firestore = new Firestore();
 const collection = firestore.collection(`sources/${SOURCE}`);
 const traverser = createTraverser(collection, {
                                                 batchSize: 500,
-                                                maxConcurrentBatchCount: 20
+                                                maxConcurrentBatchCount: 20,
+                                                maxDocCount: MAX_DOC_COUNT
                                               });
 
 const deleteCollection = async () => {
