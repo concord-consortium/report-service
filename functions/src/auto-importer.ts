@@ -499,6 +499,7 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                 });
 
                 const setDidSync = (info: S3SyncInfo) => {
+                  functions.logger.info(`${answers.length} answers synced to S3. Sync doc ID: ${syncDocId}`);
                   info.totalTime = performance.now() - syncToS3StartTime;
                   return syncDocRef.update({
                     did_sync: firestore.Timestamp.now(),
