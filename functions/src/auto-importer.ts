@@ -98,9 +98,7 @@ const getAnswersCollection = (syncSource: string) => admin.firestore().collectio
 const getAnswerSyncCollection = (syncSource: string) => admin.firestore().collection(answersSyncPath(syncSource));
 // to monitor all answers_async documents across all sources, we need to use a collectionGroup, which requires
 // adding a single field index exemption to the firestore setup
-// const getAnswerSyncAllSourcesCollection = () => admin.firestore().collectionGroup("answers_async");
-// Temporarily setting this to only work with AP sync docs
-const getAnswerSyncAllSourcesCollection = () => admin.firestore().collection("sources/activity-player.concord.org/answers_async");
+const getAnswerSyncAllSourcesCollection = () => admin.firestore().collectionGroup("answers_async");
 
 const escapeKey = (s: string) => s.replace(/[.$[\]#/]/g, "_");
 
