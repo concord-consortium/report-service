@@ -3,8 +3,17 @@ const { Firestore, doc, getDoc } = require('@google-cloud/firestore');
 const fs = require('fs');
 const { createTraverser } = require('@firecode/admin');
 
+/*
+This script can be used to delete collections of documents in Firestore.
+It uses https://github.com/kafkas/firecode to efficiently traverse collections.
 
-const SOURCE =  process.argv[2]; // e.g. activity-player.concord.org
+*********************************** WARNING ***********************************
+It's possible to delete very large amounts of data that cannot be retrieved. 
+Make sure to provide the correct source value when using this.
+*********************************** WARNING ***********************************
+*/
+
+const SOURCE =  process.argv[2]; // e.g. my-obsolete-source/answers
 const MAX_DOC_COUNT = process.argv[5] ? parseInt(process.argv[5], 10) : Infinity; // e.g. 100
 
 if (!SOURCE) {
