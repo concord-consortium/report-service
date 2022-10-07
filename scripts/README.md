@@ -100,4 +100,6 @@ It can also be useful to offload the running of scripts to a virtual machine in 
     npm install
    ```
 
-7. Run scripts, e.g., `node export-answers.js`
+7. Manually add the `credentials.json` file to the /scripts folder so you can access Firebase. If you'll be using a script that interacts with an AWS S3 bucket (e.g., `export-answers.js`), also copy the `config.json.sample` file in the scripts folder to `config.json` and fill in the AWS credentials for the S3 bucket. Credential details for Firebase and AWS are available in 1Password.
+
+8. Run scripts, e.g., `node export-answers.js`

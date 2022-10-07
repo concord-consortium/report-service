@@ -15,8 +15,8 @@ const START_DATE = process.argv[3]; // e.g. 2022-09-26
 const END_DATE = process.argv[4]; // e.g. 2022-09-27
 const MAX_DOC_COUNT = process.argv[5] ? parseInt(process.argv[5], 10) : Infinity; // e.g. 100
 
-if (!SOURCE) {
-  console.error("Call script with `node export-answers.js [source-id] [start-date] [end-date]`");
+if (!SOURCE || !START_DATE || !END_DATE) {
+  console.error("Call script with `node count.js [source-id] [start-date] [end-date]`");
   return;
 }
 
@@ -52,7 +52,7 @@ const countSyncDocs = async () => {
         const data = doc.data();
         const lastAnswerIsInDateRange = isInDateRange(data.last_answer_updated.toDate().toDateString());
         if (lastAnswerIsInDateRange) {
-          doc.ref.update({ updated: true });
+          // doc.ref.update({ updated: true });
           targetDocs.push(doc.ref.id);
         }
       })
