@@ -36,18 +36,19 @@ HOW THIS WORKS:
    answer has an additional collaboration_owner_id field added that has the value of the platform_user_id of the original
    answer.
 2. monitorSyncDocCount runs as a cron job every few minutes to find all the docs with updated = true.  Each document that is
-   found has a needs_sync field set to the current server time and has updated set to false.
-3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the needs_sync field exists and either the doc has
-   never synced before, or needs_sync > did_sync, it will gather up all the answers for that learner-assignment and post
+   found has a need_sync field set to the current server time and has updated set to false.
+3. syncToS3AfterSyncDocWritten runs on every write of a sync doc.  If the need_sync field exists and either the doc has
+   never synced before, or need_sync > did_sync, it will gather up all the answers for that learner-assignment and post
    them to s3 as a parquet file. If there are no answers, it will delete the parquet file. It will then set a did_sync
-   timestamp. For logging purposes, it will also set a start_sync timestamp the momement it starts handling the sync_doc,
+   timestamp. For logging purposes, it will also set a start_sync timestamp the moment it starts handling the sync_doc,
    and when it finishes it will add some timing info.
 */
 
-const answerDirectory = "partitioned-answers"
-const region = "us-east-1"
+const answerDirectory = "partitioned-answers";
+const region = "us-east-1";
 
-const monitorSyncDocSchedule = "every 4 minutes"
+const monitorSyncDocSchedule = "every 3 minutes";
+const timeoutLimitMS = 60000;
 
 interface AutoImporterSettings {
   watchAnswers: boolean;
@@ -89,9 +90,9 @@ export const getHash = (data: any) => {
 }
 
 // syncSource is a wildcard in the Firestore path name
-const answersPathAllSources = "sources/{syncSource}/answers"
-const answersSyncPathAllSources = "sources/{syncSource}/answers_async"
-const answersSyncPath = (syncSource: string) => `sources/${syncSource}/answers_async`
+const answersPathAllSources = "sources/{syncSource}/answers";
+const answersSyncPathAllSources = "sources/{syncSource}/answers_async";
+const answersSyncPath = (syncSource: string) => `sources/${syncSource}/answers_async`;
 
 const getAnswersCollection = (syncSource: string) => admin.firestore().collection(`sources/${syncSource}/answers`);
 const getAnswerSyncCollection = (syncSource: string) => admin.firestore().collection(answersSyncPath(syncSource));
@@ -99,7 +100,7 @@ const getAnswerSyncCollection = (syncSource: string) => admin.firestore().collec
 // adding a single field index exemption to the firestore setup
 const getAnswerSyncAllSourcesCollection = () => admin.firestore().collectionGroup("answers_async");
 
-const escapeKey = (s: string) => s.replace(/[.$[\]#/]/g, "_")
+const escapeKey = (s: string) => s.replace(/[.$[\]#/]/g, "_");
 
 const getSettings = () => {
   return admin.firestore()
@@ -145,8 +146,8 @@ const addSyncDoc = (syncSource: string, answerMetadata: AnswerMetadata) => {
     return transaction.get(syncDocRef).then((doc) => {
       if (doc.exists) {
         // add the existing field values with the new field values overwriting them
-        const existingSyncDocData = doc.data() as SyncData
-        syncDocData = {...existingSyncDocData, ...syncDocData}
+        const existingSyncDocData = doc.data() as SyncData;
+        syncDocData = {...existingSyncDocData, ...syncDocData};
         return transaction.update(syncDocRef, syncDocData);
       } else {
         return transaction.set(syncDocRef, syncDocData);
@@ -187,7 +188,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
       const writer = await parquet.ParquetWriter.openFile(schema, tmpFilePath);
       for (const answer of answers) {
         // clean up answer objects for parquet
-        answer.answer = JSON.stringify(answer.answer)
+        answer.answer = JSON.stringify(answer.answer);
         delete answer.report_state;
         if (typeof answer.version === "number") {
           answer.version = "" + answer.version;
@@ -198,7 +199,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
       await writer.close();
       const fileWriterTotalTime = performance.now() - fileWriterStartTime;
 
-      const body = await readFile(tmpFilePath)
+      const body = await readFile(tmpFilePath);
 
       const putObjectCommand = new PutObjectCommand({
         Bucket: functions.config().aws.s3_bucket,
@@ -209,7 +210,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
 
       const s3SendFileStartTime = performance.now();
 
-      await s3Client().send(putObjectCommand)
+      await s3Client().send(putObjectCommand);
 
       const s3SendFileTotalTime = performance.now() - s3SendFileStartTime;
 
@@ -416,23 +417,37 @@ export const createSyncDocAfterAnswerWritten = functions.firestore
   });
 
 export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSchedule).onRun((context) => {
+  const startTime = Date.now();
   return getSettings()
     .then(({ setNeedSync }) => {
       if (setNeedSync) {
         return getAnswerSyncAllSourcesCollection()
+                  .limit(1300)
                   .where("updated", "==", true)
                   .get()
                   .then((querySnapshot) => {
+                    const readTime = Date.now() - startTime;
+                    functions.logger.info(`Read time: ${readTime} ms.`);
                     const promises: Promise<FirebaseFirestore.WriteResult>[] = [];
+                    functions.logger.info("querySnapshot size: ", querySnapshot.size);
+                    let updatedDocsCount = 0;
                     querySnapshot.forEach((doc) => {
-                      // use a timestamp instead of a boolean for sync so that we trigger a write
-                      promises.push(doc.ref.update({
-                        need_sync: firestore.Timestamp.now(),
-                        updated: false
-                      } as PartialSyncData));
+                      if (Date.now() - startTime < timeoutLimitMS - 3000) {
+                        // use a timestamp instead of a boolean for sync so that we trigger a write
+                        promises.push(doc.ref.update({
+                          need_sync: firestore.Timestamp.now(),
+                          updated: false
+                        } as PartialSyncData));
+                        updatedDocsCount++;
+                      }
                     });
-                    return Promise.all(promises);
-                  });
+                    return Promise.all(promises).then(() => {
+                      const writeTime = Date.now() - startTime - readTime;
+                      functions.logger.info(`Write time: ${writeTime} ms.`);
+                      functions.logger.info(`Updated ${updatedDocsCount} documents.`);
+                    });
+                  })
+                  .catch(functions.logger.error);
       }
       return null;
     });
@@ -445,6 +460,7 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
       .then(({ sync }) => {
         if (sync && change.after.exists) {
           const data = change.after.data() as SyncData;
+          const syncDocId = change.after.id;
 
           const needSyncMoreRecentThanDidSync = data.need_sync && (!data.did_sync || (data.need_sync > data.did_sync));
           const needSyncMoreRecentThanStartSync = data.need_sync && (!data.start_sync || (data.need_sync > data.start_sync));
@@ -454,7 +470,9 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
 
             syncDocRef.update({
               start_sync: firestore.Timestamp.now()
-            } as PartialSyncData).catch(functions.logger.error)
+            } as PartialSyncData).catch((err) => {
+              functions.logger.error(`Error updating sync doc ${syncDocId}: ${err}`);
+            });
 
             let getAllAnswersForLearner;
             const { answer_metadata } = data;
@@ -479,6 +497,7 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                 });
 
                 const setDidSync = (info: S3SyncInfo) => {
+                  functions.logger.info(`${answers.length} answers synced to S3. Sync doc ID: ${syncDocId}`);
                   info.totalTime = performance.now() - syncToS3StartTime;
                   return syncDocRef.update({
                     did_sync: firestore.Timestamp.now(),
@@ -489,13 +508,22 @@ export const syncToS3AfterSyncDocWritten = functions.firestore
                 if (answers.length) {
                   syncToS3(answers as AnswerData[])
                     .then(setDidSync)
-                    .catch(functions.logger.error)
+                    .catch((err) => {
+                      functions.logger.error(`Error syncing to S3. Sync doc ID: ${syncDocId}. Error: ${err}`);
+                    });
                 } else {
                   // if the learner has no answers associated with this run, delete the doc
                   deleteFromS3(data.answer_metadata)
-                    .catch(functions.logger.error);
+                    .then(() => {
+                      functions.logger.info(`Answers deleted from S3. Sync doc ID: ${syncDocId}`);
+                    })
+                    .catch((err) => {
+                      functions.logger.error(`Error deleting from S3. Sync doc ID: ${syncDocId}. Error: ${err}`);
+                    });
                 }
               });
+          } else {
+            functions.logger.info(`No syncing required. Sync doc ID: ${syncDocId}`);
           }
         }
         return null;
