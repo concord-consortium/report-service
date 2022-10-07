@@ -14,7 +14,7 @@ Make sure to provide the correct source value when using this.
 */
 
 const SOURCE =  process.argv[2]; // e.g. my-obsolete-source/answers
-const MAX_DOC_COUNT = process.argv[5] ? parseInt(process.argv[5], 10) : Infinity; // e.g. 100
+const MAX_DOC_COUNT = process.argv[3] ? parseInt(process.argv[3], 10) : Infinity; // e.g. 100
 
 if (!SOURCE) {
   console.error("Call script with `node export-answers.js [source-id]`");
