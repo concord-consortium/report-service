@@ -4,7 +4,14 @@ const request = require("./request");
 
 const PAGE_SIZE = 2000;
 
-exports.ensureWorkgroup = async (resource, user) => {
+const escapeSingleQuote = (text) => text.replace(/'/g, "''");
+
+const convertTime = (fromCalendar) => {
+  const [month, day, year, ...rest] = fromCalendar.split("/");
+  return `${year}-${month}-${day}`;
+};
+
+exports.ensureWorkgroup = async (resource, email) => {
   const athena = new AWS.Athena({apiVersion: '2017-05-18'});
   const workgroupName = `${resource.name}-${resource.id}`;
 
@@ -23,7 +30,7 @@ exports.ensureWorkgroup = async (resource, user) => {
       Tags: [
         {
           Key: "email",
-          Value: user.email
+          Value: email
         }
       ]
     }).promise()
@@ -344,7 +351,7 @@ FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
 /*
 Generates a very wide row including all fields from the log and learner.
 */
-exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
+exports.generateLearnerLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
   const logDb = process.env.LOG_ATHENA_DB_NAME;
   return `
   -- name ${runnableUrl}
@@ -358,6 +365,36 @@ exports.generateLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
       AND
       learner.run_remote_endpoint = log.run_remote_endpoint
     )
+  `;
+};
+
+/*
+Generates a very wide row including all fields from the user log.
+*/
+exports.generateUserLogSQL = (usernames, activities, start_date, end_date) => {
+  const logDb = process.env.LOG_ATHENA_DB_NAME;
+  const where = [];
+  if (usernames.length > 0) {
+    where.push(`log.username IN (${usernames.map(u => `'${escapeSingleQuote(u)}'`).join(", ")})`)
+  }
+  if (activities.length > 0) {
+    where.push(`log.activity IN (${activities.map(a => `'${escapeSingleQuote(a)}'`).join(", ")})`)
+  }
+  if (start_date) {
+    where.push(`time >= '${convertTime(start_date)}'`)
+  }
+  if (end_date) {
+    where.push(`time <= '${convertTime(end_date)}'`)
+  }
+
+  return `
+  -- name ${where.join(" AND ")}
+  -- type user event log
+  -- usernames: ${JSON.stringify(usernames)}
+  -- activities: ${JSON.stringify(activities)}
+  SELECT *
+  FROM "${logDb}"."logs_by_time" log
+  WHERE ${where.join(" AND ")}
   `;
 };
 

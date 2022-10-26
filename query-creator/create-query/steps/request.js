@@ -13,8 +13,8 @@ exports.getBody = (event) => {
  * Throws errors if the request body is malformed, and parses the json property in-place.
  */
 exports.validateRequestBody = (body) => {
-  if (!body.jwt) {
-    throw new Error("Missing JWT");
+  if (!body.jwt && !body.portal_token) {
+    throw new Error("Missing jwt or portal_token body parameter");
   }
   let json = body.json;
   if (!json) {
@@ -27,8 +27,11 @@ exports.validateRequestBody = (body) => {
     throw new Error("Unable to parse json parameter");
   }
 
-  if (json.version !== "2") {
-    throw new Error(`Request version is ${json.version}, 2 required`);
+  if (json.type === "users" && json.version !== "1.0") {
+    throw new Error(`Request version is ${json.version}, 1.0 required for user report`);
+  }
+  else if (json.type === "learners" && json.version !== "2") {
+    throw new Error(`Request version is ${json.version}, 2 required for learners report`);
   }
 
   body.json = json;
