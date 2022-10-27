@@ -140,7 +140,9 @@ exports.lambdaHandler = async (event, context) => {
     // get the post body
     const body = request.getBody(event);
     request.validateRequestBody(body);
-    const {sqlOutput, portalUrl} = body.json.type === "users" ? await userReport(body, tokenServiceEnv, debugSQL) : await learnersReport(params, body, tokenServiceEnv, debugSQL, reportServiceSource);
+    const {sqlOutput, portalUrl} = body.json.type === "users"
+      ? await userReport(body, tokenServiceEnv, debugSQL)
+      : await learnersReport(params, body, tokenServiceEnv, debugSQL, reportServiceSource);
 
     let message = sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success"
 
