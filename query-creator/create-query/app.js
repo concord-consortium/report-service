@@ -90,27 +90,25 @@ const learnersReport = async (params, body, tokenServiceEnv, debugSQL, reportSer
     }
   }
 
-  const doLearnerLogReporting= async (runnableUrl) => {
-    const queryId = queryIdsPerRunnable[runnableUrl];
-
+  const doLearnerLogReporting= async () => {
     // generate the sql for the query
     const sql = narrowLearners
-      ? aws.generateNarrowLogSQL(queryId, runnableUrl, authDomain, reportServiceSource)
-      : aws.generateLearnerLogSQL(queryId, runnableUrl, authDomain, reportServiceSource);
+      ? aws.generateNarrowLogSQL(queryIdsPerRunnable, authDomain, reportServiceSource)
+      : aws.generateLearnerLogSQL(queryIdsPerRunnable, authDomain, reportServiceSource);
 
     if (debugSQL) {
-      sqlOutput.push(`-- url ${runnableUrl}\n${sql}`);
+      sqlOutput.push(sql);
     } else {
       // create the athena query in the workgroup
       await aws.startQueryExecution(sql, workgroupName)
     }
   };
 
-  for (const runnableUrl in queryIdsPerRunnable) {
-    if(useLogs) {
-      await doLearnerLogReporting(runnableUrl);
-    }
-    else {
+  if (useLogs) {
+    await doLearnerLogReporting();
+  }
+  else {
+    for (const runnableUrl in queryIdsPerRunnable) {
       await doLearnerAnswerReporting(runnableUrl);
     }
   }

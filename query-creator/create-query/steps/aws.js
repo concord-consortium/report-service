@@ -301,7 +301,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       });
       allColumns.push(...questionsColumns);
 
-      headerRowSelect = allColumns.map(column => {
+      let headerRowSelect = allColumns.map(column => {
         const value = column.header || "null";
         return `${value} AS ${column.name}`;
       }).join(",\n  ");
@@ -351,17 +351,19 @@ FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
 /*
 Generates a very wide row including all fields from the log and learner.
 */
-exports.generateLearnerLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
+exports.generateLearnerLogSQL = (queryIdsPerRunnable, authDomain, sourceKey) => {
   const logDb = process.env.LOG_ATHENA_DB_NAME;
+  const runnableUrls = Object.keys(queryIdsPerRunnable);
+  const queryIds = Object.values(queryIdsPerRunnable);
   return `
-  -- name ${runnableUrl}
-  -- type learner event log ⎯ [qid: ${queryId}]
+  -- name ${runnableUrls.join(", ")}
+  -- type learner event log ⎯ [qids: ${queryIds.join(", ")}]
   SELECT *
   FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner
   ON
     (
-      learner.query_id = '${queryId}'
+      learner.query_id IN (${queryIds.map(id => `'${escapeSingleQuote(id)}'`)})
       AND
       learner.run_remote_endpoint = log.run_remote_endpoint
     )
@@ -401,17 +403,20 @@ exports.generateUserLogSQL = (usernames, activities, start_date, end_date) => {
 /*
 Generates a smaller row of event details only, no portal info.
 */
-exports.generateNarrowLogSQL = (queryId, runnableUrl, authDomain, sourceKey) => {
+exports.generateNarrowLogSQL = (queryIdsPerRunnable, authDomain, sourceKey) => {
   const logDb = process.env.LOG_ATHENA_DB_NAME;
+  const runnableUrls = Object.keys(queryIdsPerRunnable);
+  const queryIds = Object.values(queryIdsPerRunnable);
+
   return `
-  -- name ${runnableUrl}
-  -- type learner event log ⎯ [qid: ${queryId}]
+  -- name ${runnableUrls.join(", ")}
+  -- type learner event log ⎯ [qids: ${queryIds.join(", ")}]
   SELECT log.*
   FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner
   ON
     (
-      learner.query_id = '${queryId}'
+      learner.query_id IN (${queryIds.map(id => `'${escapeSingleQuote(id)}'`)})
       AND
       learner.run_remote_endpoint = log.run_remote_endpoint
     )
