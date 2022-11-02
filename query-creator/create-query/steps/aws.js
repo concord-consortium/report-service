@@ -1,7 +1,6 @@
 const AWS = require("aws-sdk");
 const { v4: uuidv4 } = require('uuid');
 const request = require("./request");
-const {stripHtml} = require("string-strip-html");
 
 const PAGE_SIZE = 2000;
 
@@ -131,7 +130,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
     case "image_question":
       columns.push({name: `${questionId}_image_url`,
                     value: `json_extract_scalar(kv1['${questionId}'], '$.image_url')`,
-                    header: `${stripHtml(`activities.questions['${questionId}'].prompt`).result}`});
+                    header: `activities.questions['${questionId}'].prompt`};
       columns.push({name: `${questionId}_text`,
                     value: `json_extract_scalar(kv1['${questionId}'], '$.text')`});
       columns.push({name: `${questionId}_answer`,
@@ -140,7 +139,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
     case "open_response":
       columns.push({name: `${questionId}_text`,
                     value: `kv1['${questionId}']`,
-                    header: `${stripHtml(`activities.questions['${questionId}'].prompt`).result}`});
+                    header: `activities.questions['${questionId}'].prompt`});
       break;
     case "multiple_choice":
       let questionHasCorrectAnswer = false;
@@ -155,7 +154,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
       columns.push({name: `${questionId}_choice`,
                     value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ')`,
-                    header: `${stripHtml(`activities.questions['${questionId}'].prompt`).result}`});
+                    header: `activities.questions['${questionId}'].prompt`});
       break;
     case "iframe_interactive":
       columns.push({name: `${questionId}_json`,
