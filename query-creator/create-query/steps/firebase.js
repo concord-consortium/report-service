@@ -70,7 +70,7 @@ const denormalizeActivity = (activity, denormalized) => {
     section.children.forEach(page => {
       page.children.forEach(question => {
         denormalized.questions[question.id] = {
-          prompt: stripHtml(question.prompt).result,
+          prompt: question.prompt && typeof question.prompt === "string" ? stripHtml(question.prompt).result : question.prompt,
           required: question.required ? question.required : false,
           type: question.type
         }
