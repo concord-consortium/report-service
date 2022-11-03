@@ -75,6 +75,7 @@ const denormalizeActivity = (activity, denormalized) => {
           type: question.type
         }
         if (question.type === "multiple_choice") {
+          denormalized.questions[question.id].correctAnswer = question.choices.filter(c => c.correct)[0].content || "";
           denormalized.choices[question.id] = {}
           question.choices.forEach(choice => {
             denormalized.choices[question.id][choice.id] = {

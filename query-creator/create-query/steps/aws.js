@@ -154,7 +154,8 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
       columns.push({name: `${questionId}_choice`,
                     value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ')`,
-                    header: `activities.questions['${questionId}'].prompt`});
+                    header: `activities.questions['${questionId}'].prompt`,
+                    secondHeader: `activities.questions['${questionId}'].correctAnswer`});
       break;
     case "iframe_interactive":
       columns.push({name: `${questionId}_json`,
@@ -280,6 +281,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
   : "";
 
   let headerRowUnion = "";
+  let secondaryHeaderRowUnion = "";
   let groupedSubSelect;
   if (hasResource) {
     const completionColumns = [
@@ -306,6 +308,11 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
         return `${value} AS ${column.name}`;
       }).join(",\n  ");
 
+      let secondaryHeaderSelect = allColumns.map(column => {
+        const value = column.secondHeader || "null";
+        return `${value} AS ${column.name}`;
+      }).join(",\n  ");
+
       headerRowUnion = `
 SELECT
   ${headerRowSelect}
@@ -313,8 +320,15 @@ FROM activities
 
 UNION ALL
 `;
-    }
 
+    secondaryHeaderRowUnion = `
+SELECT
+  ${secondaryHeaderSelect}
+FROM activities
+
+UNION ALL
+`;
+  }
   } else {
     groupedSubSelect = `
   ( SELECT ${groupingSelect}
@@ -332,6 +346,7 @@ ${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_qu
 ${groupedAnswers}
 ${learnersAndAnswers}
 ${headerRowUnion}
+${secondaryHeaderRowUnion}
 SELECT
   ${mainSelect}
 FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
