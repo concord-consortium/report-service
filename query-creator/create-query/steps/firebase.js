@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { URL } = require('url');
+const { stripHtml } = require("string-strip-html");
 
 exports.getResource = async (runnableUrl, reportServiceSource) => {
   const reportServiceUrl = `${process.env.REPORT_SERVICE_URL}/resource`
@@ -69,7 +70,7 @@ const denormalizeActivity = (activity, denormalized) => {
     section.children.forEach(page => {
       page.children.forEach(question => {
         denormalized.questions[question.id] = {
-          prompt: question.prompt,
+          prompt: question.prompt && typeof question.prompt === "string" ? stripHtml(question.prompt).result : question.prompt,
           required: question.required ? question.required : false,
           type: question.type
         }

@@ -68,9 +68,9 @@ const testResource = {
             { id: "multiple_choice_03000", type: "multiple_choice", prompt: "mc prompt 1", required: true,
               choices: [{ content: "a", correct: true, id: 1 }, { content: "b", correct: false, id: 2 }, { content: "c", correct: false, id: 3 }]
             },
-            { id: "open_response_11111", type: "open_response", prompt: "open response prompt 1", required: false },
-            { id: "open_response_22222", type: "open_response", prompt: "open response prompt 2", required: true },
-            { id: "image_question_33333", type: "image_question", prompt: "image response prompt 1", required: false },
+            { id: "open_response_11111", type: "open_response", prompt: "<b>open response prompt 1</b>", required: false },
+            { id: "open_response_22222", type: "open_response", prompt: "<p>open response</p> <b>prompt 2</b>", required: true },
+            { id: "image_question_33333", type: "image_question", prompt: "<h1><b>image response</b></h1> <h2>prompt 1</h2>", required: false },
             { id: "image_question_44444", type: "image_question", prompt: "image response prompt 2", required: true },
             { id: "managed_interactive_55555", type: "open_response", prompt: "AP open response prompt", required: false },
             { id: "managed_interactive_66666", type: "multiple_choice", prompt: "AP mc prompt", required: false,
@@ -102,6 +102,15 @@ describe('Tests index', function () {
         // expect(response.message).to.be.equal("create query");
         // expect(response.location).to.be.an("string");
     });
+});
+
+describe('Denormalize resource', function () {
+  it('strips html tags from question prompts', async () => {
+    const testDenormalizedResource = firebase.denormalizeResource(testResource);
+    expect(testDenormalizedResource.questions.open_response_11111.prompt).to.be.equal("open response prompt 1");
+    expect(testDenormalizedResource.questions.open_response_22222.prompt).to.be.equal("open response prompt 2");
+    expect(testDenormalizedResource.questions.image_question_33333.prompt).to.be.equal("image response prompt 1");
+  });
 });
 
 describe('Query creation', function () {
