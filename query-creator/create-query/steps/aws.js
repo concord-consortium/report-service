@@ -280,6 +280,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
   WHERE l.query_id = '${queryId}' )`
   : "";
 
+  let orderByText = "ORDER BY learner_id NULLS FIRST";
   let headerRowUnion = "";
   let secondaryHeaderRowUnion = "";
   let groupedSubSelect;
@@ -302,6 +303,9 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
         questionsColumns.push(...questionColumns);
       });
       allColumns.push(...questionsColumns);
+
+      let columnWithAnswerText = allColumns.find(column => column.name.includes("_text"));
+      orderByText += columnWithAnswerText ? `, ${columnWithAnswerText.name}`: "";
 
       let headerRowSelect = allColumns.map(column => {
         const value = column.header || "null";
@@ -349,7 +353,8 @@ ${headerRowUnion}
 ${secondaryHeaderRowUnion}
 SELECT
   ${mainSelect}
-FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
+FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}
+${orderByText}`
 }
 
 /*
