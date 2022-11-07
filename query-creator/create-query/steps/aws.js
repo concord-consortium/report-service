@@ -280,7 +280,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
   WHERE l.query_id = '${queryId}' )`
   : "";
 
-  let orderByText = "ORDER BY learner_id NULLS FIRST";
+  let orderByText = "";
   let headerRowUnion = "";
   let secondaryHeaderRowUnion = "";
   let groupedSubSelect;
@@ -305,7 +305,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       allColumns.push(...questionsColumns);
 
       let columnWithAnswerText = allColumns.find(column => column.name.includes("_text"));
-      orderByText += columnWithAnswerText ? `, ${columnWithAnswerText.name}`: "";
+      orderByText += columnWithAnswerText ? `\nORDER BY learner_id NULLS FIRST, ${columnWithAnswerText.name}`: "";
 
       let headerRowSelect = allColumns.map(column => {
         const value = column.header || "null";
@@ -353,8 +353,7 @@ ${headerRowUnion}
 ${secondaryHeaderRowUnion}
 SELECT
   ${mainSelect}
-FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}
-${orderByText}`
+FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}${orderByText}`
 }
 
 /*

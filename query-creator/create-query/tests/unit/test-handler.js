@@ -277,7 +277,8 @@ SELECT
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
   CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR), '&answersSourceKey=',  source_key['managed_interactive_88888']) END AS managed_interactive_88888_url,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
-FROM activities, learners_and_answers`;
+FROM activities, learners_and_answers
+ORDER BY learner_id NULLS FIRST, open_response_11111_text`;
 
         const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
         const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
