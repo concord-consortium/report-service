@@ -6,6 +6,8 @@ const PAGE_SIZE = 2000;
 
 const escapeSingleQuote = (text) => text.replace(/'/g, "''");
 
+const inList = (list) => `IN (${list.map(item => `'${escapeSingleQuote(item)}'`).join(", ")})`;
+
 const convertTime = (fromCalendar) => {
   const [month, day, year, ...rest] = fromCalendar.split("/");
   return `${year}-${month}-${day}`;
@@ -198,12 +200,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
   return columns;
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain, sourceKey) => {
-  const hasResource = !!resource;
-  const escapedUrl = hasResource
-    ? resource.url.replace(/[^a-z0-9]/g, "-")
-    : runnableUrl.replace(/[^a-z0-9]/g, "-");
-
+exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
   const metadataColumnNames = [
     "runnable_url",
     "learner_id",
@@ -261,12 +258,32 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
   // migrate some activities from LARA to the AP.
   const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key`;
 
+  const queryIds = Object.keys(runnableInfo);
+
+  let hasResource = false;
+  const escapedUrls = [];
+  const denormalizedResources = [];
+  const names = [];
+  const types = [];
+  Object.values(runnableInfo).forEach(({runnableUrl, resource, denormalizedResource}) => {
+    const itemHasResource = !!resource;
+    const {url, name, type} = itemHasResource ? resource : {url: runnableUrl, name: runnableUrl, type: "assignment"};
+    escapedUrls.push(url.replace(/[^a-z0-9]/g, "-"));
+    names.push(name);
+    types.push(type)
+    denormalizedResources.push(denormalizedResource);
+    hasResource = hasResource || itemHasResource;
+  });
+
+  const inQueryIds = inList(queryIds);
+  const inEscapedUrls = inList(escapedUrls);
+
   const groupedAnswers = hasResource ? `
 grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
   FROM "report-service"."partitioned_answers" a
   INNER JOIN "report-service"."learners" l
-  ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
-  WHERE a.escaped_url = '${escapedUrl}'
+  ON (l.query_id ${inQueryIds} AND l.run_remote_endpoint = a.remote_endpoint)
+  WHERE a.escaped_url ${inEscapedUrls}
   GROUP BY l.run_remote_endpoint ),`
   : "";
 
@@ -276,7 +293,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
   ON l.run_remote_endpoint = grouped_answers.remote_endpoint
-  WHERE l.query_id = '${queryId}' )`
+  WHERE l.query_id ${inQueryIds} )`
   : "";
 
   let headerRowUnion = "";
@@ -294,10 +311,12 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
 
     if (!usageReport) {
       const questionsColumns = [];
-      Object.keys(denormalizedResource.questions).forEach(questionId => {
-        const question = denormalizedResource.questions[questionId];
-        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain, sourceKey)
-        questionsColumns.push(...questionColumns);
+      denormalizedResources.forEach(denormalizedResource => {
+        Object.keys(denormalizedResource.questions).forEach(questionId => {
+          const question = denormalizedResource.questions[questionId];
+          const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain, sourceKey)
+          questionsColumns.push(...questionColumns);
+        });
       });
       allColumns.push(...questionsColumns);
 
@@ -319,16 +338,16 @@ UNION ALL
     groupedSubSelect = `
   ( SELECT ${groupingSelect}
     FROM "report-service"."learners" l
-    WHERE l.query_id = '${queryId}'
+    WHERE l.query_id ${inQueryIds}
     GROUP BY l.run_remote_endpoint )`;
   }
 
   const mainSelect = allColumns.map(selectFromColumn).join(",\n  ");
 
-  return `-- name ${hasResource ? resource.name : runnableUrl}
--- type ${hasResource ? resource.type : "assignment"}
+  return `-- name ${names.join(", ")}
+-- type ${types.join(", ")}
 
-${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' ),` : ""}
+${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id ${inQueryIds}),` : ""}
 ${groupedAnswers}
 ${learnersAndAnswers}
 ${headerRowUnion}
