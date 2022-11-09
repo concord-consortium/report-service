@@ -304,16 +304,15 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       });
       allColumns.push(...questionsColumns);
 
-      let columnWithAnswerText = allColumns.find(column => column.name.includes("_text"));
-      orderByText += columnWithAnswerText ? `\nORDER BY learner_id NULLS FIRST, ${columnWithAnswerText.name}`: "";
+      orderByText +=  `\nORDER BY class NULLS FIRST, remote_endpoint DESC`;
 
-      let headerRowSelect = allColumns.map(column => {
-        const value = column.header || "null";
+      let headerRowSelect = allColumns.map((column, idx) => {
+        const value = idx === 0 ? `'Prompt'` : column.header || "null";
         return `${value} AS ${column.name}`;
       }).join(",\n  ");
 
-      let secondaryHeaderSelect = allColumns.map(column => {
-        const value = column.secondHeader || "null";
+      let secondaryHeaderSelect = allColumns.map((column, idx) => {
+        const value = idx === 0 ? `'Correct answer'` : column.secondHeader || "null";
         return `${value} AS ${column.name}`;
       }).join(",\n  ");
 
