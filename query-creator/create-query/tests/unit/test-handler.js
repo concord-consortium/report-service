@@ -137,7 +137,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
   WHERE l.query_id = '123456789' )
 
 SELECT
-  null AS remote_endpoint,
+  'Prompt' AS remote_endpoint,
   null AS runnable_url,
   null AS learner_id,
   null AS student_id,
@@ -175,6 +175,55 @@ SELECT
   activities.questions['managed_interactive_55555'].prompt AS managed_interactive_55555_text,
   activities.questions['managed_interactive_66666'].prompt AS managed_interactive_66666_choice,
   activities.questions['managed_interactive_77777'].prompt AS managed_interactive_77777_image_url,
+  null AS managed_interactive_77777_text,
+  null AS managed_interactive_77777_answer,
+  null AS managed_interactive_88888_json,
+  null AS managed_interactive_88888_url,
+  null AS managed_interactive_99999_json
+FROM activities
+
+UNION ALL
+
+
+SELECT
+  'Correct answer' AS remote_endpoint,
+  null AS runnable_url,
+  null AS learner_id,
+  null AS student_id,
+  null AS user_id,
+  null AS student_name,
+  null AS username,
+  null AS school,
+  null AS class,
+  null AS class_id,
+  null AS permission_forms,
+  null AS last_run,
+  null AS teacher_user_ids,
+  null AS teacher_names,
+  null AS teacher_districts,
+  null AS teacher_states,
+  null AS teacher_emails,
+  null AS num_questions,
+  null AS num_answers,
+  null AS percent_complete,
+  activities.questions['multiple_choice_00000'].correctAnswer AS multiple_choice_00000_choice,
+  activities.questions['multiple_choice_01000'].correctAnswer AS multiple_choice_01000_choice,
+  activities.questions['multiple_choice_02000'].correctAnswer AS multiple_choice_02000_choice,
+  activities.questions['multiple_choice_03000'].correctAnswer AS multiple_choice_03000_choice,
+  null AS multiple_choice_03000_submitted,
+  null AS open_response_11111_text,
+  null AS open_response_22222_text,
+  null AS open_response_22222_submitted,
+  null AS image_question_33333_image_url,
+  null AS image_question_33333_text,
+  null AS image_question_33333_answer,
+  null AS image_question_44444_image_url,
+  null AS image_question_44444_text,
+  null AS image_question_44444_answer,
+  null AS image_question_44444_submitted,
+  null AS managed_interactive_55555_text,
+  activities.questions['managed_interactive_66666'].correctAnswer AS managed_interactive_66666_choice,
+  null AS managed_interactive_77777_image_url,
   null AS managed_interactive_77777_text,
   null AS managed_interactive_77777_answer,
   null AS managed_interactive_88888_json,
@@ -228,7 +277,8 @@ SELECT
   kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
   CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR), '&answersSourceKey=',  source_key['managed_interactive_88888']) END AS managed_interactive_88888_url,
   kv1['managed_interactive_99999'] AS managed_interactive_99999_json
-FROM activities, learners_and_answers`;
+FROM activities, learners_and_answers
+ORDER BY class NULLS FIRST, remote_endpoint DESC`;
 
         const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
         const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
@@ -258,6 +308,7 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
   LEFT JOIN grouped_answers
   ON l.run_remote_endpoint = grouped_answers.remote_endpoint
   WHERE l.query_id = '123456789' )\
+
 
 
 SELECT
@@ -294,6 +345,7 @@ describe('Query creation unreportable runnable', function () {
       const generatedSQLresult = await aws.generateSQL(testQueryId, undefined, undefined, false, "www.test.url", "fake-auth-domain");
       const expectedSQLresult = `-- name www.test.url
 -- type assignment
+
 
 
 

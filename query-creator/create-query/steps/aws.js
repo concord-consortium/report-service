@@ -154,7 +154,8 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
       columns.push({name: `${questionId}_choice`,
                     value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ')`,
-                    header: `activities.questions['${questionId}'].prompt`});
+                    header: `activities.questions['${questionId}'].prompt`,
+                    secondHeader: `activities.questions['${questionId}'].correctAnswer`});
       break;
     case "iframe_interactive":
       columns.push({name: `${questionId}_json`,
@@ -279,7 +280,9 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
   WHERE l.query_id = '${queryId}' )`
   : "";
 
+  let orderByText = "";
   let headerRowUnion = "";
+  let secondaryHeaderRowUnion = "";
   let groupedSubSelect;
   if (hasResource) {
     const completionColumns = [
@@ -301,8 +304,15 @@ learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_u
       });
       allColumns.push(...questionsColumns);
 
-      let headerRowSelect = allColumns.map(column => {
-        const value = column.header || "null";
+      orderByText +=  `\nORDER BY class NULLS FIRST, remote_endpoint DESC`;
+
+      let headerRowSelect = allColumns.map((column, idx) => {
+        const value = idx === 0 ? `'Prompt'` : column.header || "null";
+        return `${value} AS ${column.name}`;
+      }).join(",\n  ");
+
+      let secondaryHeaderSelect = allColumns.map((column, idx) => {
+        const value = idx === 0 ? `'Correct answer'` : column.secondHeader || "null";
         return `${value} AS ${column.name}`;
       }).join(",\n  ");
 
@@ -313,8 +323,15 @@ FROM activities
 
 UNION ALL
 `;
-    }
 
+    secondaryHeaderRowUnion = `
+SELECT
+  ${secondaryHeaderSelect}
+FROM activities
+
+UNION ALL
+`;
+  }
   } else {
     groupedSubSelect = `
   ( SELECT ${groupingSelect}
@@ -332,9 +349,10 @@ ${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_qu
 ${groupedAnswers}
 ${learnersAndAnswers}
 ${headerRowUnion}
+${secondaryHeaderRowUnion}
 SELECT
   ${mainSelect}
-FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}`
+FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}${orderByText}`
 }
 
 /*
