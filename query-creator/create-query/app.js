@@ -19,6 +19,8 @@ const ensureWorkgroup = async (portalUrl, jwt, tokenServiceEnv, email) => {
   return workgroupName;
 }
 
+const convertLaraMatchedActivityUrl = (matches) => matches[1] === "sequences" ? `sequence: ${matches[2]}` : `activity: ${matches[2]}`;
+
 const userReport = async (body, tokenServiceEnv, debugSQL) => {
   const { json, portal_token } = body;
   const { user, portal_url, domain, users, runnables, start_date, end_date } = json;
@@ -28,7 +30,29 @@ const userReport = async (body, tokenServiceEnv, debugSQL) => {
   const workgroupName = await ensureWorkgroup(portalUrl, portal_token, tokenServiceEnv, user.email);
 
   const usernames = users.map(u => `${u.id}@${domain}`);
-  const activities = runnables.map(r => r.url);
+  const activities = [];
+  runnables.forEach(r => {
+    const url = new URL(r.url);
+
+    // pre-LARA 2 activities non-AP activities logged the activity as type: ID
+    const pathMatch = url.pathname.match(/\/(sequences|activities)\/(\d+)/);
+    if (pathMatch) {
+      activities.push(convertLaraMatchedActivityUrl(pathMatch));
+    } else {
+      // AP logs the url passed in the sequence or activity param to AP.  Since we can't be sure of the domain of
+      // the AP we verify that the param looks like an url to the sequence or activity structure api endpoint.
+      // We also add the older pre-LARA 2 activity/sequence: ID as this may be an activity that was migrated
+      // from LARA and has logs in the older format.
+      const sequenceOrActivityParam = url.searchParams.get("sequence") || url.searchParams.get("activity");
+      const paramMatch = sequenceOrActivityParam && sequenceOrActivityParam.match(/(sequences|activities)\/(\d+)\.json/);
+      if (paramMatch) {
+        activities.push(sequenceOrActivityParam);
+        activities.push(convertLaraMatchedActivityUrl(paramMatch));
+      } else {
+        activities.push(r.url);
+      }
+    }
+  });
 
   const sql = aws.generateUserLogSQL(usernames, activities, start_date, end_date);
 
