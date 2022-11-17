@@ -126,20 +126,24 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
   const columns = [];
 
+  const promptHeader = `activities.questions['${questionId}'].prompt`;
+
   switch (type) {
     case "image_question":
       columns.push({name: `${questionId}_image_url`,
                     value: `json_extract_scalar(kv1['${questionId}'], '$.image_url')`,
-                    header: `activities.questions['${questionId}'].prompt`});
+                    header: promptHeader});
       columns.push({name: `${questionId}_text`,
-                    value: `json_extract_scalar(kv1['${questionId}'], '$.text')`});
+                    value: `json_extract_scalar(kv1['${questionId}'], '$.text')`,
+                    header: promptHeader});
       columns.push({name: `${questionId}_answer`,
-                    value: `kv1['${questionId}']`});
+                    value: `kv1['${questionId}']`,
+                    header: promptHeader});
       break;
     case "open_response":
       columns.push({name: `${questionId}_text`,
                     value: `kv1['${questionId}']`,
-                    header: `activities.questions['${questionId}'].prompt`});
+                    header: promptHeader});
       break;
     case "multiple_choice":
       let questionHasCorrectAnswer = false;
@@ -154,12 +158,13 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
       columns.push({name: `${questionId}_choice`,
                     value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ')`,
-                    header: `activities.questions['${questionId}'].prompt`,
+                    header: promptHeader,
                     secondHeader: `activities.questions['${questionId}'].correctAnswer`});
       break;
     case "iframe_interactive":
       columns.push({name: `${questionId}_json`,
-                    value: `kv1['${questionId}']`});
+                    value: `kv1['${questionId}']`,
+                    header: promptHeader});
 
       const modelUrl = [`CONCAT(`,
         `'${process.env.PORTAL_REPORT_URL}`,
@@ -181,20 +186,23 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
       const conditionalModelUrl = `CASE WHEN kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
 
       columns.push({name: `${questionId}_url`,
-                    value: conditionalModelUrl});
+                    value: conditionalModelUrl,
+                    header: promptHeader});
       break;
     case "managed_interactive":
     case "mw_interactive":
     default:
       columns.push({name: `${questionId}_json`,
-                    value: `kv1['${questionId}']`});
+                    value: `kv1['${questionId}']`,
+                    header: promptHeader});
       console.info(`Unknown question type: ${type}`);
       break;
   }
 
   if (isRequired) {
     columns.push({name: `${questionId}_submitted`,
-                  value: `COALESCE(submitted['${questionId}'], false)`})
+                  value: `COALESCE(submitted['${questionId}'], false)`,
+                  header: promptHeader})
   }
   return columns;
 }
