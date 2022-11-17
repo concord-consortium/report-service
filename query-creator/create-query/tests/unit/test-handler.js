@@ -132,7 +132,7 @@ grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.que
 learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers,
   cardinality(filter(map_values(activities.questions), x->x.required=TRUE)) num_required_questions,
-  IF (submitted is null, 0, cardinality(filter(map_keys(submitted), x->x=TRUE))) num_required_answers
+  IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
   ON l.run_remote_endpoint = grouped_answers.remote_endpoint
@@ -313,7 +313,7 @@ grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.que
 learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
   IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers,
   cardinality(filter(map_values(activities.questions), x->x.required=TRUE)) num_required_questions,
-  IF (submitted is null, 0, cardinality(filter(map_keys(submitted), x->x=TRUE))) num_required_answers
+  IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
   FROM activities, "report-service"."learners" l
   LEFT JOIN grouped_answers
   ON l.run_remote_endpoint = grouped_answers.remote_endpoint
