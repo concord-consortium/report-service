@@ -201,8 +201,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
   if (isRequired) {
     columns.push({name: `${questionId}_submitted`,
-                  value: `COALESCE(submitted['${questionId}'], false)`,
-                  header: promptHeader})
+                  value: `COALESCE(submitted['${questionId}'], false)`})
   }
   return columns;
 }
