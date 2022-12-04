@@ -34,13 +34,17 @@ exports.getResource = async (runnableUrl, reportServiceSource) => {
       }
     )
   } catch (e) {
-    throw new Error(`Unable to get resource at ${reportServiceUrl} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${e.response ? JSON.stringify(e.response.data) : "no response"}`)
+    const err = new Error(`Unable to get resource at ${reportServiceUrl} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${e.response ? JSON.stringify(e.response.data) : "no response"}`)
+    console.error(err.message)
+    throw err
   }
   const result = response.data
   if (result && result.success && result.resource) {
     return result.resource
   }
-  throw new Error(`Unable to find resource at ${reportServiceUrl} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${JSON.stringify(response.data)}`)
+  const err = new Error(`Unable to find resource at ${reportServiceUrl} using ${JSON.stringify(params)}. Error: ${e.toString()}. Response: ${JSON.stringify(response.data)}`)
+  console.error(err.message)
+  throw err
 }
 
 exports.denormalizeResource = (resource) => {

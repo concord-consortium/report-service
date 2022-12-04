@@ -46,8 +46,10 @@ exports.getLearnerDataWithJwt = (learnersApiUrl, queryParams, jwt) => {
     }
   ).then((response) => {
     return response.data;
-  }, (error) => {
-    throw error;
+  }, (e) => {
+    const err = new Error(`Unable to get learner data with JWT at ${learnersApiUrl} using ${JSON.stringify(queryParams)}. Error: ${e.toString()}. Response: ${e.response ? JSON.stringify(e.response.data) : "no response"}`)
+    console.error(err.message);
+    throw err;
   });
 }
 
@@ -83,5 +85,11 @@ exports.getTokenServiceJwt = async (portalUrl, jwt) => {
   };
   const firebaseTokenGettingUrl = `${portalUrl}/api/v1/jwt/firebase?firebase_app=token-service`;
   return axios.get(firebaseTokenGettingUrl, { headers: authHeader })
-    .then(response => response.data.token)
+    .then(response => {
+      response.data.token
+    }, (e) => {
+      const err = new Error(`Unable to get token service JWT at ${firebaseTokenGettingUrl}. Error: ${e.toString()}. Response: ${e.response ? JSON.stringify(e.response.data) : "no response"}`)
+      console.error(err.message);
+      throw err;
+    })
 };
