@@ -180,7 +180,8 @@ describe('Query creation', function () {
           IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_1.questions)))) num_answers,
           cardinality(filter(map_values(activities_1.questions), x->x.required=TRUE)) num_required_questions,
           IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
-          FROM activities_1, "report-service"."learners" l
+          FROM "report-service"."learners" l
+          LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
           LEFT JOIN grouped_answers_1
           ON l.run_remote_endpoint = grouped_answers_1.remote_endpoint
           WHERE l.query_id = '123456789'),
@@ -189,10 +190,28 @@ describe('Query creation', function () {
           IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_2.questions)))) num_answers,
           cardinality(filter(map_values(activities_2.questions), x->x.required=TRUE)) num_required_questions,
           IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
-          FROM activities_2, "report-service"."learners" l
+          FROM "report-service"."learners" l
+          LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
           LEFT JOIN grouped_answers_2
           ON l.run_remote_endpoint = grouped_answers_2.remote_endpoint
-          WHERE l.query_id = 'ABCDEFGHI')
+          WHERE l.query_id = 'ABCDEFGHI'),
+
+        unique_user_class AS (SELECT class_id, user_id,
+          arbitrary(student_id) as student_id,
+          arbitrary(student_name) as student_name,
+          arbitrary(username) as username,
+          arbitrary(school) as school,
+          arbitrary(class) as class,
+          arbitrary(permission_forms) as permission_forms,
+          -- We could just select arbitrary(teachers) here and then do the transform in the main query
+          array_join(transform(arbitrary(teachers), teacher -> teacher.user_id), ',') AS teacher_user_ids,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.name), ',') AS teacher_names,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.district), ',') AS teacher_districts,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.state), ',') AS teacher_states,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
+        FROM "report-service"."learners" l
+        WHERE l.query_id IN ('123456789', 'ABCDEFGHI')
+        GROUP BY class_id, user_id)
 
         SELECT
           'Prompt' AS student_id,
@@ -202,23 +221,27 @@ describe('Query creation', function () {
           null AS school,
           null AS class,
           null AS class_id,
-          null AS learner_id,
-          null AS resource_url,
-          null AS last_run,
           null AS permission_forms,
-          null AS remote_endpoint,
           null AS teacher_user_ids,
           null AS teacher_names,
           null AS teacher_districts,
           null AS teacher_states,
           null AS teacher_emails,
-          null AS res,
-          null AS res_name,
+          null AS res_1_name,
+          null AS res_1_learner_id,
+          null AS res_1_remote_endpoint,
+          null AS res_1_resource_url,
+          null AS res_1_last_run,
           null AS res_1_total_num_questions,
           null AS res_1_total_num_answers,
           null AS res_1_total_percent_complete,
           null AS res_1_num_required_questions,
           null AS res_1_num_required_answers,
+          null AS res_2_name,
+          null AS res_2_learner_id,
+          null AS res_2_remote_endpoint,
+          null AS res_2_resource_url,
+          null AS res_2_last_run,
           null AS res_2_total_num_questions,
           null AS res_2_total_num_answers,
           null AS res_2_total_percent_complete,
@@ -261,23 +284,27 @@ describe('Query creation', function () {
           null AS school,
           null AS class,
           null AS class_id,
-          null AS learner_id,
-          null AS resource_url,
-          null AS last_run,
           null AS permission_forms,
-          null AS remote_endpoint,
           null AS teacher_user_ids,
           null AS teacher_names,
           null AS teacher_districts,
           null AS teacher_states,
           null AS teacher_emails,
-          null AS res,
-          null AS res_name,
+          null AS res_1_name,
+          null AS res_1_learner_id,
+          null AS res_1_remote_endpoint,
+          null AS res_1_resource_url,
+          null AS res_1_last_run,
           null AS res_1_total_num_questions,
           null AS res_1_total_num_answers,
           null AS res_1_total_percent_complete,
           null AS res_1_num_required_questions,
           null AS res_1_num_required_answers,
+          null AS res_2_name,
+          null AS res_2_learner_id,
+          null AS res_2_remote_endpoint,
+          null AS res_2_resource_url,
+          null AS res_2_last_run,
           null AS res_2_total_num_questions,
           null AS res_2_total_num_answers,
           null AS res_2_total_percent_complete,
@@ -308,39 +335,44 @@ describe('Query creation', function () {
           null AS res_1_managed_interactive_99999_json,
           null AS res_2_managed_interactive_88888_json,
           null AS res_2_managed_interactive_88888_url
-        FROM activities_1
+        FROM activities_1, activities_2
 
         UNION ALL
 
-        SELECT student_id,
-          user_id,
-          student_name,
-          username,
-          school,
-          class,
-          class_id,
-          learner_id,
-          resource_url,
-          last_run,
-          permission_forms,
-          remote_endpoint,
-          array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
-          array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
-          array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
-          array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-          array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
-          '1' AS res,
-          'test activity' AS res_name,
+        SELECT
+          unique_user_class.student_id,
+          unique_user_class.user_id,
+          unique_user_class.student_name,
+          unique_user_class.username,
+          unique_user_class.school,
+          unique_user_class.class,
+          unique_user_class.class_id,
+          unique_user_class.permission_forms,
+          unique_user_class.teacher_user_ids,
+          unique_user_class.teacher_names,
+          unique_user_class.teacher_districts,
+          unique_user_class.teacher_states,
+          unique_user_class.teacher_emails,
+          'test activity' AS res_1_name,
+          learners_and_answers_1.learner_id AS res_1_learner_id,
+          learners_and_answers_1.remote_endpoint AS res_1_remote_endpoint,
+          learners_and_answers_1.resource_url AS res_1_resource_url,
+          learners_and_answers_1.last_run AS res_1_last_run,
           activities_1.num_questions AS res_1_total_num_questions,
           learners_and_answers_1.num_answers AS res_1_total_num_answers,
           round(100.0 * learners_and_answers_1.num_answers / activities_1.num_questions, 1) AS res_1_total_percent_complete,
           learners_and_answers_1.num_required_questions AS res_1_num_required_questions,
           learners_and_answers_1.num_required_answers AS res_1_num_required_answers,
-          null AS res_2_total_num_questions,
-          null AS res_2_total_num_answers,
-          null AS res_2_total_percent_complete,
-          null AS res_2_num_required_questions,
-          null AS res_2_num_required_answers,
+          'test activity 2' AS res_2_name,
+          learners_and_answers_2.learner_id AS res_2_learner_id,
+          learners_and_answers_2.remote_endpoint AS res_2_remote_endpoint,
+          learners_and_answers_2.resource_url AS res_2_resource_url,
+          learners_and_answers_2.last_run AS res_2_last_run,
+          activities_2.num_questions AS res_2_total_num_questions,
+          learners_and_answers_2.num_answers AS res_2_total_num_answers,
+          round(100.0 * learners_and_answers_2.num_answers / activities_2.num_questions, 1) AS res_2_total_percent_complete,
+          learners_and_answers_2.num_required_questions AS res_2_num_required_questions,
+          learners_and_answers_2.num_required_answers AS res_2_num_required_answers,
           array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_00000'][x].content, IF(activities_1.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_multiple_choice_00000_choice,
           array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_01000'][x].content, '')),', ') AS res_1_multiple_choice_01000_choice,
           array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_02000'][x].content, IF(activities_1.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_multiple_choice_02000_choice,
@@ -364,71 +396,16 @@ describe('Query creation', function () {
           learners_and_answers_1.kv1['managed_interactive_88888'] AS res_1_managed_interactive_88888_json,
           CASE WHEN learners_and_answers_1.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_1.source_key['managed_interactive_88888']) END AS res_1_managed_interactive_88888_url,
           learners_and_answers_1.['managed_interactive_99999'] AS res_1_managed_interactive_99999_json,
-          null AS res_2_managed_interactive_88888_json,
-          null AS res_2_managed_interactive_88888_url
-          FROM activities_1, learners_and_answers_1
-
-        UNION ALL
-
-        SELECT student_id,
-          user_id,
-          student_name,
-          username,
-          school,
-          class,
-          class_id,
-          learner_id,
-          resource_url,
-          last_run,
-          permission_forms,
-          remote_endpoint,
-          array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
-          array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
-          array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
-          array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-          array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
-          '2' AS res,
-          'test activity 2' AS res_name,
-          null AS res_1_total_num_questions,
-          null AS res_1_total_num_answers,
-          null AS res_1_total_percent_complete,
-          null AS res_1_num_required_questions,
-          null AS res_1_num_required_answers,
-          activities_2.num_questions AS res_2_total_num_questions,
-          learners_and_answers_2.num_answers AS res_2_total_num_answers,
-          round(100.0 * learners_and_answers_2.num_answers / activities_2.num_questions, 1) AS res_2_total_percent_complete,
-          learners_and_answers_2.num_required_questions AS res_2_num_required_questions,
-          learners_and_answers_2.num_required_answers AS res_2_num_required_answers,
-          null AS res_1_multiple_choice_00000_choice,
-          null AS res_1_multiple_choice_01000_choice,
-          null AS res_1_multiple_choice_02000_choice,
-          null AS res_1_multiple_choice_03000_choice,
-          null AS res_1_multiple_choice_03000_submitted,
-          null AS res_1_open_response_11111_text,
-          null AS res_1_open_response_22222_text,
-          null AS res_1_open_response_22222_submitted,
-          null AS res_1_image_question_33333_image_url,
-          null AS res_1_image_question_33333_text,
-          null AS res_1_image_question_33333_answer,
-          null AS res_1_image_question_44444_image_url,
-          null AS res_1_image_question_44444_text,
-          null AS res_1_image_question_44444_answer,
-          null AS res_1_image_question_44444_submitted,
-          null AS res_1_managed_interactive_55555_text,
-          null AS res_1_managed_interactive_66666_choice,
-          null AS res_1_managed_interactive_77777_image_url,
-          null AS res_1_managed_interactive_77777_text,
-          null AS res_1_managed_interactive_77777_answer,
-          null AS res_1_managed_interactive_88888_json,
-          null AS res_1_managed_interactive_88888_url,
-          null AS res_1_managed_interactive_99999_json,
           learners_and_answers_2.kv1['managed_interactive_88888'] AS res_2_managed_interactive_88888_json,
           CASE WHEN learners_and_answers_2.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_2.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_2.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_2.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_2.source_key['managed_interactive_88888']) END AS res_2_managed_interactive_88888_url
+            FROM unique_user_class
+            LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+          LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+            LEFT JOIN learners_and_answers_1 ON unique_user_class.user_id = learners_and_answers_1.user_id AND unique_user_class.class_id = learners_and_answers_1.class_id
+          LEFT JOIN learners_and_answers_2 ON unique_user_class.user_id = learners_and_answers_2.user_id AND unique_user_class.class_id = learners_and_answers_2.class_id
 
-        FROM activities_2, learners_and_answers_2
-
-
-        ORDER BY class NULLS FIRST, res, username`;
+          ORDER BY class NULLS FIRST, username
+        `;
 
         const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
         const untabbedExpectedSQLresult = normalizeSQL(expectedSQLresult);
@@ -451,7 +428,6 @@ describe('Query creation usage report', function () {
         },
       }
       const generatedSQLresult = await aws.generateSQL(testRunnableInfo, true, "fake-auth-domain", 'fake-source-key');
-
       const expectedSQLresult = `
       -- name test activity, test activity 2
       -- type activity, activity
@@ -480,7 +456,8 @@ describe('Query creation usage report', function () {
         IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_1.questions)))) num_answers,
         cardinality(filter(map_values(activities_1.questions), x->x.required=TRUE)) num_required_questions,
         IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
-        FROM activities_1, "report-service"."learners" l
+        FROM "report-service"."learners" l
+        LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
         LEFT JOIN grouped_answers_1
         ON l.run_remote_endpoint = grouped_answers_1.remote_endpoint
         WHERE l.query_id = '123456789'),
@@ -489,77 +466,70 @@ describe('Query creation usage report', function () {
         IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_2.questions)))) num_answers,
         cardinality(filter(map_values(activities_2.questions), x->x.required=TRUE)) num_required_questions,
         IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
-        FROM activities_2, "report-service"."learners" l
+        FROM "report-service"."learners" l
+        LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
         LEFT JOIN grouped_answers_2
         ON l.run_remote_endpoint = grouped_answers_2.remote_endpoint
-        WHERE l.query_id = 'ABCDEFGHI')
+        WHERE l.query_id = 'ABCDEFGHI'),
 
-      SELECT student_id,
-        user_id,
-        student_name,
-        username,
-        school,
-        class,
-        class_id,
-        learner_id,
-        resource_url,
-        last_run,
-        permission_forms,
-        remote_endpoint,
-        array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
-        array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
-        array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
-        array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-        array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
-        '1' AS res,
-        'test activity' AS res_name,
+      unique_user_class AS (SELECT class_id, user_id,
+          arbitrary(student_id) as student_id,
+          arbitrary(student_name) as student_name,
+          arbitrary(username) as username,
+          arbitrary(school) as school,
+          arbitrary(class) as class,
+          arbitrary(permission_forms) as permission_forms,
+          -- We could just select arbitrary(teachers) here and then do the transform in the main query
+          array_join(transform(arbitrary(teachers), teacher -> teacher.user_id), ',') AS teacher_user_ids,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.name), ',') AS teacher_names,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.district), ',') AS teacher_districts,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.state), ',') AS teacher_states,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
+        FROM "report-service"."learners" l
+        WHERE l.query_id IN ('123456789', 'ABCDEFGHI')
+        GROUP BY class_id, user_id)
+
+      SELECT
+        unique_user_class.student_id,
+        unique_user_class.user_id,
+        unique_user_class.student_name,
+        unique_user_class.username,
+        unique_user_class.school,
+        unique_user_class.class,
+        unique_user_class.class_id,
+        unique_user_class.permission_forms,
+        unique_user_class.teacher_user_ids,
+        unique_user_class.teacher_names,
+        unique_user_class.teacher_districts,
+        unique_user_class.teacher_states,
+        unique_user_class.teacher_emails,
+        'test activity' AS res_1_name,
+        learners_and_answers_1.learner_id AS res_1_learner_id,
+        learners_and_answers_1.remote_endpoint AS res_1_remote_endpoint,
+        learners_and_answers_1.resource_url AS res_1_resource_url,
+        learners_and_answers_1.last_run AS res_1_last_run,
         activities_1.num_questions AS res_1_total_num_questions,
         learners_and_answers_1.num_answers AS res_1_total_num_answers,
         round(100.0 * learners_and_answers_1.num_answers / activities_1.num_questions, 1) AS res_1_total_percent_complete,
         learners_and_answers_1.num_required_questions AS res_1_num_required_questions,
         learners_and_answers_1.num_required_answers AS res_1_num_required_answers,
-        null AS res_2_total_num_questions,
-        null AS res_2_total_num_answers,
-        null AS res_2_total_percent_complete,
-        null AS res_2_num_required_questions,
-        null AS res_2_num_required_answers
-      FROM activities_1, learners_and_answers_1
-
-      UNION ALL
-
-        SELECT student_id,
-        user_id,
-        student_name,
-        username,
-        school,
-        class,
-        class_id,
-        learner_id,
-        resource_url,
-        last_run,
-        permission_forms,
-        remote_endpoint,
-        array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
-        array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
-        array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
-        array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-        array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
-        '2' AS res,
-        'test activity 2' AS res_name,
-        null AS res_1_total_num_questions,
-        null AS res_1_total_num_answers,
-        null AS res_1_total_percent_complete,
-        null AS res_1_num_required_questions,
-        null AS res_1_num_required_answers,
+        'test activity 2' AS res_2_name,
+        learners_and_answers_2.learner_id AS res_2_learner_id,
+        learners_and_answers_2.remote_endpoint AS res_2_remote_endpoint,
+        learners_and_answers_2.resource_url AS res_2_resource_url,
+        learners_and_answers_2.last_run AS res_2_last_run,
         activities_2.num_questions AS res_2_total_num_questions,
         learners_and_answers_2.num_answers AS res_2_total_num_answers,
         round(100.0 * learners_and_answers_2.num_answers / activities_2.num_questions, 1) AS res_2_total_percent_complete,
         learners_and_answers_2.num_required_questions AS res_2_num_required_questions,
         learners_and_answers_2.num_required_answers AS res_2_num_required_answers
-      FROM activities_2, learners_and_answers_2
-
-      ORDER BY class NULLS FIRST, res, username
-      `;
+      FROM unique_user_class
+      LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+      LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+      LEFT JOIN learners_and_answers_1 ON unique_user_class.user_id = learners_and_answers_1.user_id AND unique_user_class.class_id = learners_and_answers_1.class_id
+      LEFT JOIN learners_and_answers_2 ON unique_user_class.user_id = learners_and_answers_2.user_id AND unique_user_class.class_id = learners_and_answers_2.class_id
+      ORDER BY class NULLS FIRST, username
+    `;
 
     const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
     const untabbedExpectedSQLresult = normalizeSQL(expectedSQLresult);
@@ -575,7 +545,6 @@ describe('Query creation unreportable runnable', function () {
         denormalizedResource: undefined
       }}
       const generatedSQLresult = await aws.generateSQL(testRunnableInfo, false, "www.test.url", 'fake-source-key');
-
       const expectedSQLresult = `
       -- name http://no-url
       -- type assignment
@@ -596,15 +565,13 @@ describe('Query creation unreportable runnable', function () {
         array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
         array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
         array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-        array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
-        null AS res,
-        null AS res_name
+        array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails
       FROM
-        ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.learner_id) AS learner_id, null AS resource_url, arbitrary(l.last_run) AS last_run, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.teachers) teachers
-          FROM "report-service"."learners" l
-          WHERE l.query_id IN ('123456789')
-          GROUP BY l.run_remote_endpoint )
-        `;
+      ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.learner_id) AS learner_id, null AS resource_url, arbitrary(l.last_run) AS last_run, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.teachers) teachers
+        FROM "report-service"."learners" l
+        WHERE l.query_id IN ('123456789')
+        GROUP BY l.run_remote_endpoint )
+      `;
 
       const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
       const untabbedExpectedSQLresult = normalizeSQL(expectedSQLresult);
