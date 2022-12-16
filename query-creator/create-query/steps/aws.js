@@ -391,6 +391,9 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
     WHERE l.query_id IN (${queryIds.map(id => `'${escapeSingleQuote(id)}'`).join(", ")})
     GROUP BY class_id, user_id)`
 
+  // allows for the left joins of activites even if one or more are empty
+  const oneRowTableForJoin = `one_row_table_for_join as (SELECT null AS empty)`
+
   const allColumns = [
     "student_id",
     "user_id",
@@ -442,13 +445,15 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
     selects.push(`
       SELECT
         ${headerRowSelect}
-      FROM ${activitiesQueries.map((_, index) => `activities_${index + 1}`).join(", ")}
+      FROM one_row_table_for_join
+      ${activitiesQueries.map((_, index) => `LEFT JOIN activities_${index + 1} ON 1=1`).join("\n")}
     `);
 
     selects.push(`
       SELECT
         ${secondaryHeaderSelect}
-      FROM ${activitiesQueries.map((_, index) => `activities_${index + 1}`).join(", ")}
+      FROM one_row_table_for_join
+      ${activitiesQueries.map((_, index) => `LEFT JOIN activities_${index + 1} ON 1=1`).join("\n")}
     `);
   }
 
@@ -477,7 +482,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
   return `-- name ${names.join(", ")}
   -- type ${types.join(", ")}
 
-  WITH ${[activities, groupedAnswers, learnersAndAnswers, uniqueUserClassQuery].join(",\n\n")}
+  WITH ${[activities, groupedAnswers, learnersAndAnswers, uniqueUserClassQuery, oneRowTableForJoin].join(",\n\n")}
   ${selects.join("\nUNION ALL\n")}
   ORDER BY class NULLS FIRST, username
 `

@@ -7,6 +7,8 @@ const chai = require('chai');
 const queryString = require('query-string');
 const nock = require('nock');
 
+const fs = require('fs')
+
 const expect = chai.expect;
 const event = {
   queryStringParameters: {
@@ -211,7 +213,9 @@ describe('Query creation', function () {
           array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
         FROM "report-service"."learners" l
         WHERE l.query_id IN ('123456789', 'ABCDEFGHI')
-        GROUP BY class_id, user_id)
+        GROUP BY class_id, user_id),
+
+        one_row_table_for_join as (SELECT null AS empty)
 
         SELECT
           'Prompt' AS student_id,
@@ -272,7 +276,9 @@ describe('Query creation', function () {
           activities_1.questions['managed_interactive_99999'].prompt AS res_1_managed_interactive_99999_json,
           activities_2.questions['managed_interactive_88888'].prompt AS res_2_managed_interactive_88888_json,
           activities_2.questions['managed_interactive_88888'].prompt AS res_2_managed_interactive_88888_url
-        FROM activities_1, activities_2
+        FROM one_row_table_for_join
+        LEFT JOIN activities_1 ON 1=1
+        LEFT JOIN activities_2 ON 1=1
 
         UNION ALL
 
@@ -335,7 +341,9 @@ describe('Query creation', function () {
           null AS res_1_managed_interactive_99999_json,
           null AS res_2_managed_interactive_88888_json,
           null AS res_2_managed_interactive_88888_url
-        FROM activities_1, activities_2
+        FROM one_row_table_for_join
+        LEFT JOIN activities_1 ON 1=1
+        LEFT JOIN activities_2 ON 1=1
 
         UNION ALL
 
@@ -398,18 +406,18 @@ describe('Query creation', function () {
           learners_and_answers_1.['managed_interactive_99999'] AS res_1_managed_interactive_99999_json,
           learners_and_answers_2.kv1['managed_interactive_88888'] AS res_2_managed_interactive_88888_json,
           CASE WHEN learners_and_answers_2.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_2.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_2.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_2.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_2.source_key['managed_interactive_88888']) END AS res_2_managed_interactive_88888_url
-            FROM unique_user_class
-            LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
-          LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
-            LEFT JOIN learners_and_answers_1 ON unique_user_class.user_id = learners_and_answers_1.user_id AND unique_user_class.class_id = learners_and_answers_1.class_id
-          LEFT JOIN learners_and_answers_2 ON unique_user_class.user_id = learners_and_answers_2.user_id AND unique_user_class.class_id = learners_and_answers_2.class_id
+        FROM unique_user_class
+        LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+        LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+        LEFT JOIN learners_and_answers_1 ON unique_user_class.user_id = learners_and_answers_1.user_id AND unique_user_class.class_id = learners_and_answers_1.class_id
+        LEFT JOIN learners_and_answers_2 ON unique_user_class.user_id = learners_and_answers_2.user_id AND unique_user_class.class_id = learners_and_answers_2.class_id
 
-          ORDER BY class NULLS FIRST, username
+        ORDER BY class NULLS FIRST, username
         `;
 
         const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
-        const untabbedExpectedSQLresult = normalizeSQL(expectedSQLresult);
-        expect(normalizedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+        const normalizedExpectedSQLresult = normalizeSQL(expectedSQLresult);
+        expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
     });
 });
 
@@ -473,21 +481,23 @@ describe('Query creation usage report', function () {
         WHERE l.query_id = 'ABCDEFGHI'),
 
       unique_user_class AS (SELECT class_id, user_id,
-          arbitrary(student_id) as student_id,
-          arbitrary(student_name) as student_name,
-          arbitrary(username) as username,
-          arbitrary(school) as school,
-          arbitrary(class) as class,
-          arbitrary(permission_forms) as permission_forms,
-          -- We could just select arbitrary(teachers) here and then do the transform in the main query
-          array_join(transform(arbitrary(teachers), teacher -> teacher.user_id), ',') AS teacher_user_ids,
-          array_join(transform(arbitrary(teachers), teacher -> teacher.name), ',') AS teacher_names,
-          array_join(transform(arbitrary(teachers), teacher -> teacher.district), ',') AS teacher_districts,
-          array_join(transform(arbitrary(teachers), teacher -> teacher.state), ',') AS teacher_states,
-          array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
-        FROM "report-service"."learners" l
-        WHERE l.query_id IN ('123456789', 'ABCDEFGHI')
-        GROUP BY class_id, user_id)
+        arbitrary(student_id) as student_id,
+        arbitrary(student_name) as student_name,
+        arbitrary(username) as username,
+        arbitrary(school) as school,
+        arbitrary(class) as class,
+        arbitrary(permission_forms) as permission_forms,
+        -- We could just select arbitrary(teachers) here and then do the transform in the main query
+        array_join(transform(arbitrary(teachers), teacher -> teacher.user_id), ',') AS teacher_user_ids,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.name), ',') AS teacher_names,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.district), ',') AS teacher_districts,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.state), ',') AS teacher_states,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
+      FROM "report-service"."learners" l
+      WHERE l.query_id IN ('123456789', 'ABCDEFGHI')
+      GROUP BY class_id, user_id),
+
+      one_row_table_for_join as (SELECT null AS empty)
 
       SELECT
         unique_user_class.student_id,
@@ -528,12 +538,13 @@ describe('Query creation usage report', function () {
       LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
       LEFT JOIN learners_and_answers_1 ON unique_user_class.user_id = learners_and_answers_1.user_id AND unique_user_class.class_id = learners_and_answers_1.class_id
       LEFT JOIN learners_and_answers_2 ON unique_user_class.user_id = learners_and_answers_2.user_id AND unique_user_class.class_id = learners_and_answers_2.class_id
+
       ORDER BY class NULLS FIRST, username
     `;
 
     const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
-    const untabbedExpectedSQLresult = normalizeSQL(expectedSQLresult);
-    expect(normalizedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+    const normalizedExpectedSQLresult = normalizeSQL(expectedSQLresult);
+    expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
   });
 });
 
@@ -574,7 +585,7 @@ describe('Query creation unreportable runnable', function () {
       `;
 
       const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
-      const untabbedExpectedSQLresult = normalizeSQL(expectedSQLresult);
-      expect(normalizedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+      const normalizedExpectedSQLresult = normalizeSQL(expectedSQLresult);
+      expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
     });
 });
