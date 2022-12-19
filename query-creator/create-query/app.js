@@ -21,6 +21,19 @@ const ensureWorkgroup = async (portalUrl, jwt, tokenServiceEnv, email) => {
 
 const convertLaraMatchedActivityUrl = (matches) => matches[1] === "sequences" ? `sequence: ${matches[2]}` : `activity: ${matches[2]}`;
 
+const prettySQL = (sql) => {
+  return sql
+    .split("\n")
+    .map(line => line.trim())
+    .map(line => {
+      if (line.length === 0 || line[0].match(/[A-Z]/) || line[0].match(/\s/)) {
+        return line
+      }
+      return "  " + line
+    })
+    .join("\n")
+}
+
 const userReport = async (body, tokenServiceEnv, debugSQL) => {
   const { json, portal_token } = body;
   const { user, portal_url, domain, users, runnables, start_date, end_date } = json;
@@ -86,28 +99,34 @@ const learnersReport = async (params, body, tokenServiceEnv, debugSQL, reportSer
 
   const sqlOutput = [];
 
-  const doLearnerAnswerReporting = async (runnableUrl) => {
-    const queryId = queryIdsPerRunnable[runnableUrl];
+  const doLearnerAnswerReporting = async () => {
+    const runnableInfo = {};
 
-    // get and denormalize the resource (activity or sequence) from Firebase
-    let resource;
-    let denormalizedResource;
-    try {
-      resource = await firebase.getResource(runnableUrl, reportServiceSource);
-      denormalizedResource = firebase.denormalizeResource(resource);
+    for (const runnableUrl in queryIdsPerRunnable) {
+      const queryId = queryIdsPerRunnable[runnableUrl];
 
-      // upload the denormalized resource to s3 and tie it to the workgroup
-      await aws.uploadDenormalizedResource(queryId, denormalizedResource);
-    } catch (err) {
-      // no valid resource, we will attempt to create a usage report with just the learner data
-      console.log(err);
+      // get and denormalize the resource (activity or sequence) from Firebase
+      let resource;
+      let denormalizedResource;
+      try {
+        resource = await firebase.getResource(runnableUrl, reportServiceSource);
+        denormalizedResource = firebase.denormalizeResource(resource);
+
+        // upload the denormalized resource to s3 and tie it to the workgroup
+        await aws.uploadDenormalizedResource(queryId, denormalizedResource);
+      } catch (err) {
+        // no valid resource, we will attempt to create a usage report with just the learner data
+        console.log(err);
+      }
+
+      runnableInfo[queryId] = {runnableUrl, resource, denormalizedResource};
     }
 
     // generate the sql for the query
-    const sql = aws.generateSQL(queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain, reportServiceSource);
+    const sql = aws.generateSQL(runnableInfo, usageReport, authDomain, reportServiceSource);
 
     if (debugSQL) {
-      sqlOutput.push(`${resource ? `-- id ${resource.id}` : `-- url ${runnableUrl}`}\n${sql}`);
+      sqlOutput.push(sql);
     } else {
       // create the athena query in the workgroup
       await aws.startQueryExecution(sql, workgroupName)
@@ -132,9 +151,7 @@ const learnersReport = async (params, body, tokenServiceEnv, debugSQL, reportSer
     await doLearnerLogReporting();
   }
   else {
-    for (const runnableUrl in queryIdsPerRunnable) {
-      await doLearnerAnswerReporting(runnableUrl);
-    }
+    await doLearnerAnswerReporting();
   }
 
   return {sqlOutput, portalUrl}
@@ -166,7 +183,7 @@ exports.lambdaHandler = async (event, context) => {
       ? await userReport(body, tokenServiceEnv, debugSQL)
       : await learnersReport(params, body, tokenServiceEnv, debugSQL, reportServiceSource);
 
-    let message = sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success"
+    let message = prettySQL(sqlOutput.length ? sqlOutput.join("\n\n------\n\n") : "Success")
 
     if (debugSQL) {
       return {

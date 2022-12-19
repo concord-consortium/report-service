@@ -7,6 +7,8 @@ const chai = require('chai');
 const queryString = require('query-string');
 const nock = require('nock');
 
+const fs = require('fs')
+
 const expect = chai.expect;
 const event = {
   queryStringParameters: {
@@ -86,6 +88,30 @@ const testResource = {
   ]
 };
 
+const testQueryId2 = "ABCDEFGHI";
+const testResource2 = {
+  url: "https://authoring.staging.concord.org/activities/000001",
+  name: "test activity 2",
+  type: "activity",
+  children: [
+    { type: "section",
+      children: [
+        { type: "page",
+          children: [
+            { id: "managed_interactive_88888", type: "iframe_interactive"},
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+const normalizeSQL = (sql) => sql
+  .split("\n")
+  .map(line => line.trim())
+  .filter(line => line.length > 1)
+  .join("\n")
+
 describe('Tests index', function () {
     it('verifies a response', async () => {
         const result = await app.lambdaHandler(event, context)
@@ -115,280 +141,451 @@ describe('Denormalize resource', function () {
 
 describe('Query creation', function () {
     it('verifies successful query creation', async () => {
-        const testDenormalizedResource = firebase.denormalizeResource(testResource);
-        const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, false, "", "fake-auth-domain", 'fake-source-key');
-        const expectedSQLresult = `-- name test activity
--- type activity
+        const testRunnableInfo = {
+          [testQueryId]: {
+            runnableUrl: testResource.url,
+            resource: testResource,
+            denormalizedResource: firebase.denormalizeResource(testResource)
+          },
+          [testQueryId2]: {
+            runnableUrl: testResource2.url,
+            resource: testResource2,
+            denormalizedResource: firebase.denormalizeResource(testResource2)
+          },
+        }
+        const generatedSQLresult = await aws.generateSQL(testRunnableInfo, false, "fake-auth-domain", 'fake-source-key');
+        const expectedSQLresult = `
+        -- name test activity, test activity 2
+        -- type activity, activity
 
-WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
+        WITH activities_1 AS (SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789'),
 
-grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
-  FROM "report-service"."partitioned_answers" a
-  INNER JOIN "report-service"."learners" l
-  ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
-  WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
-  GROUP BY l.run_remote_endpoint ),
+        activities_2 AS (SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = 'ABCDEFGHI'),
 
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
-  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers,
-  cardinality(filter(map_values(activities.questions), x->x.required=TRUE)) num_required_questions,
-  IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
-  FROM activities, "report-service"."learners" l
-  LEFT JOIN grouped_answers
-  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
-  WHERE l.query_id = '123456789' )
+        grouped_answers_1 AS (
+          SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
+          FROM "report-service"."partitioned_answers" a
+          INNER JOIN "report-service"."learners" l
+          ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
+          WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+          GROUP BY l.run_remote_endpoint),
 
-SELECT
-  'Prompt' AS remote_endpoint,
-  null AS runnable_url,
-  null AS learner_id,
-  null AS student_id,
-  null AS user_id,
-  null AS student_name,
-  null AS username,
-  null AS school,
-  null AS class,
-  null AS class_id,
-  null AS permission_forms,
-  null AS last_run,
-  null AS teacher_user_ids,
-  null AS teacher_names,
-  null AS teacher_districts,
-  null AS teacher_states,
-  null AS teacher_emails,
-  null AS total_num_questions,
-  null AS total_num_answers,
-  null AS total_percent_complete,
-  null AS num_required_questions,
-  null AS num_required_answers,
-  activities.questions['multiple_choice_00000'].prompt AS multiple_choice_00000_choice,
-  activities.questions['multiple_choice_01000'].prompt AS multiple_choice_01000_choice,
-  activities.questions['multiple_choice_02000'].prompt AS multiple_choice_02000_choice,
-  activities.questions['multiple_choice_03000'].prompt AS multiple_choice_03000_choice,
-  null AS multiple_choice_03000_submitted,
-  activities.questions['open_response_11111'].prompt AS open_response_11111_text,
-  activities.questions['open_response_22222'].prompt AS open_response_22222_text,
-  null AS open_response_22222_submitted,
-  activities.questions['image_question_33333'].prompt AS image_question_33333_image_url,
-  activities.questions['image_question_33333'].prompt AS image_question_33333_text,
-  activities.questions['image_question_33333'].prompt AS image_question_33333_answer,
-  activities.questions['image_question_44444'].prompt AS image_question_44444_image_url,
-  activities.questions['image_question_44444'].prompt AS image_question_44444_text,
-  activities.questions['image_question_44444'].prompt AS image_question_44444_answer,
-  null AS image_question_44444_submitted,
-  activities.questions['managed_interactive_55555'].prompt AS managed_interactive_55555_text,
-  activities.questions['managed_interactive_66666'].prompt AS managed_interactive_66666_choice,
-  activities.questions['managed_interactive_77777'].prompt AS managed_interactive_77777_image_url,
-  activities.questions['managed_interactive_77777'].prompt AS managed_interactive_77777_text,
-  activities.questions['managed_interactive_77777'].prompt AS managed_interactive_77777_answer,
-  activities.questions['managed_interactive_88888'].prompt AS managed_interactive_88888_json,
-  activities.questions['managed_interactive_88888'].prompt AS managed_interactive_88888_url,
-  activities.questions['managed_interactive_99999'].prompt AS managed_interactive_99999_json
-FROM activities
+        grouped_answers_2 AS (
+          SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
+          FROM "report-service"."partitioned_answers" a
+          INNER JOIN "report-service"."learners" l
+          ON (l.query_id = 'ABCDEFGHI' AND l.run_remote_endpoint = a.remote_endpoint)
+          WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000001'
+          GROUP BY l.run_remote_endpoint),
 
-UNION ALL
+        learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_1.kv1 kv1, grouped_answers_1.submitted submitted, grouped_answers_1.source_key source_key,
+          IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_1.questions)))) num_answers,
+          cardinality(filter(map_values(activities_1.questions), x->x.required=TRUE)) num_required_questions,
+          IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
+          FROM "report-service"."learners" l
+          LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
+          LEFT JOIN grouped_answers_1
+          ON l.run_remote_endpoint = grouped_answers_1.remote_endpoint
+          WHERE l.query_id = '123456789'),
 
+        learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_2.kv1 kv1, grouped_answers_2.submitted submitted, grouped_answers_2.source_key source_key,
+          IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_2.questions)))) num_answers,
+          cardinality(filter(map_values(activities_2.questions), x->x.required=TRUE)) num_required_questions,
+          IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
+          FROM "report-service"."learners" l
+          LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
+          LEFT JOIN grouped_answers_2
+          ON l.run_remote_endpoint = grouped_answers_2.remote_endpoint
+          WHERE l.query_id = 'ABCDEFGHI'),
 
-SELECT
-  'Correct answer' AS remote_endpoint,
-  null AS runnable_url,
-  null AS learner_id,
-  null AS student_id,
-  null AS user_id,
-  null AS student_name,
-  null AS username,
-  null AS school,
-  null AS class,
-  null AS class_id,
-  null AS permission_forms,
-  null AS last_run,
-  null AS teacher_user_ids,
-  null AS teacher_names,
-  null AS teacher_districts,
-  null AS teacher_states,
-  null AS teacher_emails,
-  null AS total_num_questions,
-  null AS total_num_answers,
-  null AS total_percent_complete,
-  null AS num_required_questions,
-  null AS num_required_answers,
-  activities.questions['multiple_choice_00000'].correctAnswer AS multiple_choice_00000_choice,
-  activities.questions['multiple_choice_01000'].correctAnswer AS multiple_choice_01000_choice,
-  activities.questions['multiple_choice_02000'].correctAnswer AS multiple_choice_02000_choice,
-  activities.questions['multiple_choice_03000'].correctAnswer AS multiple_choice_03000_choice,
-  null AS multiple_choice_03000_submitted,
-  null AS open_response_11111_text,
-  null AS open_response_22222_text,
-  null AS open_response_22222_submitted,
-  null AS image_question_33333_image_url,
-  null AS image_question_33333_text,
-  null AS image_question_33333_answer,
-  null AS image_question_44444_image_url,
-  null AS image_question_44444_text,
-  null AS image_question_44444_answer,
-  null AS image_question_44444_submitted,
-  null AS managed_interactive_55555_text,
-  activities.questions['managed_interactive_66666'].correctAnswer AS managed_interactive_66666_choice,
-  null AS managed_interactive_77777_image_url,
-  null AS managed_interactive_77777_text,
-  null AS managed_interactive_77777_answer,
-  null AS managed_interactive_88888_json,
-  null AS managed_interactive_88888_url,
-  null AS managed_interactive_99999_json
-FROM activities
+        unique_user_class AS (SELECT class_id, user_id,
+          arbitrary(student_id) as student_id,
+          arbitrary(student_name) as student_name,
+          arbitrary(username) as username,
+          arbitrary(school) as school,
+          arbitrary(class) as class,
+          arbitrary(permission_forms) as permission_forms,
+          -- We could just select arbitrary(teachers) here and then do the transform in the main query
+          array_join(transform(arbitrary(teachers), teacher -> teacher.user_id), ',') AS teacher_user_ids,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.name), ',') AS teacher_names,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.district), ',') AS teacher_districts,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.state), ',') AS teacher_states,
+          array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
+        FROM "report-service"."learners" l
+        WHERE l.query_id IN ('123456789', 'ABCDEFGHI')
+        GROUP BY class_id, user_id),
 
-UNION ALL
+        one_row_table_for_join as (SELECT null AS empty)
 
-SELECT
-  remote_endpoint,
-  runnable_url,
-  learner_id,
-  student_id,
-  user_id,
-  student_name,
-  username,
-  school,
-  class,
-  class_id,
-  permission_forms,
-  last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
-  activities.num_questions AS total_num_questions,
-  num_answers AS total_num_answers,
-  round(100.0 * num_answers / activities.num_questions, 1) AS total_percent_complete,
-  num_required_questions,
-  num_required_answers,
-  array_join(transform(CAST(json_extract(kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_00000'][x].content, IF(activities.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_00000_choice,
-  array_join(transform(CAST(json_extract(kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_01000'][x].content, '')),', ') AS multiple_choice_01000_choice,
-  array_join(transform(CAST(json_extract(kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_02000'][x].content, IF(activities.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_02000_choice,
-  array_join(transform(CAST(json_extract(kv1['multiple_choice_03000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['multiple_choice_03000'][x].content, IF(activities.choices['multiple_choice_03000'][x].correct,' (correct)',' (wrong)'))),', ') AS multiple_choice_03000_choice,
-  COALESCE(submitted['multiple_choice_03000'], false) AS multiple_choice_03000_submitted,
-  kv1['open_response_11111'] AS open_response_11111_text,
-  kv1['open_response_22222'] AS open_response_22222_text,
-  COALESCE(submitted['open_response_22222'], false) AS open_response_22222_submitted,
-  json_extract_scalar(kv1['image_question_33333'], '$.image_url') AS image_question_33333_image_url,
-  json_extract_scalar(kv1['image_question_33333'], '$.text') AS image_question_33333_text,
-  kv1['image_question_33333'] AS image_question_33333_answer,
-  json_extract_scalar(kv1['image_question_44444'], '$.image_url') AS image_question_44444_image_url,
-  json_extract_scalar(kv1['image_question_44444'], '$.text') AS image_question_44444_text,
-  kv1['image_question_44444'] AS image_question_44444_answer,
-  COALESCE(submitted['image_question_44444'], false) AS image_question_44444_submitted,
-  kv1['managed_interactive_55555'] AS managed_interactive_55555_text,
-  array_join(transform(CAST(json_extract(kv1['managed_interactive_66666'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities.choices['managed_interactive_66666'][x].content, IF(activities.choices['managed_interactive_66666'][x].correct,' (correct)',' (wrong)'))),', ') AS managed_interactive_66666_choice,
-  json_extract_scalar(kv1['managed_interactive_77777'], '$.image_url') AS managed_interactive_77777_image_url,
-  json_extract_scalar(kv1['managed_interactive_77777'], '$.text') AS managed_interactive_77777_text,
-  kv1['managed_interactive_77777'] AS managed_interactive_77777_answer,
-  kv1['managed_interactive_88888'] AS managed_interactive_88888_json,
-  CASE WHEN kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(offering_id AS VARCHAR), '&studentId=', CAST(user_id AS VARCHAR), '&answersSourceKey=',  source_key['managed_interactive_88888']) END AS managed_interactive_88888_url,
-  kv1['managed_interactive_99999'] AS managed_interactive_99999_json
-FROM activities, learners_and_answers
-ORDER BY class NULLS FIRST, remote_endpoint DESC`;
+        SELECT
+          'Prompt' AS student_id,
+          null AS user_id,
+          null AS student_name,
+          null AS username,
+          null AS school,
+          null AS class,
+          null AS class_id,
+          null AS permission_forms,
+          null AS teacher_user_ids,
+          null AS teacher_names,
+          null AS teacher_districts,
+          null AS teacher_states,
+          null AS teacher_emails,
+          null AS res_1_name,
+          null AS res_1_learner_id,
+          null AS res_1_remote_endpoint,
+          null AS res_1_resource_url,
+          null AS res_1_last_run,
+          null AS res_1_total_num_questions,
+          null AS res_1_total_num_answers,
+          null AS res_1_total_percent_complete,
+          null AS res_1_num_required_questions,
+          null AS res_1_num_required_answers,
+          null AS res_2_name,
+          null AS res_2_learner_id,
+          null AS res_2_remote_endpoint,
+          null AS res_2_resource_url,
+          null AS res_2_last_run,
+          null AS res_2_total_num_questions,
+          null AS res_2_total_num_answers,
+          null AS res_2_total_percent_complete,
+          null AS res_2_num_required_questions,
+          null AS res_2_num_required_answers,
+          activities_1.questions['multiple_choice_00000'].prompt AS res_1_multiple_choice_00000_choice,
+          activities_1.questions['multiple_choice_01000'].prompt AS res_1_multiple_choice_01000_choice,
+          activities_1.questions['multiple_choice_02000'].prompt AS res_1_multiple_choice_02000_choice,
+          activities_1.questions['multiple_choice_03000'].prompt AS res_1_multiple_choice_03000_choice,
+          null AS res_1_multiple_choice_03000_submitted,
+          activities_1.questions['open_response_11111'].prompt AS res_1_open_response_11111_text,
+          activities_1.questions['open_response_22222'].prompt AS res_1_open_response_22222_text,
+          null AS res_1_open_response_22222_submitted,
+          activities_1.questions['image_question_33333'].prompt AS res_1_image_question_33333_image_url,
+          activities_1.questions['image_question_33333'].prompt AS res_1_image_question_33333_text,
+          activities_1.questions['image_question_33333'].prompt AS res_1_image_question_33333_answer,
+          activities_1.questions['image_question_44444'].prompt AS res_1_image_question_44444_image_url,
+          activities_1.questions['image_question_44444'].prompt AS res_1_image_question_44444_text,
+          activities_1.questions['image_question_44444'].prompt AS res_1_image_question_44444_answer,
+          null AS res_1_image_question_44444_submitted,
+          activities_1.questions['managed_interactive_55555'].prompt AS res_1_managed_interactive_55555_text,
+          activities_1.questions['managed_interactive_66666'].prompt AS res_1_managed_interactive_66666_choice,
+          activities_1.questions['managed_interactive_77777'].prompt AS res_1_managed_interactive_77777_image_url,
+          activities_1.questions['managed_interactive_77777'].prompt AS res_1_managed_interactive_77777_text,
+          activities_1.questions['managed_interactive_77777'].prompt AS res_1_managed_interactive_77777_answer,
+          activities_1.questions['managed_interactive_88888'].prompt AS res_1_managed_interactive_88888_json,
+          activities_1.questions['managed_interactive_88888'].prompt AS res_1_managed_interactive_88888_url,
+          activities_1.questions['managed_interactive_99999'].prompt AS res_1_managed_interactive_99999_json,
+          activities_2.questions['managed_interactive_88888'].prompt AS res_2_managed_interactive_88888_json,
+          activities_2.questions['managed_interactive_88888'].prompt AS res_2_managed_interactive_88888_url
+        FROM one_row_table_for_join
+        LEFT JOIN activities_1 ON 1=1
+        LEFT JOIN activities_2 ON 1=1
 
-        const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
-        const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
-        expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+        UNION ALL
+
+        SELECT
+          'Correct answer' AS student_id,
+          null AS user_id,
+          null AS student_name,
+          null AS username,
+          null AS school,
+          null AS class,
+          null AS class_id,
+          null AS permission_forms,
+          null AS teacher_user_ids,
+          null AS teacher_names,
+          null AS teacher_districts,
+          null AS teacher_states,
+          null AS teacher_emails,
+          null AS res_1_name,
+          null AS res_1_learner_id,
+          null AS res_1_remote_endpoint,
+          null AS res_1_resource_url,
+          null AS res_1_last_run,
+          null AS res_1_total_num_questions,
+          null AS res_1_total_num_answers,
+          null AS res_1_total_percent_complete,
+          null AS res_1_num_required_questions,
+          null AS res_1_num_required_answers,
+          null AS res_2_name,
+          null AS res_2_learner_id,
+          null AS res_2_remote_endpoint,
+          null AS res_2_resource_url,
+          null AS res_2_last_run,
+          null AS res_2_total_num_questions,
+          null AS res_2_total_num_answers,
+          null AS res_2_total_percent_complete,
+          null AS res_2_num_required_questions,
+          null AS res_2_num_required_answers,
+          activities_1.questions['multiple_choice_00000'].correctAnswer AS res_1_multiple_choice_00000_choice,
+          activities_1.questions['multiple_choice_01000'].correctAnswer AS res_1_multiple_choice_01000_choice,
+          activities_1.questions['multiple_choice_02000'].correctAnswer AS res_1_multiple_choice_02000_choice,
+          activities_1.questions['multiple_choice_03000'].correctAnswer AS res_1_multiple_choice_03000_choice,
+          null AS res_1_multiple_choice_03000_submitted,
+          null AS res_1_open_response_11111_text,
+          null AS res_1_open_response_22222_text,
+          null AS res_1_open_response_22222_submitted,
+          null AS res_1_image_question_33333_image_url,
+          null AS res_1_image_question_33333_text,
+          null AS res_1_image_question_33333_answer,
+          null AS res_1_image_question_44444_image_url,
+          null AS res_1_image_question_44444_text,
+          null AS res_1_image_question_44444_answer,
+          null AS res_1_image_question_44444_submitted,
+          null AS res_1_managed_interactive_55555_text,
+          activities_1.questions['managed_interactive_66666'].correctAnswer AS res_1_managed_interactive_66666_choice,
+          null AS res_1_managed_interactive_77777_image_url,
+          null AS res_1_managed_interactive_77777_text,
+          null AS res_1_managed_interactive_77777_answer,
+          null AS res_1_managed_interactive_88888_json,
+          null AS res_1_managed_interactive_88888_url,
+          null AS res_1_managed_interactive_99999_json,
+          null AS res_2_managed_interactive_88888_json,
+          null AS res_2_managed_interactive_88888_url
+        FROM one_row_table_for_join
+        LEFT JOIN activities_1 ON 1=1
+        LEFT JOIN activities_2 ON 1=1
+
+        UNION ALL
+
+        SELECT
+          unique_user_class.student_id,
+          unique_user_class.user_id,
+          unique_user_class.student_name,
+          unique_user_class.username,
+          unique_user_class.school,
+          unique_user_class.class,
+          unique_user_class.class_id,
+          unique_user_class.permission_forms,
+          unique_user_class.teacher_user_ids,
+          unique_user_class.teacher_names,
+          unique_user_class.teacher_districts,
+          unique_user_class.teacher_states,
+          unique_user_class.teacher_emails,
+          'test activity' AS res_1_name,
+          learners_and_answers_1.learner_id AS res_1_learner_id,
+          learners_and_answers_1.remote_endpoint AS res_1_remote_endpoint,
+          learners_and_answers_1.resource_url AS res_1_resource_url,
+          learners_and_answers_1.last_run AS res_1_last_run,
+          activities_1.num_questions AS res_1_total_num_questions,
+          learners_and_answers_1.num_answers AS res_1_total_num_answers,
+          round(100.0 * learners_and_answers_1.num_answers / activities_1.num_questions, 1) AS res_1_total_percent_complete,
+          learners_and_answers_1.num_required_questions AS res_1_num_required_questions,
+          learners_and_answers_1.num_required_answers AS res_1_num_required_answers,
+          'test activity 2' AS res_2_name,
+          learners_and_answers_2.learner_id AS res_2_learner_id,
+          learners_and_answers_2.remote_endpoint AS res_2_remote_endpoint,
+          learners_and_answers_2.resource_url AS res_2_resource_url,
+          learners_and_answers_2.last_run AS res_2_last_run,
+          activities_2.num_questions AS res_2_total_num_questions,
+          learners_and_answers_2.num_answers AS res_2_total_num_answers,
+          round(100.0 * learners_and_answers_2.num_answers / activities_2.num_questions, 1) AS res_2_total_percent_complete,
+          learners_and_answers_2.num_required_questions AS res_2_num_required_questions,
+          learners_and_answers_2.num_required_answers AS res_2_num_required_answers,
+          array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_00000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_00000'][x].content, IF(activities_1.choices['multiple_choice_00000'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_multiple_choice_00000_choice,
+          array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_01000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_01000'][x].content, '')),', ') AS res_1_multiple_choice_01000_choice,
+          array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_02000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_02000'][x].content, IF(activities_1.choices['multiple_choice_02000'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_multiple_choice_02000_choice,
+          array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_03000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_03000'][x].content, IF(activities_1.choices['multiple_choice_03000'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_multiple_choice_03000_choice,
+          COALESCE(learners_and_answers_1.submitted['multiple_choice_03000'], false) AS res_1_multiple_choice_03000_submitted,
+          learners_and_answers_1.kv1['open_response_11111'] AS res_1_open_response_11111_text,
+          learners_and_answers_1.kv1['open_response_22222'] AS res_1_open_response_22222_text,
+          COALESCE(learners_and_answers_1.submitted['open_response_22222'], false) AS res_1_open_response_22222_submitted,
+          json_extract_scalar(learners_and_answers_1.kv1['image_question_33333'], '$.image_url') AS res_1_image_question_33333_image_url,
+          json_extract_scalar(learners_and_answers_1.kv1['image_question_33333'], '$.text') AS res_1_image_question_33333_text,
+          learners_and_answers_1.kv1['image_question_33333'] AS res_1_image_question_33333_answer,
+          json_extract_scalar(learners_and_answers_1.kv1['image_question_44444'], '$.image_url') AS res_1_image_question_44444_image_url,
+          json_extract_scalar(learners_and_answers_1.kv1['image_question_44444'], '$.text') AS res_1_image_question_44444_text,
+          learners_and_answers_1.kv1['image_question_44444'] AS res_1_image_question_44444_answer,
+          COALESCE(learners_and_answers_1.submitted['image_question_44444'], false) AS res_1_image_question_44444_submitted,
+          learners_and_answers_1.kv1['managed_interactive_55555'] AS res_1_managed_interactive_55555_text,
+          array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['managed_interactive_66666'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['managed_interactive_66666'][x].content, IF(activities_1.choices['managed_interactive_66666'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_managed_interactive_66666_choice,
+          json_extract_scalar(learners_and_answers_1.kv1['managed_interactive_77777'], '$.image_url') AS res_1_managed_interactive_77777_image_url,
+          json_extract_scalar(learners_and_answers_1.kv1['managed_interactive_77777'], '$.text') AS res_1_managed_interactive_77777_text,
+          learners_and_answers_1.kv1['managed_interactive_77777'] AS res_1_managed_interactive_77777_answer,
+          learners_and_answers_1.kv1['managed_interactive_88888'] AS res_1_managed_interactive_88888_json,
+          CASE WHEN learners_and_answers_1.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_1.source_key['managed_interactive_88888']) END AS res_1_managed_interactive_88888_url,
+          learners_and_answers_1.['managed_interactive_99999'] AS res_1_managed_interactive_99999_json,
+          learners_and_answers_2.kv1['managed_interactive_88888'] AS res_2_managed_interactive_88888_json,
+          CASE WHEN learners_and_answers_2.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_2.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_2.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_2.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_2.source_key['managed_interactive_88888']) END AS res_2_managed_interactive_88888_url
+        FROM unique_user_class
+        LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+        LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+        LEFT JOIN learners_and_answers_1 ON unique_user_class.user_id = learners_and_answers_1.user_id AND unique_user_class.class_id = learners_and_answers_1.class_id
+        LEFT JOIN learners_and_answers_2 ON unique_user_class.user_id = learners_and_answers_2.user_id AND unique_user_class.class_id = learners_and_answers_2.class_id
+
+        ORDER BY class NULLS FIRST, username
+        `;
+
+        const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+        const normalizedExpectedSQLresult = normalizeSQL(expectedSQLresult);
+        expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
     });
 });
 
 describe('Query creation usage report', function () {
   it('verifies successful query creation in usage report mode', async () => {
-      const testDenormalizedResource = firebase.denormalizeResource(testResource);
-      const generatedSQLresult = await aws.generateSQL(testQueryId, testResource, testDenormalizedResource, true, "", "fake-auth-domain");
-      const expectedSQLresult = `-- name test activity
--- type activity
+      const testRunnableInfo = {
+        [testQueryId]: {
+          runnableUrl: testResource.url,
+          resource: testResource,
+          denormalizedResource: firebase.denormalizeResource(testResource)
+        },
+        [testQueryId2]: {
+          runnableUrl: testResource2.url,
+          resource: testResource2,
+          denormalizedResource: firebase.denormalizeResource(testResource2)
+        },
+      }
+      const generatedSQLresult = await aws.generateSQL(testRunnableInfo, true, "fake-auth-domain", 'fake-source-key');
+      const expectedSQLresult = `
+      -- name test activity, test activity 2
+      -- type activity, activity
 
-WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789' ),
+      WITH activities_1 AS (SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789'),
 
-grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
-  FROM "report-service"."partitioned_answers" a
-  INNER JOIN "report-service"."learners" l
-  ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
-  WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
-  GROUP BY l.run_remote_endpoint ),
+      activities_2 AS (SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = 'ABCDEFGHI'),
 
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
-  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers,
-  cardinality(filter(map_values(activities.questions), x->x.required=TRUE)) num_required_questions,
-  IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
-  FROM activities, "report-service"."learners" l
-  LEFT JOIN grouped_answers
-  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
-  WHERE l.query_id = '123456789' )\
+      grouped_answers_1 AS (
+        SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
+        FROM "report-service"."partitioned_answers" a
+        INNER JOIN "report-service"."learners" l
+        ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
+        WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
+        GROUP BY l.run_remote_endpoint),
 
+      grouped_answers_2 AS (
+        SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
+        FROM "report-service"."partitioned_answers" a
+        INNER JOIN "report-service"."learners" l
+        ON (l.query_id = 'ABCDEFGHI' AND l.run_remote_endpoint = a.remote_endpoint)
+        WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000001'
+        GROUP BY l.run_remote_endpoint),
 
+      learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_1.kv1 kv1, grouped_answers_1.submitted submitted, grouped_answers_1.source_key source_key,
+        IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_1.questions)))) num_answers,
+        cardinality(filter(map_values(activities_1.questions), x->x.required=TRUE)) num_required_questions,
+        IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
+        FROM "report-service"."learners" l
+        LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
+        LEFT JOIN grouped_answers_1
+        ON l.run_remote_endpoint = grouped_answers_1.remote_endpoint
+        WHERE l.query_id = '123456789'),
 
-SELECT
-  remote_endpoint,
-  runnable_url,
-  learner_id,
-  student_id,
-  user_id,
-  student_name,
-  username,
-  school,
-  class,
-  class_id,
-  permission_forms,
-  last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails,
-  activities.num_questions AS total_num_questions,
-  num_answers AS total_num_answers,
-  round(100.0 * num_answers / activities.num_questions, 1) AS total_percent_complete,
-  num_required_questions,
-  num_required_answers
-FROM activities, learners_and_answers`;
+      learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_2.kv1 kv1, grouped_answers_2.submitted submitted, grouped_answers_2.source_key source_key,
+        IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_2.questions)))) num_answers,
+        cardinality(filter(map_values(activities_2.questions), x->x.required=TRUE)) num_required_questions,
+        IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
+        FROM "report-service"."learners" l
+        LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
+        LEFT JOIN grouped_answers_2
+        ON l.run_remote_endpoint = grouped_answers_2.remote_endpoint
+        WHERE l.query_id = 'ABCDEFGHI'),
 
-      const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
-      const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
-      expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
+      unique_user_class AS (SELECT class_id, user_id,
+        arbitrary(student_id) as student_id,
+        arbitrary(student_name) as student_name,
+        arbitrary(username) as username,
+        arbitrary(school) as school,
+        arbitrary(class) as class,
+        arbitrary(permission_forms) as permission_forms,
+        -- We could just select arbitrary(teachers) here and then do the transform in the main query
+        array_join(transform(arbitrary(teachers), teacher -> teacher.user_id), ',') AS teacher_user_ids,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.name), ',') AS teacher_names,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.district), ',') AS teacher_districts,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.state), ',') AS teacher_states,
+        array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
+      FROM "report-service"."learners" l
+      WHERE l.query_id IN ('123456789', 'ABCDEFGHI')
+      GROUP BY class_id, user_id),
+
+      one_row_table_for_join as (SELECT null AS empty)
+
+      SELECT
+        unique_user_class.student_id,
+        unique_user_class.user_id,
+        unique_user_class.student_name,
+        unique_user_class.username,
+        unique_user_class.school,
+        unique_user_class.class,
+        unique_user_class.class_id,
+        unique_user_class.permission_forms,
+        unique_user_class.teacher_user_ids,
+        unique_user_class.teacher_names,
+        unique_user_class.teacher_districts,
+        unique_user_class.teacher_states,
+        unique_user_class.teacher_emails,
+        'test activity' AS res_1_name,
+        learners_and_answers_1.learner_id AS res_1_learner_id,
+        learners_and_answers_1.remote_endpoint AS res_1_remote_endpoint,
+        learners_and_answers_1.resource_url AS res_1_resource_url,
+        learners_and_answers_1.last_run AS res_1_last_run,
+        activities_1.num_questions AS res_1_total_num_questions,
+        learners_and_answers_1.num_answers AS res_1_total_num_answers,
+        round(100.0 * learners_and_answers_1.num_answers / activities_1.num_questions, 1) AS res_1_total_percent_complete,
+        learners_and_answers_1.num_required_questions AS res_1_num_required_questions,
+        learners_and_answers_1.num_required_answers AS res_1_num_required_answers,
+        'test activity 2' AS res_2_name,
+        learners_and_answers_2.learner_id AS res_2_learner_id,
+        learners_and_answers_2.remote_endpoint AS res_2_remote_endpoint,
+        learners_and_answers_2.resource_url AS res_2_resource_url,
+        learners_and_answers_2.last_run AS res_2_last_run,
+        activities_2.num_questions AS res_2_total_num_questions,
+        learners_and_answers_2.num_answers AS res_2_total_num_answers,
+        round(100.0 * learners_and_answers_2.num_answers / activities_2.num_questions, 1) AS res_2_total_percent_complete,
+        learners_and_answers_2.num_required_questions AS res_2_num_required_questions,
+        learners_and_answers_2.num_required_answers AS res_2_num_required_answers
+      FROM unique_user_class
+      LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+      LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
+      LEFT JOIN learners_and_answers_1 ON unique_user_class.user_id = learners_and_answers_1.user_id AND unique_user_class.class_id = learners_and_answers_1.class_id
+      LEFT JOIN learners_and_answers_2 ON unique_user_class.user_id = learners_and_answers_2.user_id AND unique_user_class.class_id = learners_and_answers_2.class_id
+
+      ORDER BY class NULLS FIRST, username
+    `;
+
+    const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+    const normalizedExpectedSQLresult = normalizeSQL(expectedSQLresult);
+    expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
   });
 });
 
 describe('Query creation unreportable runnable', function () {
   it('verifies successful query creation of unreportable runnable', async () => {
-      const generatedSQLresult = await aws.generateSQL(testQueryId, undefined, undefined, false, "www.test.url", "fake-auth-domain");
-      const expectedSQLresult = `-- name www.test.url
--- type assignment
+      const testRunnableInfo = {[testQueryId]: {
+        runnableUrl: "http://no-url",
+        resource: undefined,
+        denormalizedResource: undefined
+      }}
+      const generatedSQLresult = await aws.generateSQL(testRunnableInfo, false, "www.test.url", 'fake-source-key');
+      const expectedSQLresult = `
+      -- name http://no-url
+      -- type assignment
 
+      SELECT student_id,
+        user_id,
+        student_name,
+        username,
+        school,
+        class,
+        class_id,
+        learner_id,
+        resource_url,
+        last_run,
+        permission_forms,
+        remote_endpoint,
+        array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
+        array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
+        array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
+        array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
+        array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails
+      FROM
+      ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.learner_id) AS learner_id, null AS resource_url, arbitrary(l.last_run) AS last_run, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.teachers) teachers
+        FROM "report-service"."learners" l
+        WHERE l.query_id IN ('123456789')
+        GROUP BY l.run_remote_endpoint )
+      `;
 
-
-
-
-
-SELECT
-  remote_endpoint,
-  runnable_url,
-  learner_id,
-  student_id,
-  user_id,
-  student_name,
-  username,
-  school,
-  class,
-  class_id,
-  permission_forms,
-  last_run,
-  array_join(transform(teachers, teacher -> teacher.user_id), ',') AS teacher_user_ids,
-  array_join(transform(teachers, teacher -> teacher.name), ',') AS teacher_names,
-  array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_districts,
-  array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
-  array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails
-FROM
-  ( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.runnable_url) AS runnable_url, arbitrary(l.learner_id) AS learner_id, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_name) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.last_run) AS last_run, arbitrary(l.teachers) teachers
-    FROM "report-service"."learners" l
-    WHERE l.query_id = '123456789'
-    GROUP BY l.run_remote_endpoint )`;
-
-      const untabbedGeneratedSQLresult = generatedSQLresult.replace("\t", "");
-      const untabbedExpectedSQLresult = expectedSQLresult.replace("\t", "");
-      expect(untabbedGeneratedSQLresult).to.be.equal(untabbedExpectedSQLresult);
-  });
+      const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+      const normalizedExpectedSQLresult = normalizeSQL(expectedSQLresult);
+      expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
+    });
 });

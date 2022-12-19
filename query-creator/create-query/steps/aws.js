@@ -4,6 +4,22 @@ const request = require("./request");
 
 const PAGE_SIZE = 2000;
 
+// Column format of:
+// { name: "column name", value: "main value on each row", header: "optional first row value"}
+const selectFromColumn = (column) => {
+  if (column.value === column.name) {
+    return column.value
+  } else {
+    return `${column.value} AS ${column.name}`
+  }
+}
+
+// The source_key map is just used to add an answersSourceKey to the interactive urls
+// It might be possible there will be some answers with different source_keys, however this will be rare
+// since most assignments are not mixed from LARA runtime and AP runtime. But we might
+// migrate some activities from LARA to the AP.
+const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key`;
+
 const escapeSingleQuote = (text) => text.replace(/'/g, "''");
 
 const convertTime = (fromCalendar) => {
@@ -110,39 +126,34 @@ exports.uploadDenormalizedResource = async (queryId, denormalizedResource) => {
   // TODO: tie the uploaded file to the workgroup
 }
 
-// Column format of:
-// { name: "column name", value: "main value on each row", header: "optional first row value"}
-const selectFromColumn = (column) => {
-  if (column.value === column.name) {
-    return column.value
-  } else {
-    return `${column.value} AS ${column.name}`
-  }
-}
-
-const getColumnsForQuestion = (questionId, question, denormalizedResource, authDomain, sourceKey) => {
+const getColumnsForQuestion = (questionId, question, denormalizedResource, authDomain, sourceKey, activityIndex) => {
   const type = question.type;
   const isRequired = question.required;
 
   const columns = [];
 
-  const promptHeader = `activities.questions['${questionId}'].prompt`;
+  const activitiesTable = `activities_${activityIndex}`
+  const learnersAndAnswersTable = `learners_and_answers_${activityIndex}`
+
+  const promptHeader = `activities_${activityIndex}.questions['${questionId}'].prompt`;
+
+  const columnPrefix = `res_${activityIndex}_${questionId}`;
 
   switch (type) {
     case "image_question":
-      columns.push({name: `${questionId}_image_url`,
-                    value: `json_extract_scalar(kv1['${questionId}'], '$.image_url')`,
+      columns.push({name: `${columnPrefix}_image_url`,
+                    value: `json_extract_scalar(${learnersAndAnswersTable}.kv1['${questionId}'], '$.image_url')`,
                     header: promptHeader});
-      columns.push({name: `${questionId}_text`,
-                    value: `json_extract_scalar(kv1['${questionId}'], '$.text')`,
+      columns.push({name: `${columnPrefix}_text`,
+                    value: `json_extract_scalar(${learnersAndAnswersTable}.kv1['${questionId}'], '$.text')`,
                     header: promptHeader});
-      columns.push({name: `${questionId}_answer`,
-                    value: `kv1['${questionId}']`,
+      columns.push({name: `${columnPrefix}_answer`,
+                    value: `${learnersAndAnswersTable}.kv1['${questionId}']`,
                     header: promptHeader});
       break;
     case "open_response":
-      columns.push({name: `${questionId}_text`,
-                    value: `kv1['${questionId}']`,
+      columns.push({name: `${columnPrefix}_text`,
+                    value: `${learnersAndAnswersTable}.kv1['${questionId}']`,
                     header: promptHeader});
       break;
     case "multiple_choice":
@@ -153,17 +164,17 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
         }
       }
 
-      const answerScore = questionHasCorrectAnswer ? `IF(activities.choices['${questionId}'][x].correct,' (correct)',' (wrong)')` : `''`;
-      const choiceIdsAsArray = `CAST(json_extract(kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
+      const answerScore = questionHasCorrectAnswer ? `IF(${activitiesTable}.choices['${questionId}'][x].correct,' (correct)',' (wrong)')` : `''`;
+      const choiceIdsAsArray = `CAST(json_extract(${learnersAndAnswersTable}.kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
 
-      columns.push({name: `${questionId}_choice`,
-                    value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(activities.choices['${questionId}'][x].content, ${answerScore})),', ')`,
+      columns.push({name: `${columnPrefix}_choice`,
+                    value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(${activitiesTable}.choices['${questionId}'][x].content, ${answerScore})),', ')`,
                     header: promptHeader,
-                    secondHeader: `activities.questions['${questionId}'].correctAnswer`});
+                    secondHeader: `${activitiesTable}.questions['${questionId}'].correctAnswer`});
       break;
     case "iframe_interactive":
-      columns.push({name: `${questionId}_json`,
-                    value: `kv1['${questionId}']`,
+      columns.push({name: `${columnPrefix}_json`,
+                    value: `${learnersAndAnswersTable}.kv1['${questionId}']`,
                     header: promptHeader});
 
       const modelUrl = [`CONCAT(`,
@@ -173,48 +184,45 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
         `&sourceKey=${sourceKey}`,
         `&iframeQuestionId=${questionId}`,
         `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
-        ` CAST(class_id AS VARCHAR), `,
+        ` CAST(${learnersAndAnswersTable}.class_id AS VARCHAR), `,
         `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
-        ` CAST(offering_id AS VARCHAR), `,
+        ` CAST(${learnersAndAnswersTable}.offering_id AS VARCHAR), `,
         `'&studentId=',`,
-        ` CAST(user_id AS VARCHAR), `,
+        ` CAST(${learnersAndAnswersTable}.user_id AS VARCHAR), `,
         `'&answersSourceKey=', `,
-        ` source_key['${questionId}']`,
+        ` ${learnersAndAnswersTable}.source_key['${questionId}']`,
         `)`
       ].join("")
 
-      const conditionalModelUrl = `CASE WHEN kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
+      const conditionalModelUrl = `CASE WHEN ${learnersAndAnswersTable}.kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
 
-      columns.push({name: `${questionId}_url`,
+      columns.push({name: `${columnPrefix}_url`,
                     value: conditionalModelUrl,
                     header: promptHeader});
       break;
     case "managed_interactive":
     case "mw_interactive":
     default:
-      columns.push({name: `${questionId}_json`,
-                    value: `kv1['${questionId}']`,
+      columns.push({name: `${columnPrefix}_json`,
+                    value: `${learnersAndAnswersTable}.['${questionId}']`,
                     header: promptHeader});
       console.info(`Unknown question type: ${type}`);
       break;
   }
 
   if (isRequired) {
-    columns.push({name: `${questionId}_submitted`,
-                  value: `COALESCE(submitted['${questionId}'], false)`})
+    columns.push({name: `${columnPrefix}_submitted`,
+                  value: `COALESCE(${learnersAndAnswersTable}.submitted['${questionId}'], false)`})
   }
   return columns;
 }
 
-exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, runnableUrl, authDomain, sourceKey) => {
-  const hasResource = !!resource;
-  const escapedUrl = hasResource
-    ? resource.url.replace(/[^a-z0-9]/g, "-")
-    : runnableUrl.replace(/[^a-z0-9]/g, "-");
+exports.generateNoResourceSQL = (runnableInfo) => {
+  const names = [];
+  const types = [];
+  const queryIds = Object.keys(runnableInfo);
 
   const metadataColumnNames = [
-    "runnable_url",
-    "learner_id",
     "student_id",
     "user_id",
     "student_name",
@@ -222,21 +230,20 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
     "school",
     "class",
     "class_id",
-    "permission_forms",
+    "learner_id",
+    "resource_url",
     "last_run",
+    "permission_forms",
   ]
   const metadataColumnsForGrouping = metadataColumnNames.map(md => {
     return {
       name: md,
-      value: `arbitrary(l.${md})`
+      value: md === "resource_url" ? "null" : `arbitrary(l.${md})`
     }
   });
-  const metadataColumns = metadataColumnNames.map(md => {
-    return {
-      name: md,
-      value: md
-    }
-  });
+
+  const groupingSelectMetadataColumns = metadataColumnsForGrouping.map(selectFromColumn).join(", ");
+  const groupingSelect = `l.run_remote_endpoint remote_endpoint, ${groupingSelectMetadataColumns}, arbitrary(l.teachers) teachers`
 
   const teacherMetadataColumnDefinitions = [
     ["teacher_user_ids", "user_id"],
@@ -245,127 +252,240 @@ exports.generateSQL = (queryId, resource, denormalizedResource, usageReport, run
     ["teacher_states", "state"],
     ["teacher_emails", "email"]
   ]
+
+  const metadataColumns = metadataColumnNames.map(md => {
+    return {
+      name: md,
+      value: md
+    }
+  });
+
   const teacherMetadataColumns = teacherMetadataColumnDefinitions.map(tmd => {
     return {
       name: tmd[0],
       value: `array_join(transform(teachers, teacher -> teacher.${tmd[1]}), ',')`
     }
   });
-  const assignTeacherVar = "arbitrary(l.teachers) teachers"
 
   const allColumns = [
-    {name: "remote_endpoint",
-     value: "remote_endpoint"},
     ...metadataColumns,
-    ...teacherMetadataColumns,
+    {name: "remote_endpoint", value: "remote_endpoint"},
+    ...teacherMetadataColumns
   ];
 
-  const groupingSelectMetadataColumns = metadataColumnsForGrouping.map(selectFromColumn).join(", ");
+  queryIds.forEach(queryId => {
+    names.push(runnableInfo[queryId].runnableUrl)
+    types.push("assignment")
+  })
 
-  const groupingSelect = `l.run_remote_endpoint remote_endpoint, ${groupingSelectMetadataColumns}, ${assignTeacherVar}`
-  // The source_key map is just used to add an answersSourceKey to the interactive urls
-  // It might be possible there will be some answers with different source_keys, however this will be rare
-  // since most assignments are not mixed from LARA runtime and AP runtime. But we might
-  // migrate some activities from LARA to the AP.
-  const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key`;
+  return `
+  -- name ${names.join(", ")}
+  -- type ${types.join(", ")}
 
-  const groupedAnswers = hasResource ? `
-grouped_answers AS ( SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
-  FROM "report-service"."partitioned_answers" a
-  INNER JOIN "report-service"."learners" l
-  ON (l.query_id = '${queryId}' AND l.run_remote_endpoint = a.remote_endpoint)
-  WHERE a.escaped_url = '${escapedUrl}'
-  GROUP BY l.run_remote_endpoint ),`
-  : "";
-
-  const learnersAndAnswers = hasResource ? `
-learners_and_answers AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers.kv1 kv1, grouped_answers.submitted submitted, grouped_answers.source_key source_key,
-  IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities.questions)))) num_answers,
-  cardinality(filter(map_values(activities.questions), x->x.required=TRUE)) num_required_questions,
-  IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
-  FROM activities, "report-service"."learners" l
-  LEFT JOIN grouped_answers
-  ON l.run_remote_endpoint = grouped_answers.remote_endpoint
-  WHERE l.query_id = '${queryId}' )`
-  : "";
-
-  let orderByText = "";
-  let headerRowUnion = "";
-  let secondaryHeaderRowUnion = "";
-  let groupedSubSelect;
-  if (hasResource) {
-    const completionColumns = [
-      {name: "total_num_questions",
-       value: "activities.num_questions"},
-      {name: "total_num_answers",
-       value: "num_answers"},
-      {name: "total_percent_complete",
-       value: "round(100.0 * num_answers / activities.num_questions, 1)"},
-      {name: "num_required_questions",
-       value: "num_required_questions"},
-      {name: "num_required_answers",
-      value: "num_required_answers"}
-    ]
-    allColumns.push(...completionColumns);
-
-    if (!usageReport) {
-      const questionsColumns = [];
-      Object.keys(denormalizedResource.questions).forEach(questionId => {
-        const question = denormalizedResource.questions[questionId];
-        const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain, sourceKey)
-        questionsColumns.push(...questionColumns);
-      });
-      allColumns.push(...questionsColumns);
-
-      orderByText +=  `\nORDER BY class NULLS FIRST, remote_endpoint DESC`;
-
-      let headerRowSelect = allColumns.map((column, idx) => {
-        const value = idx === 0 ? `'Prompt'` : column.header || "null";
-        return `${value} AS ${column.name}`;
-      }).join(",\n  ");
-
-      let secondaryHeaderSelect = allColumns.map((column, idx) => {
-        const value = idx === 0 ? `'Correct answer'` : column.secondHeader || "null";
-        return `${value} AS ${column.name}`;
-      }).join(",\n  ");
-
-      headerRowUnion = `
-SELECT
-  ${headerRowSelect}
-FROM activities
-
-UNION ALL
-`;
-
-    secondaryHeaderRowUnion = `
-SELECT
-  ${secondaryHeaderSelect}
-FROM activities
-
-UNION ALL
-`;
-  }
-  } else {
-    groupedSubSelect = `
+  SELECT ${allColumns.map(selectFromColumn).join(",\n  ")}
+  FROM
   ( SELECT ${groupingSelect}
     FROM "report-service"."learners" l
-    WHERE l.query_id = '${queryId}'
-    GROUP BY l.run_remote_endpoint )`;
+    WHERE l.query_id IN (${queryIds.map(id => `'${escapeSingleQuote(id)}'`).join(", ")})
+    GROUP BY l.run_remote_endpoint )
+  `
+}
+
+exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
+  // first check if non of the runnables has a resource, if that is true return a query
+  // without the runnable info
+  let hasResource = false;
+  const queryIds = Object.keys(runnableInfo);
+  queryIds.forEach(queryId => {
+    hasResource = hasResource || !!runnableInfo[queryId].resource;
+  })
+  if (!hasResource) {
+    return exports.generateNoResourceSQL(runnableInfo)
   }
 
-  const mainSelect = allColumns.map(selectFromColumn).join(",\n  ");
+  const names = [];
+  const types = [];
 
-  return `-- name ${hasResource ? resource.name : runnableUrl}
--- type ${hasResource ? resource.type : "assignment"}
+  const denormalizedResources = [];
 
-${hasResource ? `WITH activities AS ( SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${queryId}' ),` : ""}
-${groupedAnswers}
-${learnersAndAnswers}
-${headerRowUnion}
-${secondaryHeaderRowUnion}
-SELECT
-  ${mainSelect}
-FROM${hasResource ? ` activities, learners_and_answers` : groupedSubSelect}${orderByText}`
+  const activitiesQueries = [];
+  const groupedAnswerQueries = [];
+  const learnerAndAnswerQueries = [];
+
+  const activitiesTables = [];
+  const learnersAndAnswersTables = [];
+
+  let resourceColumns = [];
+
+  queryIds.forEach((queryId, index) => {
+    const resIndex = index + 1; // 1 based for display
+    const {runnableUrl, resource, denormalizedResource} = runnableInfo[queryId];
+    const itemHasResource = !!resource;
+    const {url, name, type} = itemHasResource ? resource : {url: runnableUrl, name: runnableUrl, type: "assignment"};
+    const escapedUrl = url.replace(/[^a-z0-9]/g, "-");
+    names.push(name);
+    types.push(type)
+    denormalizedResources.push(denormalizedResource);
+
+    groupedAnswerQueries.push(`grouped_answers_${resIndex} AS (
+      SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
+      FROM "report-service"."partitioned_answers" a
+      INNER JOIN "report-service"."learners" l
+      ON (l.query_id = '${escapeSingleQuote(queryId)}' AND l.run_remote_endpoint = a.remote_endpoint)
+      WHERE a.escaped_url = '${escapeSingleQuote(escapedUrl)}'
+      GROUP BY l.run_remote_endpoint)`)
+
+    learnerAndAnswerQueries.push(`learners_and_answers_${resIndex} AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_${resIndex}.kv1 kv1, grouped_answers_${resIndex}.submitted submitted, grouped_answers_${resIndex}.source_key source_key,
+      IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_${resIndex}.questions)))) num_answers,
+      cardinality(filter(map_values(activities_${resIndex}.questions), x->x.required=TRUE)) num_required_questions,
+      IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
+      FROM "report-service"."learners" l
+      LEFT JOIN activities_${resIndex} ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with learners thus the 1=1
+      LEFT JOIN grouped_answers_${resIndex}
+      ON l.run_remote_endpoint = grouped_answers_${resIndex}.remote_endpoint
+      WHERE l.query_id = '${escapeSingleQuote(queryId)}')`)
+
+    activitiesQueries.push(`activities_${resIndex} AS (SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '${escapeSingleQuote(queryId)}')`)
+
+    activitiesTables.push(`activities_${resIndex}`)
+    learnersAndAnswersTables.push(`learners_and_answers_${resIndex}`)
+
+    resourceColumns = resourceColumns.concat([
+      {name: `res_${resIndex}_name`,
+       value: `'${escapeSingleQuote(name)}'`},
+      {name: `res_${resIndex}_learner_id`,
+       value: `learners_and_answers_${resIndex}.learner_id`},
+      {name: `res_${resIndex}_remote_endpoint`,
+       value: `learners_and_answers_${resIndex}.remote_endpoint`},
+      {name: `res_${resIndex}_resource_url`,
+       value: `learners_and_answers_${resIndex}.resource_url`},
+       {name: `res_${resIndex}_last_run`,
+       value: `learners_and_answers_${resIndex}.last_run`},
+      {name: `res_${resIndex}_total_num_questions`,
+       value: `activities_${resIndex}.num_questions`},
+      {name: `res_${resIndex}_total_num_answers`,
+       value: `learners_and_answers_${resIndex}.num_answers`},
+      {name: `res_${resIndex}_total_percent_complete`,
+       value: `round(100.0 * learners_and_answers_${resIndex}.num_answers / activities_${resIndex}.num_questions, 1)`},
+      {name: `res_${resIndex}_num_required_questions`,
+       value: `learners_and_answers_${resIndex}.num_required_questions`},
+      {name: `res_${resIndex}_num_required_answers`,
+      value: `learners_and_answers_${resIndex}.num_required_answers`}
+    ])
+  });
+
+  const uniqueUserClassQuery = `unique_user_class AS (SELECT class_id, user_id,
+      arbitrary(student_id) as student_id,
+      arbitrary(student_name) as student_name,
+      arbitrary(username) as username,
+      arbitrary(school) as school,
+      arbitrary(class) as class,
+      arbitrary(permission_forms) as permission_forms,
+      -- We could just select arbitrary(teachers) here and then do the transform in the main query
+      array_join(transform(arbitrary(teachers), teacher -> teacher.user_id), ',') AS teacher_user_ids,
+      array_join(transform(arbitrary(teachers), teacher -> teacher.name), ',') AS teacher_names,
+      array_join(transform(arbitrary(teachers), teacher -> teacher.district), ',') AS teacher_districts,
+      array_join(transform(arbitrary(teachers), teacher -> teacher.state), ',') AS teacher_states,
+      array_join(transform(arbitrary(teachers), teacher -> teacher.email), ',') AS teacher_emails
+    FROM "report-service"."learners" l
+    WHERE l.query_id IN (${queryIds.map(id => `'${escapeSingleQuote(id)}'`).join(", ")})
+    GROUP BY class_id, user_id)`
+
+  // allows for the left joins of activites even if one or more are empty
+  const oneRowTableForJoin = `one_row_table_for_join as (SELECT null AS empty)`
+
+  const allColumns = [
+    "student_id",
+    "user_id",
+    "student_name",
+    "username",
+    "school",
+    "class",
+    "class_id",
+    "permission_forms",
+    "teacher_user_ids",
+    "teacher_names",
+    "teacher_districts",
+    "teacher_states",
+    "teacher_emails",
+  ].map(col => ({name: col, value: col}))
+
+  allColumns.push(...resourceColumns)
+
+  const groupedAnswers = groupedAnswerQueries.join(",\n\n")
+  const learnersAndAnswers = learnerAndAnswerQueries.join(",\n\n")
+  const activities =  activitiesQueries.join(",\n\n")
+  const selects = [];
+
+  const questionsColumns = [];
+
+  if (!usageReport) {
+    denormalizedResources.forEach((denormalizedResource, denormalizedResourceIndex) => {
+      const activityIndex = denormalizedResourceIndex + 1;
+      if (denormalizedResource) {
+        Object.keys(denormalizedResource.questions).forEach((questionId) => {
+          const question = denormalizedResource.questions[questionId];
+          const questionColumns = getColumnsForQuestion(questionId, question, denormalizedResource, authDomain, sourceKey, activityIndex)
+          questionsColumns.push(...questionColumns);
+        });
+      }
+    });
+    allColumns.push(...questionsColumns);
+
+    let headerRowSelect = allColumns.map((column, idx) => {
+      const value = idx === 0 ? `'Prompt'` : column.header || "null";
+      return `${value} AS ${column.name}`;
+    }).join(",\n  ");
+
+    let secondaryHeaderSelect = allColumns.map((column, idx) => {
+      const value = idx === 0 ? `'Correct answer'` : column.secondHeader || "null";
+      return `${value} AS ${column.name}`;
+    }).join(",\n  ");
+
+    selects.push(`
+      SELECT
+        ${headerRowSelect}
+      FROM one_row_table_for_join
+      ${activitiesQueries.map((_, index) => `LEFT JOIN activities_${index + 1} ON 1=1`).join("\n")}
+    `);
+
+    selects.push(`
+      SELECT
+        ${secondaryHeaderSelect}
+      FROM one_row_table_for_join
+      ${activitiesQueries.map((_, index) => `LEFT JOIN activities_${index + 1} ON 1=1`).join("\n")}
+    `);
+  }
+
+  selects.push(`
+    SELECT
+      unique_user_class.student_id,
+      unique_user_class.user_id,
+      unique_user_class.student_name,
+      unique_user_class.username,
+      unique_user_class.school,
+      unique_user_class.class,
+      unique_user_class.class_id,
+      unique_user_class.permission_forms,
+      unique_user_class.teacher_user_ids,
+      unique_user_class.teacher_names,
+      unique_user_class.teacher_districts,
+      unique_user_class.teacher_states,
+      unique_user_class.teacher_emails,
+      ${resourceColumns.map(selectFromColumn).join(",\n")}${questionsColumns.length > 0 ? "," : ""}
+      ${questionsColumns.map(selectFromColumn).join(",\n")}
+    FROM unique_user_class
+    ${activitiesTables.map(t => `LEFT JOIN ${t} ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1`).join("\n")}
+    ${learnersAndAnswersTables.map(t => `LEFT JOIN ${t} ON unique_user_class.user_id = ${t}.user_id AND unique_user_class.class_id = ${t}.class_id`).join("\n")}
+  `)
+
+  return `-- name ${names.join(", ")}
+  -- type ${types.join(", ")}
+
+  WITH ${[activities, groupedAnswers, learnersAndAnswers, uniqueUserClassQuery, oneRowTableForJoin].join(",\n\n")}
+  ${selects.join("\nUNION ALL\n")}
+  ORDER BY class NULLS FIRST, username
+`
 }
 
 /*
