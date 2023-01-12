@@ -22,9 +22,10 @@ const answerMaps = `map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id,
 
 const escapeSingleQuote = (text) => text.replace(/'/g, "''");
 
-const convertTime = (fromCalendar) => {
+const convertTime = exports.convertTime = (fromCalendar) => {
   const [month, day, year, ...rest] = fromCalendar.split("/");
-  return `${year}-${month}-${day}`;
+  const date = new Date(`${year}-${month}-${day}`);
+  return Math.round(date.getTime() / 1000);
 };
 
 exports.ensureWorkgroup = async (resource, email) => {
@@ -534,10 +535,10 @@ exports.generateUserLogSQL = (usernames, activities, start_date, end_date) => {
     where.push(`log.activity IN (${activities.map(a => `'${escapeSingleQuote(a)}'`).join(", ")})`)
   }
   if (start_date) {
-    where.push(`time >= '${convertTime(start_date)}'`)
+    where.push(`time >= ${convertTime(start_date)}`)
   }
   if (end_date) {
-    where.push(`time <= '${convertTime(end_date)}'`)
+    where.push(`time <= ${convertTime(end_date)}`)
   }
 
   return `
