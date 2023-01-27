@@ -57,6 +57,27 @@ when the app is running on the production url, and `staging` otherwise.
 
 ## Other stuff
 
+### Notes on URLs generated for details / answer reports
+
+The researcher details or answer report includes links so researchers can open an interactive and see what a teacher would see in the teacher report.
+
+These links use the portal report to render the interactive and pass it the student's saved state. We cannot let just any user open a student's saved state so the portal report first authenticates the researcher via the portal. If the researcher has permission to view that student's work then a JWT token is returned to the portal report that includes a special `target_user_id`. The Firestore access rules in the report-service look for this `target_user_id` and authorize the researcher to download their work.
+
+Details of the authentication process and the parameters of these links are described here:
+https://github.com/concord-consortium/portal-report/blob/master/docs/launch.md
+
+For reference here is an example link:
+```
+https://portal-report.concord.org/branch/master/index.html
+?auth-domain=https%3A%2F%2Flearn.concord.org
+&firebase-app=report-service-pro
+&sourceKey=authoring.concord.org
+&iframeQuestionId=mw_interactive_104182
+&class=https%3A%2F%2Flearn.concord.org%2Fapi%2Fv1%2Fclasses%2F60888
+&offering=https%3A%2F%2Flearn.concord.org%2Fapi%2Fv1%2Fofferings%2F135999
+&studentId=1063089
+&answersSourceKey=activity-player.concord.org
+```
 ### Anonymous Reports
 
 Currently per student reports are supported using the run_key property of student work documents.
