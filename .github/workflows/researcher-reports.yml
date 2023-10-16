@@ -12,8 +12,8 @@ jobs:
     name: Build and Run Jest Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: '16'
       - name: Install Dependencies
@@ -23,7 +23,7 @@ jobs:
       - name: Run Tests
         run: npm run test:coverage -- --runInBand
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v2
         with:
           flags: jest
   cypress:
@@ -40,7 +40,7 @@ jobs:
         containers: [1, 2, 3]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - uses: cypress-io/github-action@v2
         with:
           working-directory: ./researcher-reports
@@ -61,32 +61,34 @@ jobs:
           # should be much faster
           CODE_COVERAGE: true
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v2
         with:
           flags: cypress
   s3-deploy:
     name: S3 Deploy
     needs:
       - build_test
-      # - cypress
-    runs-on: ubuntu-18.04
+      #- cypress
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: '16'
-      - name: Setup Ruby
-        uses: actions/setup-ruby@v1
-        with:
-          ruby-version: '2.7'
       - name: Install Dependencies
-        run: |
-          gem install s3_website -v 3.4.0
-          npm ci
-      - name: Build
-        run: npm run build
-      - name: Deploy
-        run: ./s3_deploy.sh
+        run: npm ci
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # skip installing cypress since it isn't needed for just building
+          # This decreases the deploy time quite a bit
+          CYPRESS_INSTALL_BINARY: 0
+      - uses: concord-consortium/s3-deploy-action@v1
+        with:
+          bucket: models-resources
+          prefix: researcher-reports
+          workingDirectory: ./researcher-reports
+          awsAccessKeyId: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          awsSecretAccessKey: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # Parameters to GHActions have to be strings, so a regular yaml array cannot
+          # be used. Instead the `|` turns the following lines into a string
+          topBranches: |
+            ["master"]

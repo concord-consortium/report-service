@@ -5,6 +5,10 @@ const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 
+// DEPLOY_PATH is set by the s3-deploy-action its value will be:
+// `branch/[branch-name]/` or `version/[tag-name]/`
+const DEPLOY_PATH = process.env.DEPLOY_PATH;
+
 module.exports = (env, argv) => {
   const devMode = argv.mode !== 'production';
 
@@ -124,6 +128,11 @@ module.exports = (env, argv) => {
         template: 'src/index.html',
         favicon: 'src/public/favicon.ico'
       }),
+      ...(DEPLOY_PATH ? [new HtmlWebpackPlugin({
+        filename: "index-top.html",
+        template: "src/index.html",
+        publicPath: DEPLOY_PATH,
+      })] : []),
       new CleanWebpackPlugin(),
     ]
   };
