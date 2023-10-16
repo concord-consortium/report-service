@@ -129,17 +129,11 @@ export const QueryItem: React.FC<IProps> = (props) => {
   const lowerQueryCompletionStatus = queryCompletionStatus.toLowerCase();
   const running = lowerQueryCompletionStatus === "running";
   const succeeded = lowerQueryCompletionStatus === "succeeded";
-  const failed = lowerQueryCompletionStatus === "failed";
+  const completionStatusSuffix = running ? "... (please wait)" : "";
 
   // show the generate button until it succeeds and it is clicked
   // the button will be disabled until it succeeds
   const showGenerateCSVLinkButton = !succeeded || !downloadURL;
-
-  const renderCompletionStatus = () => {
-    const suffix = running ? "... (please wait)" : "";
-    const className = running ? "running" : (succeeded ? "succeeded" : (failed ? "failed" : ""));
-    return <span className={className}>${lowerQueryCompletionStatus}${suffix}</span>;
-  };
 
   return (
     <div className="query-item">
@@ -149,7 +143,7 @@ export const QueryItem: React.FC<IProps> = (props) => {
             {resourceName && <div className="item-info">{`Name: ${resourceName}`}</div>}
             {resourceType && <div className="item-info">{`Type: ${resourceType}`}</div>}
             <div className="item-info">{`Creation date: ${submissionDateTime}`}</div>
-            <div className="item-info">Completion status: {renderCompletionStatus()}</div>
+            <div className="item-info">Completion status: <span className={lowerQueryCompletionStatus}>${lowerQueryCompletionStatus}${completionStatusSuffix}</span></div>
             { showGenerateCSVLinkButton
               ? <button onClick={handleGetSignedDownloadLink} disabled={!succeeded}>Generate CSV Download Link</button>
               : <>
