@@ -55,10 +55,10 @@ exports.getLearnerDataWithJwt = (learnersApiUrl, queryParams, jwt) => {
  * Returns [{runnableUrl, learners[]}, ...]
  */
 exports.getLearnersPerRunnable = (learners) => {
-  // get unique runnable urls
+  // get unique (non null/empty/undefined) runnable urls
   const runnableUrls = learners
     .map(l => l.runnable_url)
-    .filter(runnableUrl => runnableUrl !== undefined)
+    .filter(runnableUrl => !!runnableUrl)
     .filter((runnableUrl, index, self) => self.indexOf(runnableUrl) === index)
   if (runnableUrls.length === 0) {
     throw new Error("No runnable urls found in request")
