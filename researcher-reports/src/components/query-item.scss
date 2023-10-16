@@ -24,6 +24,16 @@
     margin: 5px 10px;
   }
 
+  .succeeded {
+    color: #007A00;
+  }
+  .running {
+    color: #00778F;
+  }
+  .failed {
+    color: #DB0000;
+  }
+
   button {
     margin: 5px 10px;
   }
