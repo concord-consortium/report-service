@@ -155,7 +155,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
     case "open_response":
       // When there is no answer to an open_response question the report state JSON is saved as the answer in Firebase.
       // This detects if the answer looks like the report state JSON and if so returns an empty string to show there was no answer to the question.
-      const filterNoAnswerJSON = `if(starts_with(${learnersAndAnswersTable}.kv1['${questionId}'], '"{\\"mode\":\\"report\\"'), '', ${learnersAndAnswersTable}.kv1['${questionId}'])`;
+      const filterNoAnswerJSON = `if(starts_with(${learnersAndAnswersTable}.kv1['${questionId}'], '"{\\"mode\\":\\"report\\"'), '', ${learnersAndAnswersTable}.kv1['${questionId}'])`;
 
       columns.push({name: `${columnPrefix}_text`,
                     value: filterNoAnswerJSON,
