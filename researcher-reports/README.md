@@ -36,11 +36,11 @@ To deploy a production release:
 4. Run `npm run build`
 5. Copy asset size markdown table from previous release and change sizes to match new sizes in `dist`
 6. Create `release-<version>` branch and commit changes, push to GitHub, create PR and merge
-7. Checkout master and pull
-8. Checkout production
-9. Run `git merge master --no-ff`
-10. Push production to GitHub
-11. Use https://github.com/concord-consortium/starter-projects/releases to create a new release tag
+7. Test the master build at: https://researcher-reports.concord.org/index-master.html
+8. Push a version tag to GitHub and/or use https://github.com/concord-consortium/researcher-reports/releases to create a new GitHub release
+9. Stage the release by running the [Release Staging Workflow](https://github.com/concord-consortium/researcher-reports/actions/workflows/release-staging.yml) and entering the version tag you just pushed.
+10. Test the staged release at https://researcher-reports.concord.org/index-staging.html
+11. Update production by running the [Release Workflow](https://github.com/concord-consortium/researcher-reports/actions/workflows/release.yml) and entering the release version tag.
 
 ### Testing
 
