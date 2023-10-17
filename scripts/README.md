@@ -23,7 +23,7 @@ https://console.cloud.google.com/apis/credentials?project=report-service-pro&org
 Run the script by passing in the destination S3 bucket and the source key for the Firestore database. e.g.
 
 ```
-node export-answers.js concordqa-report-data authoring.staging.concord.org
+node export-answers.js concord-staging-report-data authoring.staging.concord.org
 ```
 
 the script accepts up to three arguments:

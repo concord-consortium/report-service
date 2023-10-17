@@ -7,7 +7,7 @@ const util = require('util');
 const parquet = require('parquetjs');
 const { parquetInfo, getSyncDocId, hasLTIMetadata, getHash, schema } = require('../functions/src/shared/s3-answers')
 
-const BUCKET = process.argv[2];     // e.g. concordqa-report-data
+const BUCKET = process.argv[2];     // e.g. concord-staging-report-data
 const SOURCE =  process.argv[3];    // e.g. authoring.staging.concord.org
 const DATE_REGEX  = process.argv[4] // optional, e.g. `2021-(04|05)`
                                     // if a regex is included, it will *only* be used if there is a `created` field in the answer.
