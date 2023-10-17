@@ -18,14 +18,14 @@ Then install the dependencies
 
 ### Configuring AWS credentials
 
-First we need a bucket to write to, e.g. `concordqa-report-data`. We need to set this as an environment variable
+First we need a bucket to write to, e.g. `concord-staging-report-data`. We need to set this as an environment variable
 for the auto_update function:
 
-`firebase functions:config:set aws.s3_bucket=concordqa-report-data`
+`firebase functions:config:set aws.s3_bucket=concord-staging-report-data`
 
 In order to write to S3, a user needs to be created in AWS IAM with permission to write to the S3 bucket.
 For instance there exists a user, `report-service-qa`, within the AminConcordQA role, with permission to write
-to the `concordqa-report-data` S3 bucket.
+to the `concord-staging-report-data` S3 bucket.
 
 We can download the AWS key and Secret Key for this user (check 1Password), and then push it up to Firebase with
 
