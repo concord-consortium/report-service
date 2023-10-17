@@ -143,7 +143,7 @@ export const QueryItem: React.FC<IProps> = (props) => {
             {resourceName && <div className="item-info">{`Name: ${resourceName}`}</div>}
             {resourceType && <div className="item-info">{`Type: ${resourceType}`}</div>}
             <div className="item-info">{`Creation date: ${submissionDateTime}`}</div>
-            <div className="item-info">Completion status: <span className={lowerQueryCompletionStatus}>${lowerQueryCompletionStatus}${completionStatusSuffix}</span></div>
+            <div className="item-info">Completion status: <span className={lowerQueryCompletionStatus}>{lowerQueryCompletionStatus}{completionStatusSuffix}</span></div>
             { showGenerateCSVLinkButton
               ? <button onClick={handleGetSignedDownloadLink} disabled={!succeeded}>Generate CSV Download Link</button>
               : <>
