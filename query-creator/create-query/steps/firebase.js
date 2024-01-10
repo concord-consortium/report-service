@@ -15,7 +15,12 @@ exports.getResource = async (runnableUrl, reportServiceSource) => {
     const activityUrl = searchParams.get("activity");
     if (sequenceUrl || activityUrl) {
       runnableUrl = sequenceUrl || activityUrl;
-      runnableUrl = runnableUrl.replace("api/v1/", "").replace(".json", "");
+
+      // ensure https urls as that is how they are stored in Firebase and convert the api endpoint url to the runnable url
+      runnableUrl = runnableUrl
+        .replace("http:", "https:")
+        .replace("api/v1/", "")
+        .replace(".json", "");
     }
   }
   const params = {
