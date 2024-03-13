@@ -140,6 +140,24 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
   const columnPrefix = `res_${activityIndex}_${questionId}`;
 
+  const modelUrl = [`CONCAT(`,
+    `'${process.env.PORTAL_REPORT_URL}`,
+    `?auth-domain=${encodeURIComponent(authDomain)}`,
+    `&firebase-app=${process.env.FIREBASE_APP}`,
+    `&sourceKey=${sourceKey}`,
+    `&iframeQuestionId=${questionId}`,
+    `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
+    ` CAST(${learnersAndAnswersTable}.class_id AS VARCHAR), `,
+    `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
+    ` CAST(${learnersAndAnswersTable}.offering_id AS VARCHAR), `,
+    `'&studentId=',`,
+    ` CAST(${learnersAndAnswersTable}.user_id AS VARCHAR), `,
+    `'&answersSourceKey=', `,
+    ` ${learnersAndAnswersTable}.source_key['${questionId}']`,
+    `)`
+  ].join("")
+  const conditionalModelUrl = `CASE WHEN ${learnersAndAnswersTable}.kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
+
   switch (type) {
     case "image_question":
       columns.push({name: `${columnPrefix}_image_url`,
@@ -155,10 +173,13 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
     case "open_response":
       // When there is no answer to an open_response question the report state JSON is saved as the answer in Firebase.
       // This detects if the answer looks like the report state JSON and if so returns an empty string to show there was no answer to the question.
-      const filterNoAnswerJSON = `if(starts_with(${learnersAndAnswersTable}.kv1['${questionId}'], '"{\\"mode\\":\\"report\\"'), '', ${learnersAndAnswersTable}.kv1['${questionId}'])`;
+      const filterNoAnswerJSON = (value) => `CASE WHEN starts_with(${learnersAndAnswersTable}.kv1['${questionId}'], '"{\\"mode\\":\\"report\\"') THEN '' ELSE (${value}) END`;
 
       columns.push({name: `${columnPrefix}_text`,
-                    value: filterNoAnswerJSON,
+                    value: filterNoAnswerJSON(`${learnersAndAnswersTable}.kv1['${questionId}']`),
+                    header: promptHeader});
+      columns.push({name: `${columnPrefix}_url`,
+                    value: filterNoAnswerJSON(conditionalModelUrl),
                     header: promptHeader});
       break;
     case "multiple_choice":
@@ -181,26 +202,6 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
       columns.push({name: `${columnPrefix}_json`,
                     value: `${learnersAndAnswersTable}.kv1['${questionId}']`,
                     header: promptHeader});
-
-      const modelUrl = [`CONCAT(`,
-        `'${process.env.PORTAL_REPORT_URL}`,
-        `?auth-domain=${encodeURIComponent(authDomain)}`,
-        `&firebase-app=${process.env.FIREBASE_APP}`,
-        `&sourceKey=${sourceKey}`,
-        `&iframeQuestionId=${questionId}`,
-        `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
-        ` CAST(${learnersAndAnswersTable}.class_id AS VARCHAR), `,
-        `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
-        ` CAST(${learnersAndAnswersTable}.offering_id AS VARCHAR), `,
-        `'&studentId=',`,
-        ` CAST(${learnersAndAnswersTable}.user_id AS VARCHAR), `,
-        `'&answersSourceKey=', `,
-        ` ${learnersAndAnswersTable}.source_key['${questionId}']`,
-        `)`
-      ].join("")
-
-      const conditionalModelUrl = `CASE WHEN ${learnersAndAnswersTable}.kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
-
       columns.push({name: `${columnPrefix}_url`,
                     value: conditionalModelUrl,
                     header: promptHeader});
