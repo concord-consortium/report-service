@@ -179,7 +179,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
                     value: filterNoAnswerJSON(`${learnersAndAnswersTable}.kv1['${questionId}']`),
                     header: promptHeader});
       columns.push({name: `${columnPrefix}_url`,
-                    value: filterNoAnswerJSON(conditionalModelUrl),
+                    value: conditionalModelUrl,
                     header: promptHeader});
       break;
     case "multiple_choice":
