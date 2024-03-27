@@ -25,8 +25,12 @@ service cloud.firestore {
         && request.auth.token.platform_id == resource.data.platform_id;
     }
 
-    // Check if answer has been explicitly shared by the owner of the answer (shared_with: context) and
-    // if the user who is trying to read the answer is member of the same context as the author.
+    function researcherOfContext() {
+      return request.auth.token.user_type == 'researcher'
+        && request.auth.token.class_hash == resource.data.context_id
+        && request.auth.token.platform_id == resource.data.platform_id;
+    }
+
     function answerSharedAndMemberOfContext() {
       return request.auth.token.class_hash == resource.data.context_id
         && request.auth.token.platform_id == resource.data.platform_id
@@ -100,6 +104,7 @@ service cloud.firestore {
     function studentWorkRead() {
       return anonymousRead()
         || teacherOfContext()
+        || researcherOfContext()
         || answerSharedAndMemberOfContext()
         || learnerOwner(resource)
         || researcherOfOwner(resource);
@@ -121,6 +126,13 @@ service cloud.firestore {
       allow read: if studentWorkRead();
       allow update: if studentWorkUpdate();
     }
+
+    match /sources/{source}/ap_runs/{document=**} {
+      allow create: if studentWorkCreate();
+      allow read: if studentWorkRead();
+      allow update: if studentWorkUpdate();
+    }
+
 
     //
     //  -----------  User Settings -------------
@@ -176,11 +188,12 @@ service cloud.firestore {
     }
 
     // learners can only read feedbacks directed at them
-    // teachers can read all feedbacks in their context
+    // teachers and researchers can read all feedbacks in their context
     // users need a context and target and can only read feedback in that context for that target
     // Note: this isn't used for feedback settings
     function feedbackRead() {
       return (request.auth.token.user_type == 'teacher' && authorizedContext(resource))
+        || (request.auth.token.user_type == 'researcher' && authorizedContext(resource))
         || (request.auth.token.user_type == 'learner' && authorizedStudent())
         || (request.auth.token.user_type == 'user' && authorizedTarget() && authorizedContext(resource)) ;
     }
