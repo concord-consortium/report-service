@@ -164,16 +164,16 @@ describe('Query creation', function () {
 
         grouped_answers_1 AS (
               SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
-              FROM "report-service"."partitioned_answers" a
-              INNER JOIN "report-service"."learners" l
+              FROM "report-service"."learners" l
+              LEFT JOIN "report-service"."partitioned_answers" a
               ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
               WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
               GROUP BY l.run_remote_endpoint),
 
         grouped_answers_2 AS (
               SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
-              FROM "report-service"."partitioned_answers" a
-              INNER JOIN "report-service"."learners" l
+              FROM "report-service"."learners" l
+              LEFT JOIN "report-service"."partitioned_answers" a
               ON (l.query_id = 'ABCDEFGHI' AND l.run_remote_endpoint = a.remote_endpoint)
               WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000001'
               GROUP BY l.run_remote_endpoint),
@@ -393,9 +393,9 @@ describe('Query creation', function () {
         array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['multiple_choice_03000'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['multiple_choice_03000'][x].content, IF(activities_1.choices['multiple_choice_03000'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_multiple_choice_03000_choice,
         COALESCE(learners_and_answers_1.submitted['multiple_choice_03000'], false) AS res_1_multiple_choice_03000_submitted,
         CASE WHEN starts_with(learners_and_answers_1.kv1['open_response_11111'], '"{\\"mode\\":\\"report\\"') THEN '' ELSE (learners_and_answers_1.kv1['open_response_11111']) END AS res_1_open_response_11111_text,
-        CASE WHEN learners_and_answers_1.kv1['open_response_11111'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=open_response_11111&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_1.source_key['open_response_11111']) END AS res_1_open_response_11111_url,
+        CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=open_response_11111&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',COALESCE(learners_and_answers_1.source_key['open_response_11111'],IF(COALESCE(url_extract_parameter(learners_and_answers_1.resource_url, 'answersSourceKey'), url_extract_host(learners_and_answers_1.resource_url)) = 'activity-player-offline.concord.org','activity-player.concord.org',COALESCE(url_extract_parameter(learners_and_answers_1.resource_url, 'answersSourceKey'), url_extract_host(learners_and_answers_1.resource_url))))) AS res_1_open_response_11111_url,
         CASE WHEN starts_with(learners_and_answers_1.kv1['open_response_22222'], '"{\\"mode\\":\\"report\\"') THEN '' ELSE (learners_and_answers_1.kv1['open_response_22222']) END AS res_1_open_response_22222_text,
-        CASE WHEN learners_and_answers_1.kv1['open_response_22222'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=open_response_22222&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_1.source_key['open_response_22222']) END AS res_1_open_response_22222_url,
+        CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=open_response_22222&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',COALESCE(learners_and_answers_1.source_key['open_response_22222'],IF(COALESCE(url_extract_parameter(learners_and_answers_1.resource_url, 'answersSourceKey'), url_extract_host(learners_and_answers_1.resource_url)) = 'activity-player-offline.concord.org','activity-player.concord.org',COALESCE(url_extract_parameter(learners_and_answers_1.resource_url, 'answersSourceKey'), url_extract_host(learners_and_answers_1.resource_url))))) AS res_1_open_response_22222_url,
         COALESCE(learners_and_answers_1.submitted['open_response_22222'], false) AS res_1_open_response_22222_submitted,
         json_extract_scalar(learners_and_answers_1.kv1['image_question_33333'], '$.image_url') AS res_1_image_question_33333_image_url,
         json_extract_scalar(learners_and_answers_1.kv1['image_question_33333'], '$.text') AS res_1_image_question_33333_text,
@@ -405,16 +405,16 @@ describe('Query creation', function () {
         learners_and_answers_1.kv1['image_question_44444'] AS res_1_image_question_44444_answer,
         COALESCE(learners_and_answers_1.submitted['image_question_44444'], false) AS res_1_image_question_44444_submitted,
         CASE WHEN starts_with(learners_and_answers_1.kv1['managed_interactive_55555'], '"{\\"mode\\":\\"report\\"') THEN '' ELSE (learners_and_answers_1.kv1['managed_interactive_55555']) END AS res_1_managed_interactive_55555_text,
-        CASE WHEN learners_and_answers_1.kv1['managed_interactive_55555'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_55555&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_1.source_key['managed_interactive_55555']) END AS res_1_managed_interactive_55555_url,
+        CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_55555&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',COALESCE(learners_and_answers_1.source_key['managed_interactive_55555'],IF(COALESCE(url_extract_parameter(learners_and_answers_1.resource_url, 'answersSourceKey'), url_extract_host(learners_and_answers_1.resource_url)) = 'activity-player-offline.concord.org','activity-player.concord.org',COALESCE(url_extract_parameter(learners_and_answers_1.resource_url, 'answersSourceKey'), url_extract_host(learners_and_answers_1.resource_url))))) AS res_1_managed_interactive_55555_url,
         array_join(transform(CAST(json_extract(learners_and_answers_1.kv1['managed_interactive_66666'],'$.choice_ids') AS ARRAY(VARCHAR)), x -> CONCAT(activities_1.choices['managed_interactive_66666'][x].content, IF(activities_1.choices['managed_interactive_66666'][x].correct,' (correct)',' (wrong)'))),', ') AS res_1_managed_interactive_66666_choice,
         json_extract_scalar(learners_and_answers_1.kv1['managed_interactive_77777'], '$.image_url') AS res_1_managed_interactive_77777_image_url,
         json_extract_scalar(learners_and_answers_1.kv1['managed_interactive_77777'], '$.text') AS res_1_managed_interactive_77777_text,
         learners_and_answers_1.kv1['managed_interactive_77777'] AS res_1_managed_interactive_77777_answer,
         learners_and_answers_1.kv1['managed_interactive_88888'] AS res_1_managed_interactive_88888_json,
-        CASE WHEN learners_and_answers_1.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_1.source_key['managed_interactive_88888']) END AS res_1_managed_interactive_88888_url,
-        learners_and_answers_1.['managed_interactive_99999'] AS res_1_managed_interactive_99999_json,
+        CASE WHEN learners_and_answers_1.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_1.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_1.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_1.user_id AS VARCHAR), '&answersSourceKey=',learners_and_answers_1.source_key['managed_interactive_88888']) END AS res_1_managed_interactive_88888_url,
+        learners_and_answers_1.kv1['managed_interactive_99999'] AS res_1_managed_interactive_99999_json,
         learners_and_answers_2.kv1['managed_interactive_88888'] AS res_2_managed_interactive_88888_json,
-        CASE WHEN learners_and_answers_2.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_2.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_2.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_2.user_id AS VARCHAR), '&answersSourceKey=',  learners_and_answers_2.source_key['managed_interactive_88888']) END AS res_2_managed_interactive_88888_url
+        CASE WHEN learners_and_answers_2.kv1['managed_interactive_88888'] IS NULL THEN '' ELSE CONCAT('https://portal-report.test?auth-domain=fake-auth-domain&firebase-app=report-service-test&sourceKey=fake-source-key&iframeQuestionId=managed_interactive_88888&class=fake-auth-domain%2Fapi%2Fv1%2Fclasses%2F', CAST(learners_and_answers_2.class_id AS VARCHAR), '&offering=fake-auth-domain%2Fapi%2Fv1%2Fofferings%2F', CAST(learners_and_answers_2.offering_id AS VARCHAR), '&studentId=', CAST(learners_and_answers_2.user_id AS VARCHAR), '&answersSourceKey=',learners_and_answers_2.source_key['managed_interactive_88888']) END AS res_2_managed_interactive_88888_url
             FROM unique_user_class
             LEFT JOIN activities_1 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
         LEFT JOIN activities_2 ON 1=1 -- activities may be empty so we can't fully join them and they don't have any common columns with unique_user_class thus the 1=1
@@ -455,16 +455,16 @@ describe('Query creation usage report', function () {
 
       grouped_answers_1 AS (
         SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
-        FROM "report-service"."partitioned_answers" a
-        INNER JOIN "report-service"."learners" l
+        FROM "report-service"."learners" l
+        LEFT JOIN "report-service"."partitioned_answers" a
         ON (l.query_id = '123456789' AND l.run_remote_endpoint = a.remote_endpoint)
         WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000000'
         GROUP BY l.run_remote_endpoint),
 
       grouped_answers_2 AS (
         SELECT l.run_remote_endpoint remote_endpoint, map_agg(a.question_id, a.answer) kv1, map_agg(a.question_id, a.submitted) submitted, map_agg(a.question_id, a.source_key) source_key
-        FROM "report-service"."partitioned_answers" a
-        INNER JOIN "report-service"."learners" l
+        FROM "report-service"."learners" l
+        LEFT JOIN "report-service"."partitioned_answers" a
         ON (l.query_id = 'ABCDEFGHI' AND l.run_remote_endpoint = a.remote_endpoint)
         WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000001'
         GROUP BY l.run_remote_endpoint),

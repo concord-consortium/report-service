@@ -140,46 +140,74 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
 
   const columnPrefix = `res_${activityIndex}_${questionId}`;
 
-  const modelUrl = [`CONCAT(`,
-    `'${process.env.PORTAL_REPORT_URL}`,
-    `?auth-domain=${encodeURIComponent(authDomain)}`,
-    `&firebase-app=${process.env.FIREBASE_APP}`,
-    `&sourceKey=${sourceKey}`,
-    `&iframeQuestionId=${questionId}`,
-    `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
-    ` CAST(${learnersAndAnswersTable}.class_id AS VARCHAR), `,
-    `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
-    ` CAST(${learnersAndAnswersTable}.offering_id AS VARCHAR), `,
-    `'&studentId=',`,
-    ` CAST(${learnersAndAnswersTable}.user_id AS VARCHAR), `,
-    `'&answersSourceKey=', `,
-    ` ${learnersAndAnswersTable}.source_key['${questionId}']`,
+  // returns url to the single question view for the student answer in the portal dashboard
+  const modelUrl = (answersSourceKey) => {
+    return [`CONCAT(`,
+      `'${process.env.PORTAL_REPORT_URL}`,
+      `?auth-domain=${encodeURIComponent(authDomain)}`,
+      `&firebase-app=${process.env.FIREBASE_APP}`,
+      `&sourceKey=${sourceKey}`,
+      `&iframeQuestionId=${questionId}`,
+      `&class=${encodeURIComponent(`${authDomain}/api/v1/classes/`)}',`,
+      ` CAST(${learnersAndAnswersTable}.class_id AS VARCHAR), `,
+      `'&offering=${encodeURIComponent(`${authDomain}/api/v1/offerings/`)}',`,
+      ` CAST(${learnersAndAnswersTable}.offering_id AS VARCHAR), `,
+      `'&studentId=',`,
+      ` CAST(${learnersAndAnswersTable}.user_id AS VARCHAR), `,
+      `'&answersSourceKey=',`,
+      `${answersSourceKey}`,
+      `)`
+    ].join("");
+  };
+
+  // returns url when there is an answer present
+  const conditionalModelUrl = (answer, answersSourceKey) => `CASE WHEN ${answer} IS NULL THEN '' ELSE ${modelUrl(answersSourceKey)} END`;
+
+  // source key from answer, only exists if there is an answer
+  const answersSourceKey = `${learnersAndAnswersTable}.source_key['${questionId}']`;
+
+  // source key from extracted from the runnable url (selected as resource_url in query), either as answersSourceKey parameter or the host (normally activity-player.concord.org)
+  const runnableUrl = `${learnersAndAnswersTable}.resource_url`
+  const sourceKeyFromRunnableUrl = `COALESCE(url_extract_parameter(${runnableUrl}, 'answersSourceKey'), url_extract_host(${runnableUrl}))`;
+
+  // source key from answer OR extracted from the runnable url with a special case for the offline AP
+  const answersSourceKeyWithNoAnswerFallback = [
+    `COALESCE(`,
+      `${answersSourceKey},`,
+      // swap offline source to AP to mirror what we do in AP#getCanonicalHostname
+      `IF(${sourceKeyFromRunnableUrl} = 'activity-player-offline.concord.org',`,
+        `'activity-player.concord.org',`,
+        sourceKeyFromRunnableUrl,
+      `)`,
     `)`
-  ].join("")
-  const conditionalModelUrl = `CASE WHEN ${learnersAndAnswersTable}.kv1['${questionId}'] IS NULL THEN '' ELSE ${modelUrl} END`;
+  ].join("");
+
+  const answer = `${learnersAndAnswersTable}.kv1['${questionId}']`;
 
   switch (type) {
     case "image_question":
       columns.push({name: `${columnPrefix}_image_url`,
-                    value: `json_extract_scalar(${learnersAndAnswersTable}.kv1['${questionId}'], '$.image_url')`,
+                    value: `json_extract_scalar(${answer}, '$.image_url')`,
                     header: promptHeader});
       columns.push({name: `${columnPrefix}_text`,
-                    value: `json_extract_scalar(${learnersAndAnswersTable}.kv1['${questionId}'], '$.text')`,
+                    value: `json_extract_scalar(${answer}, '$.text')`,
                     header: promptHeader});
       columns.push({name: `${columnPrefix}_answer`,
-                    value: `${learnersAndAnswersTable}.kv1['${questionId}']`,
+                    value: answer,
                     header: promptHeader});
       break;
     case "open_response":
-      // When there is no answer to an open_response question the report state JSON is saved as the answer in Firebase.
-      // This detects if the answer looks like the report state JSON and if so returns an empty string to show there was no answer to the question.
-      const filterNoAnswerJSON = (value) => `CASE WHEN starts_with(${learnersAndAnswersTable}.kv1['${questionId}'], '"{\\"mode\\":\\"report\\"') THEN '' ELSE (${value}) END`;
-
       columns.push({name: `${columnPrefix}_text`,
-                    value: filterNoAnswerJSON(`${learnersAndAnswersTable}.kv1['${questionId}']`),
+                    // When there is no answer to an open_response question the report state JSON is saved as the answer in Firebase.
+                    // This detects if the answer looks like the report state JSON and if so returns an empty string to show there was
+                    // no answer to the question.
+                    value: `CASE WHEN starts_with(${answer}, '"{\\"mode\\":\\"report\\"') THEN '' ELSE (${answer}) END`,
                     header: promptHeader});
       columns.push({name: `${columnPrefix}_url`,
-                    value: conditionalModelUrl,
+                    // note: conditionalModelUrl() is not used here as students can answer with only audio responses and in that
+                    // case the answer does not exist as open response answers are only the text of the answer due to the
+                    // question type being ported from the legacy LARA built in open response questions which only saved the text
+                    value: modelUrl(answersSourceKeyWithNoAnswerFallback),
                     header: promptHeader});
       break;
     case "multiple_choice":
@@ -191,7 +219,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
       }
 
       const answerScore = questionHasCorrectAnswer ? `IF(${activitiesTable}.choices['${questionId}'][x].correct,' (correct)',' (wrong)')` : `''`;
-      const choiceIdsAsArray = `CAST(json_extract(${learnersAndAnswersTable}.kv1['${questionId}'],'$.choice_ids') AS ARRAY(VARCHAR))`;
+      const choiceIdsAsArray = `CAST(json_extract(${answer},'$.choice_ids') AS ARRAY(VARCHAR))`;
 
       columns.push({name: `${columnPrefix}_choice`,
                     value: `array_join(transform(${choiceIdsAsArray}, x -> CONCAT(${activitiesTable}.choices['${questionId}'][x].content, ${answerScore})),', ')`,
@@ -200,17 +228,17 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
       break;
     case "iframe_interactive":
       columns.push({name: `${columnPrefix}_json`,
-                    value: `${learnersAndAnswersTable}.kv1['${questionId}']`,
+                    value: answer,
                     header: promptHeader});
       columns.push({name: `${columnPrefix}_url`,
-                    value: conditionalModelUrl,
+                    value: conditionalModelUrl(answer, answersSourceKey),
                     header: promptHeader});
       break;
     case "managed_interactive":
     case "mw_interactive":
     default:
       columns.push({name: `${columnPrefix}_json`,
-                    value: `${learnersAndAnswersTable}.['${questionId}']`,
+                    value: answer,
                     header: promptHeader});
       console.info(`Unknown question type: ${type}`);
       break;
@@ -335,8 +363,8 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
 
     groupedAnswerQueries.push(`grouped_answers_${resIndex} AS (
       SELECT l.run_remote_endpoint remote_endpoint, ${answerMaps}
-      FROM "report-service"."partitioned_answers" a
-      INNER JOIN "report-service"."learners" l
+      FROM "report-service"."learners" l
+      LEFT JOIN "report-service"."partitioned_answers" a
       ON (l.query_id = '${escapeSingleQuote(queryId)}' AND l.run_remote_endpoint = a.remote_endpoint)
       WHERE a.escaped_url = '${escapeSingleQuote(escapedUrl)}'
       GROUP BY l.run_remote_endpoint)`)
