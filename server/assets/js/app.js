@@ -22,10 +22,23 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
+let Hooks = {}
+Hooks.AuthCallback = {
+  mounted() {
+    // this sends the auth params in the url hash to the callback liveview on mount
+    // this is required since the hash parameters are not seen by the server
+    const params = new URLSearchParams(window.location.hash.substring(1))
+    if (params.get("access_token")) {
+      this.pushEvent("save_token", Object.fromEntries(params))
+    }
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: {_csrf_token: csrfToken}
+  params: {_csrf_token: csrfToken},
+  hooks: Hooks
 })
 
 // Show progress bar on live navigation and form submits

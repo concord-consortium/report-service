@@ -8,6 +8,7 @@ defmodule ReportServerWeb.Router do
     plug :put_root_layout, html: {ReportServerWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug ReportServerWeb.Auth.Plug
   end
 
   pipeline :api do
@@ -18,12 +19,18 @@ defmodule ReportServerWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    get "/auth/login", AuthController, :login
+    get "/auth/logout", AuthController, :logout
+    live "/auth/callback", AuthLive.Callback, :callback
+    get "/auth/save_token", AuthController, :save_token
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", ReportServerWeb do
-  #   pipe_through :api
-  # end
+  scope "/reports", ReportServerWeb do
+    pipe_through :browser
+
+    live "/", ReportLive.Index, :index
+  end
 
   # Enable LiveDashboard in development
   if Application.compile_env(:report_server, :dev_routes) do
