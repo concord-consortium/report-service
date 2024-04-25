@@ -55,7 +55,8 @@ defmodule ReportServer.MixProject do
       {:bandit, "~> 1.2"},
       {:oauth2, "~> 2.0"},
       {:hackney, "~> 1.18"},
-      {:req, "~> 0.4.0"}
+      {:req, "~> 0.4.0"},
+      {:aws, "~> 1.0.0"}
     ]
   end
 

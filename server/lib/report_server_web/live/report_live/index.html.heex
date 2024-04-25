@@ -5,7 +5,7 @@
 <.async_result :let={aws_data} assign={@aws_data}>
   <:loading>Loading your reports...</:loading>
   <:failed :let={{:error, reason}}>There was an error loading your reports: <%= reason %></:failed>
-  Workgroup: <%= aws_data.workgroup["workgroupName"] %>
+  Workgroup: <%= aws_data.workgroup["workgroupName"] %> / Queries: <%= Jason.encode!(aws_data.queries) %>
 </.async_result>
 
 
