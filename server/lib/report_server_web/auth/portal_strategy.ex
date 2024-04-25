@@ -4,15 +4,25 @@ defmodule ReportServerWeb.Auth.PortalStrategy do
   # Public API
 
   def client(portal_url \\ nil) do
-    portal = Application.get_env(:report_server, :portal)
-
     OAuth2.Client.new([
       strategy: __MODULE__,
-      client_id: Keyword.get(portal, :client_id, "research-report-server"),
-      site: portal_url || Keyword.get(portal, :url, "https://learn.portal.staging.concord.org"),
+      client_id: get_client_id(),
+      site: portal_url || get_portal_url(),
       authorize_url: "/auth/oauth_authorize",
       redirect_uri: "#{ReportServerWeb.Endpoint.url}/auth/callback"
     ])
+  end
+
+  def get_portal_config, do: Application.get_env(:report_server, :portal)
+
+  def get_portal_url() do
+    get_portal_config()
+    |> Keyword.get(:url, "https://learn.portal.staging.concord.org")
+  end
+
+  def get_client_id() do
+    get_portal_config()
+    |> Keyword.get(:client_id, "research-report-server")
   end
 
   # normally the oauth strategy pattern is to use authorize_url!/0 for the custom callback but we need to pass the portal url

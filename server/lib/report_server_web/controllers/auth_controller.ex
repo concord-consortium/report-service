@@ -22,10 +22,11 @@ defmodule ReportServerWeb.AuthController do
     {expires_in, ""} = Integer.parse(expires_in)
     expires = System.os_time(:second) + expires_in
 
+    portal_url = Auth.get_portal_url(conn)
     return_to = get_session(conn, :return_to, "/")
 
     conn
-    |> Auth.login(access_token, expires)
+    |> Auth.login(portal_url, access_token, expires)
     |> delete_session(:return_to)
     |> redirect(to: return_to)
   end

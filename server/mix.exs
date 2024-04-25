@@ -54,7 +54,8 @@ defmodule ReportServer.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.2"},
       {:oauth2, "~> 2.0"},
-      {:hackney, "~> 1.18"}
+      {:hackney, "~> 1.18"},
+      {:req, "~> 0.4.0"}
     ]
   end
 

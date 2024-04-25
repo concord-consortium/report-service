@@ -54,6 +54,10 @@ if config_env() == :prod do
     client_id: "research-report-server",
     url: "https://learn.concord.org"
 
+  config :report_server, :token_service,
+    env: "production",
+    url: "https://token-service-62822.firebaseapp.com/api/v1/resources" # production
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

@@ -74,3 +74,10 @@ config :phoenix_live_view,
 config :report_server, :portal,
   client_id: "research-report-server",
   url: "https://learn.portal.staging.concord.org"
+
+config :report_server, :token_service,
+  # switch the env and url to localhost if using the Firebase emulator locally
+  # env: "dev",
+  # url: "http://localhost:5000/api/v1/resources"
+  env: "staging",
+  url: "https://token-service-staging.firebaseapp.com/api/v1/resources" # staging
