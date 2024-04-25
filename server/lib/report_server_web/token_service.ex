@@ -2,12 +2,14 @@ defmodule ReportServerWeb.TokenService do
   def get_aws_data(portal_credentials) do
     with {:ok, jwt} <- get_firebase_jwt(portal_credentials),
          {:ok, workgroup} <- get_athena_workgroup(jwt),
-         {:ok, credentials} <- get_workgroup_credentials(jwt, workgroup) do
+         {:ok, credentials} <- get_workgroup_credentials(jwt, workgroup),
+         {:ok, queries} <- get_workgroup_queries(credentials, workgroup) do
       {:ok, %{
         aws_data: %{
           jwt: jwt,
           workgroup: workgroup,
-          credentials: credentials
+          credentials: credentials,
+          queries: queries
         }
       }}
     else
@@ -39,6 +41,19 @@ defmodule ReportServerWeb.TokenService do
         {:ok, credentials}
     else
       error -> error
+    end
+  end
+
+  def get_workgroup_queries(workgroup_credentials, workgroup) do
+    %{"accessKeyId" => accessKeyId, "secretAccessKey" => secretAccessKey, "sessionToken" => sessionToken} = workgroup_credentials
+    %{"name" => name, "id" => id} = workgroup
+
+    client = AWS.Client.create(accessKeyId, secretAccessKey, sessionToken, "us-east-1")
+    case AWS.Athena.list_query_executions(client, %{"WorkGroup" => "#{name}-#{id}"}) do
+      {:ok, %{"QueryExecutionIds" => queries}, _resp} ->
+        {:ok, queries}
+      {:error, _} ->
+        {:error, "Something went wrong listing the queries"}
     end
   end
 
