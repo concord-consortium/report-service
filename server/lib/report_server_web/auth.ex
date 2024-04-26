@@ -1,6 +1,8 @@
 defmodule ReportServerWeb.Auth do
   import Plug.Conn
 
+  alias ReportServerWeb.Auth.PortalStrategy
+
   def logged_in?(_session = %{"access_token" => _access_token, "expires" => expires}) do
     now = System.os_time(:second)
     # give ourselves 1 hour padding
@@ -8,8 +10,9 @@ defmodule ReportServerWeb.Auth do
   end
   def logged_in?(_session), do: false
 
-  def login(conn, access_token, expires) do
+  def login(conn, portal_url, access_token, expires) do
     conn
+    |> put_session(:portal_url, portal_url)
     |> put_session(:access_token, access_token)
     |> put_session(:expires, expires)
     |> configure_session(renew: true)
@@ -35,7 +38,12 @@ defmodule ReportServerWeb.Auth do
   end
 
   def get_portal_url(conn) do
-    conn |> get_session(:portal_url)
+    conn |> get_session(:portal_url, PortalStrategy.get_portal_url())
   end
+
+  def get_portal_credentials(%{"access_token" => access_token, "portal_url" => portal_url}) do
+    %{access_token:  access_token, portal_url: portal_url}
+  end
+  def get_portal_credentials(_), do: nil
 
 end
