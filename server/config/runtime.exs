@@ -33,7 +33,7 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  host = System.get_env("PHX_HOST") || "report-server.concord.org"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :report_server, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
@@ -52,11 +52,11 @@ if config_env() == :prod do
 
   config :report_server, :portal,
     client_id: "research-report-server",
-    url: "https://learn.concord.org"
+    url: System.get_env("PORTAL_URL") || "https://learn.concord.org"
 
   config :report_server, :token_service,
-    env: "production",
-    url: "https://token-service-62822.firebaseapp.com/api/v1/resources" # production
+    env: System.get_env("TOKEN_SERVICE_ENV") || "production",
+    url: System.get_env("TOKEN_SERVICE_URL") || "https://token-service-62822.firebaseapp.com/api/v1/resources" # production
 
   # ## SSL Support
   #
