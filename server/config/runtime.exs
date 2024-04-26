@@ -50,6 +50,10 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  config :report_server, :portal,
+    client_id: "research-report-server",
+    url: "https://learn.concord.org"
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

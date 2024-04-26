@@ -70,3 +70,7 @@ config :phoenix_live_view,
   debug_heex_annotations: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+config :report_server, :portal,
+  client_id: "research-report-server",
+  url: "https://learn.portal.staging.concord.org"

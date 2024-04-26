@@ -1,0 +1,7 @@
+<div :if={@error}>
+  Oops! Got a <span class="font-bold"><%= @error %></span> error!
+</div>
+
+<div id="auth" phx-hook="AuthCallback" :if={!@error}>
+  One second, finishing the authorization...
+</div>
