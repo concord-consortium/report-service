@@ -1,0 +1,12 @@
+# this is just for testing releases locally, not for deployment of releases!
+name: report-server
+services:
+  app:
+    image: concordconsortium/report-server
+    build: .
+    ports:
+      - 4000:4000
+    environment:
+      - PORT=4000
+      - PHX_HOST=localhost
+      - SECRET_KEY_BASE="${SECRET_KEY_BASE:-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE}"
