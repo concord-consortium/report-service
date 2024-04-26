@@ -3,9 +3,19 @@
 </.header>
 
 <.async_result :let={aws_data} assign={@aws_data}>
-  <:loading>Loading your reports...</:loading>
-  <:failed :let={{:error, reason}}>There was an error loading your reports: <%= reason %></:failed>
-  Workgroup: <%= aws_data.workgroup["workgroupName"] %> / Queries: <%= Jason.encode!(aws_data.queries) %>
+  <:loading><div class="mt-2 italic">Loading your reports...</div></:loading>
+  <:failed :let={{:error, reason}}><div class="mt-2 text-red-500">There was an error loading your reports: <%= reason %></div></:failed>
+
+  <div :if={length(aws_data.query_ids) == 0}>
+    Sorry, you have no active reports.  AWS removes report queries after 45 days.
+  </div>
+
+  <.live_component
+    :for={query_id <- aws_data.query_ids}
+    module={ReportServerWeb.ReportLive.QueryComponent}
+    id={query_id}
+    workgroup_credentials={aws_data.workgroup_credentials}
+  />
 </.async_result>
 
 

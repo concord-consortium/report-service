@@ -1,23 +1,6 @@
 defmodule ReportServerWeb.TokenService do
-  def get_aws_data(portal_credentials) do
-    with {:ok, jwt} <- get_firebase_jwt(portal_credentials),
-         {:ok, workgroup} <- get_athena_workgroup(jwt),
-         {:ok, credentials} <- get_workgroup_credentials(jwt, workgroup),
-         {:ok, queries} <- get_workgroup_queries(credentials, workgroup) do
-      {:ok, %{
-        aws_data: %{
-          jwt: jwt,
-          workgroup: workgroup,
-          credentials: credentials,
-          queries: queries
-        }
-      }}
-    else
-      error -> error
-    end
-  end
 
-  defp get_firebase_jwt(portal_credentials) do
+  def get_firebase_jwt(portal_credentials) do
     with {:ok, resp} <- request_firebase_jwt(portal_credentials),
          {:ok, token} <- get_token_from_response(resp.body) do
         {:ok, token}
@@ -26,7 +9,7 @@ defmodule ReportServerWeb.TokenService do
     end
   end
 
-  defp get_athena_workgroup(jwt) do
+  def get_athena_workgroup(jwt) do
     with {:ok, resp} <- request_list_workgroup_resources(jwt),
          {:ok, workgroup} <- get_first_resource_from_response(resp.body) do
         {:ok, workgroup}
@@ -35,25 +18,12 @@ defmodule ReportServerWeb.TokenService do
     end
   end
 
-  defp get_workgroup_credentials(jwt, workgroup) do
+  def get_workgroup_credentials(jwt, workgroup) do
     with {:ok, resp} <- request_create_workgroup_credentials(jwt, workgroup),
-         {:ok, credentials} <- get_credentials_from_response(resp.body) do
-        {:ok, credentials}
+         {:ok, workgroup_credentials} <- get_workgroup_credentials_from_response(resp.body) do
+        {:ok, workgroup_credentials}
     else
       error -> error
-    end
-  end
-
-  def get_workgroup_queries(workgroup_credentials, workgroup) do
-    %{"accessKeyId" => accessKeyId, "secretAccessKey" => secretAccessKey, "sessionToken" => sessionToken} = workgroup_credentials
-    %{"name" => name, "id" => id} = workgroup
-
-    client = AWS.Client.create(accessKeyId, secretAccessKey, sessionToken, "us-east-1")
-    case AWS.Athena.list_query_executions(client, %{"WorkGroup" => "#{name}-#{id}"}) do
-      {:ok, %{"QueryExecutionIds" => queries}, _resp} ->
-        {:ok, queries}
-      {:error, _} ->
-        {:error, "Something went wrong listing the queries"}
     end
   end
 
@@ -101,9 +71,12 @@ defmodule ReportServerWeb.TokenService do
     )
   end
 
-  def get_credentials_from_response(%{"error" => error}), do: {:error, error}
-  def get_credentials_from_response(%{"result" => credentials}), do: {:ok, credentials}
-  def get_credentials_from_response(_), do: {:error, "Something went wrong getting the AWS credentials"}
+  def get_workgroup_credentials_from_response(%{"error" => error}), do: {:error, error}
+  def get_workgroup_credentials_from_response(%{"result" => raw_credentials}) do
+    %{"accessKeyId" => access_key_id, "secretAccessKey" => secret_access_key, "sessionToken" => session_token} = raw_credentials
+    {:ok, %{access_key_id: access_key_id, secret_access_key: secret_access_key, session_token: session_token}}
+  end
+  def get_workgroup_credentials_from_response(_), do: {:error, "Something went wrong getting the AWS credentials"}
 
   defp get_token_service_url(path \\ "") do
     token_service = Application.get_env(:report_server, :token_service)

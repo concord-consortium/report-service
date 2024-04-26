@@ -15,7 +15,9 @@ module.exports = {
     extend: {
       colors: {
         teal: "#0592af",
-        "light-teal": "#b7e2ec"
+        orange: "#ea6d2f",
+        "light-teal": "#b7e2ec",
+        "light-orange": "#ffe6d0"
       }
     },
   },

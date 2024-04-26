@@ -33,6 +33,33 @@ Hooks.AuthCallback = {
     }
   }
 }
+Hooks.QueryDate = {
+  mounted() {
+    this._update_date();
+  },
+  updated() {
+    this._update_date();
+  },
+  _update_date() {
+    // show the query date in local time
+    const date = new Date(Math.floor(this.el.dataset.date * 1000));
+    this.el.innerHTML = date.toLocaleString()
+  }
+}
+Hooks.DownloadButton = {
+  mounted() {
+    this.el.addEventListener("click", () => {
+      this.pushEventTo(this.el.dataset.id, "download", {type: this.el.dataset.type}, (reply) => {
+        if (reply?.url) {
+          // the url has a content-disposition attachment so it will just download and not replace the page
+          window.location.replace(reply.url)
+        } else {
+          alert("Unable to download CSV!")
+        }
+      })
+    })
+  }
+}
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {

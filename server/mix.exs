@@ -56,7 +56,9 @@ defmodule ReportServer.MixProject do
       {:oauth2, "~> 2.0"},
       {:hackney, "~> 1.18"},
       {:req, "~> 0.4.0"},
-      {:aws, "~> 1.0.0"}
+      {:aws, "~> 1.0.0"},
+      {:ex_aws, "~> 2.1"},
+      {:ex_aws_s3, "~> 2.0"} # for url signing
     ]
   end
 
