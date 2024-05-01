@@ -40,9 +40,10 @@ defmodule ReportServerWeb.ReportLive.Index do
   end
 
   defp async_get_aws_data(portal_credentials) do
-    with {:ok, jwt} <- TokenService.get_firebase_jwt(portal_credentials),
-         {:ok, workgroup} <- TokenService.get_athena_workgroup(jwt),
-         {:ok, workgroup_credentials} <- TokenService.get_workgroup_credentials(jwt, workgroup),
+    with {:ok, env} <- TokenService.get_env(portal_credentials),
+         {:ok, jwt} <- TokenService.get_firebase_jwt(portal_credentials),
+         {:ok, workgroup} <- TokenService.get_athena_workgroup(env, jwt),
+         {:ok, workgroup_credentials} <- TokenService.get_workgroup_credentials(env, jwt, workgroup),
          {:ok, query_ids} <- Aws.get_workgroup_query_ids(workgroup_credentials, workgroup) do
       {:ok, %{
         aws_data: %{

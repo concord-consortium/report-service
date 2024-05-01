@@ -76,8 +76,6 @@ config :report_server, :portal,
   url: "https://learn.portal.staging.concord.org"
 
 config :report_server, :token_service,
-  # switch the env and url to localhost if using the Firebase emulator locally
-  # env: "dev",
+  # switch the url to localhost if using the Firebase emulator locally
   # url: "http://localhost:5000/api/v1/resources"
-  env: "staging",
   url: "https://token-service-staging.firebaseapp.com/api/v1/resources" # staging

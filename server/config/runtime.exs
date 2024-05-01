@@ -55,7 +55,6 @@ if config_env() == :prod do
     url: System.get_env("PORTAL_URL") || "https://learn.concord.org"
 
   config :report_server, :token_service,
-    env: System.get_env("TOKEN_SERVICE_ENV") || "production",
     url: System.get_env("TOKEN_SERVICE_URL") || "https://token-service-62822.firebaseapp.com/api/v1/resources" # production
 
   # ## SSL Support
