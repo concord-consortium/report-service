@@ -9,8 +9,19 @@ defmodule ReportServerWeb.TokenService do
     end
   end
 
-  def get_athena_workgroup(jwt) do
-    with {:ok, resp} <- request_list_workgroup_resources(jwt),
+  def get_env(%{portal_url: portal_url} = _portal_credentials) do
+    uri = URI.parse(portal_url)
+    # use "production" token service env only if we're on the production url
+    # this is the same code ported from the report-service app with the domain updated
+    if uri.host == "report-server.concord.org" && !String.contains?(uri.path, "branch") do
+      {:ok, "production"}
+    else
+      {:ok, "staging"}
+    end
+  end
+
+  def get_athena_workgroup(env, jwt) do
+    with {:ok, resp} <- request_list_workgroup_resources(env, jwt),
          {:ok, workgroup} <- get_first_resource_from_response(resp.body) do
         {:ok, workgroup}
     else
@@ -18,8 +29,8 @@ defmodule ReportServerWeb.TokenService do
     end
   end
 
-  def get_workgroup_credentials(jwt, workgroup) do
-    with {:ok, resp} <- request_create_workgroup_credentials(jwt, workgroup),
+  def get_workgroup_credentials(env, jwt, workgroup) do
+    with {:ok, resp} <- request_create_workgroup_credentials(env, jwt, workgroup),
          {:ok, workgroup_credentials} <- get_workgroup_credentials_from_response(resp.body) do
         {:ok, workgroup_credentials}
     else
@@ -40,8 +51,8 @@ defmodule ReportServerWeb.TokenService do
   defp get_token_from_response(%{"token" => token}), do: {:ok, token}
   defp get_token_from_response(_), do: {:error, "Token not found in Firebase JWT response"}
 
-  defp request_list_workgroup_resources(jwt) do
-    url = get_token_service_url()
+  defp request_list_workgroup_resources(env, jwt) do
+    url = get_token_service_url(env)
     params = [
       type: "athenaWorkgroup",
       tool: "researcher-report",
@@ -60,8 +71,8 @@ defmodule ReportServerWeb.TokenService do
   def get_first_resource_from_response(%{"result" => [first|_]}), do: {:ok, first}
   def get_first_resource_from_response(_), do: {:error, "Something went wrong getting the Athena Workgroup"}
 
-  defp request_create_workgroup_credentials(jwt, workgroup) do
-    url = get_token_service_url("/#{workgroup["id"]}/credentials")
+  defp request_create_workgroup_credentials(env, jwt, workgroup) do
+    url = get_token_service_url(env, "/#{workgroup["id"]}/credentials")
 
     get_request()
     |> Req.post(url: url,
@@ -78,11 +89,9 @@ defmodule ReportServerWeb.TokenService do
   end
   def get_workgroup_credentials_from_response(_), do: {:error, "Something went wrong getting the AWS credentials"}
 
-  defp get_token_service_url(path \\ "") do
-    token_service = Application.get_env(:report_server, :token_service)
-
-    url = token_service |> Keyword.get(:url, "https://token-service-staging.firebaseapp.com/api/v1/resources")
-    env = token_service |> Keyword.get(:env, "staging")
+  defp get_token_service_url(env, path \\ "") do
+    url = Application.get_env(:report_server, :token_service)
+      |> Keyword.get(:url, "https://token-service-staging.firebaseapp.com/api/v1/resources")
 
     "#{url}#{path}?env=#{env}"
   end
