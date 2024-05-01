@@ -51,8 +51,12 @@ Hooks.DownloadButton = {
     this.el.addEventListener("click", () => {
       this.pushEventTo(this.el.dataset.id, "download", {type: this.el.dataset.type}, (reply) => {
         if (reply?.url) {
-          // the url has a content-disposition attachment so it will just download and not replace the page
-          window.location.replace(reply.url)
+          if (reply.url === "fake-demo-url") {
+            alert("Sorry, downloads are disabled in demo mode.")
+          } else {
+            // the url has a content-disposition attachment so it will just download and not replace the page
+            window.location.replace(reply.url)
+          }
         } else {
           alert("Unable to download CSV!")
         }

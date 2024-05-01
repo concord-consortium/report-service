@@ -1,6 +1,10 @@
 defmodule ReportServerWeb.TokenService do
 
-  def get_firebase_jwt(portal_credentials) do
+  def get_firebase_jwt("demo", _portal_credentials) do
+    {:ok, "demo-jwt"}
+  end
+
+  def get_firebase_jwt(_mode, portal_credentials) do
     with {:ok, resp} <- request_firebase_jwt(portal_credentials),
          {:ok, token} <- get_token_from_response(resp.body) do
         {:ok, token}
@@ -9,7 +13,11 @@ defmodule ReportServerWeb.TokenService do
     end
   end
 
-  def get_env(%{portal_url: portal_url} = _portal_credentials) do
+  def get_env("demo", _portal_credentials) do
+    {:ok, "demo-env"}
+  end
+
+  def get_env(_mode, %{portal_url: portal_url} = _portal_credentials) do
     uri = URI.parse(portal_url)
     # use "production" token service env only if we're on the production url
     # this is the same code ported from the report-service app with the domain updated
@@ -20,7 +28,11 @@ defmodule ReportServerWeb.TokenService do
     end
   end
 
-  def get_athena_workgroup(env, jwt) do
+  def get_athena_workgroup("demo", _env, _jwt) do
+    {:ok, "demo-workgroup"}
+  end
+
+  def get_athena_workgroup(_mode, env, jwt) do
     with {:ok, resp} <- request_list_workgroup_resources(env, jwt),
          {:ok, workgroup} <- get_first_resource_from_response(resp.body) do
         {:ok, workgroup}
@@ -29,7 +41,11 @@ defmodule ReportServerWeb.TokenService do
     end
   end
 
-  def get_workgroup_credentials(env, jwt, workgroup) do
+  def get_workgroup_credentials("demo", _env, _jwt, _workgroup) do
+    {:ok, %{access_key_id: "demo_access_key_id", secret_access_key: "demo_secret_access_key", session_token: "demo_session_token"}}
+  end
+
+  def get_workgroup_credentials(_mode, env, jwt, workgroup) do
     with {:ok, resp} <- request_create_workgroup_credentials(env, jwt, workgroup),
          {:ok, workgroup_credentials} <- get_workgroup_credentials_from_response(resp.body) do
         {:ok, workgroup_credentials}

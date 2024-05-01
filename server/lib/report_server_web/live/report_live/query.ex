@@ -10,7 +10,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   # initial load
   @impl true
-  def update(%{id: _, workgroup_credentials: _} = assigns, socket) do
+  def update(%{id: _, workgroup_credentials: _, mode: _} = assigns, socket) do
     # save the initial assigns
     socket = socket |> assign(assigns)
 
@@ -68,9 +68,10 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
     workgroup_credentials = socket.assigns.workgroup_credentials
     presigned_url = if download && workgroup_credentials do
+      mode = socket.assigns.mode
       {s3_url, basename, extension} = download
       basename = basename |> String.downcase() |> String.replace(~r/\W/, "-")
-      case Aws.get_presigned_url(workgroup_credentials, s3_url, "#{basename}.#{extension}") do
+      case Aws.get_presigned_url(mode, workgroup_credentials, s3_url, "#{basename}.#{extension}") do
         {:ok, url} -> url
         _ -> nil
       end
@@ -81,14 +82,14 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
     {:reply, %{url: presigned_url}, socket}
   end
 
-  defp get_query_info(%{id: query_id, workgroup_credentials: workgroup_credentials}, socket) do
+  defp get_query_info(%{id: query_id, workgroup_credentials: workgroup_credentials, mode: mode}, socket) do
     # the assign_async callback runs in a task so get the current pid to pass to it to use to start the poller
     self = self()
-    socket |> assign_async(:query, fn -> async_get_query_info(workgroup_credentials, query_id, self) end)
+    socket |> assign_async(:query, fn -> async_get_query_info(mode, workgroup_credentials, query_id, self) end)
   end
 
-  defp async_get_query_info(workgroup_credentials, query_id, self) do
-    case Aws.get_query_execution(workgroup_credentials, query_id) do
+  defp async_get_query_info(mode, workgroup_credentials, query_id, self) do
+    case Aws.get_query_execution(mode, workgroup_credentials, query_id) do
       {:ok, raw_query} ->
         query = parse_query(query_id, raw_query)
         if trigger_poll?(query.state) do

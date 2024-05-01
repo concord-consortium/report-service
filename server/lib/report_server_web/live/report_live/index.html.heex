@@ -1,5 +1,5 @@
 <.header>
-  Your Reports
+  Your Reports <span :if={@mode == "demo"} class="text-red-500 ml-3">DEMO MODE</span>
 </.header>
 
 <.async_result :let={aws_data} assign={@aws_data}>
@@ -15,6 +15,7 @@
     module={ReportServerWeb.ReportLive.QueryComponent}
     id={query_id}
     workgroup_credentials={aws_data.workgroup_credentials}
+    mode={aws_data.mode}
   />
 </.async_result>
 
