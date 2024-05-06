@@ -8,11 +8,28 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   @poll_interval 5_000 # 5 seconds
 
+  @steps %{
+    "step1" => %{label: "TDB: Step 1"},
+    "step2" => %{label: "TDB: Step 2"},
+    "step3" => %{label: "TDB: Step 3"},
+  }
+  @form_params @steps |> Enum.map(fn {k, _v} -> {k, false} end) |> Enum.into(%{})
+
   # initial load
   @impl true
   def update(%{id: _, workgroup_credentials: _, mode: _} = assigns, socket) do
+
     # save the initial assigns
-    socket = socket |> assign(assigns)
+    socket = socket
+      |> assign(assigns)
+      |> assign(%{
+        :button_class => "rounded px-3 py-2 bg-orange border border-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange disabled:bg-slate-500 disabled:border-slate-500 disabled:text-white disabled:opacity-35",
+        :show_form => false,
+        :steps => @steps,
+        :form => to_form(@form_params),
+        :form_disabled => true,
+        :form_version => 1  # hacky way to reset form after a submit
+      })
 
     {:ok, get_query_info(assigns, socket)}
   end
@@ -40,17 +57,70 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
             <div class="text-sm">Completion status: <span class={"capitalize #{state_class(query.state)}"}><%= query.state %></span></div>
           </div>
           <div :if={query.state == "succeeded" && query.output_location}>
-            <button
-              id={"download_original_#{query.id}"}
-              phx-hook="DownloadButton"
-              data-id={@myself}
-              data-type="original"
-              class="rounded px-3 py-2 bg-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange">Download CSV</button>
+            <div class="flex flex-col gap-2">
+              <button
+                id={"download_original_#{query.id}"}
+                phx-hook="DownloadButton"
+                data-id={@myself}
+                data-type="original"
+                class={@button_class}>
+                Download CSV
+              </button>
+              <button
+                class={@button_class}
+                phx-click="show_form"
+                phx-target={@myself}>
+                Toggle Post Processing
+              </button>
+            </div>
+          </div>
+        </div>
+        <div :if={query.state == "succeeded" && @show_form} class="flex gap-2 w-full">
+          <div class="grow my-2">
+            <div class="fnt-bold">Select Post Processing Steps:</div>
+            <.form id={"form_#{@form_version}"} for={@form} phx-change="validate_form" phx-submit="submit_form" phx-target={@myself} class="mt-2">
+              <div class="space-y-1">
+                <.input :for={{step_id, step} <- @steps} type="checkbox" field={@form[step_id]} label={step[:label]} />
+              </div>
+              <div class="mt-3">
+                <button class={@button_class} disabled={@form_disabled}>Create New Post Processing Job</button>
+              </div>
+            </.form>
+          </div>
+          <div class="grow my-2">
+            TBD: List of post processing jobs...
           </div>
         </div>
       </.async_result>
     </div>
     """
+  end
+
+  @impl true
+  def handle_event("show_form", _params, socket) do
+    {:noreply, socket |> assign(:show_form, !socket.assigns.show_form)}
+  end
+
+  @impl true
+  def handle_event("validate_form", params, socket) do
+    # form is disabled if all the step checkboxes are false
+    form_disabled = Enum.reduce(params, true, fn {k, v}, acc ->
+      acc && (@steps[k] == nil || v == "false")
+    end)
+    {:noreply, socket
+      |> assign(:form_disabled, form_disabled)
+      |> assign(:form, to_form(params))
+    }
+  end
+
+  @impl true
+  def handle_event("submit_form", _params, socket) do
+    # TODO IN NEXT PT STORY (#187486885): add dev only post processing steps
+    {:noreply, socket
+      |> assign(:form_version, socket.assigns.form_version + 1)
+      |> assign(:form_disabled, true)
+      |> assign(:form, to_form(@form_params))
+    }
   end
 
   @impl true
