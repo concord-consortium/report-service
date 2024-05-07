@@ -1,4 +1,7 @@
 defmodule ReportServerWeb.ReportLive.QueryComponent do
+  alias ReportServer.PostProcessing.JobServer
+  alias Phoenix.PubSub
+  alias ReportServer.PostProcessing.JobManager
   use ReportServerWeb, :live_component
 
   alias ReportServerWeb.Aws
@@ -8,27 +11,33 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   @poll_interval 5_000 # 5 seconds
 
-  @steps %{
-    "step1" => %{label: "TDB: Step 1"},
-    "step2" => %{label: "TDB: Step 2"},
-    "step3" => %{label: "TDB: Step 3"},
-  }
-  @form_params @steps |> Enum.map(fn {k, _v} -> {k, false} end) |> Enum.into(%{})
+  @button_class "rounded px-3 py-2 bg-orange border border-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange disabled:bg-slate-500 disabled:border-slate-500 disabled:text-white disabled:opacity-35"
+  @small_button_class "#{@button_class} px-2 py-1 text-xs"
 
   # initial load
   @impl true
-  def update(%{id: _, workgroup_credentials: _, mode: _} = assigns, socket) do
+  def update(%{id: id, workgroup_credentials: _, mode: mode} = assigns, socket) do
+
+    # listen for pubsub messages from the post processing server
+    PubSub.subscribe(ReportServer.PubSub, JobServer.query_topic(id))
+
+    steps = JobServer.get_steps(mode)
+    default_form_params =  steps |> Enum.map(fn step -> {step.id, false} end) |> Enum.into(%{})
 
     # save the initial assigns
     socket = socket
       |> assign(assigns)
       |> assign(%{
-        :button_class => "rounded px-3 py-2 bg-orange border border-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange disabled:bg-slate-500 disabled:border-slate-500 disabled:text-white disabled:opacity-35",
+        :button_class => @button_class,
+        :small_button_class => @small_button_class,
         :show_form => false,
-        :steps => @steps,
-        :form => to_form(@form_params),
+        :steps => steps,
+        :default_form_params => default_form_params,
+        :form => to_form(default_form_params),
         :form_disabled => true,
-        :form_version => 1  # hacky way to reset form after a submit
+        :form_version => 1,  # hacky way to reset form after a submit
+        :loading_jobs => true,
+        :jobs => []
       })
 
     {:ok, get_query_info(assigns, socket)}
@@ -38,6 +47,12 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   @impl true
   def update(%{poll: true}, socket) do
     {:ok, get_query_info(socket.assigns, socket)}
+  end
+
+  # when sent a list of jobs by parent
+  @impl true
+  def update(%{jobs: jobs}, socket) do
+    {:ok, socket |> assign(%{loading_jobs: false, jobs: jobs})}
   end
 
   @impl true
@@ -66,7 +81,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                 class={@button_class}>
                 Download CSV
               </button>
-              <button
+              <button :if={length(@steps) > 0}
                 class={@button_class}
                 phx-click="show_form"
                 phx-target={@myself}>
@@ -76,19 +91,43 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
           </div>
         </div>
         <div :if={query.state == "succeeded" && @show_form} class="flex gap-2 w-full">
-          <div class="grow my-2">
-            <div class="fnt-bold">Select Post Processing Steps:</div>
+          <div class="grow w-full my-2">
+            <div class="font-bold text-sm">Select Post Processing Steps:</div>
             <.form id={"form_#{@form_version}"} for={@form} phx-change="validate_form" phx-submit="submit_form" phx-target={@myself} class="mt-2">
               <div class="space-y-1">
-                <.input :for={{step_id, step} <- @steps} type="checkbox" field={@form[step_id]} label={step[:label]} />
+                <.input :for={step <- @steps} type="checkbox" field={@form[step.id]} label={step.label} />
               </div>
               <div class="mt-3">
                 <button class={@button_class} disabled={@form_disabled}>Create New Post Processing Job</button>
               </div>
             </.form>
           </div>
-          <div class="grow my-2">
-            TBD: List of post processing jobs...
+          <div class="grow w-full my-2 text-sm">
+            <div :if={@loading_jobs} class="h-full flex justify-center items-center">
+              Loading jobs...
+            </div>
+            <div :if={!@loading_jobs && length(@jobs) == 0} class="h-full flex justify-center items-center">
+              No past or current post processing jobs were found
+            </div>
+            <div :if={!@loading_jobs && length(@jobs) > 0} class="flex gap-2 flex-col">
+              <div :for={job <- @jobs}>
+                <div class="font-bold">Job: <%= job.id %> (<span class="capitalize"><%= job.status %></span>)</div>
+                <ul :for={step <- job.steps}>
+                  <li><%= step.label %></li>
+                </ul>
+                <button
+                  id={"download_job_#{query.id}_#{job.id}"}
+                  phx-hook="DownloadButton"
+                  data-id={@myself}
+                  data-type="job"
+                  data-job-id={job.id}
+                  class={@small_button_class}
+                  disabled={job.result == nil}
+                >
+                  Download Result
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </.async_result>
@@ -97,15 +136,20 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   end
 
   @impl true
-  def handle_event("show_form", _params, socket) do
-    {:noreply, socket |> assign(:show_form, !socket.assigns.show_form)}
+  def handle_event("show_form", _params, socket = %{assigns: %{id: id, mode: mode, show_form: show_form}}) do
+    show_form = !show_form
+    if show_form do
+      JobManager.maybe_start_server(id, mode)
+      JobServer.request_job_status(id)
+    end
+    {:noreply, socket |> assign(:show_form, show_form)}
   end
 
   @impl true
-  def handle_event("validate_form", params, socket) do
+  def handle_event("validate_form", params, socket = %{assigns: %{steps: steps}}) do
     # form is disabled if all the step checkboxes are false
     form_disabled = Enum.reduce(params, true, fn {k, v}, acc ->
-      acc && (@steps[k] == nil || v == "false")
+      acc && (Enum.find(steps, fn step -> step.id == k end) == nil || v == "false")
     end)
     {:noreply, socket
       |> assign(:form_disabled, form_disabled)
@@ -114,31 +158,60 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   end
 
   @impl true
-  def handle_event("submit_form", _params, socket) do
-    # TODO IN NEXT PT STORY (#187486885): add dev only post processing steps
+  def handle_event("submit_form", params, socket = %{assigns: %{id: id, query: query, steps: steps, workgroup_credentials: workgroup_credentials, form_version: form_version, default_form_params: default_form_params}}) do
+    steps =
+      params
+      |> Enum.reduce([], fn
+        {step_id, "true"}, acc ->
+          step = Enum.find(steps, fn step -> step.id == step_id end)
+          [step | acc]
+        _, acc -> acc
+      end)
+    JobServer.add_job(id, query.result, steps, workgroup_credentials)
+
     {:noreply, socket
-      |> assign(:form_version, socket.assigns.form_version + 1)
+      |> assign(:form_version, form_version + 1)
       |> assign(:form_disabled, true)
-      |> assign(:form, to_form(@form_params))
+      |> assign(:form, to_form(default_form_params))
     }
   end
 
   @impl true
-  def handle_event("download", %{"type" => type}, socket) do
+  def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{mode: "demo", jobs: jobs}}) do
+    presigned_url = case type do
+      "original" -> "/reports/demo.csv"
+
+      "job" ->
+        job = Enum.find(jobs, fn %{id: id} -> "#{id}" == params["jobId"] end)
+        result = Base.encode64(job.result)
+        "/reports/job.csv?filename=job-#{job.id}.csv&result=#{result}"
+
+      _ -> nil
+    end
+
+    {:reply, %{url: presigned_url}, socket}
+  end
+
+
+  @impl true
+  def handle_event("download", %{"type" => type}, socket = %{assigns: %{query: query, workgroup_credentials: workgroup_credentials, mode: mode}}) do
     download = case type do
       "original" ->
-        query = socket.assigns.query
+        query = query
         if query.ok? do
           {query.result.output_location, "#{query.result.name || "unnamed"}-#{query.result.id}", "csv"}
         else
           nil
         end
+
+      "job" ->
+        # TBD: get csv location
+        nil
+
       _ -> nil
     end
 
-    workgroup_credentials = socket.assigns.workgroup_credentials
     presigned_url = if download && workgroup_credentials do
-      mode = socket.assigns.mode
       {s3_url, basename, extension} = download
       basename = basename |> String.downcase() |> String.replace(~r/\W/, "-")
       case Aws.get_presigned_url(mode, workgroup_credentials, s3_url, "#{basename}.#{extension}") do

@@ -3,6 +3,8 @@
 # to pre-sign urls that is needed.  ExAWS has that functionality so, for now, both dependencies are used.
 
 defmodule ReportServerWeb.Aws do
+  alias ReportServer.Demo
+
   def get_workgroup_query_ids("demo", _workgroup_credentials, _workgroup) do
     {:ok, ["1", "2", "3", "4", "5"]}
   end
@@ -31,7 +33,7 @@ defmodule ReportServerWeb.Aws do
       "Query" => "-- name Demo Query ##{query_id}\n  -- type activity\n",
       "QueryExecutionId" => query_id,
       "ResultConfiguration" => %{
-        "OutputLocation" => "fake-demo-url"
+        "OutputLocation" => "/reports/demo.csv"
       },
       "Status" => %{
         "State" => state,
@@ -51,21 +53,38 @@ defmodule ReportServerWeb.Aws do
   end
 
   def get_presigned_url("demo", _workgroup_credentials, _s3_url, _filename) do
-    {:ok, "fake-demo-url"}
+    {:ok, "/reports/demo.csv"}
   end
 
   def get_presigned_url(_mode, workgroup_credentials, s3_url, filename) do
     %{access_key_id: access_key_id, secret_access_key: secret_access_key, session_token: session_token} = workgroup_credentials
 
-    uri = URI.parse(s3_url)
-    key = String.slice(uri.path, 1..-1//1) # remove starting /
+    {bucket, path} = get_bucket_and_path(s3_url)
     :s3
     |> ExAws.Config.new([access_key_id: access_key_id, secret_access_key: secret_access_key, security_token: session_token])
-    |> ExAws.S3.presigned_url(:get, uri.host, key, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
+    |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
+  end
+
+  def get_file_stream("demo", _workgroup_credentials, _s3_url) do
+    {:ok, io} = Demo.raw_demo_csv() |> StringIO.open()
+    {:ok, IO.stream(io, :line)}
+  end
+  def get_file_stream(_mode, workgroup_credentials, s3_url) do
+    %{access_key_id: access_key_id, secret_access_key: secret_access_key, session_token: session_token} = workgroup_credentials
+
+    {bucket, path} = get_bucket_and_path(s3_url)
+    ExAws.S3.download_file(bucket, path, :memory)
+    |> ExAws.stream!([access_key_id: access_key_id, secret_access_key: secret_access_key, security_token: session_token])
   end
 
   defp get_client(workgroup_credentials) do
     %{access_key_id: access_key_id, secret_access_key: secret_access_key, session_token: session_token} = workgroup_credentials
     AWS.Client.create(access_key_id, secret_access_key, session_token, "us-east-1")
+  end
+
+  def get_bucket_and_path(s3_url) do
+    uri = URI.parse(s3_url)
+    key = String.slice(uri.path, 1..-1//1) # remove starting /
+    {uri.host, key}
   end
 end

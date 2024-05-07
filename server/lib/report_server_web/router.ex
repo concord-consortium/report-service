@@ -30,6 +30,8 @@ defmodule ReportServerWeb.Router do
     pipe_through :browser
 
     live "/", ReportLive.Index, :index
+    get "/demo.csv", DemoController, :csv
+    get "/job.csv", DemoController, :job
   end
 
   # Enable LiveDashboard in development
