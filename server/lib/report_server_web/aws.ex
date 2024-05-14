@@ -10,7 +10,7 @@ defmodule ReportServerWeb.Aws do
   end
 
   def get_workgroup_query_ids(_mode, workgroup_credentials, _workgroup = %{"name" => name, "id" => id}) do
-    client = get_client(workgroup_credentials)
+    client = get_aws_client(workgroup_credentials)
     case AWS.Athena.list_query_executions(client, %{"WorkGroup" => "#{name}-#{id}"}) do
       {:ok, %{"QueryExecutionIds" => query_ids}, _resp} ->
         {:ok, query_ids}
@@ -43,7 +43,7 @@ defmodule ReportServerWeb.Aws do
   end
 
   def get_query_execution(_mode, workgroup_credentials, query_id) do
-    client = get_client(workgroup_credentials)
+    client = get_aws_client(workgroup_credentials)
     case AWS.Athena.get_query_execution(client, %{"QueryExecutionId" => query_id}) do
       {:ok, %{"QueryExecution" => query}, _resp} ->
         {:ok, query}
@@ -57,11 +57,11 @@ defmodule ReportServerWeb.Aws do
   end
 
   def get_presigned_url(_mode, workgroup_credentials, s3_url, filename) do
-    %{access_key_id: access_key_id, secret_access_key: secret_access_key, session_token: session_token} = workgroup_credentials
+    client = get_exaws_client(workgroup_credentials)
 
     {bucket, path} = get_bucket_and_path(s3_url)
     :s3
-    |> ExAws.Config.new([access_key_id: access_key_id, secret_access_key: secret_access_key, security_token: session_token])
+    |> ExAws.Config.new(client)
     |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
   end
 
@@ -70,19 +70,65 @@ defmodule ReportServerWeb.Aws do
     {:ok, IO.stream(io, :line)}
   end
   def get_file_stream(_mode, workgroup_credentials, s3_url) do
-    %{access_key_id: access_key_id, secret_access_key: secret_access_key, session_token: session_token} = workgroup_credentials
+    try do
+      client = get_exaws_client(workgroup_credentials)
+      {bucket, path} = get_bucket_and_path(s3_url)
+      stream = ExAws.S3.download_file(bucket, path, :memory)
+      |> ExAws.stream!(client)
+      {:ok, stream}
+    rescue
+      _ -> {:error, "Unable to get stream"}
+    end
+  end
 
+  def get_file_contents("demo", _workgroup_credentials, _s3_url) do
+    {:error, "No files in demo mode"}
+  end
+
+  def get_file_contents(mode, workgroup_credentials, s3_url) do
+    case get_file_stream(mode, workgroup_credentials, s3_url) do
+      {:ok, stream} ->
+        {:ok, Enum.join(stream)}
+      error -> error
+    end
+  end
+
+  def put_file_contents("demo", _workgroup_credentials, _s3_url, _contents) do
+    {:error, "Not implemented for demo"}
+  end
+  def put_file_contents(_mode, workgroup_credentials, s3_url, contents) do
+    client = get_aws_client(workgroup_credentials)
     {bucket, path} = get_bucket_and_path(s3_url)
-    ExAws.S3.download_file(bucket, path, :memory)
-    |> ExAws.stream!([access_key_id: access_key_id, secret_access_key: secret_access_key, security_token: session_token])
+    AWS.S3.put_object(client, bucket, path, %{"Body" => contents})
   end
 
-  defp get_client(workgroup_credentials) do
-    %{access_key_id: access_key_id, secret_access_key: secret_access_key, session_token: session_token} = workgroup_credentials
-    AWS.Client.create(access_key_id, secret_access_key, session_token, "us-east-1")
+  def get_server_credentials do
+    credentials = Application.get_env(:report_server, :aws_credentials)
+    %{
+      access_key_id: Keyword.get(credentials, :access_key_id),
+      secret_access_key: Keyword.get(credentials, :secret_access_key)
+    }
   end
 
-  def get_bucket_and_path(s3_url) do
+  defp get_aws_client(workgroup_credentials) do
+    %{access_key_id: access_key_id, secret_access_key: secret_access_key} = workgroup_credentials
+    if workgroup_credentials[:session_token] do
+      AWS.Client.create(access_key_id, secret_access_key, workgroup_credentials[:session_token], "us-east-1")
+    else
+      AWS.Client.create(access_key_id, secret_access_key, "us-east-1")
+    end
+  end
+
+  defp get_exaws_client(workgroup_credentials) do
+    %{access_key_id: access_key_id, secret_access_key: secret_access_key} = workgroup_credentials
+    if workgroup_credentials[:session_token] do
+      [access_key_id: access_key_id, secret_access_key: secret_access_key, security_token: workgroup_credentials[:session_token]]
+    else
+      [access_key_id: access_key_id, secret_access_key: secret_access_key]
+    end
+  end
+
+  defp get_bucket_and_path(s3_url) do
     uri = URI.parse(s3_url)
     key = String.slice(uri.path, 1..-1//1) # remove starting /
     {uri.host, key}

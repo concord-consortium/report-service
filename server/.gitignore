@@ -35,3 +35,5 @@ report_server-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# dev envionment variables
+.env

@@ -2,6 +2,7 @@ defmodule ReportServer.PostProcessing.JobServer do
   alias Phoenix.PubSub
   use GenServer
 
+  alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.Job
   alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength}
 
@@ -14,7 +15,9 @@ defmodule ReportServer.PostProcessing.JobServer do
     DemoAddAnswerLength.step()
   ]
   def get_steps(_mode), do: [
-
+    # just for testing before adding audio transcriptions
+    DemoUpperCase.step(),
+    DemoAddAnswerLength.step()
   ]
 
   def request_job_status(query_id) do
@@ -30,18 +33,14 @@ defmodule ReportServer.PostProcessing.JobServer do
   def init(state) do
     state = state
       |> Map.put(:jobs, [])
-    {:ok, state, {:continue, :read_job_file}}
+    # the :continue lets us return early and then kick off the read_jobs_file
+    {:ok, state, {:continue, :read_jobs_file}}
   end
 
-  def handle_continue(:read_job_file, state = %{mode: "demo"}) do
-    # no existing jobs in demo mode
-    broadcast_jobs(state)
-    {:noreply, state}
-  end
-
-  def handle_continue(:read_job_file, state) do
-    # TBD: read the job file from S3
-    broadcast_jobs(state)
+  def handle_continue(:read_jobs_file, state) do
+    state = state
+    |> read_jobs_file()
+    |> broadcast_jobs()
     {:noreply, state}
   end
 
@@ -55,34 +54,62 @@ defmodule ReportServer.PostProcessing.JobServer do
       Job.run(mode, query_result, steps, workgroup_credentials)
     end)
 
-    jobs = jobs ++ [%Job{id: length(jobs) + 1, steps: steps, status: :started, ref: task.ref, result: nil}]
-    state = %{state | jobs: jobs}
-    broadcast_jobs(state)
+    job = %Job{id: length(jobs) + 1, steps: steps, status: :started, ref: task.ref, result: nil}
+    state = %{state | jobs: jobs ++ [job]}
+      |> broadcast_jobs()
+      |> save_jobs_file()
     {:noreply, state}
   end
 
   # The job completed successfully
   def handle_info({ref, result}, state) do
     Process.demonitor(ref, [:flush])
-    {:noreply, update_job(state, ref, :completed, result)}
+    state = state
+      |> update_job(ref, :completed, result)
+      |> save_jobs_file()
+    {:noreply, state}
   end
 
   # The job failed
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
-    {:noreply, update_job(state, ref, :failed)}
+    state = state
+      |> update_job(ref, :failed)
+      |> save_jobs_file()
+    {:noreply, state}
   end
 
-  defp broadcast_jobs(%{query_id: query_id, jobs: jobs}) do
+  defp broadcast_jobs(%{query_id: query_id, jobs: jobs} = state) do
     PubSub.broadcast(ReportServer.PubSub, query_topic(query_id), {:jobs, query_id, jobs})
+    state
+  end
+
+  defp read_jobs_file(%{mode: mode} = state) do
+    case Aws.get_file_contents(mode, Aws.get_server_credentials(), get_jobs_file_url(state)) do
+      {:ok, contents} ->
+        json = keys_to_atoms(Jason.decode!(contents))
+        jobs = Enum.map(json.jobs, fn job -> struct(Job, job) end)
+        %{state | jobs: jobs}
+      _ ->
+        state
+    end
+  end
+
+  defp save_jobs_file(%{mode: "demo"} = state) do
+    # no saved jobs file in demo mode
+    state
+  end
+  defp save_jobs_file(%{mode: mode, query_id: _query_id, jobs: jobs} = state) do
+    contents = Jason.encode!(%{
+      version: 1,
+      jobs: jobs
+    })
+    Aws.put_file_contents(mode, Aws.get_server_credentials(), get_jobs_file_url(state), contents)
+    state
   end
 
   defp get_server_pid(query_id) do
     [{pid, _}] = Registry.lookup(ReportServer.PostProcessingRegistry, query_id)
     pid
-  end
-
-  def get_job_index(jobs, ref) do
-    Enum.find_index(jobs, fn %{ref: job_ref} -> job_ref == ref end)
   end
 
   def update_job(%{jobs: jobs} = state, ref, status, result \\ nil) do
@@ -97,4 +124,16 @@ defmodule ReportServer.PostProcessing.JobServer do
       state
     end
   end
+
+  defp get_jobs_file_url(%{query_id: query_id}) do
+    "s3://report-server-output/#{query_id}_jobs.json"
+  end
+
+  defp keys_to_atoms(json) when is_map(json) do
+    Map.new(json, &reduce_keys_to_atoms/1)
+  end
+
+  def reduce_keys_to_atoms({key, val}) when is_map(val), do: {String.to_existing_atom(key), keys_to_atoms(val)}
+  def reduce_keys_to_atoms({key, val}) when is_list(val), do: {String.to_existing_atom(key), Enum.map(val, &keys_to_atoms(&1))}
+  def reduce_keys_to_atoms({key, val}), do: {String.to_existing_atom(key), val}
 end
