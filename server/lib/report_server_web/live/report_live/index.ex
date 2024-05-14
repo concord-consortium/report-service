@@ -62,7 +62,7 @@ defmodule ReportServerWeb.ReportLive.Index do
           jwt: jwt,
           workgroup: workgroup,
           workgroup_credentials: workgroup_credentials,
-          query_ids: query_ids
+          query_ids: Enum.take(query_ids, 3)
         }
       }}
     else

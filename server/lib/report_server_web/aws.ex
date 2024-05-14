@@ -81,6 +81,16 @@ defmodule ReportServerWeb.Aws do
     end
   end
 
+  def put_file_stream("demo", _workgroup_credentials, _s3_url, _stream) do
+    {:error, "No stream output in demo mode"}
+  end
+  def put_file_stream(_mode, workgroup_credentials, s3_url, stream) do
+    client = get_exaws_client(workgroup_credentials)
+    {bucket, path} = get_bucket_and_path(s3_url)
+    ExAws.S3.upload(stream, bucket, path)
+    |> ExAws.request(client)
+  end
+
   def get_file_contents("demo", _workgroup_credentials, _s3_url) do
     {:error, "No files in demo mode"}
   end
