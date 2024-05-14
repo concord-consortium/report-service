@@ -11,6 +11,8 @@ defmodule ReportServer.Application do
       ReportServerWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:report_server, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: ReportServer.PubSub},
+      {Registry, keys: :unique, name: ReportServer.PostProcessingRegistry},
+      {Task.Supervisor, name: ReportServer.PostProcessingTaskSupervisor},
       # Start a worker by calling: ReportServer.Worker.start_link(arg)
       # {ReportServer.Worker, arg},
       # Start to serve requests, typically the last entry

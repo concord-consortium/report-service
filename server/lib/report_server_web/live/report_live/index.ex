@@ -43,6 +43,13 @@ defmodule ReportServerWeb.ReportLive.Index do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_info({:jobs, query_id, jobs}, socket) do
+    # the job server sends the jobs via a pubsub message to the topic subscribed to in the initial update
+    send_update QueryComponent, id: query_id, jobs: jobs
+    {:noreply, socket}
+  end
+
   defp async_get_aws_data(mode, portal_credentials) do
     with {:ok, env} <- TokenService.get_env(mode, portal_credentials),
          {:ok, jwt} <- TokenService.get_firebase_jwt(mode, portal_credentials),
