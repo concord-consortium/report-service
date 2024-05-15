@@ -50,11 +50,14 @@ defmodule ReportServer.PostProcessing.JobServer do
   end
 
   def handle_cast({:add_job, query_result, steps, workgroup_credentials}, state = %{mode: mode, jobs: jobs}) do
+    job = %Job{id: length(jobs) + 1, steps: steps, status: :started, ref: nil, result: nil}
+
     task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
-      Job.run(mode, query_result, steps, workgroup_credentials)
+      Job.run(mode, job, query_result, workgroup_credentials)
     end)
 
-    job = %Job{id: length(jobs) + 1, steps: steps, status: :started, ref: task.ref, result: nil}
+    job = Map.put(job, :ref, task.ref)
+
     state = %{state | jobs: jobs ++ [job]}
       |> broadcast_jobs()
       |> save_jobs_file()

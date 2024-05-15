@@ -59,6 +59,7 @@ defmodule ReportServer.MixProject do
       {:aws, "~> 1.0.0"},
       {:ex_aws, "~> 2.1"},
       {:ex_aws_s3, "~> 2.0"}, # for url signing
+      {:sweet_xml, "~> 0.7.4"}, # for ex_aws
       {:csv, "~> 3.2"}
     ]
   end

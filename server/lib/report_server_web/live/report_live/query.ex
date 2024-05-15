@@ -194,27 +194,27 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
 
   @impl true
-  def handle_event("download", %{"type" => type}, socket = %{assigns: %{query: query, workgroup_credentials: workgroup_credentials, mode: mode}}) do
-    download = case type do
+  def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{query: query, workgroup_credentials: workgroup_credentials, mode: mode, jobs: jobs}}) do
+    {download, credentials} = case type do
       "original" ->
         query = query
         if query.ok? do
-          {query.result.output_location, "#{query.result.name || "unnamed"}-#{query.result.id}", "csv"}
+          {{query.result.output_location, "#{query.result.name || "unnamed"}-#{query.result.id}", "csv"}, workgroup_credentials}
         else
-          nil
+          {nil, nil}
         end
 
       "job" ->
-        # TBD: get csv location
-        nil
+        job = Enum.find(jobs, fn %{id: id} -> "#{id}" == params["jobId"] end)
+        {{job.result, "#{query.result.name || "unnamed"}-#{query.result.id}-job-#{job.id}", "csv"}, Aws.get_server_credentials()}
 
-      _ -> nil
+      _ -> {nil, nil}
     end
 
-    presigned_url = if download && workgroup_credentials do
+    presigned_url = if download && credentials do
       {s3_url, basename, extension} = download
       basename = basename |> String.downcase() |> String.replace(~r/\W/, "-")
-      case Aws.get_presigned_url(mode, workgroup_credentials, s3_url, "#{basename}.#{extension}") do
+      case Aws.get_presigned_url(mode, credentials, s3_url, "#{basename}.#{extension}") do
         {:ok, url} -> url
         _ -> nil
       end
