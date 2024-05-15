@@ -36,6 +36,6 @@ export default (req: Request, res: Response) => {
     })
     .catch((e) => {
       console.error(e);
-      res.error(500, e.toString())
+      res.error(404, e.toString())
     })
 }
