@@ -18,6 +18,7 @@ defmodule ReportServer.PostProcessing.Job do
             # replace the line with the transformed header in the stream
             header_map = Helpers.get_header_map(row)
             params = %JobParams{
+              mode: mode,
               input_header: row,
               input_header_map: header_map,
               output_header: row,
@@ -26,12 +27,7 @@ defmodule ReportServer.PostProcessing.Job do
             params = Enum.reduce(job.steps, params, fn step, acc -> step.init.(acc) end)
             {[params.output_header], params}
           else
-            # if the first column is an integer (student id) run the steps on the row, otherwise
-            # just pass it through
-            case Integer.parse(Enum.at(row, 0, "")) do
-              {_, ""} -> {[run_steps(row, job.steps, acc)], acc}
-              _ -> {[row], acc}
-            end
+            {[run_steps(row, job.steps, acc)], acc}
           end
         end)
         |> CSV.encode()
@@ -44,13 +40,28 @@ defmodule ReportServer.PostProcessing.Job do
   defp run_steps(input_row, steps, params = %JobParams{input_header_map: input_header_map, output_header: output_header, output_header_map: output_header_map}) do
     input = Enum.with_index(input_row) |> Enum.map(fn {k,v} -> {v,k} end) |> Map.new()
     output = Map.new(output_header_map, fn {k,_v} -> {k, input[input_header_map[k]] || ""} end)
-    {_input, output} = Enum.reduce(steps, {input, output}, fn step, acc ->
-      step.process_row.(params, acc)
-    end)
+
+    output = if is_data_row?(input_row) do
+      {_input, output} = Enum.reduce(steps, {input, output}, fn step, acc ->
+        step.process_row.(params, acc)
+      end)
+      output
+    else
+      output
+    end
+
     Enum.reduce(output_header, [], fn k, acc ->
       [output[k] | acc]
     end)
     |> Enum.reverse()
+  end
+
+  defp is_data_row?(row) do
+    # true if the first cell has a integer in it
+    case Integer.parse(Enum.at(row, 0, "")) do
+      {_, ""} -> true
+      _ -> false
+    end
   end
 
   defp output_stream(stream, "demo", _job, _query_id) do

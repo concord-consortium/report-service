@@ -4,7 +4,7 @@ defmodule ReportServer.PostProcessing.JobServer do
 
   alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.Job
-  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength}
+  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio}
 
   def start_link(query_id, mode) do
     GenServer.start_link(__MODULE__, %{query_id: query_id, mode: mode, jobs: []}, name: {:via, Registry, {ReportServer.PostProcessingRegistry, query_id}})
@@ -12,12 +12,11 @@ defmodule ReportServer.PostProcessing.JobServer do
 
   def get_steps("demo"), do: [
     DemoUpperCase.step(),
-    DemoAddAnswerLength.step()
+    DemoAddAnswerLength.step(),
+    HasAudio.step()
   ]
   def get_steps(_mode), do: [
-    # just for testing before adding audio transcriptions
-    DemoUpperCase.step(),
-    DemoAddAnswerLength.step()
+    HasAudio.step()
   ]
 
   def request_job_status(query_id) do
