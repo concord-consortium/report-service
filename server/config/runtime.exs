@@ -31,9 +31,18 @@ server_secret_access_key =
     environment variable SERVER_SECRET_ACCESS_KEY is missing.
     """
 
+report_service_token =
+  System.get_env("REPORT_SERVICE_TOKEN") ||
+    raise """
+    environment variable REPORT_SERVICE_TOKEN is missing.
+    """
+
 config :report_server, :aws_credentials,
   access_key_id: server_access_key_id,
   secret_access_key: server_secret_access_key
+
+config :report_server, :report_service,
+  token: report_service_token
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
