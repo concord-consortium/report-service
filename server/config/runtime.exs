@@ -20,6 +20,21 @@ if System.get_env("PHX_SERVER") do
   config :report_server, ReportServerWeb.Endpoint, server: true
 end
 
+server_access_key_id =
+  System.get_env("SERVER_ACCESS_KEY_ID") ||
+    raise """
+    environment variable SERVER_ACCESS_KEY_ID is missing.
+    """
+server_secret_access_key =
+  System.get_env("SERVER_SECRET_ACCESS_KEY") ||
+    raise """
+    environment variable SERVER_SECRET_ACCESS_KEY is missing.
+    """
+
+config :report_server, :aws_credentials,
+  access_key_id: server_access_key_id,
+  secret_access_key: server_secret_access_key
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

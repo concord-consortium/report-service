@@ -4,6 +4,7 @@ defmodule ReportServer.PostProcessing.Job do
   alias ReportServer.PostProcessing.JobParams
   alias ReportServer.PostProcessing.Steps.Helpers
 
+  @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
   defstruct id: nil, steps: [], status: :queued, ref: nil, result: nil
 
   def run(mode, query_result, steps, workgroup_credentials) do
@@ -41,7 +42,6 @@ defmodule ReportServer.PostProcessing.Job do
   end
 
   defp run_steps(input_row, steps, params = %JobParams{input_header_map: input_header_map, output_header: output_header, output_header_map: output_header_map}) do
-    # generate a map of index => text
     input = Enum.with_index(input_row) |> Enum.map(fn {k,v} -> {v,k} end) |> Map.new()
     output = Map.new(output_header_map, fn {k,_v} -> {k, input[input_header_map[k]] || ""} end)
     {_input, output} = Enum.reduce(steps, {input, output}, fn step, acc ->
@@ -59,7 +59,8 @@ defmodule ReportServer.PostProcessing.Job do
   end
 
   defp output_stream(stream, _mode) do
-    # TODO: save stream to S3
+    # TODO: for now save the output - later save stream to S3 and return url
     stream
+    |> Enum.join()
   end
 end
