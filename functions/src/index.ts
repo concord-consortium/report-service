@@ -11,6 +11,7 @@ import importStructure from "./api/import-structure"
 import moveStudentWork from "./api/move-student-work"
 import getResource from "./api/get-resource"
 import fakeAnswer from "./api/fake-answer"
+import getAnswer from "./api/get-answer"
 
 import {
   createSyncDocAfterAnswerWritten,
@@ -36,7 +37,8 @@ api.get("/", (req, res) => {
       "POST import_run": "Imports a run, requires a bearer token!!",
       "POST import_structure": "Imports the structure, requires a bearer token",
       "POST move_student_work": "Moves a students work from one class to another, requires a bearer token.",
-      "GET resource?source=<SOURCE>&url=<URL>": "Returns a resource under source with given url"
+      "GET resource?source=<SOURCE>&url=<URL>": "Returns a resource under source with given url",
+      "GET answer?source=<SOURCE>&remote_endpoint=<REMOTE_ENDPOINT>&question_id=<QUESTION_ID>": "Returns the full answer document for a question by a learner"
     }
   })
 })
@@ -44,6 +46,7 @@ api.post("/import_run", importRun)
 api.post("/import_structure", importStructure)
 api.post("/move_student_work", moveStudentWork)
 api.get("/resource", getResource)
+api.get("/answer", getAnswer)
 // TODO: comment out for final PR
 api.get("/fakeAnswer", fakeAnswer)
 
