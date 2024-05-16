@@ -1,14 +1,14 @@
 defmodule ReportServer.PostProcessing.Job do
   alias ElixirLS.LanguageServer.Providers.FoldingRange.Helpers
   alias ReportServerWeb.Aws
-  alias ReportServer.PostProcessing.JobParams
+  alias ReportServer.PostProcessing.{JobParams, Output}
   alias ReportServer.PostProcessing.Steps.Helpers
 
   @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
   defstruct id: nil, steps: [], status: :queued, ref: nil, result: nil
 
-  def run(mode, job, query_result, workgroup_credentials) do
-    case Aws.get_file_stream(mode, workgroup_credentials, query_result.output_location) do
+  def run(mode, job, query_result) do
+    case Aws.get_file_stream(mode, query_result.output_location) do
       {:ok, stream } ->
         stream
         |> CSV.decode()
@@ -70,9 +70,9 @@ defmodule ReportServer.PostProcessing.Job do
   end
 
   defp output_stream(stream, mode, job, query_id) do
+    s3_url = Output.get_jobs_url("#{query_id}_job_#{job.id}.csv")
     contents = stream |> Enum.join()
-    s3_url = "s3://report-server-output/#{query_id}_job_#{job.id}.csv"
-    Aws.put_file_contents(mode, Aws.get_server_credentials(), s3_url, contents)
+    Aws.put_file_contents(mode, s3_url, contents)
     s3_url
   end
 

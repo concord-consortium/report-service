@@ -15,7 +15,6 @@ defmodule ReportServer.PostProcessing.Steps.DemoUpperCase do
   end
 
   def init(%JobParams{step_state: step_state} = params) do
-    # get columns that end with _text
     text_cols = Helpers.get_text_cols(params)
     step_state = Map.put(step_state, @id, text_cols)
     %{params | step_state: step_state}
@@ -24,8 +23,8 @@ defmodule ReportServer.PostProcessing.Steps.DemoUpperCase do
   def process_row(%JobParams{step_state: step_state}, row) do
     # convert all the text columns to uppercase
     text_cols = Map.get(step_state, @id)
-    Enum.reduce(text_cols, row, fn {k, v}, {input, output} ->
-      {input, Map.put(output, k, String.upcase(input[v]))}
+    Enum.reduce(text_cols, row, fn {text_col, index}, {input, output} ->
+      {input, Map.put(output, text_col, String.upcase(input[index]))}
     end)
   end
 end

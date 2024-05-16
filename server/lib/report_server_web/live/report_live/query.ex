@@ -158,7 +158,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   end
 
   @impl true
-  def handle_event("submit_form", params, socket = %{assigns: %{id: id, query: query, steps: steps, workgroup_credentials: workgroup_credentials, form_version: form_version, default_form_params: default_form_params}}) do
+  def handle_event("submit_form", params, socket = %{assigns: %{id: id, query: query, steps: steps, form_version: form_version, default_form_params: default_form_params}}) do
     steps =
       params
       |> Enum.reduce([], fn
@@ -167,7 +167,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
           [step | acc]
         _, acc -> acc
       end)
-    JobServer.add_job(id, query.result, steps, workgroup_credentials)
+    JobServer.add_job(id, query.result, steps)
 
     {:noreply, socket
       |> assign(:form_version, form_version + 1)

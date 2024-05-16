@@ -87,6 +87,11 @@ defmodule ReportServerWeb.TokenService do
   def get_first_resource_from_response(%{"result" => [first|_]}), do: {:ok, first}
   def get_first_resource_from_response(_), do: {:error, "Something went wrong getting the Athena Workgroup"}
 
+  def get_private_bucket() do
+    Application.get_env(:report_server, :token_service)
+      |> Keyword.get(:private_bucket, "token-service-files-private")
+  end
+
   defp request_create_workgroup_credentials(env, jwt, workgroup) do
     url = get_token_service_url(env, "/#{workgroup["id"]}/credentials")
 
