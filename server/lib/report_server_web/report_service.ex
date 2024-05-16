@@ -2,49 +2,45 @@ defmodule ReportServerWeb.ReportService do
 
   # answer for "Test Student One" in demo data
   def get_answer("demo", "activity-player.concord.org", "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02", "managed_interactive_5849") do
-    answer = Jason.decode!("""
-      {
-        "resource_url": "https://authoring.lara.staging.concord.org/activities/598",
-        "remote_endpoint": "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02",
-        "run_key": "",
-        "question_type": "open_response",
-        "tool_id": "activity-player.concord.org/branch/master/",
-        "resource_link_id": "328",
-        "question_id": "managed_interactive_5849",
-        "version": 1,
-        "submitted": null,
-        "platform_id": "https://learn.portal.staging.concord.org",
-        "context_id": "e55400d0c0f7a5ff11284c104b1bbaecc3c1b5396e506d9b",
-        "id": "4dbeaabe-8877-4aff-89ff-39f1c6a4436d",
-        "platform_user_id": "27",
-        "source_key": "activity-player.concord.org",
-        "type": "open_response_answer",
-        "answer_text": "this is my text answer",
-        "answer": "this is my text answer",
-        "attachments": {
-          "audio1710336429832.mp3": {
-            "folder": {
-              "id": "LkoDyh1plMT5ndzNNaIU",
-              "ownerId": "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02"
-            },
-            "publicPath": "interactive-attachments/LkoDyh1plMT5ndzNNaIU/6728163b-483a-4425-a6e4-adeefe0e16ad/audio1710336429832.mp3",
-            "contentType": "audio/mpeg"
+    {:ok, %{
+      "answer" => "this is my text answer",
+      "answer_text" => "this is my text answer",
+      "attachments" => %{
+        "audio1710336429832.mp3" => %{
+          "contentType" => "audio/mpeg",
+          "folder" => %{
+            "id" => "LkoDyh1plMT5ndzNNaIU",
+            "ownerId" => "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02"
           },
-          "audio1710344319695.mp3": {
-            "folder": {
-              "id": "LkoDyh1plMT5ndzNNaIU",
-              "ownerId": "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02"
-            },
-            "publicPath": "interactive-attachments/LkoDyh1plMT5ndzNNaIU/7caeb5d5-0e3f-4f31-a17b-202fa5af35f9/audio1710344319695.mp3",
-            "contentType": "audio/mpeg"
-          }
+          "publicPath" => "interactive-attachments/LkoDyh1plMT5ndzNNaIU/6728163b-483a-4425-a6e4-adeefe0e16ad/audio1710336429832.mp3"
         },
-        "report_state": "{\"mode\":\"report\",\"authoredState\":\"{\\\"version\\\":1,\\\"questionType\\\":\\\"open_response\\\",\\\"audioEnabled\\\":true}\",\"interactiveState\":\"{\\\"answerType\\\":\\\"open_response_answer\\\",\\\"answerText\\\":\\\"this is my text answer\\\",\\\"audioFile\\\":\\\"audio1710344319695.mp3\\\"}\",\"interactive\":{\"id\":\"managed_interactive_5849\",\"name\":\"\"},\"version\":1}",
-        "created": "Wed, 13 Mar 2024 15:38:48 UTC"
-      }
-      """
-    )
-    {:ok, answer}
+        "audio1710344319695.mp3" => %{
+          "contentType" => "audio/mpeg",
+          "folder" => %{
+            "id" => "LkoDyh1plMT5ndzNNaIU",
+            "ownerId" => "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02"
+          },
+          "publicPath" => "interactive-attachments/LkoDyh1plMT5ndzNNaIU/7caeb5d5-0e3f-4f31-a17b-202fa5af35f9/audio1710344319695.mp3"
+        }
+      },
+      "context_id" => "e55400d0c0f7a5ff11284c104b1bbaecc3c1b5396e506d9b",
+      "created" => "Wed, 13 Mar 2024 15:38:48 UTC",
+      "id" => "4dbeaabe-8877-4aff-89ff-39f1c6a4436d",
+      "platform_id" => "https://learn.portal.staging.concord.org",
+      "platform_user_id" => "27",
+      "question_id" => "managed_interactive_5849",
+      "question_type" => "open_response",
+      "remote_endpoint" => "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02",
+      "report_state" => "{\"mode\":\"report\",\"authoredState\":\"{\\\"version\\\":1,\\\"questionType\\\":\\\"open_response\\\",\\\"audioEnabled\\\":true}\",\"interactiveState\":\"{\\\"answerType\\\":\\\"open_response_answer\\\",\\\"answerText\\\":\\\"this is my text answer\\\",\\\"audioFile\\\":\\\"audio1710344319695.mp3\\\"}\",\"interactive\":{\"id\":\"managed_interactive_5849\",\"name\":\"\"},\"version\":1}",
+      "resource_link_id" => "328",
+      "resource_url" => "https://authoring.lara.staging.concord.org/activities/598",
+      "run_key" => "",
+      "source_key" => "activity-player.concord.org",
+      "submitted" => nil,
+      "tool_id" => "activity-player.concord.org/branch/master/",
+      "type" => "open_response_answer",
+      "version" => 1
+    }}
   end
 
   def get_answer("demo", _source, _remote_endpoint, _question_id) do
