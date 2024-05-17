@@ -1,4 +1,6 @@
 defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
+  require Logger
+
   alias ReportServerWeb.Aws
   alias ReportServerWeb.TokenService
   alias ReportServer.PostProcessing.{JobParams, Step, Output}
@@ -37,6 +39,10 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
           |> Map.put(audio_transcription_status_col(text_col), "transcribed")
           |> Map.put(audio_transcription_result_col(text_col), transcription)
         {:error, error} ->
+          # this is special cases as a student may not have provided an answer yet so it really isn't an error
+          if error != "no answer to transcribe" do
+            Logger.error("Error transcribing audio: #{error}")
+          end
           output
           |> Map.put(audio_transcription_status_col(text_col), error)
           |> Map.put(audio_transcription_result_col(text_col), "")
@@ -58,7 +64,12 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
          {:ok, transcription} <- get_transcription(id, status) do
       {:ok, transcription}
     else
-      error -> error
+      {:error, "answer not found"} ->
+        {:error, "no answer to transcribe"}
+
+      {:error, error} ->
+        Logger.error("Error transcribing audio: #{error}")
+        {:error, error}
     end
   end
 
@@ -96,8 +107,9 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
         case Aws.start_transcription_job(id, audio_s3_url) do
           {:ok, status} ->
             {:ok, id, status}
-          error ->
-            error
+          {:error, error} ->
+            Logger.error("Error creating transcription job: #{error}")
+            {:error, error}
         end
     end
   end
@@ -109,7 +121,9 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
          {:ok, transcript} <- get_transcript(json) do
         {:ok, transcript}
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Error getting transcription: #{error}")
+        {:error, error}
     end
   end
 
@@ -125,7 +139,9 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
           :call_get_transcription_job -> get_transcription(id, status)
         end
 
-      error -> error
+      {:error, error} ->
+        Logger.error("Error getting transcription job: #{error}")
+        {:error, error}
     end
   end
 

@@ -3,6 +3,8 @@
 # to pre-sign urls that is needed.  ExAWS has that functionality so, for now, both dependencies are used.
 
 defmodule ReportServerWeb.Aws do
+  require Logger
+
   alias ReportServer.Demo
   alias ReportServer.PostProcessing.Output
 
@@ -15,7 +17,8 @@ defmodule ReportServerWeb.Aws do
     case AWS.Athena.list_query_executions(client, %{"WorkGroup" => "#{name}-#{id}"}) do
       {:ok, %{"QueryExecutionIds" => query_ids}, _resp} ->
         {:ok, query_ids}
-      {:error, _} ->
+      {:error, error} ->
+        Logger.error("Something went wrong listing the queries: #{error}")
         {:error, "Something went wrong listing the queries"}
     end
   end
@@ -48,7 +51,8 @@ defmodule ReportServerWeb.Aws do
     case AWS.Athena.get_query_execution(client, %{"QueryExecutionId" => query_id}) do
       {:ok, %{"QueryExecution" => query}, _resp} ->
         {:ok, query}
-      {:error, _} ->
+      {:error, error} ->
+        Logger.error("Something went wrong get the query execution info: #{error}")
         {:error, "Something went wrong get the query execution info"}
     end
   end
@@ -78,7 +82,9 @@ defmodule ReportServerWeb.Aws do
       |> ExAws.stream!(client)
       {:ok, stream}
     rescue
-      _ -> {:error, "Unable to get stream"}
+      _ ->
+        Logger.error("Unable to get stream for #{s3_url}")
+        {:error, "Unable to get stream"}
     end
   end
 
@@ -96,7 +102,9 @@ defmodule ReportServerWeb.Aws do
     case get_file_stream(mode, s3_url) do
       {:ok, stream} ->
         {:ok, Enum.join(stream)}
-      error -> error
+      error ->
+        Logger.error("Unable to get file contents for #{s3_url}")
+        error
     end
   end
 
@@ -140,7 +148,9 @@ defmodule ReportServerWeb.Aws do
       # instead of 404 AWS returns 400...
       {:error, {:unexpected_response, %{status_code: 400}}} -> {:error, "Job not found"}
 
-      _ -> {:error, "An unknown error occurred"}
+      _ ->
+        Logger.error("Error getting transcription job info")
+        {:error, "An unknown error occurred"}
     end
   end
 
@@ -154,7 +164,9 @@ defmodule ReportServerWeb.Aws do
       "OutputKey": Output.get_transcripts_folder(),
     }) do
       {:ok, _, _} -> {:ok, :started}
-      _ -> {:error, "Unable to start transcription job"}
+      _ ->
+        Logger.error("Unable to start transcription job")
+        {:error, "Unable to start transcription job"}
     end
   end
 

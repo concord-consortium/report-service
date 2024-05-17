@@ -1,4 +1,5 @@
 defmodule ReportServerWeb.ReportService do
+  require Logger
 
   # answer for "Test Student One" in demo data
   def get_answer("demo", "activity-player.concord.org", "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02", "managed_interactive_5849") do
@@ -52,7 +53,9 @@ defmodule ReportServerWeb.ReportService do
          {:ok, answer} <- get_answer_from_response(resp.body) do
       {:ok, answer}
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Error getting answer: #{error}")
+        {:error, error}
     end
   end
 

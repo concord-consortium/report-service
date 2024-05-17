@@ -1,11 +1,13 @@
 defmodule ReportServer.PostProcessing.Job do
+  require Logger
+
   alias ElixirLS.LanguageServer.Providers.FoldingRange.Helpers
   alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.{JobParams, Output}
   alias ReportServer.PostProcessing.Steps.Helpers
 
   @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
-  defstruct id: nil, steps: [], status: :queued, rows_processed: 0, ref: nil, result: nil
+  defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0
 
   def run(mode, job, query_result, job_server_pid) do
     case Aws.get_file_stream(mode, query_result.output_location) do
@@ -33,8 +35,9 @@ defmodule ReportServer.PostProcessing.Job do
         end)
         |> CSV.encode()
         |> output_stream(mode, job, query_result.id)
-      error ->
-        error
+      {:error, error} ->
+        Logger.error(error)
+        {:error, error}
     end
   end
 

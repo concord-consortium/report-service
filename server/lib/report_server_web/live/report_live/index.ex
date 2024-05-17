@@ -1,6 +1,8 @@
 defmodule ReportServerWeb.ReportLive.Index do
   use ReportServerWeb, :live_view
 
+  require Logger
+
   alias ReportServerWeb.{Auth, TokenService, Aws}
   alias ReportServerWeb.ReportLive.QueryComponent
 
@@ -66,7 +68,9 @@ defmodule ReportServerWeb.ReportLive.Index do
         }
       }}
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Error getting AWS data: #{error}")
+        {:error, error}
     end
   end
 end
