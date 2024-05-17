@@ -186,6 +186,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
           [step | acc]
         _, acc -> acc
       end)
+      |> JobServer.sort_steps()
     JobServer.add_job(id, query.result, steps)
 
     {:noreply, socket

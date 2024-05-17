@@ -15,11 +15,15 @@ defmodule ReportServer.PostProcessing.JobServer do
     DemoAddAnswerLength.step(),
     HasAudio.step(),
     TranscribeAudio.step()
-  ]
+  ] |> sort_steps()
   def get_steps(_mode), do: [
     HasAudio.step(),
     TranscribeAudio.step()
-  ]
+  ] |> sort_steps()
+
+  def sort_steps(steps) do
+    Enum.sort(steps, &(&1.label < &2.label))
+  end
 
   def request_job_status(query_id) do
     GenServer.cast(get_server_pid(query_id), :request_job_status)
