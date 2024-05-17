@@ -122,7 +122,11 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                 <ul :for={step <- job.steps}>
                   <li><%= step.label %></li>
                 </ul>
+                <div :if={job.result == nil} class="italic">
+                  Processing row: <%= job.rows_processed %>
+                </div>
                 <button
+                  :if={job.result != nil}
                   id={"download_job_#{query.id}_#{job.id}"}
                   phx-hook="DownloadButton"
                   data-id={@myself}
@@ -134,6 +138,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                   Download Result
                 </button>
                 <button
+                  :if={job.result != nil}
                   id={"copy_job_#{query.id}_#{job.id}"}
                   phx-hook="DownloadButton"
                   data-id={@myself}

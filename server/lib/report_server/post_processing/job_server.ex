@@ -57,8 +57,9 @@ defmodule ReportServer.PostProcessing.JobServer do
   def handle_cast({:add_job, query_result, steps}, state = %{mode: mode, jobs: jobs}) do
     job = %Job{id: length(jobs) + 1, steps: steps, status: :started, ref: nil, result: nil}
 
+    job_server = self()
     task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
-      Job.run(mode, job, query_result)
+      Job.run(mode, job, query_result, job_server)
     end)
 
     job = Map.put(job, :ref, task.ref)
@@ -66,6 +67,11 @@ defmodule ReportServer.PostProcessing.JobServer do
     state = %{state | jobs: jobs ++ [job]}
       |> broadcast_jobs()
       |> save_jobs_file()
+    {:noreply, state}
+  end
+
+  def handle_info({:processed_row, job_id, row_num}, state) do
+    update_rows_processed(state, job_id, row_num)
     {:noreply, state}
   end
 
@@ -126,8 +132,17 @@ defmodule ReportServer.PostProcessing.JobServer do
 
   def update_job(%{jobs: jobs} = state, ref, status, result \\ nil) do
     job_index = Enum.find_index(jobs, fn %{ref: job_ref} -> job_ref == ref end)
+    update_job_at(state, job_index, &(%{&1 | status: status, result: result}))
+  end
+
+  def update_rows_processed(%{jobs: jobs} = state, job_id, rows_processed) do
+    job_index = Enum.find_index(jobs, fn %{id: id} -> job_id == id end)
+    update_job_at(state, job_index, &(%{&1 | rows_processed: rows_processed}))
+  end
+
+  def update_job_at(%{jobs: jobs} = state, job_index, callback) do
     if job_index != nil do
-      job = %Job{Enum.at(jobs, job_index) | status: status, result: result}
+      job = callback.(Enum.at(jobs, job_index))
       jobs = List.replace_at(jobs, job_index, job)
       state = %{state | jobs: jobs}
       broadcast_jobs(state)
