@@ -44,7 +44,7 @@ defmodule ReportServerWeb.ReportService do
   end
 
   def get_answer("demo", _source, _remote_endpoint, _question_id) do
-    {:error, "Answer not found"}
+    {:error, "answer not found"}
   end
 
   def get_answer(_mode, source, remote_endpoint, question_id) do

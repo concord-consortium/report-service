@@ -79,7 +79,13 @@ if config_env() == :prod do
     url: System.get_env("PORTAL_URL") || "https://learn.concord.org"
 
   config :report_server, :token_service,
-    url: System.get_env("TOKEN_SERVICE_URL") || "https://token-service-62822.firebaseapp.com/api/v1/resources" # production
+    url: System.get_env("TOKEN_SERVICE_URL") || "https://token-service-62822.firebaseapp.com/api/v1/resources", # production
+    private_bucket: System.get_env("TOKEN_SERVICE_PRIVATE_BUCKET") || "token-service-files-private" # production
+
+  config :report_server, :output,
+    bucket: System.get_env("OUTPUT_BUCKET") || "report-server-output",
+    jobs_folder: System.get_env("JOBS_FOLDER") || "jobs",
+    transcripts_folder: System.get_env("TRANSCRIPTS_FOLDER") || "transcripts"
 
   # ## SSL Support
   #

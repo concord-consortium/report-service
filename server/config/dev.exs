@@ -78,7 +78,13 @@ config :report_server, :portal,
 config :report_server, :token_service,
   # switch the url to localhost if using the Firebase emulator locally
   # url: "http://localhost:5000/api/v1/resources"
-  url: "https://token-service-staging.firebaseapp.com/api/v1/resources" # staging
+  url: "https://token-service-staging.firebaseapp.com/api/v1/resources", # staging
+  private_bucket: "token-service-files-private" # staging
 
 config :report_server, :report_service,
   url: "https://us-central1-report-service-dev.cloudfunctions.net/api" # staging
+
+config :report_server, :output,
+  bucket: "report-server-output",
+  jobs_folder: "jobs",
+  transcripts_folder: "transcripts"

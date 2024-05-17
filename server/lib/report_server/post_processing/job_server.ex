@@ -3,8 +3,8 @@ defmodule ReportServer.PostProcessing.JobServer do
   use GenServer
 
   alias ReportServerWeb.Aws
-  alias ReportServer.PostProcessing.Job
-  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio}
+  alias ReportServer.PostProcessing.{Job, Output}
+  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio}
 
   def start_link(query_id, mode) do
     GenServer.start_link(__MODULE__, %{query_id: query_id, mode: mode, jobs: []}, name: {:via, Registry, {ReportServer.PostProcessingRegistry, query_id}})
@@ -13,18 +13,20 @@ defmodule ReportServer.PostProcessing.JobServer do
   def get_steps("demo"), do: [
     DemoUpperCase.step(),
     DemoAddAnswerLength.step(),
-    HasAudio.step()
+    HasAudio.step(),
+    TranscribeAudio.step()
   ]
   def get_steps(_mode), do: [
-    HasAudio.step()
+    HasAudio.step(),
+    TranscribeAudio.step()
   ]
 
   def request_job_status(query_id) do
     GenServer.cast(get_server_pid(query_id), :request_job_status)
   end
 
-  def add_job(query_id, query_result, steps, workgroup_credentials) do
-    GenServer.cast(get_server_pid(query_id), {:add_job, query_result, steps, workgroup_credentials})
+  def add_job(query_id, query_result, steps) do
+    GenServer.cast(get_server_pid(query_id), {:add_job, query_result, steps})
   end
 
   def query_topic(query_id), do: "job_server_#{query_id}"
@@ -48,11 +50,11 @@ defmodule ReportServer.PostProcessing.JobServer do
     {:noreply, state}
   end
 
-  def handle_cast({:add_job, query_result, steps, workgroup_credentials}, state = %{mode: mode, jobs: jobs}) do
+  def handle_cast({:add_job, query_result, steps}, state = %{mode: mode, jobs: jobs}) do
     job = %Job{id: length(jobs) + 1, steps: steps, status: :started, ref: nil, result: nil}
 
     task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
-      Job.run(mode, job, query_result, workgroup_credentials)
+      Job.run(mode, job, query_result)
     end)
 
     job = Map.put(job, :ref, task.ref)
@@ -85,8 +87,12 @@ defmodule ReportServer.PostProcessing.JobServer do
     state
   end
 
+  defp read_jobs_file(%{mode: "demo"} = state) do
+    # no saved jobs file in demo mode
+    state
+  end
   defp read_jobs_file(%{mode: mode} = state) do
-    case Aws.get_file_contents(mode, Aws.get_server_credentials(), get_jobs_file_url(state)) do
+    case Aws.get_file_contents(mode, get_jobs_file_url(state)) do
       {:ok, contents} ->
         json = keys_to_atoms(Jason.decode!(contents))
         jobs = Enum.map(json.jobs, fn job -> struct(Job, job) end)
@@ -105,7 +111,7 @@ defmodule ReportServer.PostProcessing.JobServer do
       version: 1,
       jobs: jobs
     })
-    Aws.put_file_contents(mode, Aws.get_server_credentials(), get_jobs_file_url(state), contents)
+    Aws.put_file_contents(mode, get_jobs_file_url(state), contents)
     state
   end
 
@@ -128,7 +134,7 @@ defmodule ReportServer.PostProcessing.JobServer do
   end
 
   defp get_jobs_file_url(%{query_id: query_id}) do
-    "s3://report-server-output/#{query_id}_jobs.json"
+    Output.get_jobs_url("#{query_id}_jobs.json")
   end
 
   defp keys_to_atoms(json) when is_map(json) do

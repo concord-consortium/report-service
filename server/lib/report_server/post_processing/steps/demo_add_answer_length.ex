@@ -15,12 +15,10 @@ defmodule ReportServer.PostProcessing.Steps.DemoAddAnswerLength do
   end
 
   def init(%JobParams{step_state: step_state} = params) do
-    # get columns that end with _text
     text_cols = Helpers.get_text_cols(params)
 
-    # add columns after each text column with the length
-    params = Enum.reduce(text_cols, params, fn {k, _v}, acc ->
-      Helpers.add_output_column(acc, length_col(k), :after, k)
+    params = Enum.reduce(text_cols, params, fn {text_col, _index}, acc ->
+      Helpers.add_output_column(acc, length_col(text_col), :after, text_col)
     end)
 
     step_state = Map.put(step_state, @id, text_cols)
@@ -30,10 +28,10 @@ defmodule ReportServer.PostProcessing.Steps.DemoAddAnswerLength do
   def process_row(%JobParams{step_state: step_state}, row) do
     # measure the length of each text answer
     text_cols = Map.get(step_state, @id)
-    Enum.reduce(text_cols, row, fn {k, v}, {input, output} ->
-      {input, Map.put(output, length_col(k), String.length(input[v]))}
+    Enum.reduce(text_cols, row, fn {text_col, index}, {input, output} ->
+      {input, Map.put(output, length_col(text_col), String.length(input[index]))}
     end)
   end
 
-  defp length_col(k), do: "#{k}_length"
+  defp length_col(text_col), do: "#{text_col}_length"
 end

@@ -4,6 +4,7 @@
 
 defmodule ReportServerWeb.Aws do
   alias ReportServer.Demo
+  alias ReportServer.PostProcessing.Output
 
   def get_workgroup_query_ids("demo", _workgroup_credentials, _workgroup) do
     {:ok, ["1", "2", "3", "4", "5"]}
@@ -65,13 +66,13 @@ defmodule ReportServerWeb.Aws do
     |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
   end
 
-  def get_file_stream("demo", _workgroup_credentials, _s3_url) do
+  def get_file_stream("demo", _s3_url) do
     {:ok, io} = Demo.raw_demo_csv() |> StringIO.open()
     {:ok, IO.stream(io, :line)}
   end
-  def get_file_stream(_mode, workgroup_credentials, s3_url) do
+  def get_file_stream(_mode, s3_url) do
     try do
-      client = get_exaws_client(workgroup_credentials)
+      client = get_exaws_client(get_server_credentials())
       {bucket, path} = get_bucket_and_path(s3_url)
       stream = ExAws.S3.download_file(bucket, path, :memory)
       |> ExAws.stream!(client)
@@ -81,36 +82,82 @@ defmodule ReportServerWeb.Aws do
     end
   end
 
-  def put_file_stream("demo", _workgroup_credentials, _s3_url, _stream) do
+  def put_file_stream("demo", _s3_url, _stream) do
     {:error, "No stream output in demo mode"}
   end
-  def put_file_stream(_mode, workgroup_credentials, s3_url, stream) do
-    client = get_exaws_client(workgroup_credentials)
+  def put_file_stream(_mode, s3_url, stream) do
+    client = get_exaws_client(get_server_credentials())
     {bucket, path} = get_bucket_and_path(s3_url)
     ExAws.S3.upload(stream, bucket, path)
     |> ExAws.request(client)
   end
 
-  def get_file_contents("demo", _workgroup_credentials, _s3_url) do
-    {:error, "No files in demo mode"}
-  end
-
-  def get_file_contents(mode, workgroup_credentials, s3_url) do
-    case get_file_stream(mode, workgroup_credentials, s3_url) do
+  def get_file_contents(mode, s3_url) do
+    case get_file_stream(mode, s3_url) do
       {:ok, stream} ->
         {:ok, Enum.join(stream)}
       error -> error
     end
   end
 
-  def put_file_contents("demo", _workgroup_credentials, _s3_url, _contents) do
+  def put_file_contents("demo", _s3_url, _contents) do
     {:error, "Not implemented for demo"}
   end
-  def put_file_contents(_mode, workgroup_credentials, s3_url, contents) do
-    client = get_aws_client(workgroup_credentials)
+  def put_file_contents(_mode, s3_url, contents) do
+    client = get_aws_client(get_server_credentials())
     {bucket, path} = get_bucket_and_path(s3_url)
     AWS.S3.put_object(client, bucket, path, %{"Body" => contents})
   end
+
+  def get_transcription_job(id) do
+    client = get_server_credentials() |> get_aws_client()
+    case AWS.Transcribe.get_transcription_job(client, %{"TranscriptionJobName": id}) do
+      {:ok, %{
+        "TranscriptionJob" => %{
+          "TranscriptionJobStatus" => "COMPLETED"
+        }
+      }, _} -> {:ok, :completed}
+
+      {:ok, %{
+        "TranscriptionJob" => %{
+          "TranscriptionJobStatus" => "QUEUED"
+        }
+      }, _} -> {:ok, :queued}
+
+      {:ok, %{
+        "TranscriptionJob" => %{
+          "TranscriptionJobStatus" => "IN_PROGRESS"
+        }
+      }, _} -> {:ok, :in_progress}
+
+      {:ok, %{
+        "TranscriptionJob" => %{
+          "FailureReason" => failure_reason,
+          "TranscriptionJobStatus" => "FAILED"
+        }
+      }, _} -> {:error, failure_reason}
+
+      # instead of 404 AWS returns 400...
+      {:error, {:unexpected_response, %{status_code: 400}}} -> {:error, "Job not found"}
+
+      _ -> {:error, "An unknown error occurred"}
+    end
+  end
+
+  def start_transcription_job(id, s3_url) do
+    client = get_server_credentials() |> get_aws_client()
+    case AWS.Transcribe.start_transcription_job(client, %{
+      "TranscriptionJobName": id,
+      "Media": %{"MediaFileUri": s3_url},
+      "IdentifyLanguage": true,
+      "OutputBucketName": Output.get_bucket(),
+      "OutputKey": Output.get_transcripts_folder(),
+    }) do
+      {:ok, _, _} -> {:ok, :started}
+      _ -> {:error, "Unable to start transcription job"}
+    end
+  end
+
 
   def get_server_credentials do
     credentials = Application.get_env(:report_server, :aws_credentials)
