@@ -51,10 +51,20 @@ Hooks.DownloadButton = {
     this.el.addEventListener("click", () => {
       this.pushEventTo(this.el.dataset.id, "download", this.el.dataset, (reply) => {
         if (reply?.url) {
+          if (this.el.dataset.copy) {
+            if (navigator?.clipboard?.writeText) {
+              navigator.clipboard.writeText(reply.url)
+              alert("The url has been copied to the clipboard.  It will expire in 10 minutes.")
+            } else {
+              alert("Sorry, the clipboard API is not available.")
+            }
+            return;
+          }
+
           // the url has a content-disposition attachment so it will just download and not replace the page
           window.location.replace(reply.url)
         } else {
-          alert("Unable to download CSV!")
+          alert("Unable to get signed url!")
         }
       })
     })

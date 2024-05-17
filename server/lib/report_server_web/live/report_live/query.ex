@@ -11,8 +11,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   @poll_interval 5_000 # 5 seconds
 
-  @button_class "rounded px-3 py-2 bg-orange border border-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange disabled:bg-slate-500 disabled:border-slate-500 disabled:text-white disabled:opacity-35"
-  @small_button_class "#{@button_class} px-2 py-1 text-xs"
+  @button_class "rounded px-2 py-1 text-xs bg-orange border border-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange disabled:bg-slate-500 disabled:border-slate-500 disabled:text-white disabled:opacity-35"
 
   # initial load
   @impl true
@@ -29,7 +28,6 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
       |> assign(assigns)
       |> assign(%{
         :button_class => @button_class,
-        :small_button_class => @small_button_class,
         :show_form => false,
         :steps => steps,
         :default_form_params => default_form_params,
@@ -72,7 +70,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
             <div class="text-sm">Completion status: <span class={"capitalize #{state_class(query.state)}"}><%= query.state %></span></div>
           </div>
           <div :if={query.state == "succeeded" && query.output_location}>
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-1">
               <button
                 id={"download_original_#{query.id}"}
                 phx-hook="DownloadButton"
@@ -80,6 +78,15 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                 data-type="original"
                 class={@button_class}>
                 Download CSV
+              </button>
+              <button
+                id={"copy_original_#{query.id}"}
+                phx-hook="DownloadButton"
+                data-id={@myself}
+                data-type="original"
+                data-copy="true"
+                class={@button_class}>
+                Copy Download Url
               </button>
               <button :if={length(@steps) > 0}
                 class={@button_class}
@@ -121,10 +128,22 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                   data-id={@myself}
                   data-type="job"
                   data-job-id={job.id}
-                  class={@small_button_class}
+                  class={@button_class}
                   disabled={job.result == nil}
                 >
                   Download Result
+                </button>
+                <button
+                  id={"copy_job_#{query.id}_#{job.id}"}
+                  phx-hook="DownloadButton"
+                  data-id={@myself}
+                  data-type="job"
+                  data-job-id={job.id}
+                  data-copy="true"
+                  class={@button_class}
+                  disabled={job.result == nil}
+                >
+                  Copy Result Url
                 </button>
               </div>
             </div>
