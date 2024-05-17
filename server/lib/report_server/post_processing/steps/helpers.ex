@@ -1,4 +1,6 @@
 defmodule ReportServer.PostProcessing.Steps.Helpers do
+  require Logger
+
   alias ReportServer.PostProcessing.JobParams
   alias ReportServerWeb.ReportService
 
@@ -52,7 +54,9 @@ defmodule ReportServer.PostProcessing.Steps.Helpers do
          {:ok, source} <- get_source_from_url(url) do
       ReportService.get_answer(mode, source, remote_endpoint, question_id)
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Error getting answer: #{error}")
+        {:error, error}
     end
   end
 
@@ -62,7 +66,9 @@ defmodule ReportServer.PostProcessing.Steps.Helpers do
          {:ok, interactive_state} <- Jason.decode(report_state["interactiveState"] || "{}") do
       {:ok, %{report_state: report_state, authored_state: authored_state, interactive_state: interactive_state}}
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Error parsing report state: #{error}")
+        {:error, error}
     end
   end
 

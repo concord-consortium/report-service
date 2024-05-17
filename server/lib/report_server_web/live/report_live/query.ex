@@ -1,4 +1,6 @@
 defmodule ReportServerWeb.ReportLive.QueryComponent do
+  require Logger
+
   alias ReportServer.PostProcessing.JobServer
   alias Phoenix.PubSub
   alias ReportServer.PostProcessing.JobManager
@@ -265,7 +267,9 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
           Process.send_after(self, {:trigger_poll, query_id}, @poll_interval)
         end
         {:ok, %{query: query}}
-      error -> error
+      {:error, error} ->
+        Logger.error(error)
+        {:error, error}
     end
   end
 

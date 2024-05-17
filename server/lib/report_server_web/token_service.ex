@@ -1,4 +1,5 @@
 defmodule ReportServerWeb.TokenService do
+  require Logger
 
   def get_firebase_jwt("demo", _portal_credentials) do
     {:ok, "demo-jwt"}
@@ -9,7 +10,9 @@ defmodule ReportServerWeb.TokenService do
          {:ok, token} <- get_token_from_response(resp.body) do
         {:ok, token}
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Unable to get firebase JWT: #{error}")
+        {:error, error}
     end
   end
 
@@ -37,7 +40,9 @@ defmodule ReportServerWeb.TokenService do
          {:ok, workgroup} <- get_first_resource_from_response(resp.body) do
         {:ok, workgroup}
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Unable to get Athena workgroup: #{error}")
+        {:error, error}
     end
   end
 
@@ -50,7 +55,9 @@ defmodule ReportServerWeb.TokenService do
          {:ok, workgroup_credentials} <- get_workgroup_credentials_from_response(resp.body) do
         {:ok, workgroup_credentials}
     else
-      error -> error
+      {:error, error} ->
+        Logger.error("Unable to get Athena workgroup credentials: #{error}")
+        {:error, error}
     end
   end
 

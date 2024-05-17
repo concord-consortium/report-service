@@ -1,7 +1,9 @@
 defmodule ReportServer.PostProcessing.JobServer do
-  alias Phoenix.PubSub
   use GenServer
 
+  require Logger
+
+  alias Phoenix.PubSub
   alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.{Job, Output}
   alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio}
@@ -55,7 +57,9 @@ defmodule ReportServer.PostProcessing.JobServer do
   end
 
   def handle_cast({:add_job, query_result, steps}, state = %{mode: mode, jobs: jobs}) do
-    job = %Job{id: length(jobs) + 1, steps: steps, status: :started, ref: nil, result: nil}
+    job = %Job{id: length(jobs) + 1, query_id: query_result.id, steps: steps, status: :started, started_at: :os.system_time(:millisecond), ref: nil, result: nil}
+    step_labels = Enum.map(steps, &(&1.label)) |> Enum.join(", ")
+    Logger.info("Adding job ##{job.id} for query #{query_result.id} (#{step_labels})")
 
     job_server = self()
     task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
@@ -132,7 +136,15 @@ defmodule ReportServer.PostProcessing.JobServer do
 
   def update_job(%{jobs: jobs} = state, ref, status, result \\ nil) do
     job_index = Enum.find_index(jobs, fn %{ref: job_ref} -> job_ref == ref end)
-    update_job_at(state, job_index, &(%{&1 | status: status, result: result}))
+    update_job_at(state, job_index, fn job ->
+      if status == :completed do
+        run_time = :os.system_time(:millisecond) - job.started_at
+        Logger.info("Status change of job ##{job.id} for query #{job.query_id}: #{status}. Elapsed time: #{run_time} ms.")
+      else
+        Logger.info("Status change of job ##{job.id} for query #{job.query_id}: #{status}")
+      end
+      %{job | status: status, result: result}
+    end)
   end
 
   def update_rows_processed(%{jobs: jobs} = state, job_id, rows_processed) do
