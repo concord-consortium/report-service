@@ -515,6 +515,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
 
   return `-- name ${names.join(", ")}
   -- type ${types.join(", ")}
+  -- reportType ${usageReport ? "usage" : "details"}
 
   WITH ${[activities, groupedAnswers, learnersAndAnswers, uniqueUserClassQuery, oneRowTableForJoin].join(",\n\n")}
   ${selects.join("\nUNION ALL\n")}
@@ -543,6 +544,8 @@ exports.generateLearnerLogSQL = (queryIdsPerRunnable, authDomain, sourceKey) => 
   return `
   -- name ${runnableUrls.join(", ")}
   -- type learner event log ⎯ [qids: ${queryIds.join(", ")}]
+  -- reportType learner-event-log
+
   SELECT *
   FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner
@@ -577,6 +580,7 @@ exports.generateUserLogSQL = (usernames, activities, start_date, end_date) => {
   return `
   -- name ${where.join(" AND ")}
   -- type user event log
+  -- reportType user-event-log
   -- usernames: ${JSON.stringify(usernames)}
   -- activities: ${JSON.stringify(activities)}
   SELECT *
@@ -596,6 +600,8 @@ exports.generateNarrowLogSQL = (queryIdsPerRunnable, authDomain, sourceKey) => {
   return `
   -- name ${runnableUrls.join(", ")}
   -- type learner event log ⎯ [qids: ${queryIds.join(", ")}]
+  -- reportType narrow-learner-event-log
+
   SELECT log.*
   FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner

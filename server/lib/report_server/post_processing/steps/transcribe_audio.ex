@@ -64,7 +64,7 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
          {:ok, transcription} <- get_transcription(id, status) do
       {:ok, transcription}
     else
-      {:error, "answer not found"} ->
+      {:error, "Error: Answer not found!"} ->
         {:error, "no answer to transcribe"}
 
       {:error, error} ->
@@ -77,7 +77,7 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
     if interactive_state["audioFile"] != nil do
       {:ok, interactive_state["audioFile"]}
     else
-      {:error, "no audio file"}
+      {:error, "no audio file to transcribe"}
     end
   end
 
@@ -86,11 +86,11 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
     if attachment != nil && attachment["publicPath"] != nil do
       {:ok, attachment["publicPath"]}
     else
-      {:error, "no audio path"}
+      {:error, "no audio path in attachment"}
     end
   end
   defp get_audio_path(_answer, _audio_file) do
-    {:error, "no audio path"}
+    {:error, "no audio path in attachment"}
   end
 
   defp get_audio_s3_url(audio_path) do

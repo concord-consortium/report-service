@@ -34,7 +34,7 @@ defmodule ReportServerWeb.Aws do
 
     # the actual AWS response is bigger but these are the only fields we currently need
     {:ok, %{
-      "Query" => "-- name Demo Query ##{query_id}\n  -- type activity\n",
+      "Query" => "-- name Demo Query ##{query_id}\n  -- type activity\n  -- reportType details\n",
       "QueryExecutionId" => query_id,
       "ResultConfiguration" => %{
         "OutputLocation" => "/reports/demo.csv"

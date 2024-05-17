@@ -157,6 +157,7 @@ describe('Query creation', function () {
         const expectedSQLresult = `
         -- name test activity, test activity 2
         -- type activity, activity
+        -- reportType details
 
         WITH activities_1 AS (SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789'),
 
@@ -448,6 +449,7 @@ describe('Query creation usage report', function () {
       const expectedSQLresult = `
       -- name test activity, test activity 2
       -- type activity, activity
+      -- reportType usage
 
       WITH activities_1 AS (SELECT *, cardinality(questions) AS num_questions FROM "report-service"."activity_structure" WHERE structure_id = '123456789'),
 
