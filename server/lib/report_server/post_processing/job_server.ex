@@ -12,16 +12,19 @@ defmodule ReportServer.PostProcessing.JobServer do
     GenServer.start_link(__MODULE__, %{query_id: query_id, mode: mode, jobs: []}, name: {:via, Registry, {ReportServer.PostProcessingRegistry, query_id}})
   end
 
-  def get_steps("demo"), do: [
+  def get_steps("demo", "details"), do: [
     DemoUpperCase.step(),
     DemoAddAnswerLength.step(),
     HasAudio.step(),
     TranscribeAudio.step()
   ] |> sort_steps()
-  def get_steps(_mode), do: [
+
+  def get_steps(_mode, "details"), do: [
     HasAudio.step(),
     TranscribeAudio.step()
   ] |> sort_steps()
+
+  def get_steps(_mode, _report_type), do: []
 
   def sort_steps(steps) do
     Enum.sort(steps, &(&1.label < &2.label))

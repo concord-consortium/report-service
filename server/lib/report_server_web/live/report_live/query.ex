@@ -10,6 +10,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   @name_regex ~r/-- name ([^\n]*)\n/
   @type_regex ~r/-- type ([^\n]*)\n/
+  @report_type_regex ~r/-- reportType ([^\n]*)\n/
 
   @poll_interval 5_000 # 5 seconds
 
@@ -17,13 +18,10 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   # initial load
   @impl true
-  def update(%{id: id, workgroup_credentials: _, mode: mode} = assigns, socket) do
+  def update(%{id: id, workgroup_credentials: _, mode: _mode} = assigns, socket) do
 
     # listen for pubsub messages from the post processing server
     PubSub.subscribe(ReportServer.PubSub, JobServer.query_topic(id))
-
-    steps = JobServer.get_steps(mode)
-    default_form_params =  steps |> Enum.map(fn step -> {step.id, false} end) |> Enum.into(%{})
 
     # save the initial assigns
     socket = socket
@@ -31,9 +29,6 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
       |> assign(%{
         :button_class => @button_class,
         :show_form => false,
-        :steps => steps,
-        :default_form_params => default_form_params,
-        :form => to_form(default_form_params),
         :form_disabled => true,
         :form_version => 1,  # hacky way to reset form after a submit
         :loading_jobs => true,
@@ -68,6 +63,8 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
             <div :if={!query.name}>Name: <span class="font-bold italic">Unnamed Report</span></div>
             <div :if={query.type} class="text-sm">Type: <span class="capitalize"><%= query.type %></span></div>
             <div :if={!query.type} class="text-sm">Type: <span class="font-bold italic">Unknown Type</span></div>
+            <div :if={query.report_type} class="text-sm">Report Type: <span class="capitalize"><%= query.report_type %></span></div>
+            <div :if={!query.report_type} class="text-sm">Report Type: <span class="font-bold italic">Unknown Report Type</span></div>
             <div class="text-sm">Creation date: <span id={"date_#{query.id}"} phx-hook="QueryDate" data-date={query.submission_date_time} /></div>
             <div class="text-sm">Completion status: <span class={"capitalize #{state_class(query.state)}"}><%= query.state %></span></div>
           </div>
@@ -90,7 +87,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                 class={@button_class}>
                 Copy Download Url
               </button>
-              <button :if={length(@steps) > 0}
+              <button :if={length(query.steps) > 0}
                 class={@button_class}
                 phx-click="show_form"
                 phx-target={@myself}>
@@ -102,9 +99,9 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
         <div :if={query.state == "succeeded" && @show_form} class="flex gap-2 w-full">
           <div class="grow w-full my-2">
             <div class="font-bold text-sm">Select Post Processing Steps:</div>
-            <.form id={"form_#{@form_version}"} for={@form} phx-change="validate_form" phx-submit="submit_form" phx-target={@myself} class="mt-2">
+            <.form id={"form_#{@form_version}"} for={query.form} phx-change="validate_form" phx-submit="submit_form" phx-target={@myself} class="mt-2">
               <div class="space-y-1">
-                <.input :for={step <- @steps} type="checkbox" field={@form[step.id]} label={step.label} />
+                <.input :for={step <- query.steps} type="checkbox" field={query.form[step.id]} label={step.label} />
               </div>
               <div class="mt-3">
                 <button class={@button_class} disabled={@form_disabled}>Create New Post Processing Job</button>
@@ -172,10 +169,10 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   end
 
   @impl true
-  def handle_event("validate_form", params, socket = %{assigns: %{steps: steps}}) do
+  def handle_event("validate_form", params, socket = %{assigns: %{query: query}}) do
     # form is disabled if all the step checkboxes are false
     form_disabled = Enum.reduce(params, true, fn {k, v}, acc ->
-      acc && (Enum.find(steps, fn step -> step.id == k end) == nil || v == "false")
+      acc && (Enum.find(query.result.steps, fn step -> step.id == k end) == nil || v == "false")
     end)
     {:noreply, socket
       |> assign(:form_disabled, form_disabled)
@@ -184,12 +181,12 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   end
 
   @impl true
-  def handle_event("submit_form", params, socket = %{assigns: %{id: id, query: query, steps: steps, form_version: form_version, default_form_params: default_form_params}}) do
+  def handle_event("submit_form", params, socket = %{assigns: %{id: id, query: query, form_version: form_version}}) do
     steps =
       params
       |> Enum.reduce([], fn
         {step_id, "true"}, acc ->
-          step = Enum.find(steps, fn step -> step.id == step_id end)
+          step = Enum.find(query.result.steps, fn step -> step.id == step_id end)
           [step | acc]
         _, acc -> acc
       end)
@@ -199,7 +196,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
     {:noreply, socket
       |> assign(:form_version, form_version + 1)
       |> assign(:form_disabled, true)
-      |> assign(:form, to_form(default_form_params))
+      |> assign(:form, to_form(query.result.default_form_params))
     }
   end
 
@@ -261,7 +258,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   defp async_get_query_info(mode, workgroup_credentials, query_id, self) do
     case Aws.get_query_execution(mode, workgroup_credentials, query_id) do
       {:ok, raw_query} ->
-        query = parse_query(query_id, raw_query)
+        query = parse_query(mode, query_id, raw_query)
         if trigger_poll?(query.state) do
           # this sends a message to the parent liveview after @poll_interval milliseconds which then sends a message back to this component to poll for changes
           Process.send_after(self, {:trigger_poll, query_id}, @poll_interval)
@@ -273,7 +270,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
     end
   end
 
-  defp parse_query(query_id, query = %{"Query" => sql, "Status" => %{"State" => state, "SubmissionDateTime" => submission_date_time}}) do
+  defp parse_query(mode, query_id, query = %{"Query" => sql, "Status" => %{"State" => state, "SubmissionDateTime" => submission_date_time}}) do
     name = case Regex.run(@name_regex, sql) do
       [_, name] -> name
       _ -> nil
@@ -282,11 +279,23 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
       [_, type] -> type
       _ -> nil
     end
+    report_type = case Regex.run(@report_type_regex, sql) do
+      [_, report_type] -> report_type
+      _ -> nil
+    end
+
+    steps = JobServer.get_steps(mode, report_type)
+    default_form_params =  steps |> Enum.map(fn step -> {step.id, false} end) |> Enum.into(%{})
+    form = to_form(default_form_params)
 
     %{
       id: query_id,
       name: name,
       type: type,
+      report_type: report_type,
+      steps: steps,
+      default_form_params: default_form_params,
+      form: form,
       state: String.downcase(state),
       submission_date_time: submission_date_time,
       output_location: query["ResultConfiguration"] && query["ResultConfiguration"]["OutputLocation"]
