@@ -5,9 +5,9 @@ defmodule ReportServer.PostProcessing.Job do
   alias ReportServer.PostProcessing.Steps.Helpers
 
   @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
-  defstruct id: nil, steps: [], status: :queued, ref: nil, result: nil
+  defstruct id: nil, steps: [], status: :queued, rows_processed: 0, ref: nil, result: nil
 
-  def run(mode, job, query_result) do
+  def run(mode, job, query_result, job_server_pid) do
     case Aws.get_file_stream(mode, query_result.output_location) do
       {:ok, stream } ->
         stream
@@ -22,12 +22,13 @@ defmodule ReportServer.PostProcessing.Job do
               input_header: row,
               input_header_map: header_map,
               output_header: row,
-              output_header_map: header_map
+              output_header_map: header_map,
+              rows_processed: 0
             }
             params = Enum.reduce(job.steps, params, fn step, acc -> step.init.(acc) end)
-            {[params.output_header], params}
+            {[params.output_header], increment_rows_processed(params, job_server_pid, job.id)}
           else
-            {[run_steps(row, job.steps, acc)], acc}
+            {[run_steps(row, job.steps, acc)], increment_rows_processed(acc, job_server_pid, job.id)}
           end
         end)
         |> CSV.encode()
@@ -35,6 +36,12 @@ defmodule ReportServer.PostProcessing.Job do
       error ->
         error
     end
+  end
+
+  defp increment_rows_processed(params = %{rows_processed: rows_processed}, job_server_pid, job_id) do
+    rows_processed = rows_processed + 1
+    send(job_server_pid, {:processed_row, job_id, rows_processed})
+    %{params | rows_processed: rows_processed}
   end
 
   defp run_steps(input_row, steps, params = %JobParams{input_header_map: input_header_map, output_header: output_header, output_header_map: output_header_map}) do
