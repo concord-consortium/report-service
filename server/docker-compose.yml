@@ -1,4 +1,8 @@
-# this is just for testing releases locally, not for deployment of releases!
+# this is just for testing releases locally using the *staging* server, not for deployment of releases!
+# the SERVER_ACCESS_KEY_ID, SERVER_SECRET_ACCESS_KEY can be found in 1Password in the Developer's vault
+# in the "Report Server Staging AWS Access Keys" document.
+# the REPORT_SERVICE_TOKEN can be found in the AWS CloudFormation parameters for the report service or
+# the report server
 name: report-server
 services:
   app:
@@ -9,8 +13,13 @@ services:
     environment:
       - PORT=4000
       - PHX_HOST=localhost
-      - SECRET_KEY_BASE="${SECRET_KEY_BASE:-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE}"
-      - SERVER_ACCESS_KEY_ID="${SERVER_ACCESS_KEY_ID:-}"
-      - SERVER_SECRET_ACCESS_KEY="${SERVER_SECRET_ACCESS_KEY:-}"
-      - REPORT_SERVICE_TOKEN="${REPORT_SERVICE_TOKEN:-}"
-
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE:-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE}
+      - SERVER_ACCESS_KEY_ID=${SERVER_ACCESS_KEY_ID:-}
+      - SERVER_SECRET_ACCESS_KEY=${SERVER_SECRET_ACCESS_KEY:-}
+      - REPORT_SERVICE_TOKEN=${REPORT_SERVICE_TOKEN:-}
+      - PORTAL_URL=${PORTAL_URL:-https://learn.portal.staging.concord.org}
+      - TOKEN_SERVICE_URL=${TOKEN_SERVICE_URL:-https://token-service-staging.firebaseapp.com/api/v1/resources}
+      - TOKEN_SERVICE_PRIVATE_BUCKET=${TOKEN_SERVICE_PRIVATE_BUCKET:-token-service-files-private}
+      - OUTPUT_BUCKET=${OUTPUT_BUCKET:-report-server-output}
+      - JOBS_FOLDER=${JOBS_FOLDER:-jobs}
+      - TRANSCRIPTS_FOLDER=${TRANSCRIPTS_FOLDER:-transcripts}
