@@ -30,3 +30,49 @@ To start the Phoenix server:
   * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
 
 Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+
+# Server Setup
+
+## AWS User Permissions
+
+The server uses the authenticated user's AWS permissions only to list and retrieve the Athena queries for the user.  Otherwise it uses user credentials passed via the `SERVER_ACCESS_KEY_ID` and `SERVER_SECRET_ACCESS_KEY` environment variables.  These permissions must be defined in the following staging and production policies and assigned to the staging and production users:
+
+### Staging Policy
+
+This staging policy has been created under the name `report-server` and assigned to the user `report-server-staging`.  The access keys for that user can be found in the `Report Server Staging AWS Access Keys` document on 1Password.
+
+```
+{
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Effect": "Allow",
+			"Action": [
+				"s3:GetObject",
+				"transcribe:GetTranscriptionJob",
+				"s3:ListBucket"
+			],
+			"Resource": [
+				"arn:aws:s3:::concord-staging-report-data/workgroup-output/*",
+				"arn:aws:s3:::token-service-files-private/interactive-attachments/*",
+				"arn:aws:transcribe:us-east-1:816253370536:transcription-job/*"
+			]
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"s3:PutObject",
+				"s3:GetObject",
+				"s3:ListBucket"
+			],
+			"Resource": "arn:aws:s3:::report-server-output/*"
+		},
+		{
+			"Effect": "Allow",
+			"Action": "transcribe:StartTranscriptionJob",
+			"Resource": "*"
+		}
+	]
+}
+```
+
