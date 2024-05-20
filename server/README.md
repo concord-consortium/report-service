@@ -76,3 +76,42 @@ This staging policy has been created under the name `report-server` and assigned
 }
 ```
 
+### Production Policy
+
+This production policy has been created under the name `report-server-prod` and assigned to the user `report-server-prod`.  The access keys for that user can be found in the `Report Server Prod AWS Access Keys` document on 1Password.
+
+```
+{
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Effect": "Allow",
+			"Action": [
+				"s3:GetObject",
+				"transcribe:GetTranscriptionJob",
+				"s3:ListBucket"
+			],
+			"Resource": [
+				"arn:aws:s3:::concord-report-data/workgroup-output/*",
+				"arn:aws:s3:::cc-student-work/interactive-attachments/*",
+				"arn:aws:transcribe:us-east-1:816253370536:transcription-job/*"
+			]
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"s3:PutObject",
+				"s3:GetObject",
+				"s3:ListBucket"
+			],
+			"Resource": "arn:aws:s3:::report-server-output-prod/*"
+		},
+		{
+			"Effect": "Allow",
+			"Action": "transcribe:StartTranscriptionJob",
+			"Resource": "*"
+		}
+	]
+}
+```
+
