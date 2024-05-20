@@ -19,6 +19,7 @@ defmodule ReportServerWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/config", PageController, :config
 
     get "/auth/login", AuthController, :login
     get "/auth/logout", AuthController, :logout

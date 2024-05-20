@@ -24,11 +24,15 @@ defmodule ReportServerWeb.TokenService do
     uri = URI.parse(portal_url)
     # use "production" token service env only if we're on the production url
     # this is the same code ported from the report-service app with the domain updated
-    if uri.host == "report-server.concord.org" && !String.contains?(uri.path, "branch") do
+    if uri.host == "learn.concord.org" && !String.contains?(uri.path || "", "branch") do
       {:ok, "production"}
     else
       {:ok, "staging"}
     end
+  end
+
+  def get_env(_mode,  _portal_credentials) do
+    {:ok, "staging"}
   end
 
   def get_athena_workgroup("demo", _env, _jwt) do
@@ -117,7 +121,7 @@ defmodule ReportServerWeb.TokenService do
   end
   def get_workgroup_credentials_from_response(_), do: {:error, "Something went wrong getting the AWS credentials"}
 
-  defp get_token_service_url(env, path \\ "") do
+  def get_token_service_url(env, path \\ "") do
     url = Application.get_env(:report_server, :token_service)
       |> Keyword.get(:url, "https://token-service-staging.firebaseapp.com/api/v1/resources")
 
