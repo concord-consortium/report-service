@@ -1,0 +1,14 @@
+<.flash_group flash={@flash} />
+<div class="p-4">
+  <strong>Config Info</strong>
+  <%= if @error do %>
+    <div class="mt-2">
+      <%= @error %>
+    </div>
+
+  <% else %>
+  <div class="whitespace-pre">
+    <%= Jason.encode!(@config, pretty: true) %>
+  </div>
+  <% end %>
+</div>
