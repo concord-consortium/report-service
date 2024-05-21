@@ -85,7 +85,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                 data-type="original"
                 data-copy="true"
                 class={@button_class}>
-                Copy Download Url
+                Copy Download URL
               </button>
               <button :if={length(query.steps) > 0}
                 class={@button_class}
@@ -147,7 +147,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
                   class={@button_class}
                   disabled={job.result == nil}
                 >
-                  Copy Result Url
+                  Copy Result URL
                 </button>
               </div>
             </div>
