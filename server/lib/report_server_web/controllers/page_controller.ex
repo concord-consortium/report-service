@@ -16,6 +16,7 @@ defmodule ReportServerWeb.PageController do
       portal = Application.get_env(:report_server, :portal) |> Enum.into(%{})
       token_service = Application.get_env(:report_server, :token_service) |> Enum.into(%{})
       output = Application.get_env(:report_server, :output) |> Enum.into(%{})
+      report_service_url = Application.get_env(:report_server, :report_service) |> Keyword.get(:url)
 
       portal_credentials = Auth.get_portal_credentials(session)
       {:ok, token_service_env} = TokenService.get_env("prod", portal_credentials)
@@ -24,6 +25,7 @@ defmodule ReportServerWeb.PageController do
         portal: portal,
         token_service: token_service,
         output: output,
+        report_service_url: report_service_url,
         token_service_env: token_service_env,
         full_token_service_url: TokenService.get_token_service_url(token_service_env)
       }

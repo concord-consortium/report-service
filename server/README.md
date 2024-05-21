@@ -94,7 +94,7 @@ This production policy has been created under the name `report-server-prod` and 
 			"Resource": [
 				"arn:aws:s3:::concord-report-data/workgroup-output/*",
 				"arn:aws:s3:::cc-student-work/interactive-attachments/*",
-				"arn:aws:transcribe:us-east-1:816253370536:transcription-job/*"
+				"arn:aws:transcribe:us-east-1:612297603577:transcription-job/*"
 			]
 		},
 		{
