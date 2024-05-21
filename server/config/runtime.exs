@@ -42,6 +42,7 @@ config :report_server, :aws_credentials,
   secret_access_key: server_secret_access_key
 
 config :report_server, :report_service,
+  url: System.get_env("REPORT_SERVICE_URL") || "https://us-central1-report-service-pro.cloudfunctions.net/api", # production
   token: report_service_token
 
 if config_env() == :prod do
