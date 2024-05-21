@@ -174,9 +174,10 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
     form_disabled = Enum.reduce(params, true, fn {k, v}, acc ->
       acc && (Enum.find(query.result.steps, fn step -> step.id == k end) == nil || v == "false")
     end)
+    query = %{query | result: %{query.result | form: to_form(params)}}
     {:noreply, socket
       |> assign(:form_disabled, form_disabled)
-      |> assign(:form, to_form(params))
+      |> assign(:query, query)
     }
   end
 
@@ -193,10 +194,11 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
       |> JobServer.sort_steps()
     JobServer.add_job(id, query.result, steps)
 
+    query = %{query | result: %{query.result | form: to_form(query.result.default_form_params)}}
     {:noreply, socket
       |> assign(:form_version, form_version + 1)
       |> assign(:form_disabled, true)
-      |> assign(:form, to_form(query.result.default_form_params))
+      |> assign(:query, query)
     }
   end
 
