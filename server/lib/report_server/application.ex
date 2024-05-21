@@ -13,6 +13,7 @@ defmodule ReportServer.Application do
       {Phoenix.PubSub, name: ReportServer.PubSub},
       {Registry, keys: :unique, name: ReportServer.PostProcessingRegistry},
       {Task.Supervisor, name: ReportServer.PostProcessingTaskSupervisor},
+      ReportServer.PostProcessing.JobSupervisor,
       # Start a worker by calling: ReportServer.Worker.start_link(arg)
       # {ReportServer.Worker, arg},
       # Start to serve requests, typically the last entry
