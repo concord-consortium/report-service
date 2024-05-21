@@ -3,7 +3,7 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   alias ReportServer.PostProcessing.JobServer
   alias Phoenix.PubSub
-  alias ReportServer.PostProcessing.JobManager
+  alias ReportServer.PostProcessing.JobSupervisor
   use ReportServerWeb, :live_component
 
   alias ReportServerWeb.Aws
@@ -162,7 +162,8 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   def handle_event("show_form", _params, socket = %{assigns: %{id: id, mode: mode, show_form: show_form}}) do
     show_form = !show_form
     if show_form do
-      JobManager.maybe_start_server(id, mode)
+      JobSupervisor.maybe_start_server(id, mode)
+      JobServer.register_client(id, self())
       JobServer.request_job_status(id)
     end
     {:noreply, socket |> assign(:show_form, show_form)}

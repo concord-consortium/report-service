@@ -8,8 +8,10 @@ defmodule ReportServer.PostProcessing.JobServer do
   alias ReportServer.PostProcessing.{Job, Output}
   alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio}
 
-  def start_link(query_id, mode) do
-    GenServer.start_link(__MODULE__, %{query_id: query_id, mode: mode, jobs: []}, name: {:via, Registry, {ReportServer.PostProcessingRegistry, query_id}})
+  @client_check_interval :timer.minutes(1)
+
+  def start_link({query_id, mode}) do
+    GenServer.start_link(__MODULE__, %{query_id: query_id, mode: mode, jobs: [], clients: %{}}, name: {:via, Registry, {ReportServer.PostProcessingRegistry, query_id}})
   end
 
   def get_steps("demo", "details"), do: [
@@ -30,6 +32,10 @@ defmodule ReportServer.PostProcessing.JobServer do
     Enum.sort(steps, &(&1.label < &2.label))
   end
 
+  def register_client(query_id, client_pid) do
+    GenServer.cast(get_server_pid(query_id), {:register_client, client_pid})
+  end
+
   def request_job_status(query_id) do
     GenServer.cast(get_server_pid(query_id), :request_job_status)
   end
@@ -41,8 +47,7 @@ defmodule ReportServer.PostProcessing.JobServer do
   def query_topic(query_id), do: "job_server_#{query_id}"
 
   def init(state) do
-    state = state
-      |> Map.put(:jobs, [])
+    schedule_client_check()
     # the :continue lets us return early and then kick off the read_jobs_file
     {:ok, state, {:continue, :read_jobs_file}}
   end
@@ -56,6 +61,11 @@ defmodule ReportServer.PostProcessing.JobServer do
 
   def handle_cast(:request_job_status, state) do
     broadcast_jobs(state)
+    {:noreply, state}
+  end
+
+  def handle_cast({:register_client, client_pid}, state) do
+    state = %{state | clients: Map.put(state.clients, client_pid, true)}
     {:noreply, state}
   end
 
@@ -78,7 +88,7 @@ defmodule ReportServer.PostProcessing.JobServer do
   end
 
   def handle_info({:processed_row, job_id, row_num}, state) do
-    update_rows_processed(state, job_id, row_num)
+    state = update_rows_processed(state, job_id, row_num)
     {:noreply, state}
   end
 
@@ -97,6 +107,38 @@ defmodule ReportServer.PostProcessing.JobServer do
       |> update_job(ref, :failed)
       |> save_jobs_file()
     {:noreply, state}
+  end
+
+  def handle_info(:check_clients, %{clients: clients, jobs: jobs} = state) do
+    non_completed_jobs = Enum.reduce(jobs, 0, fn job, non_completed_jobs ->
+      if job.status == :started do
+        non_completed_jobs + 1
+      else
+        non_completed_jobs
+      end
+    end)
+
+    clients = Enum.reduce(clients, %{}, fn {pid, _}, acc ->
+      if Process.alive?(pid) do
+        Map.put(acc, pid, true)
+      else
+        acc
+      end
+    end)
+
+    state = %{state | clients: clients}
+
+    # all the clients are gone and all the jobs are completed or failed so stop the server
+    if map_size(clients) == 0 && non_completed_jobs == 0 do
+      {:stop, :normal, state}
+    else
+      schedule_client_check()
+      {:noreply, state}
+    end
+  end
+
+  defp schedule_client_check() do
+    Process.send_after(self(), :check_clients, @client_check_interval)
   end
 
   defp broadcast_jobs(%{query_id: query_id, jobs: jobs} = state) do
