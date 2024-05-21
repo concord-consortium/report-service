@@ -24,7 +24,7 @@ defmodule ReportServerWeb.TokenService do
     uri = URI.parse(portal_url)
     # use "production" token service env only if we're on the production url
     # this is the same code ported from the report-service app with the domain updated
-    if uri.host == "learn.concord.org" && !String.contains?(uri.path || "", "branch") do
+    if (uri.host == "learn.concord.org" || uri.host == "ngss-assessment.portal.concord.org") && !String.contains?(uri.path || "", "branch") do
       {:ok, "production"}
     else
       {:ok, "staging"}
