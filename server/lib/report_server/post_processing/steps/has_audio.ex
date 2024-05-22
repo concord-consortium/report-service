@@ -10,7 +10,7 @@ defmodule ReportServer.PostProcessing.Steps.HasAudio do
       id: @id,
       label: "Add has_audio column for open response answers",
       init: &init/1,
-      process_row: &process_row/2
+      process_row: &process_row/3
     }
   end
 
@@ -27,7 +27,15 @@ defmodule ReportServer.PostProcessing.Steps.HasAudio do
     %{params | step_state: step_state}
   end
 
-  def process_row(%JobParams{mode: mode, step_state: step_state}, row) do
+  def process_row(%JobParams{step_state: step_state}, row, _data_row? = false) do
+    # copy headers to new columns
+    text_cols = Map.get(step_state, @id)
+    Enum.reduce(text_cols, row, fn {text_col, index}, {input, output} ->
+      {input, Map.put(output, has_audio_col(text_col), input[index])}
+    end)
+  end
+
+  def process_row(%JobParams{mode: mode, step_state: step_state}, row, _data_row? = true) do
     text_cols = Map.get(step_state, @id)
     Enum.reduce(text_cols, row, fn {text_col, _index}, {input, output} ->
       {input, Map.put(output, has_audio_col(text_col), has_audio?(mode, output, text_col))}
