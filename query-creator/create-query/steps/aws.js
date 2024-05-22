@@ -251,7 +251,7 @@ const getColumnsForQuestion = (questionId, question, denormalizedResource, authD
   return columns;
 }
 
-exports.generateNoResourceSQL = (runnableInfo) => {
+exports.generateNoResourceSQL = (runnableInfo, hideNames) => {
   const names = [];
   const types = [];
   const queryIds = Object.keys(runnableInfo);
@@ -270,6 +270,12 @@ exports.generateNoResourceSQL = (runnableInfo) => {
     "permission_forms",
   ]
   const metadataColumnsForGrouping = metadataColumnNames.map(md => {
+    if (md === "student_name" && hideNames) {
+      return {
+        name: md,
+        value: "arbitrary(l.student_id)"
+      }
+    }
     return {
       name: md,
       value: md === "resource_url" ? "null" : `arbitrary(l.${md})`
@@ -315,6 +321,7 @@ exports.generateNoResourceSQL = (runnableInfo) => {
   return `
   -- name ${names.join(", ")}
   -- type ${types.join(", ")}
+  -- hideNames ${hideNames ? "true" : "false"}
 
   SELECT ${allColumns.map(selectFromColumn).join(",\n  ")}
   FROM
@@ -325,7 +332,7 @@ exports.generateNoResourceSQL = (runnableInfo) => {
   `
 }
 
-exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
+exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey, hideNames) => {
   // first check if non of the runnables has a resource, if that is true return a query
   // without the runnable info
   let hasResource = false;
@@ -334,7 +341,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
     hasResource = hasResource || !!runnableInfo[queryId].resource;
   })
   if (!hasResource) {
-    return exports.generateNoResourceSQL(runnableInfo)
+    return exports.generateNoResourceSQL(runnableInfo, hideNames)
   }
 
   const names = [];
@@ -357,6 +364,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
     const itemHasResource = !!resource;
     const {url, name, type} = itemHasResource ? resource : {url: runnableUrl, name: runnableUrl, type: "assignment"};
     const escapedUrl = url.replace(/[^a-z0-9]/g, "-");
+    const studentNameCol = hideNames ? "student_id as student_name" : "student_name";
     names.push(name);
     types.push(type)
     denormalizedResources.push(denormalizedResource);
@@ -369,7 +377,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
       WHERE a.escaped_url = '${escapeSingleQuote(escapedUrl)}'
       GROUP BY l.run_remote_endpoint)`)
 
-    learnerAndAnswerQueries.push(`learners_and_answers_${resIndex} AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_${resIndex}.kv1 kv1, grouped_answers_${resIndex}.submitted submitted, grouped_answers_${resIndex}.source_key source_key,
+    learnerAndAnswerQueries.push(`learners_and_answers_${resIndex} AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, ${studentNameCol}, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_${resIndex}.kv1 kv1, grouped_answers_${resIndex}.submitted submitted, grouped_answers_${resIndex}.source_key source_key,
       IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_${resIndex}.questions)))) num_answers,
       cardinality(filter(map_values(activities_${resIndex}.questions), x->x.required=TRUE)) num_required_questions,
       IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
@@ -410,7 +418,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
 
   const uniqueUserClassQuery = `unique_user_class AS (SELECT class_id, user_id,
       arbitrary(student_id) as student_id,
-      arbitrary(student_name) as student_name,
+      arbitrary(${hideNames ? "student_id" : "student_name"}) as student_name,
       arbitrary(username) as username,
       arbitrary(school) as school,
       arbitrary(class) as class,
@@ -516,6 +524,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
   return `-- name ${names.join(", ")}
   -- type ${types.join(", ")}
   -- reportType ${usageReport ? "usage" : "details"}
+  -- hideNames ${hideNames ? "true" : "false"}
 
   WITH ${[activities, groupedAnswers, learnersAndAnswers, uniqueUserClassQuery, oneRowTableForJoin].join(",\n\n")}
   ${selects.join("\nUNION ALL\n")}
@@ -537,16 +546,30 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey) => {
 /*
 Generates a very wide row including all fields from the log and learner.
 */
-exports.generateLearnerLogSQL = (queryIdsPerRunnable, authDomain, sourceKey) => {
+exports.generateLearnerLogSQL = (queryIdsPerRunnable, authDomain, sourceKey, hideNames) => {
   const logDb = process.env.LOG_ATHENA_DB_NAME;
   const runnableUrls = Object.keys(queryIdsPerRunnable);
   const queryIds = Object.values(queryIdsPerRunnable);
+
+  const logCols = [
+    "id", "session", "username", "application", "activity", "event", "event_value", "time", "parameters", "extras", "run_remote_endpoint", "timestamp"
+  ].map(col => `"log"."${col}"`)
+
+  const learnerCols = [
+    "learner_id", "run_remote_endpoint", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run", "query_id"
+  ]
+  .map(col => `"learner"."${col}"`)
+  .map(col => col === `"learner"."student_name"` && hideNames ? `"learner"."student_id" as student_name` : col).join(", ")
+
+  const cols = logCols.concat(learnerCols)
+
   return `
   -- name ${runnableUrls.join(", ")}
   -- type learner event log ⎯ [qids: ${queryIds.join(", ")}]
   -- reportType learner-event-log
+  -- hideNames ${hideNames ? "true" : "false"}
 
-  SELECT *
+  SELECT ${cols}
   FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner
   ON
