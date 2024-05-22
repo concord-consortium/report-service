@@ -139,8 +139,8 @@ const learnersReport = async (params, body, tokenServiceEnv, debugSQL, reportSer
   const doLearnerLogReporting= async () => {
     // generate the sql for the query
     const sql = narrowLearners
-      ? aws.generateNarrowLogSQL(queryIdsPerRunnable, authDomain, reportServiceSource) // hideNames not needed here as no learner info is output
-      : aws.generateLearnerLogSQL(queryIdsPerRunnable, authDomain, reportServiceSource, hideNames);
+      ? aws.generateNarrowLogSQL(queryIdsPerRunnable, hideNames)
+      : aws.generateLearnerLogSQL(queryIdsPerRunnable, hideNames);
 
     if (debugSQL) {
       sqlOutput.push(sql);
