@@ -8,6 +8,8 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
 
   alias ReportServerWeb.Aws
 
+  @max_name_length 64
+
   @name_regex ~r/-- name ([^\n]*)\n/
   @type_regex ~r/-- type ([^\n]*)\n/
   @report_type_regex ~r/-- reportType ([^\n]*)\n/
@@ -226,14 +228,14 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
       "original" ->
         query = query
         if query.ok? do
-          {{query.result.output_location, "#{query.result.name || "unnamed"}-#{query.result.id}", "csv"}, workgroup_credentials}
+          {{query.result.output_location, "#{truncate_string(query.result.name) || "unnamed"}-#{query.result.id}", "csv"}, workgroup_credentials}
         else
           {nil, nil}
         end
 
       "job" ->
         job = Enum.find(jobs, fn %{id: id} -> "#{id}" == params["jobId"] end)
-        {{job.result, "#{query.result.name || "unnamed"}-#{query.result.id}-job-#{job.id}", "csv"}, Aws.get_server_credentials()}
+        {{job.result, "#{truncate_string(query.result.name) || "unnamed"}-#{query.result.id}-job-#{job.id}", "csv"}, Aws.get_server_credentials()}
 
       _ -> {nil, nil}
     end
@@ -315,4 +317,12 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   defp trigger_poll?("queued"), do: true
   defp trigger_poll?("running"), do: true
   defp trigger_poll?(_), do: false
+
+  defp truncate_string(string) do
+    if String.length(string) > @max_name_length do
+      String.slice(string, 0, @max_name_length)
+    else
+      string
+    end
+  end
 end
