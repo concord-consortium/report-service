@@ -13,7 +13,7 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
       id: @id,
       label: "Add audio transcription column for open response answers",
       init: &init/1,
-      process_row: &process_row/2
+      process_row: &process_row/3
     }
   end
 
@@ -30,7 +30,18 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
     %{params | step_state: step_state}
   end
 
-  def process_row(%JobParams{mode: mode, step_state: step_state}, row) do
+  def process_row(%JobParams{step_state: step_state}, row, _data_row? = false) do
+    # copy headers to new columns
+    text_cols = Map.get(step_state, @id)
+    Enum.reduce(text_cols, row, fn {text_col, index}, {input, output} ->
+      output = output
+        |> Map.put(audio_transcription_status_col(text_col), input[index])
+        |> Map.put(audio_transcription_result_col(text_col), input[index])
+      {input, output}
+    end)
+  end
+
+  def process_row(%JobParams{mode: mode, step_state: step_state}, row, _data_row? = true) do
     text_cols = Map.get(step_state, @id)
     Enum.reduce(text_cols, row, fn {text_col, _index}, {input, output} ->
       output = case transcribe_audio(mode, output, text_col) do

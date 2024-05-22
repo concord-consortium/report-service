@@ -10,7 +10,7 @@ defmodule ReportServer.PostProcessing.Steps.DemoAddAnswerLength do
       id: @id,
       label: "Demo: Add column for answer text length",
       init: &init/1,
-      process_row: &process_row/2
+      process_row: &process_row/3
     }
   end
 
@@ -25,7 +25,15 @@ defmodule ReportServer.PostProcessing.Steps.DemoAddAnswerLength do
     %{params | step_state: step_state}
   end
 
-  def process_row(%JobParams{step_state: step_state}, row) do
+  def process_row(%JobParams{step_state: step_state}, row, _data_row? = false) do
+    # copy headers to new columns
+    text_cols = Map.get(step_state, @id)
+    Enum.reduce(text_cols, row, fn {text_col, index}, {input, output} ->
+      {input, Map.put(output, length_col(text_col), input[index])}
+    end)
+  end
+
+  def process_row(%JobParams{step_state: step_state}, row, _data_row? = true) do
     # measure the length of each text answer
     text_cols = Map.get(step_state, @id)
     Enum.reduce(text_cols, row, fn {text_col, index}, {input, output} ->

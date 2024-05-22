@@ -10,7 +10,7 @@ defmodule ReportServer.PostProcessing.Steps.DemoUpperCase do
       id: @id,
       label: "Demo: Convert answer text to upper case",
       init: &init/1,
-      process_row: &process_row/2
+      process_row: &process_row/3
     }
   end
 
@@ -20,7 +20,13 @@ defmodule ReportServer.PostProcessing.Steps.DemoUpperCase do
     %{params | step_state: step_state}
   end
 
-  def process_row(%JobParams{step_state: step_state}, row) do
+
+  def process_row(_job_params, row, _data_row? = false) do
+    # ignore header rows as no new columns where added
+    row
+  end
+
+  def process_row(%JobParams{step_state: step_state}, row, _data_row? = true) do
     # convert all the text columns to uppercase
     text_cols = Map.get(step_state, @id)
     Enum.reduce(text_cols, row, fn {text_col, index}, {input, output} ->

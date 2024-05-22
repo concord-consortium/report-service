@@ -51,14 +51,10 @@ defmodule ReportServer.PostProcessing.Job do
     input = Enum.with_index(input_row) |> Enum.map(fn {k,v} -> {v,k} end) |> Map.new()
     output = Map.new(output_header_map, fn {k,_v} -> {k, input[input_header_map[k]] || ""} end)
 
-    output = if is_data_row?(input_row) do
-      {_input, output} = Enum.reduce(steps, {input, output}, fn step, acc ->
-        step.process_row.(params, acc)
-      end)
-      output
-    else
-      output
-    end
+    data_row? = is_data_row?(input_row)
+    {_input, output} = Enum.reduce(steps, {input, output}, fn step, acc ->
+      step.process_row.(params, acc, data_row?)
+    end)
 
     Enum.reduce(output_header, [], fn k, acc ->
       [output[k] | acc]
