@@ -7,7 +7,11 @@ const chai = require('chai');
 const queryString = require('query-string');
 const nock = require('nock');
 
-const { expectedDetailsReportWithNamesSQLresult, expectedDetailsReportHideNamesSQLresult, expectedUsageReportWithNamesSQLresult, expectedUsageReportWithoutNamesSQLresult, expectedNoRunnableWithNamesSQLresult, expectedNoRunnableWithoutNamesSQLresult } = require('./generated-sql.js');
+const { expectedDetailsReportWithNamesSQLresult, expectedDetailsReportHideNamesSQLresult, expectedUsageReportWithNamesSQLresult,
+        expectedUsageReportWithoutNamesSQLresult, expectedNoRunnableWithNamesSQLresult, expectedNoRunnableWithoutNamesSQLresult, expectedUserLogSQLresult,
+        expectedNarrowLearnerLogWithNamesSqlResult, expectedNarrowLearnerLogWithoutNamesSqlResult, expectedWideLearnerLogWithoutNamesSqlResult,
+        expectedWideLearnerLogWithNameSqlResult
+      } = require('./generated-sql.js');
 
 const expect = chai.expect;
 const event = {
@@ -235,4 +239,42 @@ describe('Query creation unreportable runnable', function () {
   it('has different queries with and without names', () => {
     expect(normalizeSQL(expectedNoRunnableWithNamesSQLresult)).not.to.be.equal(normalizeSQL(expectedNoRunnableWithoutNamesSQLresult));
   })
+});
+
+describe('Query creation for log data', function () {
+
+  it('verifies successful query creation of user log data', async () => {
+    const generatedSQLresult = await aws.generateUserLogSQL(["1@example.com", "2@example.com"], ["activity-1", "activity-2"], "1/2/2024", "3/4/2024");
+    const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+    const normalizedExpectedSQLresult = normalizeSQL(expectedUserLogSQLresult);
+    expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
+  });
+
+  it('verifies successful query creation of narrow learner log data with names', async () => {
+    const generatedSQLresult = await aws.generateNarrowLogSQL(["qid_1", "qid_2"], false);
+    const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+    const normalizedExpectedSQLresult = normalizeSQL(expectedNarrowLearnerLogWithNamesSqlResult);
+    expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
+  });
+
+  it('verifies successful query creation of narrow learner log data without names', async () => {
+    const generatedSQLresult = await aws.generateNarrowLogSQL(["qid_1", "qid_2"], true);
+    const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+    const normalizedExpectedSQLresult = normalizeSQL(expectedNarrowLearnerLogWithoutNamesSqlResult);
+    expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
+  });
+
+  it('verifies successful query creation of wide learner log data with names', async () => {
+    const generatedSQLresult = await aws.generateLearnerLogSQL({"qid_1": "http://example.com/runnable_1", "qid_2": "http://example.com/runnable_2"}, false);
+    const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+    const normalizedExpectedSQLresult = normalizeSQL(expectedWideLearnerLogWithNameSqlResult);
+    expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
+  });
+
+  it('verifies successful query creation of wide learner log data without names', async () => {
+    const generatedSQLresult = await aws.generateLearnerLogSQL({"qid_1": "http://example.com/runnable_1", "qid_2": "http://example.com/runnable_2"}, true);
+    const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
+    const normalizedExpectedSQLresult = normalizeSQL(expectedWideLearnerLogWithoutNamesSqlResult);
+    expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
+  });
 });
