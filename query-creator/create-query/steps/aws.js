@@ -552,9 +552,10 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey, hideNam
     GROUP BY l.run_remote_endpoint )`
 */
 
-const getLogCols = (hideNames) => {
+const getLogCols = (hideNames, removeUsername) => {
   return ["id", "session", "username", "application", "activity", "event", "event_value", "time", "parameters", "extras", "run_remote_endpoint", "timestamp"]
     .map(col => `"log"."${col}"`)
+    .filter(col => col === `"log"."username"` && removeUsername ? false : true)
     .map(col => col === `"log"."username"` ? maybeHashUsername(hideNames, `"log"."username"`) : col)
 }
 
@@ -573,7 +574,7 @@ exports.generateLearnerLogSQL = (queryIdsPerRunnable, hideNames) => {
   const runnableUrls = Object.keys(queryIdsPerRunnable);
   const queryIds = Object.values(queryIdsPerRunnable);
 
-  const logCols = getLogCols(hideNames)
+  const logCols = getLogCols(hideNames, true) // remove duplicate username in log columns
   const learnerCols = getLearnerCols(hideNames)
 
   const cols = logCols.concat(learnerCols).join(", ")
@@ -621,6 +622,7 @@ exports.generateUserLogSQL = (usernames, activities, start_date, end_date) => {
   -- reportType user-event-log
   -- usernames: ${JSON.stringify(usernames)}
   -- activities: ${JSON.stringify(activities)}
+
   SELECT *
   FROM "${logDb}"."logs_by_time" log
   WHERE ${where.join(" AND ")}

@@ -817,3 +817,81 @@ FROM
   WHERE l.query_id IN ('123456789')
   GROUP BY l.run_remote_endpoint )
 `
+
+exports.expectedUserLogSQLresult = `
+-- name log.username IN ('1@example.com', '2@example.com') AND log.activity IN ('activity-1', 'activity-2') AND time >= 1704171600 AND time <= 1709528400
+-- type user event log
+-- reportType user-event-log
+-- usernames: ["1@example.com","2@example.com"]
+-- activities: ["activity-1","activity-2"]
+
+SELECT *
+FROM "undefined"."logs_by_time" log
+WHERE log.username IN ('1@example.com', '2@example.com') AND log.activity IN ('activity-1', 'activity-2') AND time >= 1704171600 AND time <= 1709528400
+`
+
+exports.expectedNarrowLearnerLogWithNamesSqlResult = `
+-- name 0, 1
+-- type learner event log ⎯ [qids: qid_1, qid_2]
+-- reportType narrow-learner-event-log
+
+SELECT "log"."id", "log"."session", "log"."username", "log"."application", "log"."activity", "log"."event", "log"."event_value", "log"."time", "log"."parameters", "log"."extras", "log"."run_remote_endpoint", "log"."timestamp"
+FROM "undefined"."logs_by_time" log
+INNER JOIN "report-service"."learners" learner
+ON
+  (
+    learner.query_id IN ('qid_1','qid_2')
+    AND
+    learner.run_remote_endpoint = log.run_remote_endpoint
+  )
+`
+
+exports.expectedNarrowLearnerLogWithoutNamesSqlResult = `
+-- name 0, 1
+-- type learner event log ⎯ [qids: qid_1, qid_2]
+-- reportType narrow-learner-event-log
+
+SELECT "log"."id", "log"."session", to_hex(sha1(cast(('no-username-salt-provided' || "log"."username") as varbinary))) as username, "log"."application", "log"."activity", "log"."event", "log"."event_value", "log"."time", "log"."parameters", "log"."extras", "log"."run_remote_endpoint", "log"."timestamp"
+FROM "undefined"."logs_by_time" log
+INNER JOIN "report-service"."learners" learner
+ON
+  (
+    learner.query_id IN ('qid_1','qid_2')
+    AND
+    learner.run_remote_endpoint = log.run_remote_endpoint
+  )
+`
+
+exports.expectedWideLearnerLogWithNameSqlResult = `
+-- name qid_1, qid_2
+-- type learner event log ⎯ [qids: http://example.com/runnable_1, http://example.com/runnable_2]
+-- reportType learner-event-log
+-- hideNames false
+
+SELECT "log"."id", "log"."session", "log"."application", "log"."activity", "log"."event", "log"."event_value", "log"."time", "log"."parameters", "log"."extras", "log"."run_remote_endpoint", "log"."timestamp", "learner"."learner_id", "learner"."run_remote_endpoint", "learner"."class_id", "learner"."runnable_url", "learner"."student_id", "learner"."class", "learner"."school", "learner"."user_id", "learner"."offering_id", "learner"."permission_forms", "learner"."username", "learner"."student_name", "learner"."teachers", "learner"."last_run", "learner"."query_id"
+FROM "undefined"."logs_by_time" log
+INNER JOIN "report-service"."learners" learner
+ON
+  (
+    learner.query_id IN ('http://example.com/runnable_1','http://example.com/runnable_2')
+    AND
+    learner.run_remote_endpoint = log.run_remote_endpoint
+  )
+`
+
+exports.expectedWideLearnerLogWithoutNamesSqlResult = `
+-- name qid_1, qid_2
+-- type learner event log ⎯ [qids: http://example.com/runnable_1, http://example.com/runnable_2]
+-- reportType learner-event-log
+-- hideNames true
+
+SELECT "log"."id", "log"."session", "log"."application", "log"."activity", "log"."event", "log"."event_value", "log"."time", "log"."parameters", "log"."extras", "log"."run_remote_endpoint", "log"."timestamp", "learner"."learner_id", "learner"."run_remote_endpoint", "learner"."class_id", "learner"."runnable_url", "learner"."student_id", "learner"."class", "learner"."school", "learner"."user_id", "learner"."offering_id", "learner"."permission_forms", to_hex(sha1(cast(('no-username-salt-provided' || "learner"."username") as varbinary))) as username, "learner"."student_id" as student_name, "learner"."teachers", "learner"."last_run", "learner"."query_id"
+FROM "undefined"."logs_by_time" log
+INNER JOIN "report-service"."learners" learner
+ON
+  (
+    learner.query_id IN ('http://example.com/runnable_1','http://example.com/runnable_2')
+    AND
+    learner.run_remote_endpoint = log.run_remote_endpoint
+  )
+`
