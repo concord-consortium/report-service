@@ -25,10 +25,13 @@ Parameters:
     Description: Firebase app name
   PortalReportUrl:
     Type: String
-    Description: Url to the Portal Report where reseachers can load learner's models
+    Description: Url to the Portal Report where researchers can load learner's models
   LogAthenaDBName:
     Type: String
     Description: The Athena Database Name
+  UsernameHashSalt:
+    Type: String
+    Description: Salt used to hash usernames.  This is available in 1Password in the "Query Creator Username Hash Salts (staging and production)" note.
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -43,6 +46,7 @@ Globals:
         FIREBASE_APP: !Ref FirebaseApp
         PORTAL_REPORT_URL: !Ref PortalReportUrl
         LOG_ATHENA_DB_NAME: !Ref LogAthenaDBName
+        USERNAME_HASH_SALT: !Ref UsernameHashSalt
 
 Resources:
   CreateQueryFunction:

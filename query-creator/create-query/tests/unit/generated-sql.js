@@ -297,7 +297,7 @@ grouped_answers_2 AS (
       WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000001'
       GROUP BY l.run_remote_endpoint),
 
-learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_1.kv1 kv1, grouped_answers_1.submitted submitted, grouped_answers_1.source_key source_key,
+learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, to_hex(sha1(cast(('no-username-salt-provided' || username) as varbinary))) as username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_1.kv1 kv1, grouped_answers_1.submitted submitted, grouped_answers_1.source_key source_key,
       IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_1.questions)))) num_answers,
       cardinality(filter(map_values(activities_1.questions), x->x.required=TRUE)) num_required_questions,
       IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
@@ -307,7 +307,7 @@ learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable
       ON l.run_remote_endpoint = grouped_answers_1.remote_endpoint
       WHERE l.query_id = '123456789'),
 
-learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_2.kv1 kv1, grouped_answers_2.submitted submitted, grouped_answers_2.source_key source_key,
+learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, to_hex(sha1(cast(('no-username-salt-provided' || username) as varbinary))) as username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_2.kv1 kv1, grouped_answers_2.submitted submitted, grouped_answers_2.source_key source_key,
       IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_2.questions)))) num_answers,
       cardinality(filter(map_values(activities_2.questions), x->x.required=TRUE)) num_required_questions,
       IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
@@ -320,7 +320,7 @@ learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable
 unique_user_class AS (SELECT class_id, user_id,
       arbitrary(student_id) as student_id,
       arbitrary(student_id) as student_name,
-      arbitrary(username) as username,
+      arbitrary(to_hex(sha1(cast(('no-username-salt-provided' || username) as varbinary)))) as username,
       arbitrary(school) as school,
       arbitrary(class) as class,
       arbitrary(permission_forms) as permission_forms,
@@ -677,7 +677,7 @@ grouped_answers_2 AS (
       WHERE a.escaped_url = 'https---authoring-staging-concord-org-activities-000001'
       GROUP BY l.run_remote_endpoint),
 
-learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_1.kv1 kv1, grouped_answers_1.submitted submitted, grouped_answers_1.source_key source_key,
+learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, to_hex(sha1(cast(('no-username-salt-provided' || username) as varbinary))) as username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_1.kv1 kv1, grouped_answers_1.submitted submitted, grouped_answers_1.source_key source_key,
       IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_1.questions)))) num_answers,
       cardinality(filter(map_values(activities_1.questions), x->x.required=TRUE)) num_required_questions,
       IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
@@ -687,7 +687,7 @@ learners_and_answers_1 AS ( SELECT run_remote_endpoint remote_endpoint, runnable
       ON l.run_remote_endpoint = grouped_answers_1.remote_endpoint
       WHERE l.query_id = '123456789'),
 
-learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_2.kv1 kv1, grouped_answers_2.submitted submitted, grouped_answers_2.source_key source_key,
+learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, student_id as student_name, to_hex(sha1(cast(('no-username-salt-provided' || username) as varbinary))) as username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_2.kv1 kv1, grouped_answers_2.submitted submitted, grouped_answers_2.source_key source_key,
       IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_2.questions)))) num_answers,
       cardinality(filter(map_values(activities_2.questions), x->x.required=TRUE)) num_required_questions,
       IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
@@ -700,7 +700,7 @@ learners_and_answers_2 AS ( SELECT run_remote_endpoint remote_endpoint, runnable
 unique_user_class AS (SELECT class_id, user_id,
       arbitrary(student_id) as student_id,
       arbitrary(student_id) as student_name,
-      arbitrary(username) as username,
+      arbitrary(to_hex(sha1(cast(('no-username-salt-provided' || username) as varbinary)))) as username,
       arbitrary(school) as school,
       arbitrary(class) as class,
       arbitrary(permission_forms) as permission_forms,
@@ -812,7 +812,7 @@ array_join(transform(teachers, teacher -> teacher.district), ',') AS teacher_dis
 array_join(transform(teachers, teacher -> teacher.state), ',') AS teacher_states,
 array_join(transform(teachers, teacher -> teacher.email), ',') AS teacher_emails
 FROM
-( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_id) AS student_name, arbitrary(l.username) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.learner_id) AS learner_id, null AS resource_url, arbitrary(l.last_run) AS last_run, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.teachers) teachers
+( SELECT l.run_remote_endpoint remote_endpoint, arbitrary(l.student_id) AS student_id, arbitrary(l.user_id) AS user_id, arbitrary(l.student_id) AS student_name, arbitrary(to_hex(sha1(cast(('no-username-salt-provided' || l.username) as varbinary)))) AS username, arbitrary(l.school) AS school, arbitrary(l.class) AS class, arbitrary(l.class_id) AS class_id, arbitrary(l.learner_id) AS learner_id, null AS resource_url, arbitrary(l.last_run) AS last_run, arbitrary(l.permission_forms) AS permission_forms, arbitrary(l.teachers) teachers
   FROM "report-service"."learners" l
   WHERE l.query_id IN ('123456789')
   GROUP BY l.run_remote_endpoint )

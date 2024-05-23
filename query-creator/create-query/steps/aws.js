@@ -4,6 +4,9 @@ const request = require("./request");
 
 const PAGE_SIZE = 2000;
 
+const usernameHashSalt = process.env.USERNAME_HASH_SALT || "no-username-salt-provided";
+const maybeHashUsername = (hash, col, skipAs) => hash ? `to_hex(sha1(cast(('${usernameHashSalt}' || ${col}) as varbinary)))${!skipAs ? " as username" : ""}` : col
+
 // Column format of:
 // { name: "column name", value: "main value on each row", header: "optional first row value"}
 const selectFromColumn = (column) => {
@@ -276,6 +279,12 @@ exports.generateNoResourceSQL = (runnableInfo, hideNames) => {
         value: "arbitrary(l.student_id)"
       }
     }
+    if (md === "username") {
+      return {
+        name: md,
+        value: `arbitrary(${maybeHashUsername(hideNames, "l.username", true)})`
+      }
+    }
     return {
       name: md,
       value: md === "resource_url" ? "null" : `arbitrary(l.${md})`
@@ -377,7 +386,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey, hideNam
       WHERE a.escaped_url = '${escapeSingleQuote(escapedUrl)}'
       GROUP BY l.run_remote_endpoint)`)
 
-    learnerAndAnswerQueries.push(`learners_and_answers_${resIndex} AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, ${studentNameCol}, username, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_${resIndex}.kv1 kv1, grouped_answers_${resIndex}.submitted submitted, grouped_answers_${resIndex}.source_key source_key,
+    learnerAndAnswerQueries.push(`learners_and_answers_${resIndex} AS ( SELECT run_remote_endpoint remote_endpoint, runnable_url as resource_url, learner_id, student_id, user_id, offering_id, ${studentNameCol}, ${maybeHashUsername(hideNames, "username")}, school, class, class_id, permission_forms, last_run, teachers, grouped_answers_${resIndex}.kv1 kv1, grouped_answers_${resIndex}.submitted submitted, grouped_answers_${resIndex}.source_key source_key,
       IF (kv1 is null, 0, cardinality(array_intersect(map_keys(kv1),map_keys(activities_${resIndex}.questions)))) num_answers,
       cardinality(filter(map_values(activities_${resIndex}.questions), x->x.required=TRUE)) num_required_questions,
       IF (submitted is null, 0, cardinality(filter(map_values(submitted), x->x=TRUE))) num_required_answers
@@ -419,7 +428,7 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey, hideNam
   const uniqueUserClassQuery = `unique_user_class AS (SELECT class_id, user_id,
       arbitrary(student_id) as student_id,
       arbitrary(${hideNames ? "student_id" : "student_name"}) as student_name,
-      arbitrary(username) as username,
+      arbitrary(${maybeHashUsername(hideNames, "username", true)}) as username,
       arbitrary(school) as school,
       arbitrary(class) as class,
       arbitrary(permission_forms) as permission_forms,
@@ -543,25 +552,31 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey, hideNam
     GROUP BY l.run_remote_endpoint )`
 */
 
+const getLogCols = (hideNames) => {
+  return ["id", "session", "username", "application", "activity", "event", "event_value", "time", "parameters", "extras", "run_remote_endpoint", "timestamp"]
+    .map(col => `"log"."${col}"`)
+    .map(col => col === `"log"."username"` ? maybeHashUsername(hideNames, `"log"."username"`) : col)
+}
+
+const getLearnerCols = (hideNames) => {
+  return ["learner_id", "run_remote_endpoint", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run", "query_id"]
+    .map(col => `"learner"."${col}"`)
+    .map(col => col === `"learner"."username"` ? maybeHashUsername(hideNames, `"learner"."username"`) : col)
+    .map(col => col === `"learner"."student_name"` && hideNames ? `"learner"."student_id" as student_name` : col)
+}
+
 /*
 Generates a very wide row including all fields from the log and learner.
 */
-exports.generateLearnerLogSQL = (queryIdsPerRunnable, authDomain, sourceKey, hideNames) => {
+exports.generateLearnerLogSQL = (queryIdsPerRunnable, hideNames) => {
   const logDb = process.env.LOG_ATHENA_DB_NAME;
   const runnableUrls = Object.keys(queryIdsPerRunnable);
   const queryIds = Object.values(queryIdsPerRunnable);
 
-  const logCols = [
-    "id", "session", "username", "application", "activity", "event", "event_value", "time", "parameters", "extras", "run_remote_endpoint", "timestamp"
-  ].map(col => `"log"."${col}"`)
+  const logCols = getLogCols(hideNames)
+  const learnerCols = getLearnerCols(hideNames)
 
-  const learnerCols = [
-    "learner_id", "run_remote_endpoint", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run", "query_id"
-  ]
-  .map(col => `"learner"."${col}"`)
-  .map(col => col === `"learner"."student_name"` && hideNames ? `"learner"."student_id" as student_name` : col).join(", ")
-
-  const cols = logCols.concat(learnerCols)
+  const cols = logCols.concat(learnerCols).join(", ")
 
   return `
   -- name ${runnableUrls.join(", ")}
@@ -615,17 +630,18 @@ exports.generateUserLogSQL = (usernames, activities, start_date, end_date) => {
 /*
 Generates a smaller row of event details only, no portal info.
 */
-exports.generateNarrowLogSQL = (queryIdsPerRunnable, authDomain, sourceKey) => {
+exports.generateNarrowLogSQL = (queryIdsPerRunnable, hideNames) => {
   const logDb = process.env.LOG_ATHENA_DB_NAME;
   const runnableUrls = Object.keys(queryIdsPerRunnable);
   const queryIds = Object.values(queryIdsPerRunnable);
+  const logCols = getLogCols(hideNames).join(", ");
 
   return `
   -- name ${runnableUrls.join(", ")}
   -- type learner event log ⎯ [qids: ${queryIds.join(", ")}]
   -- reportType narrow-learner-event-log
 
-  SELECT log.*
+  SELECT ${logCols}
   FROM "${logDb}"."logs_by_time" log
   INNER JOIN "report-service"."learners" learner
   ON

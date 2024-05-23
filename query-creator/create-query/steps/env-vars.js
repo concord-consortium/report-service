@@ -19,4 +19,7 @@ exports.validate = () => {
   if (!process.env.LOG_ATHENA_DB_NAME) {
     missingVar("LOG_ATHENA_DB_NAME");
   }
+  if (!process.env.USERNAME_HASH_SALT) {
+    missingVar("USERNAME_HASH_SALT");
+  }
 }
