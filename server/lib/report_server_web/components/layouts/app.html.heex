@@ -7,7 +7,7 @@
       </a>
     </div>
     <div class="flex items-center gap-4 font-semibold leading-6 text-zinc-900">
-      <.link navigate={~p"/auth/logout"} :if={@logged_in}>Logout</.link>
+      <.link navigate={~p"/auth/logout"} :if={@logged_in}>Logout of <%= @portal_domain %></.link>
       <.link navigate={~p"/auth/login"} :if={!@logged_in}>Login</.link>
     </div>
   </div>
