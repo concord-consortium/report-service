@@ -244,7 +244,7 @@ describe('Query creation unreportable runnable', function () {
 describe('Query creation for log data', function () {
 
   it('verifies successful query creation of user log data', async () => {
-    const generatedSQLresult = await aws.generateUserLogSQL(["1@example.com", "2@example.com"], ["activity-1", "activity-2"], "1/2/2024", "3/4/2024");
+    const generatedSQLresult = await aws.generateUserLogSQL(["1@example.com", "2@example.com"], ["activity-1", "activity-2"]);
     const normalizedGeneratedSQLresult = normalizeSQL(generatedSQLresult);
     const normalizedExpectedSQLresult = normalizeSQL(expectedUserLogSQLresult);
     expect(normalizedGeneratedSQLresult).to.be.equal(normalizedExpectedSQLresult);
