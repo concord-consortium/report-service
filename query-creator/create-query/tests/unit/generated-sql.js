@@ -819,7 +819,7 @@ FROM
 `
 
 exports.expectedUserLogSQLresult = `
--- name log.username IN ('1@example.com', '2@example.com') AND log.activity IN ('activity-1', 'activity-2') AND time >= 1704171600 AND time <= 1709528400
+-- name log.username IN ('1@example.com', '2@example.com') AND log.activity IN ('activity-1', 'activity-2')
 -- type user event log
 -- reportType user-event-log
 -- usernames: ["1@example.com","2@example.com"]
@@ -827,7 +827,7 @@ exports.expectedUserLogSQLresult = `
 
 SELECT *
 FROM "undefined"."logs_by_time" log
-WHERE log.username IN ('1@example.com', '2@example.com') AND log.activity IN ('activity-1', 'activity-2') AND time >= 1704171600 AND time <= 1709528400
+WHERE log.username IN ('1@example.com', '2@example.com') AND log.activity IN ('activity-1', 'activity-2')
 `
 
 exports.expectedNarrowLearnerLogWithNamesSqlResult = `
