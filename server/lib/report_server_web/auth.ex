@@ -46,11 +46,10 @@ defmodule ReportServerWeb.Auth do
   end
   def get_portal_credentials(_), do: nil
 
-  def portal_domain(%{"portal_url" => portal_url}) do
-    portal_url
+  def portal_domain(session) do
+    (session["portal_url"] || PortalStrategy.get_portal_url())
     |> URI.parse()
     |> Map.get(:host)
   end
-  def portal_domain(_), do: nil
 
 end
