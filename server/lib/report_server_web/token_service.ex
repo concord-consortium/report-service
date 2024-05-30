@@ -1,6 +1,8 @@
 defmodule ReportServerWeb.TokenService do
   require Logger
 
+  @production_hosts ["learn.concord.org", "learn-report.concord.org", "ngss-assessment.portal.concord.org", "ngss-assessment-report.portal.concord.org"]
+
   def get_firebase_jwt("demo", _portal_credentials) do
     {:ok, "demo-jwt"}
   end
@@ -22,9 +24,8 @@ defmodule ReportServerWeb.TokenService do
 
   def get_env(_mode, %{portal_url: portal_url} = _portal_credentials) do
     uri = URI.parse(portal_url)
-    # use "production" token service env only if we're on the production url
-    # this is the same code ported from the report-service app with the domain updated
-    if (uri.host == "learn.concord.org" || uri.host == "ngss-assessment.portal.concord.org") && !String.contains?(uri.path || "", "branch") do
+    # use "production" token service env only if we're using a production portal
+    if Enum.any?(@production_hosts, &(&1 == uri.host)) do
       {:ok, "production"}
     else
       {:ok, "staging"}
