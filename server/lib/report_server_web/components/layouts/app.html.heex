@@ -3,7 +3,10 @@
     <div class="flex items-center gap-4">
       <a href="/" class="text-zinc-900 font-bold text-lg flex items-center gap-2">
         <img src={~p"/images/logo.png"} width="36" />
-        Report Server
+        <div>
+          Report Server
+          <div class="text-xs text-gray-500">Version <%= Application.spec(:report_server)[:vsn] %></div>
+        </div>
       </a>
     </div>
     <div class="flex items-center gap-4 font-semibold leading-6 text-zinc-900">
