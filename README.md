@@ -17,6 +17,9 @@ The high-level parts:
     See [query-creator/README.md](query-creator/README.md)
 * **Researcher-Reports**: An application a researcher can use to list their reports and generate a
     short-lived url to download the data. See [researcher-reports/README.md](researcher-reports/README.md)
+    **NOTE**: this app is no longer used and instead the Elixir/Phoenix app in the server folder is used.
+* **Report-Server**: An Elixir/Phoenix app that replaces the **Researcher-Reports** app.  It allows for long-running processes
+    to post-process log files.
 
 ## Setting up a new report on a portal
 
