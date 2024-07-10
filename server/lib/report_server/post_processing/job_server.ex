@@ -6,7 +6,7 @@ defmodule ReportServer.PostProcessing.JobServer do
   alias Phoenix.PubSub
   alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.{Job, Output}
-  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio}
+  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio, GlossaryAudioLinks}
 
   @client_check_interval :timer.minutes(1)
 
@@ -18,12 +18,14 @@ defmodule ReportServer.PostProcessing.JobServer do
     DemoUpperCase.step(),
     DemoAddAnswerLength.step(),
     HasAudio.step(),
+    GlossaryAudioLinks.step(),
     TranscribeAudio.step()
   ] |> sort_steps()
 
   def get_steps(_mode, "details"), do: [
     HasAudio.step(),
-    TranscribeAudio.step()
+    TranscribeAudio.step(),
+    GlossaryAudioLinks.step()
   ] |> sort_steps()
 
   def get_steps(_mode, _report_type), do: []
