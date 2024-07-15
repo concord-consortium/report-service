@@ -25,7 +25,7 @@ defmodule ReportServerWeb.Auth do
   end
 
   def public_session_vars(session) do
-    [logged_in: logged_in?(session), portal_domain: portal_domain(session)]
+    [logged_in: logged_in?(session), portal_url: portal_url(session), portal_domain: portal_domain(session)]
   end
 
   def save_portal_url(conn) do
@@ -46,8 +46,12 @@ defmodule ReportServerWeb.Auth do
   end
   def get_portal_credentials(_), do: nil
 
+  def portal_url(session) do
+    session["portal_url"] || PortalStrategy.get_portal_url()
+  end
+
   def portal_domain(session) do
-    (session["portal_url"] || PortalStrategy.get_portal_url())
+    portal_url(session)
     |> URI.parse()
     |> Map.get(:host)
   end

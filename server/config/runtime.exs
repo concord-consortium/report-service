@@ -45,6 +45,9 @@ config :report_server, :report_service,
   url: System.get_env("REPORT_SERVICE_URL") || "https://us-central1-report-service-pro.cloudfunctions.net/api", # production
   token: report_service_token
 
+config :report_server, :portal_report,
+  url: System.get_env("PORTAL_REPORT_URL") || "https://portal-report.concord.org/branch/master/" # production (yes, prod uses master)
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

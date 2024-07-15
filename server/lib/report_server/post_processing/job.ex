@@ -7,7 +7,7 @@ defmodule ReportServer.PostProcessing.Job do
   alias ReportServer.PostProcessing.Steps.Helpers
 
   @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
-  defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0
+  defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0, portal_url: nil
 
   def run(mode, job, query_result, job_server_pid) do
     case Aws.get_file_stream(mode, query_result.output_location) do
@@ -25,7 +25,8 @@ defmodule ReportServer.PostProcessing.Job do
               input_header_map: header_map,
               output_header: row,
               output_header_map: header_map,
-              rows_processed: 0
+              rows_processed: 0,
+              portal_url: job.portal_url
             }
             params = Enum.reduce(job.steps, params, fn step, acc -> step.init.(acc) end)
             {[params.output_header], increment_rows_processed(params, job_server_pid, job.id)}
