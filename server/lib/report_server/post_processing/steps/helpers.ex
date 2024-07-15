@@ -22,6 +22,19 @@ defmodule ReportServer.PostProcessing.Steps.Helpers do
     get_cols_ending_with(params, "_remote_endpoint")
   end
 
+  def get_resource_cols(%JobParams{input_header_map: input_header_map}) do
+    Enum.reduce(input_header_map, %{}, fn {k,v}, acc ->
+      case Regex.run(~r/^(res_\d+)_(.*)/, k) do
+        [_, res, rest] ->
+          acc
+          |> Map.put_new(res, %{})
+          |> put_in([res, rest], {k,v})
+        nil ->
+          acc
+      end
+    end)
+  end
+
   def get_cols_ending_with(%JobParams{input_header_map: input_header_map}, ending) do
     Enum.reduce(input_header_map, [], fn {k,v}, acc ->
       if String.ends_with?(k, ending) do

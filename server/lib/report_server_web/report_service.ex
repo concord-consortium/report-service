@@ -74,6 +74,45 @@ defmodule ReportServerWeb.ReportService do
   def get_answer_from_response(%{"success" => false, "error" => error}), do: {:error, error}
   def get_answer_from_response(_), do: {:error, "Something went wrong getting the answer"}
 
+  # plugin states for "Test Student One" in demo data
+  def get_plugin_states("demo", "activity-player.concord.org", "https://learn.portal.staging.concord.org/dataservice/external_activity_data/36bd3464-f63a-4d0c-a7a1-aefebba85d02") do
+    {:ok, %{"demo" => %{
+      "definitions" => %{
+        "Test": ["recordingData://demo/demo-class/1", "recordingData://demo/demo-class/2", "This a test definition", "This is another test definition"],
+        "Second": ["This is the definition of second."]
+      }
+    }}}
+  end
+  def get_plugin_states("demo", _source, _remote_endpoint) do
+    # api returns an empty object when no plugin states are found
+    {:ok, %{}}
+  end
+
+  def get_plugin_states(_mode, source, remote_endpoint) do
+    with {:ok, resp} <- request_plugin_states(source, remote_endpoint),
+         {:ok, plugin_states} <- get_plugin_states_from_response(resp.body) do
+      {:ok, plugin_states}
+    else
+      {:error, error} ->
+        Logger.error("Error getting plugin states: #{error}")
+        {:error, error}
+    end
+  end
+
+  defp request_plugin_states(source, remote_endpoint) do
+    {url, token} = get_endpoint("plugin_states")
+    get_request()
+    |> Req.get(url: url,
+      auth: {:bearer, token },
+      params: [source: source, remote_endpoint: remote_endpoint],
+      debug: false
+    )
+  end
+
+  def get_plugin_states_from_response(%{"success" => true, "plugin_states" => plugin_states}), do: {:ok, plugin_states}
+  def get_plugin_states_from_response(%{"success" => false, "error" => error}), do: {:error, error}
+  def get_plugin_states_from_response(_), do: {:error, "Something went wrong getting the plugin states"}
+
   defp get_endpoint(endpoint) do
     report_service = Application.get_env(:report_server, :report_service)
     url = report_service |> Keyword.get(:url, "https://us-central1-report-service-dev.cloudfunctions.net/api")
