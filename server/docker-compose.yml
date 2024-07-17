@@ -19,6 +19,7 @@ services:
       - REPORT_SERVICE_URL=${REPORT_SERVICE_URL:-}
       - REPORT_SERVICE_TOKEN=${REPORT_SERVICE_TOKEN:-}
       - PORTAL_URL=${PORTAL_URL:-https://learn.portal.staging.concord.org}
+      - PORTAL_REPORT_URL=${PORTAL_REPORT_URL:https://portal-report.concord.org/branch/master/}
       - TOKEN_SERVICE_URL=${TOKEN_SERVICE_URL:-https://token-service-staging.firebaseapp.com/api/v1/resources}
       - TOKEN_SERVICE_PRIVATE_BUCKET=${TOKEN_SERVICE_PRIVATE_BUCKET:-token-service-files-private}
       - OUTPUT_BUCKET=${OUTPUT_BUCKET:-report-server-output}

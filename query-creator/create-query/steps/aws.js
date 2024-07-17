@@ -404,6 +404,8 @@ exports.generateSQL = (runnableInfo, usageReport, authDomain, sourceKey, hideNam
     resourceColumns = resourceColumns.concat([
       {name: `res_${resIndex}_name`,
        value: `'${escapeSingleQuote(name)}'`},
+      {name: `res_${resIndex}_offering_id`,
+       value: `learners_and_answers_${resIndex}.offering_id`},
       {name: `res_${resIndex}_learner_id`,
        value: `learners_and_answers_${resIndex}.learner_id`},
       {name: `res_${resIndex}_remote_endpoint`,

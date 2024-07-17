@@ -6,6 +6,14 @@ defmodule ReportServer.PostProcessing.Steps.Helpers do
 
   @col_regex ~r/(?<res>res_\d+)_(?<question_id>.+)_/
 
+  def get_input_value(%JobParams{input_header_map: input_header_map}, input, column_name) do
+    if Map.has_key?(input_header_map, column_name) do
+      input[input_header_map[column_name]]
+    else
+      nil
+    end
+  end
+
   def get_header_map(list) do
     Enum.with_index(list) |> Map.new()
   end
