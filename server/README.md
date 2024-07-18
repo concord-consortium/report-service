@@ -31,6 +31,14 @@ To start the Phoenix server:
 
 Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
+## Deploying
+
+The report server is deployed using Docker on CloudFormation.  Here are the steps to deploy:
+
+1. Run `docker build . -t concordconsortium/report-server:VERSION` where `VERSION` is a semver version.  For staging deployments use `-pre.N` suffixes like `1.1.0-pre.0`.
+2. Once the build is complete run `docker push concordconsortium/report-server:VERSION` to push to the container registry.
+3. In AWS CloudFormation select the `report-server` stack in the QA account or `report-server-prod` in the production account and run an update using the newly uploaded tagged container as the value for the "ImageUrl" parameter in the update process.
+
 # Server Setup
 
 ## AWS User Permissions
