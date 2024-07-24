@@ -64,6 +64,7 @@ defmodule ReportServer.PostProcessing.Steps.GlossaryData do
       resource_url = get_resource_col(input, resource_cols, @resource_url)
       offering_id = get_resource_col(input, resource_cols, @offering_id)
       student_id = Helpers.get_input_value(params, input, "student_id")
+      user_id = Helpers.get_input_value(params, input, "user_id")
       class_id = Helpers.get_input_value(params, input, "class_id")
 
       portal_uri = URI.parse(remote_endpoint)
@@ -83,6 +84,7 @@ defmodule ReportServer.PostProcessing.Steps.GlossaryData do
             class_id: class_id,
             offering_id: offering_id,
             student_id: student_id,
+            user_id: user_id,
             key: key
           ]
           output
