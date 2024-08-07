@@ -1,0 +1,23 @@
+{
+  "name": "report-service",
+  "version": "1.0.0",
+  "description": "Report Service Tests",
+  "main": "index.js",
+  "scripts": {
+    "test:cypress": "cypress run --spec \"cypress/e2e/**/*\"",
+    "test:cypress:open": "cypress open --env failOnSnapshotDiff=false",
+    "test:open:snapshots": "cypress open --env updateSnapshots=true"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/concord-consortium/report-service.git"
+  },
+  "author": "John T. Crawford",
+  "license": "ISC",
+  "devDependencies": {
+    "cypress": "^13.13.2"
+  },
+  "dependencies": {
+    "cypress-react-selector": "^2.3.11"
+  }
+}
