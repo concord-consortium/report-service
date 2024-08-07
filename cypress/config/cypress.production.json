@@ -1,0 +1,13 @@
+{
+    "baseUrl": "https://learn.concord.org",
+    "learnPortalBaseUrl": "https://learn.concord.org",
+    "learnReportBaseUrl": "https://learn-report.concord.org",
+    "ReportServerBaseUrl": "https://report-server.concord.org",
+
+    "researcher": {
+        "username": "researcher",
+        "firstName": "Researcher",
+        "lastName": "CypressUser",
+        "email": "researcher@concord.org"
+    }
+}
