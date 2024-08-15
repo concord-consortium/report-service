@@ -1,0 +1,13 @@
+{
+    "baseUrl": "https://learn.portal.staging.concord.org",
+    "learnPortalBaseUrl": "https://learn.portal.staging.concord.org",
+    "learnReportBaseUrl": "https://learn-report.portal.staging.concord.org",
+    "reportServerBaseUrl": "https://report-server.concordqa.org",
+
+    "researcher": {
+        "username": "researcher",
+        "firstName": "Researcher",
+        "lastName": "CypressUser",
+        "email": "researcher@concord.org"
+    }
+}
