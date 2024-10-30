@@ -22,12 +22,26 @@ If you see an error about your SSL library missing do the following: if you are 
 
 Finally if you are on Linux install the inotify tools via `sudo apt-get install inotify-tools`.
 
+### Environment Settings
+
+The server needs several environment variables set in order to start.  The easiest way to do this is create an `.env` file (which is in `.gitignore` already) with
+the following keys set.  The values of the keys are secrets and can be found in the CloudFormation parameter values for the staging and production stacks.
+
+```
+export SERVER_ACCESS_KEY_ID=
+export SERVER_SECRET_ACCESS_KEY=
+export REPORT_SERVICE_TOKEN=
+export REPORT_SERVICE_URL=
+export PORTAL_REPORT_URL=
+```
+
 ## Development
 
 To start the Phoenix server:
 
-  * Run `mix setup` to install and setup dependencies
-  * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+* Run `mix setup` to install and setup dependencies
+* Run `source .env` (created in step above) to load the environment variables
+* Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
 
 Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
