@@ -4,7 +4,7 @@ defmodule ReportServer.MixProject do
   def project do
     [
       app: :report_server,
-      version: "1.1.0",
+      version: "1.2.0-pre.0",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -60,7 +60,8 @@ defmodule ReportServer.MixProject do
       {:ex_aws, "~> 2.1"},
       {:ex_aws_s3, "~> 2.0"}, # for url signing
       {:sweet_xml, "~> 0.7.4"}, # for ex_aws
-      {:csv, "~> 3.2"}
+      {:csv, "~> 3.2"},
+      {:myxql, "~> 0.7.1"}
     ]
   end
 

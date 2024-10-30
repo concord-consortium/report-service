@@ -18,7 +18,7 @@ defmodule ReportServerWeb.Router do
   scope "/", ReportServerWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", PageLive.Home, :home
     get "/config", PageController, :config
 
     get "/auth/login", AuthController, :login
