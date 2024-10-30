@@ -11,6 +11,16 @@ defmodule ReportServerWeb.Router do
     plug ReportServerWeb.Auth.Plug
   end
 
+  pipeline :codap_plugin do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {ReportServerWeb.Layouts, :codap_plugin}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug :allow_iframe
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -25,6 +35,14 @@ defmodule ReportServerWeb.Router do
     get "/auth/logout", AuthController, :logout
     live "/auth/callback", AuthLive.Callback, :callback
     get "/auth/save_token", AuthController, :save_token
+  end
+
+  scope "/", ReportServerWeb do
+    pipe_through :codap_plugin
+
+    live_session :codap_plugin, layout: false, root_layout: {ReportServerWeb.Layouts, :codap_plugin} do
+      live "/codap-plugin", CodapPluginLive.Index, :index
+    end
   end
 
   scope "/reports", ReportServerWeb do
@@ -49,5 +67,15 @@ defmodule ReportServerWeb.Router do
 
       live_dashboard "/dashboard", metrics: ReportServerWeb.Telemetry
     end
+  end
+
+  # add a CSP allowing embedding only from concord.org domains
+  defp allow_iframe(conn, _opts) do
+    conn
+    |> delete_resp_header("x-frame-options")
+    |> put_resp_header(
+      "content-security-policy",
+      "frame-ancestors 'self' https://*.concord.org;"
+    )
   end
 end
