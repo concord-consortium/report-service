@@ -4,12 +4,6 @@ defmodule ReportServerWeb.PageController do
   alias ReportServerWeb.{Auth, TokenService}
 
 
-  def home(conn, _params) do
-    # The home page is often custom made,
-    # so skip the default app layout.
-    render(conn, :home, page_title: "Home")
-  end
-
   def config(conn, _params) do
     session = get_session(conn)
     if Auth.logged_in?(session) do

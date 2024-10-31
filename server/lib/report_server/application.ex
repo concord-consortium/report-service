@@ -14,6 +14,7 @@ defmodule ReportServer.Application do
       {Registry, keys: :unique, name: ReportServer.PostProcessingRegistry},
       {Task.Supervisor, name: ReportServer.PostProcessingTaskSupervisor},
       ReportServer.PostProcessing.JobSupervisor,
+      {ReportServer.Dashboard.StatsServer, get_dashboard_servers()},
       # Start a worker by calling: ReportServer.Worker.start_link(arg)
       # {ReportServer.Worker, arg},
       # Start to serve requests, typically the last entry
@@ -32,5 +33,12 @@ defmodule ReportServer.Application do
   def config_change(changed, _new, removed) do
     ReportServerWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  defp get_dashboard_servers() do
+    case Application.get_env(:report_server, :portal) |> Keyword.get(:url)  do
+      "https://learn.concord.org" -> ["learn.concord.org", "ngss-assessment.portal.concord.org"]
+      _ -> ["learn.portal.staging.concord.org"]
+    end
   end
 end

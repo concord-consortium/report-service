@@ -33,6 +33,7 @@ export SERVER_SECRET_ACCESS_KEY=
 export REPORT_SERVICE_TOKEN=
 export REPORT_SERVICE_URL=
 export PORTAL_REPORT_URL=
+export LEARN_PORTAL_STAGING_CONCORD_ORG_DB=mysql://<username>:<password>@<host>:<port>
 ```
 
 ## Development
