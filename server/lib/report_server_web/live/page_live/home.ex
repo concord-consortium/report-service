@@ -10,6 +10,7 @@ defmodule ReportServerWeb.PageLive.Home do
       |> assign(:page_title, "Home")
       |> assign(Auth.public_session_vars(session))
       |> assign(:stats, StatsServer.get_dashboard_stats())
+      |> assign(:stats_disabled, StatsServer.disabled?())
 
     # listen for the stats server message that the dashboard stats updated
     if connected?(socket) do

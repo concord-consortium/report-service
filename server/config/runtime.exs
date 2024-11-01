@@ -48,6 +48,9 @@ config :report_server, :report_service,
 config :report_server, :portal_report,
   url: System.get_env("PORTAL_REPORT_URL") || "https://portal-report.concord.org/branch/master/" # production (yes, prod uses master)
 
+config :report_server, :stats_server,
+  disable: System.get_env("DISABLE_STATS_SERVER") == "true" || false
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
