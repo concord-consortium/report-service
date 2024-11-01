@@ -53,6 +53,13 @@ defmodule ReportServerWeb.Router do
     get "/job.csv", DemoController, :job
   end
 
+  scope "/new-reports", ReportServerWeb do
+    pipe_through :browser
+
+    live "/", NewReportsLive.Index, :index
+    live "/:report", NewReportsLive.Form, :form
+  end
+
   # Enable LiveDashboard in development
   if Application.compile_env(:report_server, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
