@@ -1,6 +1,7 @@
 defmodule ReportServer.Dashboard.StatsServer do
   use GenServer
 
+  require Logger
   alias ReportServer.PortalDbs
 
   @query_interval 60 * 1000 # 1 minute
@@ -20,6 +21,10 @@ defmodule ReportServer.Dashboard.StatsServer do
     GenServer.call(__MODULE__, :get_dashboard_stats)
   end
 
+  def disabled?() do
+    Keyword.get(Application.get_env(:report_server, :stats_server), :disable) == true
+  end
+
   # genserver callbacks
 
   @impl true
@@ -27,9 +32,16 @@ defmodule ReportServer.Dashboard.StatsServer do
     # Initialize state with empty data for each server
     initial_state = Enum.into(servers, %{}, fn server -> {server, %DashboardStats{}} end)
 
-    # return immediately and handle the rest of the (potentially long running) startup
-    # in the handle_continue handler
-    {:ok, initial_state, {:continue, :query_and_schedule_next}}
+    if disabled?() do
+      # disable the queries and always return zeroed out stats
+      Logger.info("StatsServer disabled")
+      {:ok, initial_state}
+    else
+      Logger.info("StatsServer enabled")
+      # return immediately and handle the rest of the (potentially long running) startup
+      # in the handle_continue handler
+      {:ok, initial_state, {:continue, :query_and_schedule_next}}
+    end
   end
 
   # called via {:continue, :query_and_schedule_next} in init/1
