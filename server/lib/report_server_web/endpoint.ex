@@ -8,12 +8,17 @@ defmodule ReportServerWeb.Endpoint do
     store: :cookie,
     key: "_report_server_key",
     signing_salt: "skG1LEym",
-    same_site: "Lax"
+    same_site: "None"
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
+
+  # separate socket for iframes as the can't include session data
+  socket "/live-iframe", Phoenix.LiveView.Socket,
+    websocket: true,
+    longpoll: true
 
   # Serve at "/" the static files from "priv/static" directory.
   #

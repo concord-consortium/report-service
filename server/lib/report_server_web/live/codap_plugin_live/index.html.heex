@@ -1,0 +1,30 @@
+<div id="plugin" class="m-2 flex flex-col gap-2" phx-hook="CodapPlugin">
+  <div class="flex gap-2 text-xl items-center mb-2">
+    <img src={~p"/images/logo.png"} width="36" />
+    <h1>CC Public Portal Data</h1>
+  </div>
+  <div class="text-xs">
+    This plugin allows you to query aggregated public data from the Concord Consortium portals.
+    No personally identifiable information is available.
+  </div>
+  <div :if={!@in_codap}>
+    Loading...
+  </div>
+  <div :if={@in_codap}>
+    <.form for={%{}} class="flex flex-col gap-2" phx-submit="get_data">
+      <div>
+        <.input type="select" label="Portal" name="server" value={@server} options={@server_options} />
+      </div>
+      <div>
+        <.input type="select" label="Query" name="query" value={@query} options={@query_options} />
+      </div>
+      <div class="mt-2">
+        <button type="submit" class="px-4 py-2 bg-orange text-white hover:bg-light-orange hover:text-orange hover:border hover:border-orange rounded">Get Data</button>
+      </div>
+
+    </.form>
+  </div>
+  <div :if={@error} class="text-red-500">
+    <%= @error %>
+  </div>
+</div>

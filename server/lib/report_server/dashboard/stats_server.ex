@@ -1,6 +1,7 @@
 defmodule ReportServer.Dashboard.StatsServer do
   use GenServer
-  require Logger
+
+  alias ReportServer.PortalDbs
 
   @query_interval 60 * 1000 # 1 minute
 
@@ -85,72 +86,12 @@ defmodule ReportServer.Dashboard.StatsServer do
       (SELECT COUNT(*) FROM portal_offerings) AS num_offerings
     """
 
-    # fallback result on error
-    empty_result = %DashboardStats{}
+    case PortalDbs.query(server, query) do
+      {:ok, rows} ->
+        struct(DashboardStats, hd(rows))
 
-    with {:ok, server_opts} <- get_server_opts(server),
-         {:ok, pid} = MyXQL.start_link(server_opts) do
-
-      result = case MyXQL.query(pid, query) do
-        {:ok, %{columns: columns, rows: [row | _]}} ->
-          row_struct = columns
-            |> Enum.map(&String.to_atom/1)
-            |> Enum.zip(row)
-            |> Enum.into(%{})
-          struct(DashboardStats, row_struct)
-
-        {:error, %DBConnection.ConnectionError{} = error} ->
-          Logger.error("Error connecting to #{server}: #{error.message}")
-          empty_result
-
-        {:error, %MyXQL.Error{} = error} ->
-          Logger.error("Error executing dashboard stats query on #{server}: #{error.message}")
-          empty_result
-      end
-
-      # close the connection
-      GenServer.stop(pid)
-
-      result
-    else
-      {:error, error} ->
-        Logger.error("Error querying #{server}: #{error}")
-        empty_result
-    end
-  end
-
-  defp get_server_opts(server) do
-    with {:ok, value} <- get_connection_string(server) do
-      parsed = URI.parse(value)
-      auth = String.split(parsed.userinfo || "", ":")
-
-      if length(auth) == 2 do
-        [username, password] = auth
-        {:ok, [
-          hostname: parsed.host,
-          port: parsed.port,
-          username: username,
-          password: password,
-          database: "portal"
-        ]}
-      else
-        {:error, "Missing username:password in connection string for #{server}"}
-      end
-    else
-      error -> error
-    end
-  end
-
-  def get_connection_string(server) do
-    # ie: learn.portal.staging.concord.org to LEARN_PORTAL_STAGING_CONCORD_ORG_DB
-    key = "#{server}_DB"
-      |> String.replace(".", "_")
-      |> String.replace("-", "_")
-      |> String.upcase()
-
-    case System.get_env(key) do
-      nil -> {:error, "Unknown server #{server}"}
-      value -> {:ok, value}
+      {:error, _} ->
+        %DashboardStats{}
     end
   end
 end
