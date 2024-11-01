@@ -14,7 +14,7 @@ defmodule ReportServerWeb.CodapPluginLive.Index do
   alias ReportServer.PortalDbs
   alias ReportServerWeb.CodapPluginLive.Query
 
-  @servers ["learn.concord.org", "ngss-assessment.portal.concord.org"] #, "learn.portal.staging.concord.org"]
+  @servers ["learn.concord.org"] #, "ngss-assessment.portal.concord.org", "learn.portal.staging.concord.org"]
   @queries %{
     "new_student_counts_by_month" => %Query{name: "New Student Counts By Month", sql: Query.user_count_sql("portal_students", "students", :month)},
     "new_student_counts_by_year" => %Query{name: "New Student Counts By Year", sql: Query.user_count_sql("portal_students", "students", :year)},

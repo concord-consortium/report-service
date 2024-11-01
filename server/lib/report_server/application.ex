@@ -37,7 +37,7 @@ defmodule ReportServer.Application do
 
   defp get_dashboard_servers() do
     case Application.get_env(:report_server, :portal) |> Keyword.get(:url)  do
-      "https://learn.concord.org" -> ["learn.concord.org", "ngss-assessment.portal.concord.org"]
+      "https://learn.concord.org" -> ["learn.concord.org"] # disabled for now due to networking issue: , "ngss-assessment.portal.concord.org"]
       _ -> ["learn.portal.staging.concord.org"]
     end
   end
