@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.Dashboard do
+defmodule ReportServerWeb.CustomComponents do
   use Phoenix.Component
 
   def portal_stats(assigns) do
@@ -42,6 +42,27 @@ defmodule ReportServerWeb.Dashboard do
       |> Enum.join(",")
       |> String.reverse()
     %>
+    """
+  end
+
+  @doc """
+  Renders a navigation link in a square.
+
+  ## Examples
+
+      <.square_link navigate={~p"/reports"}>Reports</.back>
+  """
+  attr :navigate, :any, required: true
+  attr :class, :string, default: nil
+  slot :inner_block, required: true
+
+  def square_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={["text-center rounded p-6 text-white text-xl w-40 h-40 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange flex flex-col justify-center items-center font-bold hover:bg-blue-700", @class]}>
+      <%= render_slot(@inner_block) %>
+    </.link>
     """
   end
 

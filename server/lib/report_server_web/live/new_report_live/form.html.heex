@@ -1,0 +1,11 @@
+<.header>
+  Form for "<%= @report %>" Report
+</.header>
+
+<div :if={!@known_report}>
+  Error: <%= @report %> is not a known report
+</div>
+
+<div :if={@known_report}>
+  <p>Form goes here</p>
+</div>

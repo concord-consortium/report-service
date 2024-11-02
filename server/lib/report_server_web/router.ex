@@ -56,8 +56,10 @@ defmodule ReportServerWeb.Router do
   scope "/new-reports", ReportServerWeb do
     pipe_through :browser
 
-    live "/", NewReportsLive.Index, :index
-    live "/:report", NewReportsLive.Form, :form
+    live_session :reports, on_mount: ReportServerWeb.NewReportLive.Auth do
+      live "/", NewReportLive.Index, :index
+      live "/:report", NewReportLive.Form, :form
+    end
   end
 
   # Enable LiveDashboard in development

@@ -8,7 +8,7 @@ defmodule ReportServerWeb.Endpoint do
     store: :cookie,
     key: "_report_server_key",
     signing_salt: "skG1LEym",
-    same_site: "None"
+    same_site: "Lax"
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
