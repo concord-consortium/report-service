@@ -1,11 +1,19 @@
 <.header>
-  Form for "<%= @report %>" Report
+  <div>
+    <.link navigate={~p"/new-reports"} class="hover:underline">Reports</.link>:
+    <%= @title %>
+  </div>
 </.header>
 
-<div :if={!@known_report}>
-  Error: <%= @report %> is not a known report
+<div class="mt-2 flex flex-col gap-2" :if={@report}>
+  <div>Form goes here allowing filtering...</div>
+
+  <div>
+    <button class="p-2 bg-orange text-white rounded" phx-click="submit-form">Fake Submit</button>
+  </div>
+
 </div>
 
-<div :if={@known_report}>
-  <p>Form goes here</p>
+<div class="mt-2" :if={@results}>
+  <%= @results %>
 </div>
