@@ -4,6 +4,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
   May eventually get a different @live_action to show the result of the report.
   """
 
+alias ReportServer.PortalDbs
   use ReportServerWeb, :live_view
 
   alias ReportServer.Reports
@@ -52,18 +53,19 @@ defmodule ReportServerWeb.NewReportLive.Form do
 
   def handle_event("download_csv", _unsigned_params, %{assigns: %{results: results}} = socket) do
     # convert results into a stream
-    csv = Stream.map(results.rows, &(&1)) |> CSV.encode() |> Enum.to_list()
+    csv = results
+      |> PortalDbs.map_columns_on_rows()
+      |> tap(&IO.inspect(&1))
+      |> Stream.map(&(&1))
+      |> CSV.encode(headers: results.columns |> Enum.map(&String.to_atom/1))
+      |> Enum.to_list()
     Logger.debug("CSV: #{csv}")
-
-    # TODO: not working
-    Process.send_after(self(), :clear_flash, 2000)
 
     # Ask browser to download the file
     # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
     {:noreply,
      socket
-     |> put_flash(:info, "Downloading CSV")
-     |> push_event("download_csv", %{csv: csv, filename: "report.csv"})
+     |> push_event("download_csv", %{csv: csv, filename: "report.csv"}) # TODO: more informative filename
     }
   end
 
