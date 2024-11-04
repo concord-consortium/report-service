@@ -8,6 +8,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
 
   alias ReportServer.Reports
   alias ReportServer.Reports.Report
+  require Logger
 
   @impl true
   def mount(_params, _session, socket) do
@@ -47,6 +48,23 @@ defmodule ReportServerWeb.NewReportLive.Form do
     end
 
     {:noreply, socket}
+  end
+
+  def handle_event("download_csv", _unsigned_params, %{assigns: %{results: results}} = socket) do
+    # convert results into a stream
+    csv = Stream.map(results.rows, &(&1)) |> CSV.encode() |> Enum.to_list()
+    Logger.debug("CSV: #{csv}")
+
+    # TODO: not working
+    Process.send_after(self(), :clear_flash, 2000)
+
+    # Ask browser to download the file
+    # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
+    {:noreply,
+     socket
+     |> put_flash(:info, "Downloading CSV")
+     |> push_event("download_csv", %{csv: csv, filename: "report.csv"})
+    }
   end
 
   defp get_report_info(slug, nil) do

@@ -70,7 +70,7 @@ defmodule ReportServerWeb.CustomComponents do
 
   def report_results(assigns) do
     ~H"""
-    <div class="bg-white text-sm overflow-auto sm:overflow-visible">
+    <div class="bg-white text-sm overflow-auto sm:overflow-auto">
       <table class="w-full">
         <thead class="text-left leading-6 text-zinc-500">
           <tr>
