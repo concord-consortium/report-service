@@ -1,19 +1,26 @@
 <.header>
   <div>
-    <.link navigate={~p"/new-reports"} class="hover:underline">Reports</.link>:
+    <.link navigate={~p"/new-reports"} class="hover:underline">Reports</.link>
+    <span>›</span>
     <%= @title %>
   </div>
+  <:subtitle><%= @subtitle %></:subtitle>
 </.header>
 
 <div class="mt-2 flex flex-col gap-2" :if={@report}>
-  <div>Form goes here allowing filtering...</div>
+  <div class="italic">Form goes here allowing filtering.</div>
+  <div class="italic">For now the same canned query is used for all the reports: a <strong>Teacher Status Report</strong> with <strong>Doug Martin</strong> as the teacher is used.</div>
 
   <div>
-    <button class="p-2 bg-orange text-white rounded" phx-click="submit-form">Fake Submit</button>
+    <button class="py-2 px-3 bg-orange text-white rounded" phx-click="submit-form">Submit</button>
   </div>
 
 </div>
 
-<div class="mt-2" :if={@results}>
-  <%= @results %>
+<div class="mt-2 text-red-500" :if={@error}>
+  <%= @error %>
+</div>
+
+<div class="my-6" :if={@results}>
+  <.report_results results={@results} />
 </div>

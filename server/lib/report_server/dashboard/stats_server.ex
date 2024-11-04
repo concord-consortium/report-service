@@ -99,8 +99,11 @@ defmodule ReportServer.Dashboard.StatsServer do
     """
 
     case PortalDbs.query(server, query) do
-      {:ok, rows} ->
-        struct(DashboardStats, hd(rows))
+      {:ok, result} ->
+        first_row = result
+          |> PortalDbs.map_columns_on_rows()
+          |> hd()
+        struct(DashboardStats, first_row)
 
       {:error, _} ->
         %DashboardStats{}

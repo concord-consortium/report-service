@@ -66,4 +66,27 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  attr :results, :any, required: true
+
+  def report_results(assigns) do
+    ~H"""
+    <div class="bg-white text-sm overflow-auto sm:overflow-visible">
+      <table class="w-full">
+        <thead class="text-left leading-6 text-zinc-500">
+          <tr>
+            <th :for={col <- @results.columns} class="p-2 font-normal"><%= col %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={row <- @results.rows} class="group hover:bg-zinc-200">
+            <td :for={col <- row} class="p-2 font-normal">
+              <%= col %>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
 end

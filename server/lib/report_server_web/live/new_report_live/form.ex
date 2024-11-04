@@ -18,13 +18,15 @@ defmodule ReportServerWeb.NewReportLive.Form do
   def handle_params(unsigned_params, _uri, socket) do
     slug = unsigned_params |> Map.get("slug")
     report = slug |> Reports.find()
-    title = if report, do: report.title, else: "Error: #{slug} is not a known report"
+    %{title: title, subtitle: subtitle} = get_report_info(slug, report)
 
     socket = socket
     |> assign(:report, report)
     |> assign(:title, title)
+    |> assign(:subtitle, subtitle)
     |> assign(:page_title, "Reports: #{title}")
     |> assign(:results, nil)
+    |> assign(:error, nil)
 
     {:noreply, socket}
   end
@@ -32,15 +34,26 @@ defmodule ReportServerWeb.NewReportLive.Form do
   @impl true
   def handle_event("submit-form", _unsigned_params, %{assigns: %{report: %Report{} = report}} = socket) do
     # when this is real the params would become the filters passed to the report run function
-    _results = report.run.([])
+    socket = case report.run.([]) do
+      {:ok, results} ->
+        socket
+        |> assign(:results, results)
+        |> assign(:error, nil)
 
-    # fake the results for now
-    results = "This is where the sortable table would display with the report results along with a download link..."
-
-    socket = socket
-      |> assign(:results, results)
+      {:error, error} ->
+        socket
+        |> assign(:results, nil)
+        |> assign(:error, error)
+    end
 
     {:noreply, socket}
+  end
+
+  defp get_report_info(slug, nil) do
+    %{title: "Error: #{slug} is not a known report", subtitle: nil}
+  end
+  defp get_report_info(_slug, report = %Report{}) do
+    %{title: report.title, subtitle: report.subtitle}
   end
 
 end
