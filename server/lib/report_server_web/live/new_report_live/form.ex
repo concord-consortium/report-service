@@ -51,21 +51,22 @@ alias ReportServer.PortalDbs
     {:noreply, socket}
   end
 
-  def handle_event("download_csv", _unsigned_params, %{assigns: %{results: results}} = socket) do
+  def handle_event("download_report", _unsigned_params, %{assigns: %{results: results}} = socket) do
     # convert results into a stream
     csv = results
       |> PortalDbs.map_columns_on_rows()
       |> tap(&IO.inspect(&1))
       |> Stream.map(&(&1))
-      |> CSV.encode(headers: results.columns |> Enum.map(&String.to_atom/1))
+      |> CSV.encode(headers: results.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
       |> Enum.to_list()
+      |> Enum.join("")
     Logger.debug("CSV: #{csv}")
 
     # Ask browser to download the file
     # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
     {:noreply,
      socket
-     |> push_event("download_csv", %{csv: csv, filename: "report.csv"}) # TODO: more informative filename
+     |> push_event("download_report", %{data: csv, filename: "report.csv"}) # TODO: more informative filename
     }
   end
 

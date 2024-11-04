@@ -22,26 +22,12 @@
 </div>
 
 <div :if={@results}>
-  <button class="my-2 p-2 bg-rose-50 rounded" phx-click="download_csv">Download as CSV</button>
+  <button id="report-download-button" class="my-2 p-2 bg-rose-50 rounded" 
+    phx-hook="ReportDownloadButton" phx-click="download_report"
+  >Download as CSV</button>
 </div>
 
 <div class="my-6" :if={@results}>
   <.report_results results={@results} />
 </div>
 
-<script>
-  window.addEventListener("phx:download_csv", (event) => {
-    console.debug("Event received:", event);
-    var element = document.createElement('a');
-    const encodedData = encodeURIComponent(event.detail.csv);
-    const hrefValue = 'data:text/plain;charset=utf-8,' + encodedData;
-       
-    element.setAttribute('href', hrefValue);
-    element.setAttribute('download', event.detail.filename);
-
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  });
-</script>

@@ -66,8 +66,10 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  @doc """
+  Renders a navigation link in a square.
+  """
   attr :results, :any, required: true
-
   def report_results(assigns) do
     ~H"""
     <div class="bg-white text-sm overflow-auto sm:overflow-auto">
