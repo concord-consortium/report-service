@@ -17,12 +17,17 @@
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
+
+// @ts-ignore
+import live_select from "live_select"
+
 // Establish Phoenix Socket and LiveView configuration.
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
 const Hooks = {
+  ...live_select,
   AuthCallback: {
     mounted() {
       // this sends the auth params in the url hash to the callback liveview on mount
@@ -80,7 +85,7 @@ const Hooks = {
         link.href = URL.createObjectURL(blob);
         // Set the download attribute with the desired file name
         link.download = filename;
-            
+
         // Append the link to the body (not displayed)
         document.body.appendChild(link);
 

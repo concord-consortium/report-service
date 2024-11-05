@@ -5,11 +5,17 @@ defmodule ReportServerWeb.NewReportLive.Form do
   """
 
   use ReportServerWeb, :live_view
+
+  import LiveSelect
+
+  require Logger
+
   alias Jason
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.Report
-  require Logger
+
+  @filter_type_options [{"Select a filter...", ""}, {"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -22,6 +28,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
     report = slug |> Reports.find()
     %{title: title, subtitle: subtitle} = get_report_info(slug, report)
 
+    form = to_form(%{}, as: "filter_form")
+
     socket = socket
     |> assign(:report, report)
     |> assign(:title, title)
@@ -29,12 +37,76 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:page_title, "Reports: #{title}")
     |> assign(:results, nil)
     |> assign(:error, nil)
+    |> assign(:form, form)
+    |> assign(:num_filters, 1)
+    |> assign(:filter_type_options, [@filter_type_options])
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("submit-form", _unsigned_params, %{assigns: %{report: %Report{} = report}} = socket) do
+  def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket) do
+    filter_index = get_filter_index(field)
+    filter_type = socket.assigns.form.params["filter#{filter_index}_type"]
+
+    if filter_type do
+      # this would be replaced by a database query...
+      options = Enum.map(1..5, &({"#{text} #{filter_type} #{&1}", "#{text}_#{filter_type}_#{&1}"}))
+      send_update(LiveSelect.Component, id: live_select_id, options: options)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("filters_updated", %{"filter_form" => form_values}, socket) do
+    form = to_form(form_values, as: "filter_form")
+
+    socket = socket
+    |> assign(:form, form)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("add_filter", _unsigned_params, socket) do
+    num_filters = socket.assigns.num_filters
+    form_params = socket.assigns.form.params
+
+    filter_type_options = Enum.take(socket.assigns.filter_type_options, num_filters)
+
+    new_num_filters = num_filters + 1
+
+    existing_filters = Enum.map(1..num_filters, &(form_params["filter#{&1}_type"]))
+    new_filter_type_options = Enum.filter(@filter_type_options, fn {_key, value} -> !Enum.member?(existing_filters, value) end)
+
+    socket = socket
+      |> assign(:num_filters, new_num_filters)
+      |> assign(:filter_type_options, filter_type_options ++ [new_filter_type_options])
+
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_filter", _unsigned_params, socket) do
+    num_filters = socket.assigns.num_filters
+    new_num_filters = num_filters - 1
+    new_filter_type_options = Enum.take(socket.assigns.filter_type_options, new_num_filters)
+
+    # remove the form values
+    filter_key_prefix = "filter#{num_filters}"
+    new_form = socket.assigns.form.params
+      |> Enum.filter(fn {key, _value} -> !String.starts_with?(key, filter_key_prefix) end)
+      |> Enum.into(%{})
+      |> to_form(as: "filter_form")
+
+    socket = socket
+      |> assign(:num_filters, new_num_filters)
+      |> assign(:filter_type_options, new_filter_type_options)
+      |> assign(:form, new_form)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report}} = socket) do
     # when this is real the params would become the filters passed to the report run function
     socket = case report.run.([]) do
       {:ok, results} ->
@@ -98,5 +170,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
   defp get_report_info(_slug, report = %Report{}) do
     %{title: report.title, subtitle: report.subtitle}
   end
+
+  defp get_filter_index(s), do: Regex.run(~r/(\d+)$/, s) |> List.last()
 
 end

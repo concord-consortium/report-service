@@ -9,7 +9,8 @@ module.exports = {
   content: [
     "./js/**/*.js",
     "../lib/report_server_web.ex",
-    "../lib/report_server_web/**/*.*ex"
+    "../lib/report_server_web/**/*.*ex",
+    '../deps/live_select/lib/live_select/component.*ex'
   ],
   theme: {
     extend: {
