@@ -31,7 +31,7 @@ Finally if you are on Linux install the inotify tools via `sudo apt-get install 
 ### Environment Settings
 
 The server needs several environment variables set in order to start.  The easiest way to do this is create an `.env` file (which is in `.gitignore` already) with
-the following keys set.  The values of the keys are secrets and can be found in the CloudFormation parameter values for the staging and production stacks.
+the following keys set.  The values of the keys are secrets and can be found in the CloudFormation parameter values for the staging stack.
 
 ```shell
 export SERVER_ACCESS_KEY_ID=
@@ -39,7 +39,10 @@ export SERVER_SECRET_ACCESS_KEY=
 export REPORT_SERVICE_TOKEN=
 export REPORT_SERVICE_URL=
 export PORTAL_REPORT_URL=
-export LEARN_PORTAL_STAGING_CONCORD_ORG_DB=mysql://<username>:<password>@<host>:<port>/<dbname>
+export LEARN_PORTAL_STAGING_CONCORD_ORG_DB=mysql://<username>:<password>@<host>:<port>
+
+# add this to disable the stats server
+export DISABLE_STATS_SERVER=true
 ```
 
 Note that if you cannot directly connect to the database (eg, it is in an AWS cluster), you may need to
