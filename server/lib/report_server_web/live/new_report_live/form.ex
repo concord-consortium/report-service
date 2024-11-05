@@ -36,6 +36,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:subtitle, subtitle)
     |> assign(:page_title, "Reports: #{title}")
     |> assign(:results, nil)
+    |> assign(:sort, nil)
+    |> assign(:sort_direction, :asc)
     |> assign(:error, nil)
     |> assign(:form, form)
     |> assign(:num_filters, 1)
@@ -113,6 +115,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
         socket
         |> assign(:results, results)
         |> assign(:error, nil)
+        |> assign(:sort, nil)
+        |> assign(:sort_direction, :asc)
 
       {:error, error} ->
         socket
@@ -124,8 +128,17 @@ defmodule ReportServerWeb.NewReportLive.Form do
   end
 
   def handle_event("sort_column", %{"column" => column}, %{assigns: %{results: results}} = socket) do
-    results = PortalDbs.sort_results(results, column)
-    {:noreply, assign(socket, :results, results)}
+    dir = if socket.assigns.sort == column do
+      if socket.assigns.sort_direction == :asc, do: :desc, else: :asc
+    else
+      :asc
+    end
+    results = PortalDbs.sort_results(results, column, dir)
+    updates = socket
+    |> assign(:sort, column)
+    |> assign(:sort_direction, dir)
+    |> assign(:results, results)
+    {:noreply, updates}
   end
 
   def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{results: results}} = socket) do

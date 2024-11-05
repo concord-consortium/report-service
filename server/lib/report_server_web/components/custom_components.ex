@@ -78,6 +78,23 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  def sort_col_button(assigns) do
+    icon = if assigns.column == assigns.sort do
+      if assigns.sort_direction == :asc do
+        "hero-arrow-down"
+      else
+        "hero-arrow-up"
+      end
+    else
+      "hero-arrows-up-down"
+    end
+    ~H"""
+    <button type="button" phx-click="sort_column" phx-value-column={@column}>
+      <.icon name={icon} class="inline-block w-4 h-4 ml-1 cursor-pointer" />
+    </button>
+    """
+  end
+
   @doc """
   Renders a navigation link in a square.
   """
@@ -92,18 +109,18 @@ defmodule ReportServerWeb.CustomComponents do
       </span>
     </div>
     <div class="bg-white text-sm overflow-auto sm:overflow-auto">
-      <table class="w-full">
-        <thead class="text-left leading-6 text-zinc-500">
+      <table class="w-full border-collapse">
+        <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
           <tr>
-            <th :for={col <- @results.columns} class="p-2 font-normal whitespace-nowrap">
-              <%= col %>
-              <button type="button" phx-click="sort_column" phx-value-column={col}><.icon name="hero-arrows-up-down" class="inline-block w-4 h-4 ml-1 cursor-pointer" /></button>
+            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b", (if col == @sort, do: "font-bold", else: "font-normal")]}>
+              <%= String.replace(col, "_", " ") %>
+              <.sort_col_button column={col} sort={@sort} sort_direction={@sort_direction} />
             </th>
           </tr>
         </thead>
         <tbody>
-          <tr :for={row <- @results.rows} class="group hover:bg-zinc-200">
-            <td :for={col <- row} class="p-2 font-normal">
+          <tr :for={row <- @results.rows} class="group hover:bg-zinc-200 even:bg-gray-50">
+            <td :for={col <- row} class="p-2 font-normal border-b">
               <%= col %>
             </td>
           </tr>
