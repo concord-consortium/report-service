@@ -21,13 +21,6 @@
   <%= @error %>
 </div>
 
-<div :if={@results}>
-  <button id="report-download-button" class="my-2 p-2 bg-rose-50 rounded" 
-    phx-hook="ReportDownloadButton" phx-click="download_report"
-  >Download as CSV</button>
-</div>
-
 <div class="my-6" :if={@results}>
   <.report_results results={@results} />
 </div>
-

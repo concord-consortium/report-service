@@ -4,9 +4,9 @@ defmodule ReportServerWeb.NewReportLive.Form do
   May eventually get a different @live_action to show the result of the report.
   """
 
-alias ReportServer.PortalDbs
   use ReportServerWeb, :live_view
-
+  alias Jason
+  alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.Report
   require Logger
@@ -51,8 +51,26 @@ alias ReportServer.PortalDbs
     {:noreply, socket}
   end
 
-  def handle_event("download_report", _unsigned_params, %{assigns: %{results: results}} = socket) do
-    # convert results into a stream
+  def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{results: results}} = socket) do
+    case format_results(results, String.to_atom(filetype)) do
+      {:ok, data} ->
+      file_extension = String.downcase(filetype)
+      # Ask browser to download the file
+      # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
+      {:noreply, request_download(socket, data, "report.#{file_extension}")}
+
+      {:error, error} ->
+      socket = put_flash(socket, :error, "Failed to format results: #{error}")
+      {:noreply, socket}
+    end
+  end
+
+  def request_download(socket, data, filename) do
+    socket
+    |> push_event("download_report", %{data: data, filename: filename}) # TODO: more informative filename
+  end
+
+  def format_results(results, :CSV) do
     csv = results
       |> PortalDbs.map_columns_on_rows()
       |> tap(&IO.inspect(&1))
@@ -60,14 +78,13 @@ alias ReportServer.PortalDbs
       |> CSV.encode(headers: results.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
       |> Enum.to_list()
       |> Enum.join("")
-    Logger.debug("CSV: #{csv}")
+    {:ok, csv}
+  end
 
-    # Ask browser to download the file
-    # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
-    {:noreply,
-     socket
-     |> push_event("download_report", %{data: csv, filename: "report.csv"}) # TODO: more informative filename
-    }
+  def format_results(results, :JSON) do
+    results
+      |> PortalDbs.map_columns_on_rows()
+      |> Jason.encode()
   end
 
   defp get_report_info(slug, nil) do

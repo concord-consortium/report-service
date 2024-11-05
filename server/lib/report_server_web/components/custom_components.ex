@@ -66,12 +66,28 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  def download_button(assigns) do
+    ~H"""
+      <button id="report-download-button" class="my-2 p-2 bg-rose-50 rounded"
+              phx-hook="ReportDownloadButton" phx-click="download_report" phx-value-filetype={@filetype}>
+        Download as <%= @filetype %>
+      </button>
+    """
+  end
+
   @doc """
   Renders a navigation link in a square.
   """
   attr :results, :any, required: true
   def report_results(assigns) do
     ~H"""
+    <div class="flex justify-between items-center">
+      <strong>Query result: <%= @results.num_rows %> rows</strong>
+      <span>
+        <.download_button filetype="CSV"/>
+        <.download_button filetype="JSON"/>
+      </span>
+    </div>
     <div class="bg-white text-sm overflow-auto sm:overflow-auto">
       <table class="w-full">
         <thead class="text-left leading-6 text-zinc-500">
