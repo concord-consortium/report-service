@@ -68,7 +68,7 @@ defmodule ReportServerWeb.CustomComponents do
 
   def download_button(assigns) do
     ~H"""
-      <button id="report-download-button" class="my-2 p-2 bg-rose-50 rounded"
+      <button id={"report-download-button-#{@filetype}"} class="my-2 p-2 bg-rose-50 rounded"
               phx-hook="ReportDownloadButton" phx-click="download_report" phx-value-filetype={@filetype}>
         Download as <%= @filetype %>
       </button>
@@ -92,7 +92,10 @@ defmodule ReportServerWeb.CustomComponents do
       <table class="w-full">
         <thead class="text-left leading-6 text-zinc-500">
           <tr>
-            <th :for={col <- @results.columns} class="p-2 font-normal"><%= col %></th>
+            <th :for={col <- @results.columns} class="p-2 font-normal whitespace-nowrap">
+              <%= col %>
+              <img src={"/assets/images/sort-chevron.svg"} class="inline-block w-4 h-4 ml-1 cursor-pointer" phx-click="sort_column" phx-value-column={col} />
+            </th>
           </tr>
         </thead>
         <tbody>

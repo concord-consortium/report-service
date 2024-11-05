@@ -51,6 +51,11 @@ defmodule ReportServerWeb.NewReportLive.Form do
     {:noreply, socket}
   end
 
+  def handle_event("sort_column", %{"column" => column}, %{assigns: %{results: results}} = socket) do
+    results = PortalDbs.sort_results(results, column)
+    {:noreply, assign(socket, :results, results)}
+  end
+
   def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{results: results}} = socket) do
     case format_results(results, String.to_atom(filetype)) do
       {:ok, data} ->

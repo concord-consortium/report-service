@@ -42,6 +42,14 @@ defmodule ReportServer.PortalDbs do
     end)
   end
 
+  def sort_results(results, column) do
+    # Return a new results struct with the rows sorted by the given column
+    Logger.info("Sorting by column #{column}")
+    col_index = results.columns |> Enum.find_index(&(&1 == column))
+    new_rows = Enum.sort_by(results.rows, &(Enum.at(&1, col_index)))
+    %{results | rows: new_rows}
+  end
+
   defp get_server_opts(server) do
     with {:ok, value} <- get_connection_string(server) do
       parsed = URI.parse(value)
