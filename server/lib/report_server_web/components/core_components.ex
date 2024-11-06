@@ -231,7 +231,7 @@ defmodule ReportServerWeb.CoreComponents do
     <button
       type={@type}
       class={[
-        "phx-submit-loading:opacity-75 rounded-lg bg-orange hover:bg-orange-light py-2 px-3",
+        "phx-submit-loading:opacity-75 rounded-lg bg-orange hover:bg-light-orange py-2 px-3",
         "text-sm font-semibold leading-6 text-white active:text-white/80",
         @class
       ]}
