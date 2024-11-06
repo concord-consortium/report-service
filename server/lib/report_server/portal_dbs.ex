@@ -49,6 +49,23 @@ defmodule ReportServer.PortalDbs do
     %{results | rows: new_rows}
   end
 
+  def get_user_info(server, access_token) do
+    query(server,
+    """
+    SELECT
+      u.id, u.login, u.first_name, u.last_name, u.email,
+      (SELECT count(*)
+      FROM
+        roles r,
+        roles_users ru
+      WHERE r.title = 'admin' AND ru.role_id = r.id AND ru.user_id = u.id) AS is_admin
+    FROM
+      access_grants ag,
+      users u
+    WHERE ag.access_token = ? AND ag.user_id = u.id
+    """, [access_token])
+  end
+
   defp get_server_opts(server) do
     with {:ok, value} <- get_connection_string(server) do
       parsed = URI.parse(value)

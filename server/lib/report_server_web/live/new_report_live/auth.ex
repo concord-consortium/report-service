@@ -6,7 +6,14 @@ defmodule ReportServerWeb.NewReportLive.Auth do
 
   def on_mount(:default, _params, session, socket) do
     if Auth.logged_in?(session) do
-      {:cont, assign(socket, Auth.public_session_vars(session))}
+      if Auth.admin?(session) do
+        {:cont, assign(socket, Auth.public_session_vars(session))}
+      else
+        socket = socket
+          |> put_flash(:error, "Sorry, the new reports are restricted to admins for now.")
+          |> redirect(to: "/")
+        {:halt, socket}
+      end
     else
       # since the current url isn't available at on_mount time, attach a hook to handle_params where it is available
       socket =
