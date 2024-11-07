@@ -13,7 +13,7 @@
 
   <.form for={@form} phx-change="filters_updated" phx-submit="submit_form">
     <div
-      class="mb-4"
+      class="mb-4 p-4 border border-orange"
       let={last_filter = i == @num_filters}
       let={filter = "filter#{i}"}
       let={filter_type = "#{filter}_type"}
