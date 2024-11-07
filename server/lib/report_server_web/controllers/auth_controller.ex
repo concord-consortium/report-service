@@ -26,7 +26,7 @@ defmodule ReportServerWeb.AuthController do
     expires = System.os_time(:second) + expires_in
 
     portal_url = Auth.get_portal_url(conn)
-    server = URI.parse(portal_url).host
+    server = PortalDbs.get_server_for_portal_url(portal_url)
     return_to = get_session(conn, :return_to, "/")
 
     case PortalDbs.get_user_info(server, access_token) do

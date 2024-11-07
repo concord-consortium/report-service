@@ -49,6 +49,14 @@ defmodule ReportServer.PortalDbs do
     %{results | rows: new_rows}
   end
 
+  def get_server_for_portal_url(portal_url) do
+    case URI.parse(portal_url).host do
+      "learn-report.concord.org" -> "learn.concord.org"
+      "ngss-assessment-report.portal.concord.org" -> "ngss-assessment.portal.concord.org"
+      host -> host
+    end
+  end
+
   def get_user_info(server, access_token) do
     query(server,
     """
