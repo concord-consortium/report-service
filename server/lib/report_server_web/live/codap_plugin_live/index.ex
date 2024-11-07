@@ -50,9 +50,12 @@ defmodule ReportServerWeb.CodapPluginLive.Index do
   @impl true
   def handle_event("get_data", %{"server" => server, "query" => query}, socket) do
     case PortalDbs.query(server, @queries[query].sql) do
-      {:ok, rows} ->
+      {:ok, result} ->
+        rows = result
+          |> PortalDbs.map_columns_on_rows()
+          |> maybe_add_totals()
         socket = socket
-          |> push_event("query_result", %{server: server, query: query, rows: maybe_add_totals(rows)})
+          |> push_event("query_result", %{server: server, query: query, rows: rows})
           |> assign(:error, nil)
         {:noreply, socket}
 

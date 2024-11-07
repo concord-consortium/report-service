@@ -1,6 +1,9 @@
 defmodule ReportServerWeb.AuthController do
   use ReportServerWeb, :controller
 
+  require Logger
+
+  alias ReportServer.PortalDbs
   alias ReportServerWeb.Auth
   alias ReportServerWeb.Auth.PortalStrategy
 
@@ -23,12 +26,29 @@ defmodule ReportServerWeb.AuthController do
     expires = System.os_time(:second) + expires_in
 
     portal_url = Auth.get_portal_url(conn)
+    server = URI.parse(portal_url).host
     return_to = get_session(conn, :return_to, "/")
 
-    conn
-    |> Auth.login(portal_url, access_token, expires)
-    |> delete_session(:return_to)
-    |> redirect(to: return_to)
+    case PortalDbs.get_user_info(server, access_token) do
+      {:ok, result} ->
+        user_info = result
+          |> PortalDbs.map_columns_on_rows()
+          |> hd()
+          |> Map.put(:server, server)
+
+        conn
+          |> Auth.login(portal_url, access_token, expires, user_info)
+          |> delete_session(:return_to)
+          |> redirect(to: return_to)
+
+      {:error, error} ->
+        Logger.error(error)
+
+        conn
+        |> put_flash(:error, "Unable to get your portal user info")
+        |> halt()
+    end
+
   end
 
 end

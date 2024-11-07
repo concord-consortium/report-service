@@ -2,13 +2,13 @@ defmodule ReportServer.PortalDbs do
   require Logger
 
   # FUTURE WORK: change this to use a connection pool
-  def query(server, query) do
+  def query(server, statement, params \\ [], options \\ []) do
     with {:ok, server_opts} <- get_server_opts(server),
           {:ok, pid} = MyXQL.start_link(server_opts) do
 
-      result = case MyXQL.query(pid, query) do
-        {:ok, %{columns: columns, rows: rows}} ->
-          {:ok, map_columns_on_rows(columns, rows)}
+      result = case MyXQL.query(pid, statement, params, options) do
+        {:ok, result} ->
+          {:ok, result}
 
         {:error, %DBConnection.ConnectionError{} = error} ->
           Logger.error("Error connecting to #{server}: #{error.message}")
@@ -32,7 +32,7 @@ defmodule ReportServer.PortalDbs do
   end
 
   # converts columns: ["foo", "bar"], rows:[[1, 2], ...] to [%{:foo => 1, :bar => 2}, ...]
-  defp map_columns_on_rows(columns, rows) do
+  def map_columns_on_rows(%{columns: columns, rows: rows} = %MyXQL.Result{}) do
     rows
     |> Enum.map(fn row ->
       columns
@@ -40,6 +40,30 @@ defmodule ReportServer.PortalDbs do
         |> Enum.zip(row)
         |> Enum.into(%{})
     end)
+  end
+
+  def sort_results(results, column, dir) do
+    # Return a new results struct with the rows sorted by the given column
+    col_index = results.columns |> Enum.find_index(&(&1 == column))
+    new_rows = Enum.sort_by(results.rows, &(Enum.at(&1, col_index)), dir)
+    %{results | rows: new_rows}
+  end
+
+  def get_user_info(server, access_token) do
+    query(server,
+    """
+    SELECT
+      u.id, u.login, u.first_name, u.last_name, u.email,
+      (SELECT count(*)
+      FROM
+        roles r,
+        roles_users ru
+      WHERE r.title = 'admin' AND ru.role_id = r.id AND ru.user_id = u.id) AS is_admin
+    FROM
+      access_grants ag,
+      users u
+    WHERE ag.access_token = ? AND ag.user_id = u.id
+    """, [access_token])
   end
 
   defp get_server_opts(server) do

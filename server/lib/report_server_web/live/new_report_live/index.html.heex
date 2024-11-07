@@ -1,0 +1,10 @@
+<.header>
+  Reports
+  <:subtitle>(NOTE: The path is temporary)</:subtitle>
+</.header>
+
+<div class="mt-8 flex gap-4 flex-wrap">
+  <.square_link navigate={"/new-reports/#{report.slug}"} :for={report <- @reports}>
+    <%= report.title %>
+  </.square_link>
+</div>

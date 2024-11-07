@@ -88,7 +88,10 @@ defmodule ReportServerWeb do
       import ReportServerWeb.Gettext
 
       # custom components
-      import ReportServerWeb.Dashboard
+      import ReportServerWeb.CustomComponents
+
+      # custom helpers
+      import ReportServerWeb.Helpers
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
