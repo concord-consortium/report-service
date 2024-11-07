@@ -54,6 +54,47 @@ defmodule ReportServer.PortalDbs do
     %{results | rows: new_rows}
   end
 
+  ## TODO: we will have a better way of constructing these queries
+  def get_matching_items(server, "cohort", prefix) do
+    items_from_query("SELECT id, name FROM admin_cohorts WHERE name LIKE ?", prefix, server)
+  end
+
+  def get_matching_items(server, "permission_form", prefix) do
+    items_from_query("SELECT id, name FROM portal_permission_forms WHERE name LIKE ?", prefix, server)
+  end
+
+  def get_matching_items(server, "school", prefix) do
+    items_from_query("SELECT id, name FROM portal_schools WHERE name LIKE ?", prefix, server)
+  end
+
+  def get_matching_items(server, "resource", prefix) do
+    items_from_query("SELECT id, name FROM external_activities WHERE name LIKE ?", prefix, server)
+  end
+
+  def get_matching_items(server, "teacher", prefix) do
+    items_from_query("""
+      SELECT t.id, CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>')
+      FROM portal_teachers as t JOIN users as u ON u.id=t.user_id
+      WHERE u.deleted_at IS NULL
+      AND CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') LIKE ?
+      """,
+      prefix, server)
+  end
+
+  def get_matching_items(_server, item_type, _prefix) do
+    {:error, "Unknown item type #{item_type}"}
+  end
+
+  defp items_from_query(sql, prefix, server) do
+    r = query(server, sql, ["%#{prefix}%"])
+    case r do
+      {:ok, result} ->
+        {:ok, Enum.map(result.rows, fn [id, name] -> {name, to_string(id)} end)}
+      {:error, error} ->
+        {:error, "Error getting matching items: #{error}"}
+    end
+  end
+
   def get_server_for_portal_url(portal_url) do
     case URI.parse(portal_url).host do
       "learn-report.concord.org" -> "learn.concord.org"

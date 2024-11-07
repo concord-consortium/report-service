@@ -15,7 +15,14 @@ defmodule ReportServerWeb.NewReportLive.Form do
   alias ReportServer.Reports
   alias ReportServer.Reports.Report
 
-  @filter_type_options [{"Select a filter...", ""}, {"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
+  @filter_type_options [
+    {"Select a filter...", ""},
+    {"Schools", "school"},
+    {"Cohorts", "cohort"},
+    {"Teachers", "teacher"},
+    {"Permission Forms", "permission_form"},
+    {"Resources", "resource"}
+  ]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -52,9 +59,13 @@ defmodule ReportServerWeb.NewReportLive.Form do
     filter_type = socket.assigns.form.params["filter#{filter_index}_type"]
 
     if filter_type do
-      # this would be replaced by a database query...
-      options = Enum.map(1..5, &({"#{text} #{filter_type} #{&1}", "#{text}_#{filter_type}_#{&1}"}))
-      send_update(LiveSelect.Component, id: live_select_id, options: options)
+      query_result = PortalDbs.get_matching_items("learn.concord.org", filter_type, text) # FIXME portal name
+      case query_result do
+        {:ok, items} ->
+          send_update(LiveSelect.Component, id: live_select_id, options: items)
+        {:error, error} ->
+          Logger.error("Error getting matching items: #{error}")
+      end
     end
 
     {:noreply, socket}
