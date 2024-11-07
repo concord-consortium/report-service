@@ -1,5 +1,16 @@
 import Config
 
+# Configure your database
+config :report_server, ReportServer.Repo,
+  username: "root",
+  password: "xyzzy",
+  hostname: "localhost",
+  port: 3406, # using mysql container in docker-compose.yml
+  database: "report_server_dev",
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 10
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

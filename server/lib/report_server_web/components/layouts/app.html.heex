@@ -9,8 +9,12 @@
         </div>
       </a>
     </div>
-    <div class="flex items-center gap-4 font-semibold leading-6 text-zinc-900">
-      <.link navigate={~p"/auth/logout"} :if={@logged_in}>Logout of <%= @portal_domain %></.link>
+    <div :if={@user} class="flex flex-col font-semibold text-zinc-900">
+      <div><%= @user.portal_login %></div>
+      <div class="text-xs"><%= @user.portal_server %></div>
+      <.link navigate={~p"/auth/logout"}>Logout</.link>
+    </div>
+    <div :if={!@user} class="flex items-center gap-4 font-semibold leading-4 text-zinc-900">
       <.link navigate={~p"/auth/login"} :if={!@logged_in}>Login to <%= @portal_domain %></.link>
     </div>
   </div>

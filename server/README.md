@@ -63,6 +63,7 @@ To start the Phoenix server:
 * Run `mix setup` to install and setup dependencies
 * Start ssh tunnel if needed (see above)
 * Run `source .env` (created in step above) to load the environment variables
+* Run `docker compose up` (or `docker-compose up` for older Docker installs) to start the MySQL database
 * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
 
 Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.

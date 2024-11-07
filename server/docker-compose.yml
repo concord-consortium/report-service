@@ -1,28 +1,16 @@
-# this is just for testing releases locally using the *staging* server, not for deployment of releases!
-# the SERVER_ACCESS_KEY_ID, SERVER_SECRET_ACCESS_KEY can be found in 1Password in the Developer's vault
-# in the "Report Server Staging AWS Access Keys" document.
-# the REPORT_SERVICE_TOKEN can be found in the AWS CloudFormation parameters for the report service or
-# the report server
-name: report-server
+# This is only used for local development to run a MySql instance that mirrors the RDS instance.
+# The server should be run directly on your development machine, see the README for details.
+name: report-server-dev-db
 services:
-  app:
-    image: concordconsortium/report-server
-    build: .
+  db:
+    image: mysql:8.0.39
     ports:
-      - 4000:4000
+      - 3406:3306 # expose mysql to the world
     environment:
-      - PORT=4000
-      - PHX_HOST=localhost
-      - SECRET_KEY_BASE=${SECRET_KEY_BASE:-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE}
-      - SERVER_ACCESS_KEY_ID=${SERVER_ACCESS_KEY_ID:-}
-      - SERVER_SECRET_ACCESS_KEY=${SERVER_SECRET_ACCESS_KEY:-}
-      - REPORT_SERVICE_URL=${REPORT_SERVICE_URL:-}
-      - REPORT_SERVICE_TOKEN=${REPORT_SERVICE_TOKEN:-}
-      - PORTAL_URL=${PORTAL_URL:-https://learn.portal.staging.concord.org}
-      - PORTAL_REPORT_URL=${PORTAL_REPORT_URL:-https://portal-report.concord.org/branch/master/}
-      - TOKEN_SERVICE_URL=${TOKEN_SERVICE_URL:-https://token-service-staging.firebaseapp.com/api/v1/resources}
-      - TOKEN_SERVICE_PRIVATE_BUCKET=${TOKEN_SERVICE_PRIVATE_BUCKET:-token-service-files-private}
-      - OUTPUT_BUCKET=${OUTPUT_BUCKET:-report-server-output}
-      - JOBS_FOLDER=${JOBS_FOLDER:-jobs}
-      - TRANSCRIPTS_FOLDER=${TRANSCRIPTS_FOLDER:-transcripts}
-      - DISABLE_STATS_SERVER=${DISABLE_STATS_SERVER:-false}
+      MYSQL_ROOT_PASSWORD: xyzzy
+    command: mysqld --character-set-server=utf8 --collation-server=utf8_general_ci
+    volumes:
+      # use a named volume here so the database is preserved after a down and up
+      - mysql:/var/lib/mysql
+volumes:
+  mysql:
