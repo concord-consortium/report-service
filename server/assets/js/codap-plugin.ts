@@ -34,7 +34,6 @@ const Hooks = {
               if (!existingDataContext.success) {
                 await createDataContext(query)
                 await createParentCollection(query, query, [{name: "portal"}, ...Object.keys(rows[0]).map(name => ({name}))])
-                await createTable(query)
               } else {
                 // delete all cases
                 await codapInterface.sendRequest({
@@ -43,6 +42,7 @@ const Hooks = {
                 })
               }
 
+              await createTable(query)
               await createItems(query, rows.map(row => ({portal: server, ...row})));
             } catch (e) {
               alert(`Can't display query result: ${e.toString()}`)

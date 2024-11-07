@@ -11,10 +11,16 @@ The report server authenticates with the portal using oauth2.  Because the porta
 5. The `save_token` method in `ReportServerWeb.AuthController` saves the `access_token` and a computed `expires` value along with the `portal_url` in the user's session and then redirects to the `return_to` url saved in the session (and deletes that key in the session before the redirect).  At this point the user is "logged in" and if they return to a protected url like in step 3 the protected page will load.
 6. At any time the user can click the "Logout" button at the top of the page.  This will clear the user's session, including the saved `portal` query parameter.
 
-
 ## Development Setup
 
-First install the `asdf` version manager: https://asdf-vm.com/guide/getting-started.html
+First install the `asdf` version manager: <https://asdf-vm.com/guide/getting-started.html>
+
+Install the necessary plugins:
+
+```shell
+asdf plugin add elixir
+asdf plugin add erlang
+```
 
 Then run `asdf install` in this project's directory.  It will use the `.tool-versions` file to install the proper version of Erlang and Elixir.
 
@@ -27,7 +33,7 @@ Finally if you are on Linux install the inotify tools via `sudo apt-get install 
 The server needs several environment variables set in order to start.  The easiest way to do this is create an `.env` file (which is in `.gitignore` already) with
 the following keys set.  The values of the keys are secrets and can be found in the CloudFormation parameter values for the staging stack.
 
-```
+```shell
 export SERVER_ACCESS_KEY_ID=
 export SERVER_SECRET_ACCESS_KEY=
 export REPORT_SERVICE_TOKEN=
@@ -39,11 +45,23 @@ export LEARN_PORTAL_STAGING_CONCORD_ORG_DB=mysql://<username>:<password>@<host>:
 export DISABLE_STATS_SERVER=true
 ```
 
+Note that if you cannot directly connect to the database (eg, it is in an AWS cluster), you may need to
+establish an ssh port-forwarding tunnel to it, something like:
+
+```shell
+ssh -L 127.0.0.1:4001:<actual-database-host>:<port> <user>@<gatewayserver>
+```
+
+In which case you'd use `127.0.0.1:4001` as the `<host>:<port>`
+in the LEARN_PORTAL_STAGING_CONCORD_ORG_DB environment variable
+instead of the real address.
+
 ## Development
 
 To start the Phoenix server:
 
 * Run `mix setup` to install and setup dependencies
+* Start ssh tunnel if needed (see above)
 * Run `source .env` (created in step above) to load the environment variables
 * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
 
@@ -57,87 +75,86 @@ The report server is deployed using Docker on CloudFormation.  Here are the step
 2. Once the build is complete run `docker push concordconsortium/report-server:VERSION` to push to the container registry.
 3. In AWS CloudFormation select the `report-server` stack in the QA account or `report-server-prod` in the production account and run an update using the newly uploaded tagged container as the value for the "ImageUrl" parameter in the update process.
 
-# Server Setup
+## Server Setup
 
-## AWS User Permissions
+### AWS User Permissions
 
 The server uses the authenticated user's AWS permissions only to list and retrieve the Athena queries for the user.  Otherwise it uses user credentials passed via the `SERVER_ACCESS_KEY_ID` and `SERVER_SECRET_ACCESS_KEY` environment variables.  These permissions must be defined in the following staging and production policies and assigned to the staging and production users:
 
-### Staging Policy
+#### Staging Policy
 
 This staging policy has been created under the name `report-server` and assigned to the user `report-server-staging`.  The access keys for that user can be found in the `Report Server Staging AWS Access Keys` document on 1Password.
 
-```
+```json
 {
-	"Version": "2012-10-17",
-	"Statement": [
-		{
-			"Effect": "Allow",
-			"Action": [
-				"s3:GetObject",
-				"transcribe:GetTranscriptionJob",
-				"s3:ListBucket"
-			],
-			"Resource": [
-				"arn:aws:s3:::concord-staging-report-data/workgroup-output/*",
-				"arn:aws:s3:::token-service-files-private/interactive-attachments/*",
-				"arn:aws:transcribe:us-east-1:816253370536:transcription-job/*"
-			]
-		},
-		{
-			"Effect": "Allow",
-			"Action": [
-				"s3:PutObject",
-				"s3:GetObject",
-				"s3:ListBucket"
-			],
-			"Resource": "arn:aws:s3:::report-server-output/*"
-		},
-		{
-			"Effect": "Allow",
-			"Action": "transcribe:StartTranscriptionJob",
-			"Resource": "*"
-		}
-	]
+ "Version": "2012-10-17",
+ "Statement": [
+  {
+   "Effect": "Allow",
+   "Action": [
+    "s3:GetObject",
+    "transcribe:GetTranscriptionJob",
+    "s3:ListBucket"
+   ],
+   "Resource": [
+    "arn:aws:s3:::concord-staging-report-data/workgroup-output/*",
+    "arn:aws:s3:::token-service-files-private/interactive-attachments/*",
+    "arn:aws:transcribe:us-east-1:816253370536:transcription-job/*"
+   ]
+  },
+  {
+   "Effect": "Allow",
+   "Action": [
+    "s3:PutObject",
+    "s3:GetObject",
+    "s3:ListBucket"
+   ],
+   "Resource": "arn:aws:s3:::report-server-output/*"
+  },
+  {
+   "Effect": "Allow",
+   "Action": "transcribe:StartTranscriptionJob",
+   "Resource": "*"
+  }
+ ]
 }
 ```
 
-### Production Policy
+#### Production Policy
 
 This production policy has been created under the name `report-server-prod` and assigned to the user `report-server-prod`.  The access keys for that user can be found in the `Report Server Prod AWS Access Keys` document on 1Password.
 
-```
+```json
 {
-	"Version": "2012-10-17",
-	"Statement": [
-		{
-			"Effect": "Allow",
-			"Action": [
-				"s3:GetObject",
-				"transcribe:GetTranscriptionJob",
-				"s3:ListBucket"
-			],
-			"Resource": [
-				"arn:aws:s3:::concord-report-data/workgroup-output/*",
-				"arn:aws:s3:::cc-student-work/interactive-attachments/*",
-				"arn:aws:transcribe:us-east-1:612297603577:transcription-job/*"
-			]
-		},
-		{
-			"Effect": "Allow",
-			"Action": [
-				"s3:PutObject",
-				"s3:GetObject",
-				"s3:ListBucket"
-			],
-			"Resource": "arn:aws:s3:::report-server-output-prod/*"
-		},
-		{
-			"Effect": "Allow",
-			"Action": "transcribe:StartTranscriptionJob",
-			"Resource": "*"
-		}
-	]
+ "Version": "2012-10-17",
+ "Statement": [
+  {
+   "Effect": "Allow",
+   "Action": [
+    "s3:GetObject",
+    "transcribe:GetTranscriptionJob",
+    "s3:ListBucket"
+   ],
+   "Resource": [
+    "arn:aws:s3:::concord-report-data/workgroup-output/*",
+    "arn:aws:s3:::cc-student-work/interactive-attachments/*",
+    "arn:aws:transcribe:us-east-1:612297603577:transcription-job/*"
+   ]
+  },
+  {
+   "Effect": "Allow",
+   "Action": [
+    "s3:PutObject",
+    "s3:GetObject",
+    "s3:ListBucket"
+   ],
+   "Resource": "arn:aws:s3:::report-server-output-prod/*"
+  },
+  {
+   "Effect": "Allow",
+   "Action": "transcribe:StartTranscriptionJob",
+   "Resource": "*"
+  }
+ ]
 }
 ```
-
