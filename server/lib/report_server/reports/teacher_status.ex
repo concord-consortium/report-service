@@ -7,6 +7,7 @@ defmodule ReportServer.Reports.TeacherStatus do
       slug: "teacher-status",
       title: "Teacher Status",
       subtitle: "Teacher status report",
+      filters: [ "cohort", "teacher" ],
       run: &run/1
     }
   end

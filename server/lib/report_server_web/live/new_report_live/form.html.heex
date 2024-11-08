@@ -17,7 +17,7 @@
       let={filter = "filter#{i}"}
       let={filter_type = "#{filter}_type"}
       let={filter_type_value = @form.params[filter_type]}
-      let={has_more_filters = length(Enum.at(@filter_type_options, i - 1)) > 2}
+      let={has_more_filters = length(Enum.at(@filter_type_options, i - 1)) > 1}
       :for={i <- 1..@num_filters}
     >
       <div class="mb-4 border border-orange p-2 rounded-lg">
@@ -25,7 +25,7 @@
           <.input
             type="select"
             field={@form[filter_type]}
-            options={Enum.at(@filter_type_options, i - 1)}
+            options={[{"Select a filter...", ""} | Enum.at(@filter_type_options, i - 1)]}
           />
           <.live_select
             :if={!blank?(filter_type_value)}

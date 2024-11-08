@@ -7,6 +7,7 @@ defmodule ReportServer.Reports.ResourceMetricsDetails do
       slug: "resource-metrics-details",
       title: "Resource Metrics Details",
       subtitle: "Detail report on resource metrics",
+      filters: [ "resource" ],
       run: &ReportServer.Reports.TeacherStatus.run/1 # &run/1
     }
   end
