@@ -13,7 +13,6 @@
 
   <.form for={@form} phx-change="filters_updated" phx-submit="submit_form">
     <div
-      class="mb-4 p-4 border border-orange"
       let={last_filter = i == @num_filters}
       let={filter = "filter#{i}"}
       let={filter_type = "#{filter}_type"}
@@ -21,28 +20,34 @@
       let={has_more_filters = length(Enum.at(@filter_type_options, i - 1)) > 2}
       :for={i <- 1..@num_filters}
     >
-      <.input
-        type="select"
-        field={@form[filter_type]}
-        options={Enum.at(@filter_type_options, i - 1)}
-      />
-      <.live_select
-        :if={!blank?(filter_type_value)}
-        field={@form[filter]}
-        mode={:tags}
-        debounce={250}
-        update_min_len={3}
-        placeholder={"Enter at least 3 characters of the #{filter_type_value}"}
-        dropdown_extra_class="max-h-60 overflow-y-scroll"
-        tag_extra_class="!p-1 px-2 py-1 !bg-blue-400 bg-orange text-white"
-      />
+      <div class="mb-4 border border-orange p-2 rounded-lg">
+        <div class="flex gap-2">
+          <.input
+            type="select"
+            field={@form[filter_type]}
+            options={Enum.at(@filter_type_options, i - 1)}
+          />
+          <.live_select
+            :if={!blank?(filter_type_value)}
+            field={@form[filter]}
+            mode={:tags}
+            debounce={250}
+            update_min_len={3}
+            placeholder={"Enter at least 3 characters of the #{filter_type_value}"}
+            dropdown_extra_class="max-h-60 overflow-y-scroll"
+            tag_class="flex px-2 py-1 rounded-full bg-teal text-white text-sm"
+            container_extra_class="grow"
+          />
+          <.button :if={i > 1 && last_filter} type="button" phx-click="remove_filter">
+            <.icon name="hero-trash" />
+            Remove Filter
+          </.button>
+        </div>
+      </div>
       <div class="mt-4">
         <.button :if={!blank?(@form.params[filter]) && has_more_filters && last_filter} type="button" phx-click="add_filter"><.icon name="hero-funnel" /> Add Filter</.button>
-        <.button :if={i > 1 && last_filter} type="button" phx-click="remove_filter">Remove Filter</.button>
         <.button :if={!blank?(@form.params["filter1"]) && last_filter} type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
       </div>
-    </div>
-    <div>
     </div>
   </.form>
 </div>
