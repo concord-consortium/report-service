@@ -42,14 +42,9 @@ defmodule ReportServer.PortalDbs do
     end)
   end
 
-  defp value_sorter(v1, v2) do
-    # Dates do not sort properly with normal <= operator
-    if is_struct(v1, Date) and is_struct(v2, Date) do
-      Date.compare(v1, v2) != :gt
-    else
-      v1 <= v2
-    end
-  end
+  # Dates do not sort properly with normal <= operator
+  defp value_sorter(v1 = %Date{}, v2 = %Date{}), do: Date.compare(v1, v2) != :gt
+  defp value_sorter(v1, v2), do: v1 <= v2
 
   def sort_results(results, column, dir) do
     # Return a new results struct with the rows sorted by the given column
