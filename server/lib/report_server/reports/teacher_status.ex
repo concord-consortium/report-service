@@ -14,7 +14,7 @@ defmodule ReportServer.Reports.TeacherStatus do
 
   # real query - rename when Boris can connect to db
   def run(_filters) do
-    dev_query_portal = "learn.concord.org"
+    dev_query_portal = "learn.concord.org" # FIXME
     dev_query = """
     select
       concat(u.first_name, ' ', u.last_name) as teacher_name,
