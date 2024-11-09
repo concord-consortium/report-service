@@ -46,11 +46,24 @@ defmodule ReportServer.PortalDbs do
     end)
   end
 
+  # Dates do not sort properly with normal <= operator
+  defp value_sorter(v1 = %Date{}, v2 = %Date{}), do: Date.compare(v1, v2) != :gt
+  defp value_sorter(v1, v2), do: v1 <= v2
+
   def sort_results(results, column, dir) do
     # Return a new results struct with the rows sorted by the given column
     col_index = results.columns |> Enum.find_index(&(&1 == column))
-    new_rows = Enum.sort_by(results.rows, &(Enum.at(&1, col_index)), dir)
+    sort_fn = if dir == :asc do &value_sorter/2 else &(value_sorter(&2, &1)) end
+    new_rows = Enum.sort_by(results.rows, &(Enum.at(&1, col_index)), sort_fn)
     %{results | rows: new_rows}
+  end
+
+  def get_server_for_portal_url(portal_url) do
+    case URI.parse(portal_url).host do
+      "learn-report.concord.org" -> "learn.concord.org"
+      "ngss-assessment-report.portal.concord.org" -> "ngss-assessment.portal.concord.org"
+      host -> host
+    end
   end
 
   def get_user_info(server, access_token) do
