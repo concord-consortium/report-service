@@ -9,6 +9,7 @@ defmodule ReportServer.Application do
   def start(_type, _args) do
     children = [
       ReportServerWeb.Telemetry,
+      ReportServer.Repo,
       {DNSCluster, query: Application.get_env(:report_server, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: ReportServer.PubSub},
       {Registry, keys: :unique, name: ReportServer.PostProcessingRegistry},

@@ -1,8 +1,8 @@
 defmodule ReportServerWeb.PageControllerTest do
   use ReportServerWeb.ConnCase
 
-  test "GET /", %{conn: conn} do
-    conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "Peace of mind from prototype to production"
+  test "GET /config", %{conn: conn} do
+    conn = get(conn, ~p"/config")
+    assert html_response(conn, 200) =~ "Config Info"
   end
 end

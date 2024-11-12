@@ -8,6 +8,7 @@
 import Config
 
 config :report_server,
+  ecto_repos: [ReportServer.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configures the endpoint

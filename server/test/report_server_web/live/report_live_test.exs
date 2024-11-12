@@ -2,24 +2,13 @@ defmodule ReportServerWeb.ReportLiveTest do
   use ReportServerWeb.ConnCase
 
   import Phoenix.LiveViewTest
-  import ReportServer.ReportsFixtures
-
-  @create_attrs %{}
-  @update_attrs %{}
-  @invalid_attrs %{}
-
-  defp create_report(_) do
-    report = report_fixture()
-    %{report: report}
-  end
 
   describe "Index" do
-    setup [:create_report]
+    test "Requires login", %{conn: conn} do
+      {:error, {error, %{to: to}}} = live(conn, ~p"/reports")
 
-    test "lists all reports", %{conn: conn} do
-      {:ok, _index_live, html} = live(conn, ~p"/reports")
-
-      assert html =~ "Your Reports"
+      assert error == :redirect
+      assert to == "/auth/login?return_to=/reports"
     end
   end
 

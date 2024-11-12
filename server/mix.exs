@@ -33,6 +33,9 @@ defmodule ReportServer.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.7.12"},
+      {:phoenix_ecto, "~> 4.4"},
+      {:ecto_sql, "~> 3.10"},
+      {:myxql, "~> 0.7.1"},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 0.20.2"},
@@ -61,7 +64,6 @@ defmodule ReportServer.MixProject do
       {:ex_aws_s3, "~> 2.0"}, # for url signing
       {:sweet_xml, "~> 0.7.4"}, # for ex_aws
       {:csv, "~> 3.2"},
-      {:myxql, "~> 0.7.1"},
       {:live_select, "~> 1.4"}
     ]
   end
@@ -74,7 +76,10 @@ defmodule ReportServer.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind report_server", "esbuild report_server"],
       "assets.deploy": [

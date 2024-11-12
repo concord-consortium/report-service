@@ -10,12 +10,12 @@ defmodule ReportServerWeb.Auth do
   end
   def logged_in?(_session), do: false
 
-  def login(conn, portal_url, access_token, expires, user_info) do
+  def login(conn, portal_url, access_token, expires, user) do
     conn
     |> put_session(:portal_url, portal_url)
     |> put_session(:access_token, access_token)
     |> put_session(:expires, expires)
-    |> put_session(:user_info, user_info)
+    |> put_session(:user, user)
     |> configure_session(renew: true)
   end
 
@@ -26,7 +26,7 @@ defmodule ReportServerWeb.Auth do
   end
 
   def public_session_vars(session) do
-    [logged_in: logged_in?(session), portal_url: portal_url(session), portal_domain: portal_domain(session)]
+    [logged_in: logged_in?(session), portal_url: portal_url(session), portal_domain: portal_domain(session), user: session["user"]]
   end
 
   def save_portal_url(conn) do
@@ -57,7 +57,7 @@ defmodule ReportServerWeb.Auth do
     |> Map.get(:host)
   end
 
-  def admin?(_session = %{"user_info" => %{is_admin: 1}}), do: true
+  def admin?(_session = %{"user" => %{portal_is_admin: true}}), do: true
   def admin?(_), do: false
 
 end

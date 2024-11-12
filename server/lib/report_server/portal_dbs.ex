@@ -1,6 +1,10 @@
 defmodule ReportServer.PortalDbs do
   require Logger
 
+  defmodule PortalUserInfo do
+    defstruct id: nil, login: nil, first_name: nil, last_name: nil, email: nil, is_admin: false, server: nil
+  end
+
   # FUTURE WORK: change this to use a connection pool
   def query(server, statement, params \\ [], options \\ []) do
     with {:ok, server_opts} <- get_server_opts(server),
@@ -63,8 +67,7 @@ defmodule ReportServer.PortalDbs do
   end
 
   def get_user_info(server, access_token) do
-    query(server,
-    """
+    sql = """
     SELECT
       u.id, u.login, u.first_name, u.last_name, u.email,
       (SELECT count(*)
@@ -76,7 +79,19 @@ defmodule ReportServer.PortalDbs do
       access_grants ag,
       users u
     WHERE ag.access_token = ? AND ag.user_id = u.id
-    """, [access_token])
+    """
+
+    case query(server, sql, [access_token]) do
+      {:ok, result} ->
+        user_info = result
+          |> map_columns_on_rows()
+          |> hd()
+          |> Map.put(:server, server)
+
+        {:ok, struct(PortalUserInfo, user_info)}
+
+      error -> error
+    end
   end
 
   defp get_server_opts(server) do
