@@ -130,4 +130,15 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  attr :report, :any, required: true
+  def report_breadcrumbs(assigns) do
+    ~H"""
+    <span :for={{slug, title, path} <- @report.parents}>
+      <.link navigate={path} class="hover:underline"><%= title %></.link>
+      <span>›</span>
+    </span>
+    <%= @report.title %>
+    """
+  end
+
 end

@@ -35,6 +35,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:title, title)
     |> assign(:subtitle, subtitle)
     |> assign(:page_title, "Reports: #{title}")
+    |> assign(:root_path, Reports.get_root_path())
     |> assign(:results, nil)
     |> assign(:sort, nil)
     |> assign(:sort_direction, :asc)
