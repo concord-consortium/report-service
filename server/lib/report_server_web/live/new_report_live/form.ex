@@ -1,7 +1,6 @@
 defmodule ReportServerWeb.NewReportLive.Form do
   @doc """
-  Render the form for a new report.
-  May eventually get a different @live_action to show the result of the report.
+  Render the form for a new report, with preview and download options.
   """
 
   use ReportServerWeb, :live_view
@@ -14,8 +13,16 @@ defmodule ReportServerWeb.NewReportLive.Form do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.Report
+  alias ReportServer.Reports.ReportFilter
 
-  @filter_type_options [{"Select a filter...", ""}, {"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
+  # Map of filter type options to their user-visible names
+  @filter_types %{
+    "school" => "Schools",
+    "cohort" => "Cohorts",
+    "teacher" => "Teachers",
+    "permission_form" => "Permission Forms",
+    "resource" => "Resources"
+  }
 
   @impl true
   def mount(_params, _session, socket) do
@@ -27,7 +34,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     slug = unsigned_params |> Map.get("slug")
     report = slug |> Reports.find()
     %{title: title, subtitle: subtitle} = get_report_info(slug, report)
-
+    filter_type_options = report.filters |> Enum.map(fn filter -> {@filter_types[filter], filter} end)
     form = to_form(%{}, as: "filter_form")
 
     socket = socket
@@ -41,7 +48,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:error, nil)
     |> assign(:form, form)
     |> assign(:num_filters, 1)
-    |> assign(:filter_type_options, [@filter_type_options])
+    |> assign(:filter_legal_types, filter_type_options)
+    |> assign(:filter_type_options, [filter_type_options])
 
     {:noreply, socket}
   end
@@ -51,10 +59,17 @@ defmodule ReportServerWeb.NewReportLive.Form do
     filter_index = get_filter_index(field)
     filter_type = socket.assigns.form.params["filter#{filter_index}_type"]
 
+    prev_filters = ReportFilter.from_form(socket.assigns.form, socket.assigns.num_filters-1)
+
     if filter_type do
-      # this would be replaced by a database query...
-      options = Enum.map(1..5, &({"#{text} #{filter_type} #{&1}", "#{text}_#{filter_type}_#{&1}"}))
-      send_update(LiveSelect.Component, id: live_select_id, options: options)
+      query_result = PortalDbs.get_matching_items("learn.concord.org", filter_type, text, prev_filters) # FIXME portal name
+      IO.inspect(query_result, label: "query_result")
+      case query_result do
+        {:ok, items} ->
+          send_update(LiveSelect.Component, id: live_select_id, options: items)
+        {:error, error} ->
+          Logger.error("Error getting matching items: #{error}")
+      end
     end
 
     {:noreply, socket}
@@ -78,7 +93,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     new_num_filters = num_filters + 1
 
     existing_filters = Enum.map(1..num_filters, &(form_params["filter#{&1}_type"]))
-    new_filter_type_options = Enum.filter(@filter_type_options, fn {_key, value} -> !Enum.member?(existing_filters, value) end)
+    new_filter_type_options = Enum.filter(socket.assigns.filter_legal_types, fn {_key, value} -> !Enum.member?(existing_filters, value) end)
 
     socket = socket
       |> assign(:num_filters, new_num_filters)
@@ -108,9 +123,9 @@ defmodule ReportServerWeb.NewReportLive.Form do
   end
 
   @impl true
-  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report}} = socket) do
-    # when this is real the params would become the filters passed to the report run function
-    socket = case report.run.([]) do
+  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form}} = socket) do
+    filters = ReportFilter.from_form(form, socket.assigns.num_filters)
+    socket = case report.run.(filters) do
       {:ok, results} ->
         socket
         |> assign(:results, results)
