@@ -1,6 +1,7 @@
 defmodule ReportServer.Reports.ResourceMetricsSummary do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.Report
+  alias ReportServer.Reports.ReportFilter
 
   def new() do
     %Report{
@@ -13,24 +14,24 @@ defmodule ReportServer.Reports.ResourceMetricsSummary do
   end
 
   def run(filters) do
-    IO.inspect(filters, label: "Running #{__MODULE__}")
     dev_query_portal = "learn.concord.org" # FIXME
+    where_clauses = ReportFilter.get_where_clauses(filters)
     dev_query = """
     select
-      trim(ea.name) as activity_name,
-      count(distinct rl.teachers_id) as number_of_teachers,
-      count(distinct rl.school_id) as number_of_schools,
-      count(distinct rl.class_id) as number_of_classes,
-      count(distinct rl.id) as number_of_students
+      trim(external_activities.name) as activity_name,
+      count(distinct report_learners.teachers_id) as number_of_teachers,
+      count(distinct report_learners.school_id) as number_of_schools,
+      count(distinct report_learners.class_id) as number_of_classes,
+      count(distinct report_learners.id) as number_of_students
     from
-      external_activities ea
-      left join report_learners rl on (rl.runnable_id = ea.id and rl.last_run is not null)
+      external_activities
+      left join report_learners on (report_learners.runnable_id = external_activities.id and report_learners.last_run is not null)
     where
-      ea.id between 1 and 20
+      #{where_clauses}
     group by
-      ea.id
+      external_activities.id
     order by
-      ea.name
+      external_activities.name
     """
     PortalDbs.query(dev_query_portal, dev_query)
   end

@@ -1,45 +1,47 @@
 defmodule ReportServer.Reports.TeacherStatus do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.Report
+  alias ReportServer.Reports.ReportFilter
 
   def new() do
     %Report{
       slug: "teacher-status",
       title: "Teacher Status",
       subtitle: "Teacher status report",
-      filters: [ "cohort", "teacher" ],
+      filters: [ "cohort", "school", "teacher" ],
       run: &run/1
     }
   end
 
   # real query - rename when Boris can connect to db
-  def run(_filters) do
+  def run(filters) do
     dev_query_portal = "learn.concord.org" # FIXME
+    where_clauses = ReportFilter.get_where_clauses(filters)
     dev_query = """
     select
-      concat(u.first_name, ' ', u.last_name) as teacher_name,
-      u.email as teacher_email,
-      trim(ea.name) as activity_name,
-      pc.name as class_name,
-        date(po.created_at) as date_assigned,
-        (select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id) as num_students_in_class,
-        count(rl.id) as num_students_started,
-        min(rl.last_run) as date_of_first_use,
-        max(rl.last_run) as date_of_last_use
+      concat(users.first_name, ' ', users.last_name) as teacher_name,
+      users.email as teacher_email,
+      trim(external_activities.name) as activity_name,
+      portal_clazzes.name as class_name,
+        date(portal_offerings.created_at) as date_assigned,
+        (select count(*) from portal_student_clazzes psc where psc.clazz_id = portal_clazzes.id) as num_students_in_class,
+        count(report_learners.id) as num_students_started,
+        min(report_learners.last_run) as date_of_first_use,
+        max(report_learners.last_run) as date_of_last_use
     from
-      users u
-      left join portal_teachers pt on (pt.user_id = u.id)
-      left join portal_teacher_clazzes ptc on (ptc.teacher_id = pt.id)
-      left join portal_clazzes pc on (pc.id = ptc.clazz_id)
-      left join portal_offerings po on (po.clazz_id = pc.id)
-      left join external_activities ea on (po.runnable_id = ea.id)
-      left join report_learners rl on (rl.class_id=pc.id and rl.runnable_id=ea.id and rl.last_run is not null)
+      users
+      left join portal_teachers on (portal_teachers.user_id = users.id)
+      left join portal_teacher_clazzes on (portal_teacher_clazzes.teacher_id = portal_teachers.id)
+      left join portal_clazzes on (portal_clazzes.id = portal_teacher_clazzes.clazz_id)
+      left join portal_offerings on (portal_offerings.clazz_id = portal_clazzes.id)
+      left join external_activities on (portal_offerings.runnable_id = external_activities.id)
+      left join report_learners on (report_learners.class_id=portal_clazzes.id and report_learners.runnable_id=external_activities.id and report_learners.last_run is not null)
     where
-      email = 'dmartin@concord.org'
+      #{where_clauses}
     group by
-      u.id, ea.id, pc.id, po.id, ea.id
+      users.id, external_activities.id, portal_clazzes.id, portal_offerings.id, external_activities.id
     order by
-      u.first_name, trim(ea.name)
+      users.first_name, trim(external_activities.name)
     """
 
     PortalDbs.query(dev_query_portal, dev_query)

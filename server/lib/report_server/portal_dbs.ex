@@ -1,8 +1,10 @@
 defmodule ReportServer.PortalDbs do
   require Logger
+  alias ReportServer.Reports.ReportFilter
 
   # FUTURE WORK: change this to use a connection pool
   def query(server, statement, params \\ [], options \\ []) do
+    IO.inspect({server, statement, params, options}, label: "query")
     with {:ok, server_opts} <- get_server_opts(server),
           {:ok, pid} = MyXQL.start_link(server_opts) do
 
@@ -54,39 +56,91 @@ defmodule ReportServer.PortalDbs do
     %{results | rows: new_rows}
   end
 
-  ## TODO: we will have a better way of constructing these queries
-  def get_matching_items(server, "cohort", prefix) do
-    items_from_query("SELECT id, name FROM admin_cohorts WHERE name LIKE ?", prefix, server)
-  end
-
-  def get_matching_items(server, "permission_form", prefix) do
-    items_from_query("SELECT id, name FROM portal_permission_forms WHERE name LIKE ?", prefix, server)
-  end
-
-  def get_matching_items(server, "school", prefix) do
-    items_from_query("SELECT id, name FROM portal_schools WHERE name LIKE ?", prefix, server)
-  end
-
-  def get_matching_items(server, "resource", prefix) do
-    items_from_query("SELECT id, name FROM external_activities WHERE name LIKE ?", prefix, server)
-  end
-
-  def get_matching_items(server, "teacher", prefix) do
+  def get_matching_items(server, "cohort", prefix, filters) do
+    where_clauses = ReportFilter.get_where_clauses(filters)
     items_from_query("""
-      SELECT t.id, CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>')
-      FROM portal_teachers as t JOIN users as u ON u.id=t.user_id
-      WHERE u.deleted_at IS NULL
-      AND CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') LIKE ?
-      """,
-      prefix, server)
+    select distinct
+      admin_cohorts.id, admin_cohorts.name
+    from
+      admin_cohorts
+      left join admin_cohort_items on admin_cohort_items.admin_cohort_id=admin_cohorts.id
+    where
+      admin_cohorts.name like ?
+      and #{where_clauses}
+    """,
+    server, ["%#{prefix}%"] )
   end
 
-  def get_matching_items(_server, item_type, _prefix) do
+  # TODO unfinished
+  def get_matching_items(server, "permission_form", prefix, filters) do
+    items_from_query("SELECT id, name FROM portal_permission_forms WHERE name LIKE ?", server, ["%#{prefix}%"] )
+  end
+
+  def get_matching_items(server, "school", prefix, filters) do
+    items_from_query("""
+    select
+      portal_schools.id, portal_schools.name
+    from
+      portal_schools
+      join portal_school_memberships on portal_school_memberships.school_id = portal_schools.id
+      join portal_teachers
+        on portal_teachers.id = portal_school_memberships.member_id and portal_school_memberships.member_type='Portal::Teacher'
+    where
+      portal_schools.name like ?
+    """,
+    server, ["%#{prefix}%"] )
+  end
+
+  def get_matching_items(server, "resource", prefix, filters) do
+    where_clauses = ReportFilter.get_where_clauses(filters)
+    items_from_query("""
+    select distinct
+      external_activities.id, external_activities.name
+    from
+      external_activities
+      join portal_offerings on portal_offerings.runnable_id = external_activities.id
+      join portal_clazzes on portal_clazzes.id = portal_offerings.clazz_id
+      join portal_teacher_clazzes on portal_teacher_clazzes.clazz_id = portal_clazzes.id
+      join portal_teachers on portal_teachers.id = portal_teacher_clazzes.teacher_id
+      left join admin_cohort_items
+        on admin_cohort_items.item_id=portal_teachers.id and admin_cohort_items.item_type='Portal::Teacher'
+    where
+      external_activities.name like ?
+      and #{where_clauses}
+    """,
+    server, ["%#{prefix}%"] )
+  end
+
+  def get_matching_items(server, "teacher", prefix, filters) do
+    where_clauses = ReportFilter.get_where_clauses(filters)
+    IO.inspect(where_clauses, label: "where_clauses")
+    items_from_query("""
+      select distinct
+        portal_teachers.id,
+        concat(users.first_name, ' ', users.last_name, ' <', users.email, '>')
+      from
+        portal_teachers
+        join users on users.id=portal_teachers.user_id
+        left join admin_cohort_items
+          on admin_cohort_items.item_id=portal_teachers.id and admin_cohort_items.item_type='Portal::Teacher'
+        left join portal_school_memberships
+          on portal_school_memberships.member_id = portal_teachers.id and portal_school_memberships.member_type='Portal::Teacher'
+        left join portal_schools on portal_schools.id = portal_school_memberships.school_id
+      where
+        users.deleted_at is null
+        and concat(users.first_name, ' ', users.last_name, ' <', users.email, '>') like ?
+        and #{where_clauses}
+      order by users.first_name, users.last_name
+      """,
+      server, ["%#{prefix}%"] )
+  end
+
+  def get_matching_items(_server, item_type, _prefix, _filters) do
     {:error, "Unknown item type #{item_type}"}
   end
 
-  defp items_from_query(sql, prefix, server) do
-    r = query(server, sql, ["%#{prefix}%"])
+  defp items_from_query(sql, server, params) do
+    r = query(server, sql, params)
     case r do
       {:ok, result} ->
         {:ok, Enum.map(result.rows, fn [id, name] -> {name, to_string(id)} end)}

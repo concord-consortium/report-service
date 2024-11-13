@@ -13,6 +13,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.Report
+  alias ReportServer.Reports.ReportFilter
 
   # Map of filter type options to their user-visible names
   @filter_types %{
@@ -58,8 +59,11 @@ defmodule ReportServerWeb.NewReportLive.Form do
     filter_index = get_filter_index(field)
     filter_type = socket.assigns.form.params["filter#{filter_index}_type"]
 
+    prev_filters = ReportFilter.from_form(socket.assigns.form, socket.assigns.num_filters-1)
+
     if filter_type do
-      query_result = PortalDbs.get_matching_items("learn.concord.org", filter_type, text) # FIXME portal name
+      query_result = PortalDbs.get_matching_items("learn.concord.org", filter_type, text, prev_filters) # FIXME portal name
+      IO.inspect(query_result, label: "query_result")
       case query_result do
         {:ok, items} ->
           send_update(LiveSelect.Component, id: live_select_id, options: items)
@@ -119,9 +123,9 @@ defmodule ReportServerWeb.NewReportLive.Form do
   end
 
   @impl true
-  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report}} = socket) do
-    # when this is real the params would become the filters passed to the report run function
-    socket = case report.run.([]) do
+  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form}} = socket) do
+    filters = ReportFilter.from_form(form, socket.assigns.num_filters)
+    socket = case report.run.(filters) do
       {:ok, results} ->
         socket
         |> assign(:results, results)
