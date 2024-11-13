@@ -5,6 +5,7 @@ defmodule ReportServer.Reports do
     ResourceMetricsDetails
   }
 
+  @tree_cache :tree_cache
   @root_slug "new-reports"
 
   defmodule Report do
@@ -15,7 +16,10 @@ defmodule ReportServer.Reports do
     defstruct slug: nil, title: nil, subtitle: nil, children: [], parents: [], path: nil
   end
 
-  def tree() do
+  # Initialize the ETS table with the report tree, called at application start
+  def init do
+    :ets.new(@tree_cache, [:named_table, :set, :public, read_concurrency: true])
+
     %ReportGroup{slug: @root_slug, title: "Reports", subtitle: "Top Level Reports", children: [
       %ReportGroup{slug: "portal-reports", title: "Portal Reports", subtitle: "Teacher and resource reports", children: [
         TeacherStatus.new(),
@@ -24,34 +28,19 @@ defmodule ReportServer.Reports do
       ]},
     ]}
     |> decorate_tree()
+    |> add_to_cache()
   end
 
+  def tree(), do: find(@root_slug)
+
   def find(slug) do
-    find(slug, tree().children)
-  end
-  def find(slug, parent) do
-    Enum.reduce_while(parent, nil, fn node, _acc ->
-      case find_in_node(node, slug) do
-        nil -> {:cont, nil}
-        found -> {:halt, found}
-      end
-    end)
+    case :ets.lookup(@tree_cache, slug) do
+      [{^slug, value}] -> value
+      [] -> :nil
+    end
   end
 
   def get_root_path(), do: "/#{@root_slug}"
-
-  def get_parent_path([]), do: ""
-  def get_parent_path(parents) do
-    slugs = parents
-      |> Enum.map(fn {slug, _title, _path} -> slug end)
-      |> Enum.join("/")
-    "/#{slugs}"
-  end
-
-  defp find_in_node(%Report{slug: node_slug} = node, slug) when node_slug == slug, do: node
-  defp find_in_node(%ReportGroup{slug: node_slug} = node, slug) when node_slug == slug, do: node
-  defp find_in_node(%ReportGroup{children: children}, slug), do: find(slug, children)
-  defp find_in_node(_node, _slug), do: nil
 
   defp decorate_tree(root) do
     decorate_tree(root, [])
@@ -62,5 +51,19 @@ defmodule ReportServer.Reports do
   end
   defp decorate_tree(node = %Report{}, parents) do
     %{node | parents: parents, path: "#{get_root_path()}/new/#{node.slug}"}
+  end
+
+  defp get_parent_path([]), do: ""
+  defp get_parent_path(parents) do
+    slugs = parents
+      |> Enum.map(fn {slug, _title, _path} -> slug end)
+      |> Enum.join("/")
+    "/#{slugs}"
+  end
+
+  defp add_to_cache(%Report{} = node), do: :ets.insert(@tree_cache, {node.slug, node})
+  defp add_to_cache(%ReportGroup{} = node) do
+    :ets.insert(@tree_cache, {node.slug, node})
+    Enum.each(node.children, &add_to_cache/1)
   end
 end
