@@ -7,6 +7,9 @@ defmodule ReportServer.Application do
 
   @impl true
   def start(_type, _args) do
+    # load the reports into an ets table
+    ReportServer.Reports.init()
+
     children = [
       ReportServerWeb.Telemetry,
       ReportServer.Repo,

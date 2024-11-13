@@ -1,11 +1,18 @@
-<.header>
-  <div>
-    <.link navigate={~p"/new-reports"} class="hover:underline">Reports</.link>
+<%= if @report do %>
+  <.header>
+    <.report_breadcrumbs report={@report} />
+    <:subtitle><%= @report.subtitle %></:subtitle>
+  </.header>
+<% else %>
+  <.header>
+    <.link navigate={@root_path} class="hover:underline">Reports</.link>
     <span>›</span>
-    <%= @title %>
+    Report Not Found
+  </.header>
+  <div>
+    Sorry, that report was not found.
   </div>
-  <:subtitle><%= @subtitle %></:subtitle>
-</.header>
+<% end %>
 
 <div class="mt-2 flex flex-col gap-4" :if={@report}>
 

@@ -1,10 +1,20 @@
-<.header>
-  Reports
-  <:subtitle>(NOTE: The path is temporary)</:subtitle>
-</.header>
+<%= if @report_group do %>
+  <.header>
+    <.report_breadcrumbs report={@report_group} />
+    <:subtitle><%= @report_group.subtitle %></:subtitle>
+  </.header>
 
-<div class="mt-8 flex gap-4 flex-wrap">
-  <.square_link navigate={"/new-reports/#{report.slug}"} :for={report <- @reports}>
-    <%= report.title %>
-  </.square_link>
-</div>
+  <div class="mt-8 flex gap-4 flex-wrap" >
+    <.square_link navigate={report.path} :for={report <- @report_group.children}>
+      <%= report.title %>
+    </.square_link>
+  </div>
+
+<% else %>
+  <.header>
+    <.link navigate={@root_path} class="hover:underline">Reports</.link>
+  </.header>
+  <div class="mt-8 flex gap-4 flex-wrap" :if={!@report_group}>
+    Sorry, no reports were found for that url.
+  </div>
+<% end %>
