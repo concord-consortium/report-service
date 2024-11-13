@@ -29,7 +29,7 @@ defmodule ReportServerWeb.NewReportLive.Index do
   defp get_page_title(%ReportGroup{title: title, parents: []}), do: title
   defp get_page_title(%ReportGroup{title: title, parents: parents}) do
     prefix = parents
-      |> Enum.map(fn {slug, title, path} -> title end)
+      |> Enum.map(fn {_slug, title, _path} -> title end)
       |> Enum.join(": ")
 
     "#{prefix}: #{title}"

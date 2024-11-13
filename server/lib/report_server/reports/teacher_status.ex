@@ -2,14 +2,7 @@ defmodule ReportServer.Reports.TeacherStatus do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.Report
 
-  def new() do
-    %Report{
-      slug: "teacher-status",
-      title: "Teacher Status",
-      subtitle: "Teacher status report",
-      run: &run/1
-    }
-  end
+  def new(report = %Report{}), do: %{report | run: &run/1}
 
   # real query - rename when Boris can connect to db
   def run(_filters) do

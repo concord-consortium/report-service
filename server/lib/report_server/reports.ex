@@ -22,9 +22,21 @@ defmodule ReportServer.Reports do
 
     %ReportGroup{slug: @root_slug, title: "Reports", subtitle: "Top Level Reports", children: [
       %ReportGroup{slug: "portal-reports", title: "Portal Reports", subtitle: "Teacher and resource reports", children: [
-        TeacherStatus.new(),
-        ResourceMetricsSummary.new(),
-        ResourceMetricsDetails.new()
+        TeacherStatus.new(%Report{
+          slug: "teacher-status",
+          title: "Teacher Status",
+          subtitle: "Teacher status report"
+        }),
+        ResourceMetricsSummary.new(%Report{
+          slug: "resource-metrics-summary",
+          title: "Resource Metrics Summary",
+          subtitle: "Summary report on resource metrics"
+        }),
+        ResourceMetricsDetails.new(%Report{
+          slug: "resource-metrics-details",
+          title: "Resource Metrics Details",
+          subtitle: "Detail report on resource metrics"}
+        )
       ]},
     ]}
     |> decorate_tree()
