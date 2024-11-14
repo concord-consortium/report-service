@@ -8,6 +8,7 @@ defmodule ReportServer.Reports.Tree do
   }
 
   @tree_cache :tree_cache
+  @disable_report_tree_cache !!Application.compile_env(:report_server, :disable_report_tree_cache)
 
   defmodule ReportGroup do
     defstruct slug: nil, title: nil, subtitle: nil, children: [], parents: [], path: nil
@@ -15,38 +16,24 @@ defmodule ReportServer.Reports.Tree do
 
   # Initialize the ETS table with the report tree, called at application start
   def init do
-    :ets.new(@tree_cache, [:named_table, :set, :public, read_concurrency: true])
+    if !@disable_report_tree_cache do
+      :ets.new(@tree_cache, [:named_table, :set, :public, read_concurrency: true])
 
-    # NOTE: report slugs should never be changed once they are put into production as they are saved in the report runs
-    %ReportGroup{slug: Reports.get_root_slug(), title: "Reports", subtitle: "Top Level Reports", children: [
-      %ReportGroup{slug: "portal-reports", title: "Portal Reports", subtitle: "Teacher and resource reports", children: [
-        TeacherStatus.new(%Report{
-          slug: "teacher-status",
-          title: "Teacher Status",
-          subtitle: "Teacher status report"
-        }),
-        ResourceMetricsSummary.new(%Report{
-          slug: "resource-metrics-summary",
-          title: "Resource Metrics Summary",
-          subtitle: "Summary report on resource metrics"
-        }),
-        ResourceMetricsDetails.new(%Report{
-          slug: "resource-metrics-details",
-          title: "Resource Metrics Details",
-          subtitle: "Detail report on resource metrics"}
-        )
-      ]},
-    ]}
-    |> decorate_tree()
-    |> add_to_cache()
+      get_tree()
+      |> add_to_cache()
+    end
   end
 
   def root(), do: find(Reports.get_root_slug())
 
   def find(slug) do
-    case :ets.lookup(@tree_cache, slug) do
-      [{^slug, value}] -> value
-      [] -> :nil
+    if @disable_report_tree_cache do
+      search_in_tree(slug)
+    else
+      case :ets.lookup(@tree_cache, slug) do
+        [{^slug, value}] -> value
+        [] -> :nil
+      end
     end
   end
 
@@ -89,5 +76,46 @@ defmodule ReportServer.Reports.Tree do
   defp add_to_cache(%ReportGroup{} = node) do
     :ets.insert(@tree_cache, {node.slug, node})
     Enum.each(node.children, &add_to_cache/1)
+  end
+
+  # used in dev mode so the run function is not cached
+  def search_in_tree(slug) do
+    search_in_tree(slug, get_tree().children)
+  end
+  def search_in_tree(slug, parent) do
+    Enum.reduce_while(parent, nil, fn node, _acc ->
+      case find_in_tree(node, slug) do
+        nil -> {:cont, nil}
+        found -> {:halt, found}
+      end
+    end)
+  end
+  defp find_in_tree(%Report{slug: node_slug} = node, slug) when node_slug == slug, do: node
+  defp find_in_tree(%ReportGroup{slug: node_slug} = node, slug) when node_slug == slug, do: node
+  defp find_in_tree(%ReportGroup{children: children}, slug), do: search_in_tree(slug, children)
+  defp find_in_tree(_node, _slug), do: nil
+
+  defp get_tree() do
+    # NOTE: report slugs should never be changed once they are put into production as they are saved in the report runs
+    %ReportGroup{slug: Reports.get_root_slug(), title: "Reports", subtitle: "Top Level Reports", children: [
+      %ReportGroup{slug: "portal-reports", title: "Portal Reports", subtitle: "Teacher and resource reports", children: [
+        TeacherStatus.new(%Report{
+          slug: "teacher-status",
+          title: "Teacher Status",
+          subtitle: "Teacher status report"
+        }),
+        ResourceMetricsSummary.new(%Report{
+          slug: "resource-metrics-summary",
+          title: "Resource Metrics Summary",
+          subtitle: "Summary report on resource metrics"
+        }),
+        ResourceMetricsDetails.new(%Report{
+          slug: "resource-metrics-details",
+          title: "Resource Metrics Details",
+          subtitle: "Detail report on resource metrics"}
+        )
+      ]},
+    ]}
+    |> decorate_tree()
   end
 end
