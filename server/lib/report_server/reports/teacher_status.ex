@@ -1,8 +1,5 @@
 defmodule ReportServer.Reports.TeacherStatus do
-  alias ReportServer.PortalDbs
-  alias ReportServer.Reports.Report
-
-  def new(report = %Report{}), do: %{report | run: &run/1}
+  use ReportServer.Reports.Report
 
   # real query - rename when Boris can connect to db
   def run(_filters) do
