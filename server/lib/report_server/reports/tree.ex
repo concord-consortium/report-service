@@ -80,10 +80,15 @@ defmodule ReportServer.Reports.Tree do
 
   # used in dev mode so the run function is not cached
   def search_in_tree(slug) do
-    search_in_tree(slug, get_tree().children)
+    tree = get_tree()
+    if slug == tree.slug do
+      tree
+    else
+      search_in_tree(slug, tree.children)
+    end
   end
-  def search_in_tree(slug, parent) do
-    Enum.reduce_while(parent, nil, fn node, _acc ->
+  def search_in_tree(slug, children) do
+    Enum.reduce_while(children, nil, fn node, _acc ->
       case find_in_tree(node, slug) do
         nil -> {:cont, nil}
         found -> {:halt, found}
