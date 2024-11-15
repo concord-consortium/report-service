@@ -10,12 +10,15 @@
       </a>
     </div>
     <div :if={@user} class="flex flex-col font-semibold text-zinc-900">
-      <div><%= @user.portal_login %></div>
-      <div class="text-xs"><%= @user.portal_server %></div>
-      <.link navigate={~p"/auth/logout"}>Logout</.link>
+      <div><%= @user.portal_first_name %> <%= @user.portal_last_name %></div>
+      <div class="text-xs">
+        <%= @user.portal_server %>
+        <span :if={@user.portal_is_admin}>(admin)</span>
+      </div>
+      <.link class="underline" navigate={~p"/auth/logout"}>Logout</.link>
     </div>
     <div :if={!@user} class="flex items-center gap-4 font-semibold leading-4 text-zinc-900">
-      <.link navigate={~p"/auth/login"} :if={!@logged_in}>Login to <%= @portal_domain %></.link>
+      <.link class="underline" navigate={~p"/auth/login"} :if={!@logged_in}>Login to <%= @portal_domain %></.link>
     </div>
   </div>
 </header>
