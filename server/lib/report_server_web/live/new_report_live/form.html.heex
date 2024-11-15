@@ -16,9 +16,11 @@
 
 <div class="mt-2 flex flex-col gap-4" :if={@report}>
 
-  <div class="italic text-sm">NOTE: This form is still very much in progress and the search results are faked.</div>
+  <div class="my-4 bg-white p-2" :if={@report.tbd}>
+    <strong>NOTE</strong>: 🚧🛠️ This is a placeholder for a future report.
+  </div>
 
-  <.form for={@form} phx-change="filters_updated" phx-submit="submit_form">
+  <.form for={@form} phx-change="form_updated" phx-submit="submit_form" :if={!@report.tbd}>
     <div
       let={last_filter = i == @num_filters}
       let={filter = "filter#{i}"}
@@ -29,11 +31,23 @@
     >
       <div class="mb-4 border border-orange p-2 rounded-lg">
         <div class="flex gap-2">
-          <.input
-            type="select"
-            field={@form[filter_type]}
-            options={[{"Select a filter...", ""} | Enum.at(@filter_type_options, i - 1)]}
-          />
+          <div class="min-w-40">
+            <%= if last_filter do %>
+              <.input
+                type="select"
+                field={@form[filter_type]}
+                options={[{"Select a filter...", ""} | Enum.at(@filter_type_options, i - 1)]}
+              />
+            <% else %>
+              <.input
+                type="hidden"
+                field={@form[filter_type]}
+              />
+              <div class="font-bold capitalize">
+                <%= filter_type_value %>s
+              </div>
+            <% end %>
+          </div>
           <.live_select
             :if={!blank?(filter_type_value)}
             field={@form[filter]}
@@ -44,11 +58,14 @@
             dropdown_extra_class="max-h-60 overflow-y-scroll"
             tag_class="flex px-2 py-1 rounded-full bg-teal text-white text-sm"
             container_extra_class="grow"
+            options={Enum.at(@filter_options, i - 1)}
           />
-          <.button :if={i > 1 && last_filter} type="button" class="h-10" phx-click="remove_filter">
-            <.icon name="hero-trash" />
-            Remove Filter
-          </.button>
+          <div class="flex items-end flex-1">
+            <.button :if={i > 1 && last_filter} type="button" class="whitespace-nowrap" phx-click="remove_filter">
+              <.icon name="hero-trash" />
+              Remove Filter
+            </.button>
+          </div>
         </div>
       </div>
       <div class="mt-4">
@@ -57,6 +74,12 @@
       </div>
     </div>
   </.form>
+
+  <%= if @debug && false do %>
+    <div class="mt-2 font-mono text-sm">
+      <strong>DEBUG INFO:</strong> <%= @debug %>
+    </div>
+  <% end %>
 </div>
 
 <div class="mt-2 text-red-500" :if={@error}>
@@ -64,7 +87,7 @@
 </div>
 
 <div class="my-6" :if={@results}>
-  <div class="italic">NOTE: For now canned query are used for all the reports.</div>
+  <div class="italic">NOTE: For now canned query are used for all the reports <strong>EXCEPT</strong> the Teacher Status report.</div>
 
   <.report_results results={@results} sort={@sort} sort_direction={@sort_direction} />
 </div>

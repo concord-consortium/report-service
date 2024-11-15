@@ -7,6 +7,7 @@
   <div>
     <.described_link navigate={report.path} description={report.subtitle} :for={report <- @report_group.children}>
       <%= report.title %>
+      <span :if={report.tbd}>🚧🛠️</span>
     </.described_link>
   </div>
 

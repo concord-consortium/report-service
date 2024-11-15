@@ -76,11 +76,11 @@ defmodule ReportServerWeb.CustomComponents do
   """
   def described_link(assigns) do
     ~H"""
-    <div class="flex items-center">
-      <.square_link navigate={@navigate} class="m-2 flex-shrink-0">
+    <div class="flex items-center my-4">
+      <.square_link navigate={@navigate} class="flex-shrink-0">
         <%= render_slot(@inner_block) %>
       </.square_link>
-      <div class="text-xl m-2">
+      <div class="ml-4">
         <%= @description %>
       </div>
     </div>

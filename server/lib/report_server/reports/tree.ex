@@ -4,14 +4,15 @@ defmodule ReportServer.Reports.Tree do
     Report,
     TeacherStatus,
     ResourceMetricsSummary,
-    ResourceMetricsDetails
+    ResourceMetricsDetails,
+    TBDReport
   }
 
   @tree_cache :tree_cache
   @disable_report_tree_cache !!Application.compile_env(:report_server, :disable_report_tree_cache)
 
   defmodule ReportGroup do
-    defstruct slug: nil, title: nil, subtitle: nil, children: [], parents: [], path: nil
+    defstruct slug: nil, title: nil, subtitle: nil, children: [], parents: [], path: nil, tbd: false
   end
 
   # Initialize the ETS table with the report tree, called at application start
@@ -102,23 +103,54 @@ defmodule ReportServer.Reports.Tree do
 
   defp get_tree() do
     # NOTE: report slugs should never be changed once they are put into production as they are saved in the report runs
-    %ReportGroup{slug: Reports.get_root_slug(), title: "Reports", subtitle: "Top Level Reports", children: [
-      %ReportGroup{slug: "portal-reports", title: "Portal Reports", subtitle: "Teacher and resource reports", children: [
+    %ReportGroup{slug: Reports.get_root_slug(), title: "Reports", subtitle: "Top Level Report Categories", children: [
+      %ReportGroup{slug: "assignment-reports", title: "Assignment Reports", subtitle: "Reports about assignments", children: [
+        ResourceMetricsSummary.new(%Report{
+          slug: "resource-metrics-summary",
+          title: "Summary Metrics by Assignment",
+          subtitle: "Includes total number of schools, number of teachers, number of classes, and number of learners per resource."
+        }),
+        ResourceMetricsDetails.new(%Report{
+          slug: "resource-metrics-details",
+          title: "Detailed Metrics by Assignment",
+          subtitle: "Includes teacher information, school information, number of classes, number of students, and assignment information per resource."}
+        ),
+        TBDReport.new(%Report{
+          slug: "student-assignment-usage",
+          title: "Assignment Usage by Student",
+          subtitle: "Includes ids, usernames, and other information about the student, teacher, class, school, etc as well as summary information about the resource(s) in your query like total number of questions and answers."
+        })
+      ]},
+      %ReportGroup{slug: "student-reports", title: "Student Reports", subtitle: "Reports about students", tbd: true, children: [
+        TBDReport.new(%Report{
+          slug: "student-actions",
+          title: "Student Actions",
+          subtitle: "Returns the low-level log event stream for the learners, including model-level interactions."
+        }),
+        TBDReport.new(%Report{
+          slug: "student-actions-with-metadata",
+          title: "Student Actions with Metadata",
+          subtitle: "Includes everything in the Student Actions report plus information provided by the Portal about the student, teacher, class, school, permission forms, portal ids, etc."
+        }),
+        TBDReport.new(%Report{
+          slug: "student-answers",
+          title: "Student Answers",
+          subtitle: "Includes everything from the Assignment Usage by Student report plus details about student answers to all questions in the resource(s) in your query."
+        }),
+      ]},
+      %ReportGroup{slug: "teacher-reports", title: "Teacher Reports", subtitle: "Reports about teachers", tbd: true, children: [
+        TBDReport.new(%Report{
+          slug: "teacher-actions",
+          title: "Teacher Actions",
+          subtitle: "Includes log events for teacher actions in the activities, teacher edition, and class dashboard."
+        }),
         TeacherStatus.new(%Report{
           slug: "teacher-status",
           title: "Teacher Status",
           subtitle: "Shows what activities teachers have assigned to their classes and how many students have started them."
         }),
-        ResourceMetricsSummary.new(%Report{
-          slug: "resource-metrics-summary",
-          title: "Summary Metrics by Resource",
-          subtitle: "Includes total number of schools, number of teachers, number of classes, and number of learners per resource."
-        }),
-        ResourceMetricsDetails.new(%Report{
-          slug: "resource-metrics-details",
-          title: "Detailed Metrics by Resource",
-          subtitle: "Includes teacher information, school information, number of classes, number of students, and assignment information per resource."}
-        )
+      ]},
+      %ReportGroup{slug: "codap-reports", title: "CODAP Reports", subtitle: "Reports about CODAP (none yet defined)", tbd: true, children: [
       ]},
     ]}
     |> decorate_tree()
