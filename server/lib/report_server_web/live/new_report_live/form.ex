@@ -13,7 +13,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
   alias Jason
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
-  alias ReportServer.Reports.Report
+  alias ReportServer.Reports.{Report, Tree}
 
   @filter_type_options [{"Select a filter...", ""}, {"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
 
@@ -23,9 +23,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
   end
 
   @impl true
-  def handle_params(unsigned_params, _uri, socket) do
-    slug = unsigned_params |> Map.get("slug")
-    report = slug |> Reports.find()
+  def handle_params(%{"slug" => slug}, _uri, socket) do
+    report = Tree.find_report(slug)
     %{title: title, subtitle: subtitle} = get_report_info(slug, report)
 
     form = to_form(%{}, as: "filter_form")
