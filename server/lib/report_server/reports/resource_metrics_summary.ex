@@ -12,10 +12,10 @@ defmodule ReportServer.Reports.ResourceMetricsSummary do
       count(distinct rl.id) as number_of_students
     from
       external_activities ea
-      join portal_offerings po on (po.runnable_id = ea.id)
-      join portal_clazzes pc on (pc.id = po.clazz_id)
-      join portal_teacher_clazzes ptc on (ptc.clazz_id = pc.id)
-      join portal_teachers pt on (pt.id = ptc.teacher_id)
+      left join portal_offerings po on (po.runnable_id = ea.id)
+      left join portal_clazzes pc on (pc.id = po.clazz_id)
+      left join portal_teacher_clazzes ptc on (ptc.clazz_id = pc.id)
+      left join portal_teachers pt on (pt.id = ptc.teacher_id)
       left join portal_school_memberships psm on (psm.member_id = pt.id and psm.member_type = 'Portal::Teacher')
       left join portal_schools ps on (ps.id = psm.school_id)
       left join report_learners rl on (rl.runnable_id = ea.id and rl.last_run is not null)
