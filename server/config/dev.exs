@@ -63,6 +63,9 @@ config :report_server, ReportServerWeb.Endpoint,
     ]
   ]
 
+# Disable the report tree cache in dev mode so the report.run function is not cached
+config :report_server, disable_report_tree_cache: true
+
 # Enable dev routes for dashboard and mailbox
 config :report_server, dev_routes: true
 
