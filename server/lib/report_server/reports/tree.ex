@@ -111,13 +111,13 @@ defmodule ReportServer.Reports.Tree do
         }),
         ResourceMetricsSummary.new(%Report{
           slug: "resource-metrics-summary",
-          title: "Resource Metrics Summary",
-          subtitle: "Summary report on resource metrics"
+          title: "Summary Metrics by Resource",
+          subtitle: "Includes total number of schools, number of teachers, number of classes, and number of learners per resource."
         }),
         ResourceMetricsDetails.new(%Report{
           slug: "resource-metrics-details",
-          title: "Resource Metrics Details",
-          subtitle: "Detail report on resource metrics"}
+          title: "Detailed Metrics by Resource",
+          subtitle: "Includes teacher information, school information, number of classes, number of students, and assignment information per resource."}
         )
       ]},
     ]}

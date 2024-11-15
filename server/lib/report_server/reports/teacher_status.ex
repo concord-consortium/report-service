@@ -1,34 +1,33 @@
 defmodule ReportServer.Reports.TeacherStatus do
   use ReportServer.Reports.Report
 
-  # real query - rename when Boris can connect to db
   def run(_filters) do
     dev_query_portal = "learn.concord.org"
     dev_query = """
     select
-      concat(u.first_name, ' ', u.last_name) as teacher_name,
+      concat(u.last_name, ', ', u.first_name) as teacher_name,
       u.email as teacher_email,
       trim(ea.name) as activity_name,
       pc.name as class_name,
-        date(po.created_at) as date_assigned,
-        (select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id) as num_students_in_class,
-        count(rl.id) as num_students_started,
-        min(rl.last_run) as date_of_first_use,
-        max(rl.last_run) as date_of_last_use
+      date(po.created_at) as date_assigned,
+      (select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id) as num_students_in_class,
+      count(distinct rl.student_id) as num_students_started,
+      date(min(rl.last_run)) as date_of_first_use,
+      date(max(rl.last_run)) as date_of_last_use
     from
       users u
-    left join portal_teachers pt on (pt.user_id = u.id)
-    left join portal_teacher_clazzes ptc on (ptc.teacher_id = pt.id)
-    left join portal_clazzes pc on (pc.id = ptc.clazz_id)
-    left join portal_offerings po on (po.clazz_id = pc.id)
-    left join external_activities ea on (po.runnable_id = ea.id)
-    left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)
+      join portal_teachers pt on (pt.user_id = u.id)
+      left join portal_teacher_clazzes ptc on (ptc.teacher_id = pt.id)
+      left join portal_clazzes pc on (pc.id = ptc.clazz_id)
+      left join portal_offerings po on (po.clazz_id = pc.id)
+      left join external_activities ea on (po.runnable_id = ea.id)
+      left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)
     where
       email = 'dmartin@concord.org'
     group by
       u.id, ea.id, pc.id, po.id, ea.id
     order by
-      u.first_name, trim(ea.name)
+      u.last_name, u.first_name, trim(ea.name)
     """
 
     PortalDbs.query(dev_query_portal, dev_query)
