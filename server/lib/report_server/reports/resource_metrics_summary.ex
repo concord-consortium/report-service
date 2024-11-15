@@ -1,10 +1,5 @@
 defmodule ReportServer.Reports.ResourceMetricsSummary do
-
-  alias ReportServer.PortalDbs
-  alias ReportServer.Reports.Report
-  alias ReportServer.Reports.ReportFilter
-
-  def new(report = %Report{}), do: %{report | run: &run/1 }
+  use ReportServer.Reports.Report
 
   def run(_filters) do
     dev_query_portal = "learn.concord.org"
