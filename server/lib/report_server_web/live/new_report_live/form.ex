@@ -15,7 +15,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, Tree}
 
-  @filter_type_options [{"Select a filter...", ""}, {"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
+  @filter_type_options [{"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
 
   @impl true
   def mount(_params, _session, socket) do
