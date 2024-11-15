@@ -15,9 +15,9 @@ defmodule ReportServer.Reports.TeacherStatus do
       pc.name as class_name,
         date(po.created_at) as date_assigned,
         (select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id) as num_students_in_class,
-        'TBD' as num_students_started,
-        'TBD' as date_of_first_use,
-        'TBD' as date_of_last_use
+        count(rl.id) as num_students_started,
+        min(rl.last_run) as date_of_first_use,
+        max(rl.last_run) as date_of_last_use
     from
       users u
     left join portal_teachers pt on (pt.user_id = u.id)
@@ -25,8 +25,11 @@ defmodule ReportServer.Reports.TeacherStatus do
     left join portal_clazzes pc on (pc.id = ptc.clazz_id)
     left join portal_offerings po on (po.clazz_id = pc.id)
     left join external_activities ea on (po.runnable_id = ea.id)
+    left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)
     where
       email = 'dmartin@concord.org'
+    group by
+      u.id, ea.id, pc.id, po.id, ea.id
     order by
       u.first_name, trim(ea.name)
     """
