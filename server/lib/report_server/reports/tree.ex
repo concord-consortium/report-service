@@ -107,7 +107,7 @@ defmodule ReportServer.Reports.Tree do
         TeacherStatus.new(%Report{
           slug: "teacher-status",
           title: "Teacher Status",
-          subtitle: "Teacher status report"
+          subtitle: "Shows what activities teachers have assigned to their classes and how many students have started them."
         }),
         ResourceMetricsSummary.new(%Report{
           slug: "resource-metrics-summary",

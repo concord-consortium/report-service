@@ -68,6 +68,25 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  @doc """
+  Renders a square link with a description next to it.
+  attr :navigate, :any, required: true
+  attr :description, :string, required: true
+  attr :inner_block, :any, required: true
+  """
+  def described_link(assigns) do
+    ~H"""
+    <div class="flex items-center">
+      <.square_link navigate={@navigate} class="m-2 flex-shrink-0">
+        <%= render_slot(@inner_block) %>
+      </.square_link>
+      <div class="text-xl m-2">
+        <%= @description %>
+      </div>
+    </div>
+    """
+  end
+
   def download_button(assigns) do
     ~H"""
       <button id={"report-download-button-#{@filetype}"} class="my-2 p-2 bg-rose-50 rounded text-sm"
