@@ -4,10 +4,10 @@
     <:subtitle><%= @report_group.subtitle %></:subtitle>
   </.header>
 
-  <div class="mt-8 flex gap-4 flex-wrap" >
-    <.square_link navigate={report.path} :for={report <- @report_group.children}>
+  <div>
+    <.described_link navigate={report.path} description={report.subtitle} :for={report <- @report_group.children}>
       <%= report.title %>
-    </.square_link>
+    </.described_link>
   </div>
 
 <% else %>
