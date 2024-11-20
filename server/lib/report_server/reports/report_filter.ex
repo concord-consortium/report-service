@@ -1,12 +1,12 @@
 defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.Reports.ReportFilter
 
-  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: []
+  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], startDate: nil, endDate: nil
 
   @valid_filter_types ~w"cohort school teacher assignment"
 
   def from_form(form, filter_index) do
-    if (filter_index < 1) do
+    filter = if (filter_index < 1) do
       %ReportFilter{}
     else
       Enum.reduce(1..filter_index, %ReportFilter{}, fn i, acc ->
@@ -18,6 +18,9 @@ defmodule ReportServer.Reports.ReportFilter do
       end)
       # NOTE: we do not reverse the filters as they need to be processed from right to left
     end
+    filter
+    |> Map.put(:startDate, form.params["start_date"])
+    |> Map.put(:endDate, form.params["end_date"])
   end
 
   def get_filter_type!(form, i) do

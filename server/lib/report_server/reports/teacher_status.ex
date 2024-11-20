@@ -29,7 +29,8 @@ defmodule ReportServer.Reports.TeacherStatus do
     |> apply_filters(report_filter)
   end
 
-  defp apply_filters(report_query = %ReportQuery{}, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}) do
+  defp apply_filters(report_query = %ReportQuery{},
+      %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, startDate: startDate, endDate: endDate}) do
     join = []
     where = []
 
@@ -74,7 +75,8 @@ defmodule ReportServer.Reports.TeacherStatus do
       {join, where}
     end
 
-    ReportQuery.update_query(report_query, join: join, where: where)
+    ReportQuery.update_query(report_query, join: join, where: where,
+      startDate: startDate, endDate: endDate)
   end
 
 end

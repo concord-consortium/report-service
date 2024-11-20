@@ -70,8 +70,16 @@
       </div>
       <div class="mt-4">
         <.button :if={!blank?(@form.params[filter]) && has_more_filters && last_filter} type="button" phx-click="add_filter"><.icon name="hero-funnel" /> Add Filter</.button>
-        <.button :if={!blank?(@form.params["filter1"]) && last_filter} type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
       </div>
+    </div>
+    <div class="mt-4">
+      <label for="start_date">Earliest date of last run:</label>
+      <.input type="date" id="start_date" field={@form["start_date"]} />
+      <label for="end_date">Last date of last run:</label>
+      <.input type="date" id="end_date" field={@form["end_date"]} />
+    </div>
+    <div class="mt-4">
+      <.button :if={!blank?(@form.params["filter1"])} type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
     </div>
   </.form>
 
