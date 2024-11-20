@@ -107,9 +107,10 @@ defmodule ReportServerWeb.CustomComponents do
     else
       "hero-arrows-up-down"
     end
+    assigns = assign(assigns, :icon, icon)
     ~H"""
     <button type="button" phx-click="sort_column" phx-value-column={@column}>
-      <.icon name={icon} class="inline-block w-4 h-4 ml-1 cursor-pointer" />
+      <.icon name={@icon} class="inline-block w-4 h-4 ml-1 cursor-pointer" />
     </button>
     """
   end
@@ -118,6 +119,8 @@ defmodule ReportServerWeb.CustomComponents do
   Renders a navigation link in a square.
   """
   attr :results, :any, required: true
+  attr :sort, :string, default: nil
+  attr :sort_direction, :string, default: nil
   def report_results(assigns) do
     ~H"""
     <div class="flex justify-between items-center">

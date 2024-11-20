@@ -1,7 +1,7 @@
 defmodule ReportServer.Reports.TeacherStatus do
   use ReportServer.Reports.Report
 
-  def get_query(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}) do
+  def get_query(report_filter = %ReportFilter{}) do
     %ReportQuery{
       select: """
         concat(u.last_name, ', ', u.first_name) as teacher_name,

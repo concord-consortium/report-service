@@ -87,7 +87,5 @@
 </div>
 
 <div class="my-6" :if={@results}>
-  <div class="italic">NOTE: For now canned query are used for all the reports <strong>EXCEPT</strong> the Teacher Status report.</div>
-
   <.report_results results={@results} sort={@sort} sort_direction={@sort_direction} />
 </div>
