@@ -1,9 +1,7 @@
 defmodule ReportServer.Reports.ResourceMetricsDetails do
   use ReportServer.Reports.Report
 
-  # TODO Grade level -- does not return any results
-
-  def get_query(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}) do
+  def get_query(report_filter = %ReportFilter{}) do
     %ReportQuery{
       select: """
         trim(ea.name) as activity_name,

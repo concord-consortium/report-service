@@ -1,7 +1,7 @@
 defmodule ReportServer.Reports.ResourceMetricsSummary do
   use ReportServer.Reports.Report
 
-  def get_query(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}) do
+  def get_query(report_filter = %ReportFilter{}) do
     %ReportQuery{
       select: """
         trim(ea.name) as activity_name,

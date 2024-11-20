@@ -195,6 +195,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     end
   end
 
+  @impl true
   def handle_info({:run_report, {report, report_filter}}, socket) do
     socket =
       with query <- report.get_query.(report_filter),
