@@ -58,6 +58,8 @@ defmodule ReportServerWeb.Router do
 
     live_session :reports, on_mount: ReportServerWeb.NewReportLive.Auth do
       live "/new/:slug", NewReportLive.Form, :form
+      live "/runs", ReportRunLive.Index, :index
+      live "/runs/:id", ReportRunLive.Show, :show
       live "/*path", NewReportLive.Index, :index
     end
   end

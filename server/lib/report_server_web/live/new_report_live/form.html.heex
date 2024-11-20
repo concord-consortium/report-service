@@ -94,6 +94,8 @@
   <%= @error %>
 </div>
 
-<div class="my-6" :if={@results}>
-  <.report_results results={@results} sort={@sort} sort_direction={@sort_direction} />
+<div :if={length(@report_runs) > 0}>
+  <div class="font-bold my-2">Previous Runs</div>
+
+  <.report_runs report_runs={@report_runs} include_report_titles={false} />
 </div>

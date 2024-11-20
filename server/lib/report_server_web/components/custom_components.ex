@@ -92,7 +92,7 @@ defmodule ReportServerWeb.CustomComponents do
       <button id={"report-download-button-#{@filetype}"} class="my-2 p-2 bg-rose-50 rounded text-sm"
               phx-hook="ReportDownloadButton" phx-click="download_report" phx-value-filetype={@filetype}>
         <.icon name="hero-arrow-down-tray" />
-        Download as <%= @filetype %>
+        Download as <%= String.upcase(@filetype) %>
       </button>
     """
   end
@@ -116,7 +116,7 @@ defmodule ReportServerWeb.CustomComponents do
   end
 
   @doc """
-  Renders a navigation link in a square.
+  Renders the report results
   """
   attr :results, :any, required: true
   attr :sort, :string, default: nil
@@ -126,15 +126,15 @@ defmodule ReportServerWeb.CustomComponents do
     <div class="flex justify-between items-center">
       <strong>Query result: <%= @results.num_rows %> rows</strong>
       <span>
-        <.download_button filetype="CSV"/>
-        <.download_button filetype="JSON"/>
+        <.download_button filetype="csv"/>
+        <.download_button filetype="json"/>
       </span>
     </div>
     <div class="bg-white text-sm overflow-auto sm:overflow-auto">
       <table class="w-full border-collapse">
         <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
           <tr>
-            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b", (if col == @sort, do: "font-bold", else: "font-normal")]}>
+            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @sort, do: "font-bold", else: "font-normal")]}>
               <%= String.replace(col, "_", " ") %>
               <.sort_col_button column={col} sort={@sort} sort_direction={@sort_direction} />
             </th>
@@ -161,6 +161,96 @@ defmodule ReportServerWeb.CustomComponents do
     </span>
     <%= @report.title %>
     """
+  end
+
+  attr :previous, :any, required: true
+  attr :current, :string, required: true
+  def breadcrumbs(assigns) do
+    ~H"""
+    <span :for={{title, path} <- @previous}>
+      <.link navigate={path} class="hover:underline"><%= title %></.link>
+      <span>›</span>
+    </span>
+    <%= @current %>
+    """
+  end
+
+  attr :report_run, :any, required: true
+  def report_filter_values(assigns) do
+    ~H"""
+    <div class="table">
+      <div class="table-row" :for={filter <- Enum.reverse(@report_run.report_filter.filters)}>
+        <div class="table-cell capitalize font-bold"><%= filter %>s</div>
+        <div class="table-cell pl-3"><%= Enum.join(Map.values(@report_run.report_filter_values[filter] || %{}), ", ") %></div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :timestamp, :string, required: true
+  def relative_time(assigns) do
+    now = DateTime.utc_now() |> DateTime.to_unix()
+    diff = now - DateTime.to_unix(assigns.timestamp)
+
+    relative_time_result = cond do
+      diff < 60 ->
+        "Just now"
+
+      diff < 3600 ->
+        minutes = div(diff, 60)
+        "#{minutes} #{pluralize(minutes, "minute")} ago"
+
+      diff < 86_400 ->
+        hours = div(diff, 3600)
+        "#{hours} #{pluralize(hours, "hour")} ago"
+
+      true ->
+        days = div(diff, 86_400)
+        "#{days} #{pluralize(days, "day")} ago"
+    end
+
+    assigns = assign(assigns, :relative_time_result, relative_time_result)
+
+    ~H"<%= @relative_time_result %>"
+  end
+
+  attr :report_runs, :any, required: true
+  attr :include_report_titles, :boolean, default: false
+  attr :include_user, :boolean, default: false
+  def report_runs(assigns) do
+    report_titles = Enum.reduce(assigns.report_runs, %{}, fn %{report_slug: report_slug}, acc ->
+      report = ReportServer.Reports.Tree.find_report(report_slug)
+      title = if report, do: report.title, else: "Unknown report: #{report_slug}"
+      Map.put(acc, report_slug, title)
+    end)
+    assigns = assign(assigns, :report_titles, report_titles)
+
+    ~H"""
+      <table class="w-full border-collapse bg-white text-sm">
+        <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
+          <tr>
+            <th class="p-2 font-normal border-b">Run</th>
+            <th class="p-2 font-normal border-b" :if={@include_user}>User</th>
+            <th class="p-2 font-normal border-b" :if={@include_report_titles}>Report</th>
+            <th class="p-2 font-normal border-b">Filters</th>
+            <th class="p-2 font-normal border-b">Ran</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={report_run <- @report_runs} class="group hover:bg-zinc-200 even:bg-gray-50">
+            <td class="p-2 font-normal border-b align-top"><.link class="underline" href={"/new-reports/runs/#{report_run.id}"}><%= report_run.id %></.link></td>
+            <td class="p-2 font-normal border-b align-top" :if={@include_user}><%= report_run.user.portal_first_name %> <%= report_run.user.portal_last_name %></td>
+            <td class="p-2 font-normal border-b align-top" :if={@include_report_titles}><%= @report_titles[report_run.report_slug] %></td>
+            <td class="p-2 font-normal border-b align-top"><.report_filter_values report_run={report_run} /></td>
+            <td class="p-2 font-normal border-b align-top"><.relative_time timestamp={report_run.inserted_at} /></td>
+          </tr>
+        </tbody>
+      </table>
+    """
+  end
+
+  defp pluralize(count, word) do
+    if count == 1, do: word, else: word <> "s"
   end
 
 end

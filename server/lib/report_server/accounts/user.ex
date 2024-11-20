@@ -3,6 +3,8 @@ defmodule ReportServer.Accounts.User do
 
   import Ecto.Changeset
 
+  alias ReportServer.Reports.ReportRun
+
   @all_fields [:portal_server, :portal_user_id, :portal_login, :portal_first_name, :portal_last_name, :portal_email, :portal_is_admin]
 
   schema "users" do
@@ -13,6 +15,8 @@ defmodule ReportServer.Accounts.User do
     field :portal_last_name, :string
     field :portal_email, :string
     field :portal_is_admin, :boolean
+
+    has_many :report_runs, ReportRun, foreign_key: :user_id
 
     timestamps(type: :utc_datetime)
   end

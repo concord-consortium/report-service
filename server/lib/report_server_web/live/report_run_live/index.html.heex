@@ -1,0 +1,7 @@
+<div :if={length(@report_runs) > 0}>
+  <div class="font-bold my-2">
+    <.breadcrumbs previous={[{"Reports", ~p"/new-reports"}]} current={@page_title} />
+  </div>
+
+  <.report_runs report_runs={@report_runs} include_report_titles={true} include_user={@user.portal_is_admin} />
+</div>
