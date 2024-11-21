@@ -17,6 +17,7 @@ defmodule ReportServer.Reports.ReportQuery do
     join = Keyword.get(opts, :join, [])
     where = Keyword.get(opts, :where, [])
 
+    # Must have some filters in order to be valid
     if Enum.empty?(join) && Enum.empty?(where) do
       # TODO: this should return an error tuple instead
       raise "No way to figure out teacher filter!"

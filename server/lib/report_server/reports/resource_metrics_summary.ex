@@ -27,7 +27,8 @@ defmodule ReportServer.Reports.ResourceMetricsSummary do
     |> tap(&IO.inspect/1)
   end
 
-  defp apply_filters(report_query = %ReportQuery{}, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}) do
+  defp apply_filters(report_query = %ReportQuery{},
+      %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, start_date: start_date, end_date: end_date}) do
     join = []
     where = []
 
@@ -71,6 +72,10 @@ defmodule ReportServer.Reports.ResourceMetricsSummary do
       # use all assignments for the filtered teachers
       {join, where}
     end
+
+    where = where
+    |> apply_start_date(start_date)
+    |> apply_end_date(end_date)
 
     ReportQuery.update_query(report_query, join: join, where: where)
   end
