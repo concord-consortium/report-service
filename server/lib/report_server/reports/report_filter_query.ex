@@ -8,6 +8,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   def get_options(report_filter = %ReportFilter{}, like_text \\ "") do
     {query, params} = get_query_and_params(report_filter, like_text)
     sql = get_options_sql(query)
+    IO.inspect(sql)
 
     dev_query_portal = "learn.concord.org" # FIXME
     case PortalDbs.query(dev_query_portal, sql, params) do
@@ -206,6 +207,74 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     query
   end
 
+  defp get_filter_query(:permission_form, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}, like_text) do
+    query = %ReportFilterQuery{
+      id: "ppf.id",
+      value: "CONCAT(ap.name, ': ', ppf.name)",
+      from: "portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id",
+      where: maybe_add_like(like_text, ["ppf.name LIKE ? or ap.name LIKE ?"]),
+      order_by: "ppf.name",
+      num_params: 2,
+    }
+
+    ## Several of the "where" clauses before are identical since we need to connect through teachers or classes
+    ## That's ok since the later processing will remove duplicates.
+    ## Just make sure that they are truly identical if they use the same table name.
+
+    query = if Enum.empty?(teacher) do
+      query
+    else
+      join = [
+        "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id",
+        "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
+        "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+      ]
+      where = "ptc.teacher_id IN #{list_to_in(teacher)}"
+      secondary_filter_query(query, join, where)
+    end
+
+    query = if Enum.empty?(school) do
+      query
+    else
+      join = [
+        "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id", # DUP
+        "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id", # DUP
+        "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)", # DUP
+        "JOIN portal_school_memberships psm ON (psm.member_id = ptc.teacher_id AND psm.member_type = 'Portal::Teacher')",
+      ]
+      where = "psm.school_id IN #{list_to_in(school)}"
+      secondary_filter_query(query, join, where)
+    end
+
+    query = if Enum.empty?(cohort) do
+      query
+    else
+      join = [
+        "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id", # DUP
+        "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id", # DUP
+        "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)", # DUP
+        "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
+      ]
+      where = "aci.admin_cohort_id IN #{list_to_in(cohort)}"
+      secondary_filter_query(query, join, where)
+    end
+
+    query = if Enum.empty?(assignment) do
+      query
+    else
+      join = [
+        "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id", # DUP
+        "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id", # DUP
+        "JOIN portal_offerings po ON (po.clazz_id = psc.clazz_id AND po.runnable_type = 'ExternalActivity')"
+      ]
+      where = "po.runnable_id IN #{list_to_in(assignment)}"
+      secondary_filter_query(query, join, where)
+    end
+
+    query
+  end
+
+
   defp list_to_in(list) do
     "(#{list |> Enum.map(&Integer.to_string/1) |> Enum.join(",")})"
   end
@@ -226,7 +295,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
   defp get_join_where_sql(join, where) do
     # NOTE: the reverse is before flatten to keep any sublists in order
-    join_sql = join |> Enum.reverse() |> List.flatten() |> Enum.join(" ")
+    join_sql = join |> Enum.reverse() |> List.flatten() |> Enum.uniq() |> Enum.join(" ")
     where_sql = where |> Enum.reverse() |> List.flatten() |> Enum.map(&("(#{&1})")) |> Enum.join(" AND ")
     where_sql = if String.length(where_sql) > 0, do: "WHERE #{where_sql}", else: ""
     {join_sql, where_sql}

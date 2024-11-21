@@ -3,9 +3,10 @@ defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.ReportFilter
 
-  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], start_date: nil, end_date: nil
+  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], permission_form: [],
+    start_date: nil, end_date: nil
 
-  @valid_filter_types ~w"cohort school teacher assignment"
+  @valid_filter_types ~w"cohort school teacher assignment permission_form"
   @filter_type_atoms Enum.map(@valid_filter_types, &String.to_atom/1)
 
   def from_form(form, filter_index) do
