@@ -45,8 +45,6 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:filter_type_options, [@filter_type_options])
     |> assign(:filter_options, [[]])
 
-    {:ok, socket}
-
     {:noreply, socket}
   end
 
