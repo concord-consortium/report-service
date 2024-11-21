@@ -44,8 +44,6 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:num_filters, 1)
     |> assign(:filter_type_options, [@filter_type_options])
     |> assign(:filter_options, [[]])
-    |> assign(:start_date, nil)
-    |> assign(:end_date, nil)
 
     {:ok, socket}
 
@@ -71,16 +69,6 @@ defmodule ReportServerWeb.NewReportLive.Form do
           |> assign(:debug, debug_filter(sql ,params))
         {:noreply, socket}
     end
-  end
-
-  def handle_event("form_updated", %{"_target" => ["start_date"], "start_date" => start_date}, socket) do
-    socket = assign(socket, :start_date, start_date)
-    {:noreply, socket}
-  end
-
-  def handle_event("form_updated", %{"_target" => ["end_date"], "end_date" => end_date}, socket) do
-    socket = assign(socket, :end_date, end_date)
-    {:noreply, socket}
   end
 
   def handle_event("form_updated", %{"_target" => ["filter_form", field], "filter_form" => form_values}, socket) do
