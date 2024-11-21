@@ -6,7 +6,7 @@ defmodule ReportServer.Reports.ReportFilter do
   @valid_filter_types ~w"cohort school teacher assignment"
 
   def from_form(form, filter_index) do
-    filter = if (filter_index < 1) do
+    if (filter_index < 1) do
       %ReportFilter{}
     else
       Enum.reduce(1..filter_index, %ReportFilter{}, fn i, acc ->
@@ -18,7 +18,6 @@ defmodule ReportServer.Reports.ReportFilter do
       end)
       # NOTE: we do not reverse the filters as they need to be processed from right to left
     end
-    filter
     |> Map.put(:start_date, form.params["start_date"])
     |> Map.put(:end_date, form.params["end_date"])
   end

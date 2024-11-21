@@ -91,8 +91,11 @@ defmodule ReportServer.Reports.ResourceMetricsDetails do
       {join, where}
     end
 
-    ReportQuery.update_query(report_query, join: join, where: where,
-      start_date: start_date, end_date: end_date)
+    where = where
+    |> apply_start_date(start_date)
+    |> apply_end_date(end_date)
+
+    ReportQuery.update_query(report_query, join: join, where: where)
   end
 
 end

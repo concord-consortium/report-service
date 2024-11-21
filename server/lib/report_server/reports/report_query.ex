@@ -16,25 +16,11 @@ defmodule ReportServer.Reports.ReportQuery do
   def update_query(report_query = %ReportQuery{}, opts) do
     join = Keyword.get(opts, :join, [])
     where = Keyword.get(opts, :where, [])
-    start_date = Keyword.get(opts, :start_date, "")
-    end_date = Keyword.get(opts, :end_date, "")
 
-    # Must have some filters, not including date filters, in order to be valid
+    # Must have some filters in order to be valid
     if Enum.empty?(join) && Enum.empty?(where) do
       # TODO: this should return an error tuple instead
       raise "No way to figure out teacher filter!"
-    end
-
-    where = if String.length(start_date)>0 do
-      ["rl.last_run >= '#{start_date}'" | where]
-    else
-      where
-    end
-
-    where = if String.length(end_date)>0 do
-      ["rl.last_run <= '#{end_date}'" | where]
-    else
-      where
     end
 
     %{report_query | join: [ join | report_query.join ], where: [ where | report_query.where ]}
