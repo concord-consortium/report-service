@@ -1,7 +1,7 @@
 defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.Reports.ReportFilter
 
-  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], startDate: nil, endDate: nil
+  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], start_date: nil, end_date: nil
 
   @valid_filter_types ~w"cohort school teacher assignment"
 
@@ -19,8 +19,8 @@ defmodule ReportServer.Reports.ReportFilter do
       # NOTE: we do not reverse the filters as they need to be processed from right to left
     end
     filter
-    |> Map.put(:startDate, form.params["start_date"])
-    |> Map.put(:endDate, form.params["end_date"])
+    |> Map.put(:start_date, form.params["start_date"])
+    |> Map.put(:end_date, form.params["end_date"])
   end
 
   def get_filter_type!(form, i) do
