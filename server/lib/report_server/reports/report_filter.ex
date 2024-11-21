@@ -1,9 +1,10 @@
 defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.Reports.ReportFilter
 
-  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], start_date: nil, end_date: nil
+  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], permission_form: [],
+    start_date: nil, end_date: nil
 
-  @valid_filter_types ~w"cohort school teacher assignment"
+  @valid_filter_types ~w"cohort school teacher assignment permission_form"
 
   def from_form(form, filter_index) do
     if (filter_index < 1) do
