@@ -8,7 +8,6 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   def get_options(report_filter = %ReportFilter{}, like_text \\ "") do
     {query, params} = get_query_and_params(report_filter, like_text)
     sql = get_options_sql(query)
-    IO.inspect(sql)
 
     dev_query_portal = "learn.concord.org" # FIXME
     case PortalDbs.query(dev_query_portal, sql, params) do
