@@ -83,7 +83,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   end
 
   defp run_report(report = %Report{}, report_run = %ReportRun{}, user = %User{}) do
-    with query <- report.get_query.(report_run.report_filter),
+    with {:ok, query} <- report.get_query.(report_run.report_filter),
       sql <- ReportQuery.get_sql(query),
       {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
         {:ok, %{report_results: results}}

@@ -41,7 +41,7 @@ defmodule ReportServer.Reports.ReportFilter do
           :assignment ->
             ["SELECT 'assignment' AS table_name, id, TRIM(name) as name FROM external_activities WHERE id IN (#{in_ids})" | acc]
           :permission_form ->
-            ["SELECT 'permission_form' AS table_name, id, CONCAT(TRIM(ap.name), ': ', TRIM(ppf.name)) as name FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id WHERE ppf.id IN (#{in_ids})" | acc]
+            ["SELECT 'permission_form' AS table_name, ppf.id, CONCAT(TRIM(ap.name), ': ', TRIM(ppf.name)) as name FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id WHERE ppf.id IN (#{in_ids})" | acc]
         end
       else
         acc

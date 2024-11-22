@@ -19,10 +19,9 @@ defmodule ReportServer.Reports.ReportQuery do
 
     # Must have some filters in order to be valid
     if Enum.empty?(join) && Enum.empty?(where) do
-      # TODO: this should return an error tuple instead
-      raise "No way to figure out teacher filter!"
+      {:error, "Cannot run query with no filters"}
+    else
+      {:ok, %{report_query | join: [ join | report_query.join ], where: [ where | report_query.where ]}}
     end
-
-    %{report_query | join: [ join | report_query.join ], where: [ where | report_query.where ]}
   end
 end
