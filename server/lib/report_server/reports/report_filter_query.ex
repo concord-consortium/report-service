@@ -41,7 +41,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     {query, params}
   end
 
-  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment}, like_text) do
+  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment, permission_form: permission_form}, like_text) do
     query = %ReportFilterQuery{
       id: "admin_cohorts.id",
       value: "admin_cohorts.name",
@@ -54,8 +54,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       query
     else
       join = [
-       "JOIN admin_cohort_items aci_school ON (aci_school.item_type = 'Portal::Teacher')",
-       "JOIN portal_school_memberships psm_school ON (psm_school.member_type = 'Portal::Teacher' AND psm_school.member_id = aci_school.item_id)"
+       "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' and aci.admin_cohort_id = admin_cohorts.id)",
+       "JOIN portal_school_memberships psm_school ON (psm_school.member_type = 'Portal::Teacher' AND psm_school.member_id = aci.item_id)"
       ]
       where = "psm_school.school_id IN #{list_to_in(school)}"
       secondary_filter_query(query, join, where)
@@ -64,23 +64,36 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     query = if Enum.empty?(teacher) do
       query
     else
-      join = "JOIN admin_cohort_items aci_teacher ON (aci_teacher.item_type = 'Portal::Teacher')"
-      where = "aci_teacher.item_id IN #{list_to_in(teacher)}"
+      join = "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' and aci.admin_cohort_id = admin_cohorts.id)"
+      where = "aci.item_id IN #{list_to_in(teacher)}"
       secondary_filter_query(query, join, where)
     end
 
     query = if Enum.empty?(assignment) do
       query
     else
-      join = "JOIN admin_cohort_items aci_assignment ON (aci_assignment.item_type = 'ExternalActivity')"
+      join = "JOIN admin_cohort_items aci_assignment ON (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.admin_cohort_id = admin_cohorts.id)"
       where = "aci_assignment.item_id IN #{list_to_in(assignment)}"
+      secondary_filter_query(query, join, where)
+    end
+
+    query = if Enum.empty?(permission_form) do
+      query
+    else
+      join = [
+        "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' and aci.admin_cohort_id = admin_cohorts.id)",
+        "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = aci.item_id)",
+        "JOIN portal_student_clazzes psc ON (psc.clazz_id = ptc.clazz_id)",
+        "JOIN portal_student_permission_forms pspf ON (pspf.portal_student_id = psc.student_id)"
+      ]
+      where = "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
       secondary_filter_query(query, join, where)
     end
 
     query
   end
 
-  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment}, like_text) do
+  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment, permission_form: permission_form}, like_text) do
     query = %ReportFilterQuery{
       id: "portal_schools.id",
       value: "portal_schools.name",
@@ -93,8 +106,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       query
     else
       join = [
-        "JOIN portal_school_memberships psm_cohort ON (psm_cohort.member_type = 'Portal::Teacher' AND psm_cohort.school_id = portal_schools.id)",
-        "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm_cohort.member_id)"
+        "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)",
+        "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id)"
       ]
       where = "aci_cohort.admin_cohort_id IN #{list_to_in(cohort)}"
       secondary_filter_query(query, join, where)
@@ -103,8 +116,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     query = if Enum.empty?(teacher) do
       query
     else
-      join = "JOIN portal_school_memberships psm_teacher ON (psm_teacher.member_type = 'Portal::Teacher' AND psm_teacher.school_id = portal_schools.id)"
-      where = "psm_teacher.member_id IN #{list_to_in(teacher)}"
+      join = "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)"
+      where = "psm.member_id IN #{list_to_in(teacher)}"
       secondary_filter_query(query, join, where)
     end
 
@@ -120,10 +133,23 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       secondary_filter_query(query, join, where)
     end
 
+    query = if Enum.empty?(permission_form) do
+      query
+    else
+      join = [
+        "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)",
+        "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = psm.member_id)",
+        "JOIN portal_student_clazzes psc ON (ptc.clazz_id = psc.clazz_id)",
+        "JOIN portal_student_permission_forms pspf ON (pspf.portal_student_id = psc.student_id)"
+      ]
+      where = "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
+      secondary_filter_query(query, join, where)
+    end
+
     query
   end
 
-  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment}, like_text) do
+  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form}, like_text) do
     query = %ReportFilterQuery{
       id: "portal_teachers.id",
       value: "CONCAT(users.first_name, ' ', users.last_name, ' <', users.email, '>') AS fullname",
@@ -154,17 +180,29 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       query
     else
       join = [
-        "JOIN portal_teacher_clazzes ptc_assignment ON (ptc_assignment.teacher_id = portal_teachers.id)",
-        "JOIN portal_offerings po_assignment ON (po_assignment.clazz_id = ptc_assignment.clazz_id AND po_assignment.runnable_type = 'ExternalActivity')"
+        "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = portal_teachers.id)",
+        "JOIN portal_offerings po_assignment ON (po_assignment.clazz_id = ptc.clazz_id AND po_assignment.runnable_type = 'ExternalActivity')"
       ]
       where = "po_assignment.runnable_id IN #{list_to_in(assignment)}"
+      secondary_filter_query(query, join, where)
+    end
+
+    query = if Enum.empty?(permission_form) do
+      query
+    else
+      join = [
+        "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = portal_teachers.id)",
+        "JOIN portal_student_clazzes psc ON (psc.clazz_id = ptc.clazz_id)",
+        "JOIN portal_student_permission_forms pspf ON pspf.portal_student_id = psc.student_id",
+      ]
+      where = "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
       secondary_filter_query(query, join, where)
     end
 
     query
   end
 
-  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher}, like_text) do
+  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher, permission_form: permission_form}, like_text) do
     query = %ReportFilterQuery{
       id: "external_activities.id",
       value: "external_activities.name",
@@ -185,8 +223,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       query
     else
       join = [
-        "JOIN portal_offerings po_school ON (po_school.runnable_type = 'ExternalActivity' AND po_school.runnable_id = external_activities.id)",
-        "JOIN portal_teacher_clazzes ptc_school ON (ptc_school.clazz_id = po_school.clazz_id)",
+        "JOIN portal_offerings po ON (po.runnable_type = 'ExternalActivity' AND po.runnable_id = external_activities.id)",
+        "JOIN portal_teacher_clazzes ptc_school ON (ptc_school.clazz_id = po.clazz_id)",
         "JOIN portal_school_memberships psm_school ON (psm_school.member_type = 'Portal::Teacher' AND psm_school.member_id = ptc_school.teacher_id)"
       ]
       where = "psm_school.school_id IN #{list_to_in(school)}"
@@ -201,6 +239,18 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         "JOIN portal_teacher_clazzes ptc_teacher ON (ptc_teacher.clazz_id = po_teacher.clazz_id)",
       ]
       where = "ptc_teacher.teacher_id IN #{list_to_in(teacher)}"
+      secondary_filter_query(query, join, where)
+    end
+
+    query = if Enum.empty?(permission_form) do
+      query
+    else
+      join = [
+        "JOIN portal_offerings po ON (po.runnable_type = 'ExternalActivity' AND po.runnable_id = external_activities.id)",
+        "JOIN portal_student_clazzes psc ON (psc.clazz_id = po.clazz_id)",
+        "JOIN portal_student_permission_forms pspf ON pspf.portal_student_id = psc.student_id"
+      ]
+      where = "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
       secondary_filter_query(query, join, where)
     end
 
@@ -219,7 +269,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
     ## Several of the "where" clauses before are identical since we need to connect through teachers or classes
     ## That's ok since the later processing will remove duplicates.
-    ## Just make sure that they are truly identical if they use the same table name.
+    ## Just make sure that they are truly identical if they use the same table alias.
 
     query = if Enum.empty?(teacher) do
       query
