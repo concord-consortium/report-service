@@ -1,7 +1,7 @@
 defmodule ReportServer.Reports.TeacherStatus do
-  use ReportServer.Reports.Report
+  use ReportServer.Reports.Report, type: :portal
 
-  def get_query(report_filter = %ReportFilter{}) do
+  def get_query(report_filter = %ReportFilter{}, _user = %User{}) do
     %ReportQuery{
       cols: [
         {"concat(u.last_name, ', ', u.first_name)", "teacher_name"},

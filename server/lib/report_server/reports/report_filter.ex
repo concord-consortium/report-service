@@ -4,7 +4,7 @@ defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.Reports.ReportFilter
 
   defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], permission_form: [],
-    start_date: nil, end_date: nil
+    start_date: nil, end_date: nil, hide_names: false
 
   @valid_filter_types ~w"cohort school teacher assignment permission_form"
   @filter_type_atoms Enum.map(@valid_filter_types, &String.to_atom/1)
@@ -24,6 +24,7 @@ defmodule ReportServer.Reports.ReportFilter do
     end
     |> Map.put(:start_date, form.params["start_date"])
     |> Map.put(:end_date, form.params["end_date"])
+    |> Map.put(:hide_names, form.params["hide_names"] == "true")
   end
 
   def get_filter_values(report_filter = %ReportFilter{}, portal_server) do

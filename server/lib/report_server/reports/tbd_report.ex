@@ -1,7 +1,7 @@
 defmodule ReportServer.Reports.TBDReport do
-  use ReportServer.Reports.Report, tbd: true
+  use ReportServer.Reports.Report, type: :portal, tbd: true
 
-  def get_query(_report_filter = %ReportFilter{}) do
-    {:ok, %ReportQuery{}}
+  def get_query(_report_filter = %ReportFilter{}, _user = %User{}) do
+    %ReportQuery{}
   end
 end

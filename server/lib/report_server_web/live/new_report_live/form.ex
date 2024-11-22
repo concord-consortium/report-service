@@ -46,6 +46,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:filter_types_included, filter_type_options)
     |> assign(:filter_type_options, [filter_type_options])
     |> assign(:filter_options, [[]])
+    |> assign(:form_options, get_form_options(report))
 
     {:noreply, socket}
   end
@@ -173,6 +174,18 @@ defmodule ReportServerWeb.NewReportLive.Form do
     {:noreply, socket}
   end
 
+  # uncomment to debug athena reports instead of creating a run
+  # TODO: maybe add dev only button for this?
+  # @impl true
+  # def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{type: :athena} = report, form: form, num_filters: num_filters, user: user}} = socket) do
+  #   report_filter = ReportFilter.from_form(form, num_filters)
+  #   {:ok, query} = report.get_query.(report_filter, user)
+  #   {:ok, sql} = ReportServer.Reports.ReportQuery.get_sql(query)
+  #   socket = socket
+  #     |> assign(:debug, sql)
+  #   {:noreply, socket}
+  # end
+
   @impl true
   def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do
     report_filter = ReportFilter.from_form(form, num_filters)
@@ -210,5 +223,11 @@ defmodule ReportServerWeb.NewReportLive.Form do
   defp get_filter_index(s), do: Regex.run(~r/(\d+)$/, s) |> List.last() |> String.to_integer()
 
   defp debug_filter(sql, params), do: "#{sql} (#{params |> Enum.map(&("'#{&1}'")) |> Enum.join(", ")})"
+
+  defp get_form_options(%Report{form_options: form_options}) do
+    %{
+      enable_hide_names: Keyword.get(form_options, :enable_hide_names, false)
+    }
+  end
 
 end

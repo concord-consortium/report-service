@@ -2,6 +2,11 @@ defmodule ReportServer.ReportQueryTest do
   use ExUnit.Case, async: true
   alias ReportServer.Reports.ReportQuery
 
+  def normalized_sql(query = %ReportQuery{}) do
+    {:ok, sql} = ReportQuery.get_sql(query)
+    sql |> String.replace(~r/\s+/, " ") |> String.trim()
+  end
+
   describe "get_sql/1" do
     test "constructs a SQL query" do
       query = %ReportQuery{
@@ -12,8 +17,7 @@ defmodule ReportServer.ReportQueryTest do
         group_by: "table.id",
         order_by: [{"id", :asc}]
       }
-      normalized = ReportQuery.get_sql(query) |> String.replace(~r/\s+/, " ") |> String.trim()
-      assert normalized == "SELECT table.id AS id FROM table JOIN table2 ON table.id = table2.id WHERE (table.id = 1) GROUP BY table.id ORDER BY id asc"
+      assert normalized_sql(query) == "SELECT table.id AS id FROM table JOIN table2 ON table.id = table2.id WHERE (table.id = 1) GROUP BY table.id ORDER BY id asc"
     end
 
     test "correctly orders WHERE clauses" do
@@ -30,8 +34,7 @@ defmodule ReportServer.ReportQueryTest do
         group_by: "",
         order_by: [{"id", :asc}]
       }
-      normalized = ReportQuery.get_sql(query) |> String.replace(~r/\s+/, " ") |> String.trim()
-      assert normalized == "SELECT table.id AS id FROM table WHERE (initial) AND (subB1) AND (subB2) AND (subA1) AND (subA2) AND (final) ORDER BY id asc"
+      assert normalized_sql(query) == "SELECT table.id AS id FROM table WHERE (initial) AND (subB1) AND (subB2) AND (subA1) AND (subA2) AND (final) ORDER BY id asc"
     end
 
     @tag :skip # FIXME: ReportFilterQuery removes duplicates by ReportQuery does not
@@ -50,9 +53,7 @@ defmodule ReportServer.ReportQueryTest do
         group_by: "",
         order_by: [{"id", :asc}]
       }
-      normalized = ReportQuery.get_sql(query) |> String.replace(~r/\s+/, " ") |> String.trim()
-      assert normalized == "SELECT * FROM table JOIN table3 ON table.id = table3.id JOIN table2 ON table.id = table2.id WHERE (table.id = 1) ORDER BY id asc"
-
+      assert normalized_sql(query) == "SELECT * FROM table JOIN table3 ON table.id = table3.id JOIN table2 ON table.id = table2.id WHERE (table.id = 1) ORDER BY id asc"
     end
 
   end

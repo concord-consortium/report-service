@@ -73,16 +73,28 @@
         <.button :if={!blank?(@form.params[filter]) && has_more_filters && last_filter} type="button" phx-click="add_filter"><.icon name="hero-funnel" /> Add Filter</.button>
       </div>
     </div>
-    <div class="mt-4 flex items-center gap-4">
+
+    <%= if !blank?(@form.params["filter1"]) do %>
+
+      <div class="mt-4 flex items-center gap-4">
         <span class="font-bold">Include last run dates:</span>
         <label for="start_date" class="whitespace-nowrap">Earliest date:</label>
         <.input type="date" id="start_date" field={@form["start_date"]} />
         <label for="end_date" class="whitespace-nowrap">Latest date:</label>
         <.input type="date" id="end_date" field={@form["end_date"]} />
-    </div>
-    <div class="mt-4">
-      <.button :if={!blank?(@form.params["filter1"])} type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
-    </div>
+      </div>
+
+      <div :if={@form_options.enable_hide_names}>
+        <div class="flex gap-2 items-center">
+          <.input type="checkbox" id="hide_names" field={@form["hide_names"]} />
+          <label for="hide_names" class="whitespace-nowrap">Hide names</label>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <.button type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
+      </div>
+    <% end %>
   </.form>
 
   <%= if @debug && false do %>
@@ -97,7 +109,7 @@
 </div>
 
 <div :if={length(@report_runs) > 0}>
-  <div class="font-bold my-2">Previous Runs</div>
+  <div class="font-bold mt-4 mb-2">Previous Runs</div>
 
   <.report_runs report_runs={@report_runs} include_report_titles={false} />
 </div>

@@ -102,3 +102,8 @@ config :report_server, :output,
   bucket: "report-server-output",
   jobs_folder: "jobs",
   transcripts_folder: "transcripts"
+
+config :report_server, :athena,
+  bucket: System.get_env("ATHENA_REPORT_BUCKET") || "concord-staging-report-data", # staging
+  log_db_name: System.get_env("ATHENA_LOG_DB_NAME") || "log_ingester_production", # staging
+  hide_username_hash_salt: System.get_env("HIDE_USERNAME_HASH_SALT") || "not-the-real-salt" # dev value
