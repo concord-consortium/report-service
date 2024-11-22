@@ -1,0 +1,15 @@
+<.header>
+  <.breadcrumbs previous={@breadcrumbs} current={"Run #{@report_run.id}"} />
+  <:subtitle><%= @report.subtitle %></:subtitle>
+</.header>
+
+<div class="bg-white p-2 my-2 text-sm">
+  <.report_filter_values report_run={@report_run} />
+</div>
+
+<.async_result :let={report_results} assign={@report_results}>
+  <:loading>Running report...</:loading>
+  <:failed :let={error}><%= error %></:failed>
+  <.report_results results={report_results} sort={@sort} sort_direction={@sort_direction} />
+</.async_result>
+

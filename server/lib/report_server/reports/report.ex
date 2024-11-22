@@ -17,7 +17,7 @@ defmodule ReportServer.Reports.Report do
       defp have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
       defp apply_start_date(where, start_date, table_name \\ "rl") do
-        if String.length(start_date)>0 do
+        if String.length(start_date || "") > 0 do
           ["#{table_name}.last_run >= '#{start_date}'" | where]
         else
           where
@@ -25,7 +25,7 @@ defmodule ReportServer.Reports.Report do
       end
 
       defp apply_end_date(where, end_date, table_name \\ "rl") do
-        if String.length(end_date)>0 do
+        if String.length(end_date || "") > 0 do
           ["#{table_name}.last_run <= '#{end_date}'" | where]
         else
           where

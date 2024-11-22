@@ -13,6 +13,7 @@ defmodule ReportServerWeb.NewReportLive.Index do
       |> assign(:root_path, Reports.get_root_path())
       |> assign(:report_group, report_group)
       |> assign(:page_title, get_page_title(report_group))
+      |> assign(:is_root, length(path) == 0)
 
     {:ok, socket}
   end

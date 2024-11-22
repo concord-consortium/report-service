@@ -11,21 +11,15 @@ defmodule ReportServerWeb.NewReportLive.Form do
   require Logger
 
   alias Jason
-  alias ReportServer.PortalDbs
   alias ReportServer.Reports
-  alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportFilterQuery, ReportQuery}
+  alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportFilterQuery}
 
   @filter_type_options [{"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
 
   @impl true
-  def mount(_params, _session, socket) do
-    {:ok, socket}
-  end
-
-  @impl true
-  def handle_params(%{"slug" => slug}, _uri, socket) do
+  def handle_params(%{"slug" => slug}, _uri, %{assigns: %{user: user}} = socket) do
     report = Tree.find_report(slug)
-    %{title: title, subtitle: subtitle} = get_report_info(slug, report)
+    %{title: title, subtitle: subtitle, report_runs: report_runs} = get_report_info(user, slug, report)
 
     form = to_form(%{}, as: "filter_form")
 
@@ -33,6 +27,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:report, report)
     |> assign(:title, title)
     |> assign(:subtitle, subtitle)
+    |> assign(:report_runs, report_runs)
     |> assign(:page_title, "Reports: #{title}")
     |> assign(:root_path, Reports.get_root_path())
     |> assign(:results, nil)
@@ -154,96 +149,37 @@ defmodule ReportServerWeb.NewReportLive.Form do
   end
 
   @impl true
-  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters}} = socket) do
+  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do
     report_filter = ReportFilter.from_form(form, num_filters)
+    report_filter_values = ReportFilter.get_filter_values(report_filter, user.portal_server)
 
-    # run the report after we reply so the results are cleared
-    send(self(), {:run_report, {report, report_filter}})
+    report_run_attrs = %{
+      report_slug: report.slug,
+      report_filter: report_filter,
+      report_filter_values: report_filter_values,
+      user_id: user.id,
+    }
 
-    socket = socket
-      |> assign(:results, nil)
-      |> assign(:error, nil)
-
-    {:noreply, socket}
-  end
-
-  def handle_event("sort_column", %{"column" => column}, %{assigns: %{results: results}} = socket) do
-    dir = if socket.assigns.sort == column do
-      if socket.assigns.sort_direction == :asc, do: :desc, else: :asc
-    else
-      :asc
-    end
-    results = PortalDbs.sort_results(results, column, dir)
-    updates = socket
-    |> assign(:sort, column)
-    |> assign(:sort_direction, dir)
-    |> assign(:results, results)
-    {:noreply, updates}
-  end
-
-  def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{results: results}} = socket) do
-    case format_results(results, String.to_atom(filetype)) do
-      {:ok, data} ->
-      file_extension = String.downcase(filetype)
-      # Ask browser to download the file
-      # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
-      {:noreply, request_download(socket, data, "report.#{file_extension}")}
-
-      {:error, error} ->
-      socket = put_flash(socket, :error, "Failed to format results: #{error}")
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info({:run_report, {report, report_filter}}, socket) do
-    socket =
-      with query <- report.get_query.(report_filter),
-           sql <- ReportQuery.get_sql(query),
-           {:ok, results} <- PortalDbs.query("learn.concord.org", sql, []) do
+    socket = case Reports.create_report_run(report_run_attrs) do
+      {:ok, report_run} ->
         socket
-          |> assign(:results, results)
-          |> assign(:debug, inspect(report_filter, charlists: :as_lists))
-          |> assign(:error, nil)
-          |> assign(:sort, nil)
-          |> assign(:sort_direction, :asc)
+          |> redirect(to: ~p"/new-reports/runs/#{report_run.id}")
 
-      else
-        {:error, error} ->
-          socket
-            |> assign(:results, nil)
-            |> assign(:error, error)
+      {:error, changeset} ->
+        Logger.error(changeset)
+        socket
+          |> assign(:error, "Unable to create report run!")
     end
 
     {:noreply, socket}
   end
 
-  def request_download(socket, data, filename) do
-    socket
-    |> push_event("download_report", %{data: data, filename: filename}) # TODO: more informative filename
+  defp get_report_info(_user, slug, nil) do
+    %{title: "Error: #{slug} is not a known report", subtitle: nil, report_runs: []}
   end
-
-  def format_results(results, :CSV) do
-    csv = results
-      |> PortalDbs.map_columns_on_rows()
-      |> Stream.map(&(&1))
-      |> CSV.encode(headers: results.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
-      |> Enum.to_list()
-      |> Enum.join("")
-    {:ok, csv}
-  end
-
-  def format_results(results, :JSON) do
-    results
-      |> PortalDbs.map_columns_on_rows()
-      |> Jason.encode()
-  end
-
-  defp get_report_info(slug, nil) do
-    %{title: "Error: #{slug} is not a known report", subtitle: nil}
-  end
-  defp get_report_info(_slug, report = %Report{}) do
-    %{title: report.title, subtitle: report.subtitle}
+  defp get_report_info(user, slug, report = %Report{}) do
+    report_runs = Reports.list_user_report_runs(user, slug)
+    %{title: report.title, subtitle: report.subtitle, report_runs: report_runs}
   end
 
   defp get_filter_index(s), do: Regex.run(~r/(\d+)$/, s) |> List.last() |> String.to_integer()

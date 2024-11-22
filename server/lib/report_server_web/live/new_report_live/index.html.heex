@@ -4,12 +4,20 @@
     <:subtitle><%= @report_group.subtitle %></:subtitle>
   </.header>
 
-  <div>
-    <.described_link navigate={report.path} description={report.subtitle} :for={report <- @report_group.children}>
-      <%= report.title %>
-      <span :if={report.tbd}>🚧🛠️</span>
+  <.described_link navigate={~p"/new-reports/runs"} description={"Lists your previous report runs"} :if={@is_root}>
+    Your Runs
+  </.described_link>
+
+  <%= if @user.portal_is_admin do %>
+    <.described_link navigate={~p"/new-reports/all-runs"} description={"Lists all the report runs (because you are an admin)"} :if={@is_root}>
+      All Runs
     </.described_link>
-  </div>
+  <% end %>
+
+  <.described_link navigate={report.path} description={report.subtitle} :for={report <- @report_group.children}>
+    <%= report.title %>
+    <span :if={report.tbd}>🚧🛠️</span>
+  </.described_link>
 
 <% else %>
   <.header>
