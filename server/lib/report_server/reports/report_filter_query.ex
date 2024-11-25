@@ -34,7 +34,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, like_text) do
+  def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, like_text) do
     query = get_filter_query(primary_filter, report_filter, like_text)
     params = like_params(like_text, query)
     {query, params}
@@ -332,7 +332,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     %{query | join: [ join | query.join ], where: [ where | query.where ]}
   end
 
-  defp get_options_sql(%{id: id, value: value, from: from, join: join, where: where, order_by: order_by} = %ReportFilterQuery{}) do
+  def get_options_sql(%{id: id, value: value, from: from, join: join, where: where, order_by: order_by} = %ReportFilterQuery{}) do
     {join_sql, where_sql} = get_join_where_sql(join, where)
     "SELECT DISTINCT #{id}, #{value} FROM #{from} #{join_sql} #{where_sql} ORDER BY #{order_by}"
   end
