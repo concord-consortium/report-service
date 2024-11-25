@@ -1,5 +1,5 @@
 defmodule ReportServer.Reports.Report do
-  defstruct slug: nil, title: nil, subtitle: nil, get_query: nil, parents: [], path: nil, tbd: false
+  defstruct slug: nil, title: nil, subtitle: nil, include_filters: [], get_query: nil, parents: [], path: nil, tbd: false
 
   defmacro __using__(opts) do
     quote do
