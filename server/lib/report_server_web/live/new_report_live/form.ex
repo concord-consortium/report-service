@@ -77,6 +77,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     # empty_selection? = String.ends_with?(field, "empty_selection")
 
     filter_index = if type_change?, do: get_filter_index(filter), else: 0
+    live_select_id = "live_select#{filter_index}"
 
     form_values = if type_change? do
       # remove any existing filter values
@@ -88,26 +89,43 @@ defmodule ReportServerWeb.NewReportLive.Form do
 
     socket = assign(socket, :form, form)
 
-    socket = if type_change? && (filter_index > 1 || form_values[field] == "cohort") do
-      report_filter = ReportFilter.from_form(form, filter_index)
+    socket = if type_change? do
+      if (filter_index > 1 || form_values[field] == "cohort") do
+        ## cohorts and subfilters we query the options right away, since there should be few
+        report_filter = ReportFilter.from_form(form, filter_index)
 
-      case ReportFilterQuery.get_options(report_filter) do
-        {:ok, options, sql, params} ->
-          filter_options = socket.assigns.filter_options
-            |> List.replace_at(filter_index - 1, options)
+        case ReportFilterQuery.get_options(report_filter) do
+          {:ok, options, sql, params} ->
+            filter_options = socket.assigns.filter_options
+              |> List.replace_at(filter_index - 1, options)
 
-          socket
-            |> assign(:error, nil)
-            |> assign(:filter_options, filter_options)
-            |> assign(:debug, debug_filter(sql ,params))
+            socket
+              |> assign(:error, nil)
+              |> assign(:filter_options, filter_options)
+              |> assign(:debug, debug_filter(sql ,params))
 
-        {:error, error, sql, params} ->
-          socket
-            |> assign(:error, error)
-            |> assign(:debug, debug_filter(sql ,params))
+          {:error, error, sql, params} ->
+            socket
+              |> assign(:error, error)
+              |> assign(:debug, debug_filter(sql ,params))
+        end
+      else
+        ## other top level filters we just clear the options
+        filter_options = socket.assigns.filter_options
+          |> List.replace_at(filter_index - 1, [])
+        socket
+          |> assign(:error, nil)
+          |> assign(:filter_options, filter_options)
       end
     else
+      # Not a type change event
       socket
+    end
+
+    if type_change? do
+      # Update the existing live_select options
+      new_options = Enum.at(socket.assigns.filter_options, filter_index - 1)
+      send_update(LiveSelect.Component, id: live_select_id, options: new_options)
     end
 
     {:noreply, socket}
