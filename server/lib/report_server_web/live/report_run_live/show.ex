@@ -37,7 +37,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       |> assign(:report_run, report_run)
       |> assign(:breadcrumbs, breadcrumbs)
       |> assign_async(:row_count, fn -> get_row_count(report, report_run, user) end)
-      |> assign_async(:report_results, fn -> run_report(report, report_run, [], user) end)
+      |> assign_async(:report_results, fn -> run_report(report, report_run, [], @row_limit, user) end)
 
       {:noreply, socket}
     else
@@ -62,18 +62,20 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       |> assign(:sort, new_sort)
       |> assign(:primary_sort, column)
       |> assign(:sort_direction, dir)
-      |> assign_async(:report_results, fn -> run_report(report, report_run, new_sort, user) end)
+      |> assign_async(:report_results, fn -> run_report(report, report_run, new_sort, @row_limit, user) end)
 
     {:noreply, socket}
   end
 
-  def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{report_results: report_results}} = socket) do
-    case format_results(report_results, filetype) do
-      {:ok, data} ->
+  def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{report: report, report_run: report_run, user: user, sort: sort}} = socket) do
+    filename = "#{report_run.report_slug}-run-#{report_run.id}.#{filetype}"
+    with {:ok, %{ report_results: report_results }} <- run_report(report, report_run, sort, nil, user),
+      {:ok, data} <- format_results(report_results, filetype) do
         # Ask browser to download the file
         # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
-        {:noreply, request_download(socket, data, "report.#{filetype}")}
+        {:noreply, request_download(socket, data, filename)}
 
+    else
       {:error, error} ->
         socket = put_flash(socket, :error, "Failed to format results: #{error}")
         {:noreply, socket}
@@ -81,7 +83,6 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   end
 
   defp get_row_count(report = %Report{}, report_run = %ReportRun{}, user = %User{}) do
-    Logger.debug('getting row count')
     with {:ok, query} <- report.get_query.(report_run.report_filter),
       sql <- ReportQuery.get_count_sql(query),
       {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
@@ -96,17 +97,16 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     end
   end
 
-  defp run_report(nil, report_run, _sort_columns, _user) do
+  defp run_report(nil, report_run, _sort_columns, _row_limit, _user) do
     error = "Unable to find report: #{report_run.report_slug}"
     Logger.error(error)
     {:error, error}
   end
 
-  defp run_report(report = %Report{}, report_run = %ReportRun{}, sort_columns, user = %User{}) do
-    Logger.debug('running report')
+  defp run_report(report = %Report{}, report_run = %ReportRun{}, sort_columns, row_limit, user = %User{}) do
     with {:ok, query} <- report.get_query.(report_run.report_filter),
       ordered_query <- ReportQuery.add_sort_columns(query, sort_columns),
-      sql <- ReportQuery.get_sql(ordered_query, @row_limit),
+      sql <- ReportQuery.get_sql(ordered_query, row_limit),
       {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
         {:ok, %{report_results: results}}
 
@@ -117,27 +117,27 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     end
   end
 
-  def request_download(socket, data, filename) do
+  defp request_download(socket, data, filename) do
     socket
     |> push_event("download_report", %{data: data, filename: filename}) # TODO: more informative filename
   end
 
-  def format_results(report_results = %Phoenix.LiveView.AsyncResult{result: result}, "csv") do
+  defp format_results(%MyXQL.Result{} = result, "csv") do
     csv = result
       |> PortalDbs.map_columns_on_rows()
       |> Stream.map(&(&1))
-      |> CSV.encode(headers: report_results.result.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
+      |> CSV.encode(headers: result.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
       |> Enum.to_list()
       |> Enum.join("")
     {:ok, csv}
   end
-  def format_results(%Phoenix.LiveView.AsyncResult{result: result}, "json") do
+  defp format_results(%MyXQL.Result{} = result, "json") do
     result
       |> PortalDbs.map_columns_on_rows()
       |> Jason.encode()
   end
-  def format_results(_report_results, filetype) do
-    {:error, "Unknown file type: #{filetype}"}
+  defp format_results(result, filetype) do
+    {:error, "Unknown file type or malformed data: #{filetype}"}
   end
 
 end
