@@ -11,10 +11,11 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   @impl true
   def mount(_params, _session, socket) do
     socket = socket
-      |> assign(:sort, nil)
+      |> assign(:sort, [])
+      |> assign(:primary_sort, nil)
       |> assign(:sort_direction, :asc)
 
-    {:ok, socket}
+    {:ok, socket, temporary_assigns: [report_results: nil]}
   end
 
   @impl true
@@ -31,7 +32,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       |> assign(:report, report)
       |> assign(:report_run, report_run)
       |> assign(:breadcrumbs, breadcrumbs)
-      |> assign_async(:report_results, fn -> run_report(report, report_run, user) end)
+      |> assign_async(:report_results, fn -> run_report(report, report_run, [], user) end)
 
       {:noreply, socket}
     else
@@ -43,23 +44,21 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   end
 
   @impl true
-  def handle_event("sort_column", %{"column" => column}, %{assigns: %{report_results: report_results}} = socket) do
-    dir = if socket.assigns.sort == column do
+  def handle_event("sort_column", %{"column" => column}, %{assigns: %{report: report, report_run: report_run, user: user, sort: sort}} = socket) do
+
+    dir = if socket.assigns.primary_sort == column do
       if socket.assigns.sort_direction == :asc, do: :desc, else: :asc
     else
       :asc
     end
 
-    %MyXQL.Result{columns: columns, rows: rows} = report_results.result
-    col_index = columns |> Enum.find_index(&(&1 == column))
-    sort_fn = if dir == :asc do &value_sorter/2 else &(value_sorter(&2, &1)) end
-    new_rows = Enum.sort_by(rows, &(Enum.at(&1, col_index)), sort_fn)
-    report_results = put_in(report_results.result.rows, new_rows)
-
+    new_sort = [{column, dir}| sort] |> ReportQuery.uniq_order_by()
     socket = socket
-      |> assign(:sort, column)
+      |> assign(:sort, new_sort)
+      |> assign(:primary_sort, column)
       |> assign(:sort_direction, dir)
-      |> assign(:report_results, report_results)
+      |> assign_async(:report_results, fn -> run_report(report, report_run, new_sort, user) end)
+
     {:noreply, socket}
   end
 
@@ -76,15 +75,17 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     end
   end
 
-  defp run_report(nil, report_run, _user) do
+  defp run_report(nil, report_run, _sort_columns, _user) do
     error = "Unable to find report: #{report_run.report_slug}"
     Logger.error(error)
     {:error, error}
   end
 
-  defp run_report(report = %Report{}, report_run = %ReportRun{}, user = %User{}) do
+  defp run_report(report = %Report{}, report_run = %ReportRun{}, sort_columns, user = %User{}) do
+    Logger.debug('running report')
     with {:ok, query} <- report.get_query.(report_run.report_filter),
-      sql <- ReportQuery.get_sql(query),
+      ordered_query <- ReportQuery.add_sort_columns(query, sort_columns),
+      sql <- ReportQuery.get_sql(ordered_query),
       {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
         {:ok, %{report_results: results}}
 
@@ -118,7 +119,4 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:error, "Unknown file type: #{filetype}"}
   end
 
-  # Dates do not sort properly with normal <= operator
-  defp value_sorter(v1 = %Date{}, v2 = %Date{}), do: Date.compare(v1, v2) != :gt
-  defp value_sorter(v1, v2), do: v1 <= v2
 end

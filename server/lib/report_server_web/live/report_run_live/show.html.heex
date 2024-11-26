@@ -10,5 +10,5 @@
 <.async_result :let={report_results} assign={@report_results}>
   <:loading>Running report...</:loading>
   <:failed :let={error}>There was an error in running the query</:failed>
-  <.report_results results={report_results} sort={@sort} sort_direction={@sort_direction} />
+  <.report_results results={report_results} primary_sort={@primary_sort} sort_direction={@sort_direction} />
 </.async_result>

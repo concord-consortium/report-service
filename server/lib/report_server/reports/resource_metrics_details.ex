@@ -3,29 +3,28 @@ defmodule ReportServer.Reports.ResourceMetricsDetails do
 
   def get_query(report_filter = %ReportFilter{}) do
     %ReportQuery{
-      select: """
-        trim(ea.name) as activity_name,
-        concat(u.last_name, ', ', u.first_name) as teacher_name,
-        u.email as teacher_email,
-        ps.name as school_name,
-        pd.name as school_district,
-        ps.state as school_state,
-        pco.two_letter as school_country,
-        count(distinct pc.id) as number_of_classes,
-        (select group_concat(tags.name order by cast(tags.name as unsigned))
+      cols: [
+        {"trim(ea.name)", "activity_name"},
+        {"concat(u.last_name, ', ', u.first_name)", "teacher_name"},
+        {"u.email", "teacher_email"},
+        {"ps.name", "school_name"},
+        {"pd.name", "school_district"},
+        {"ps.state", "school_state"},
+        {"pco.two_letter", "school_country"},
+        {"count(distinct pc.id)", "number_of_classes"},
+        {"(select group_concat(tags.name order by cast(tags.name as unsigned))
           from taggings
           join tags on (taggings.tag_id = tags.id)
           where
             taggings.taggable_type = 'ExternalActivity'
             and taggings.taggable_id = ea.id
             and taggings.context = 'grade_levels'
-          group by taggings.taggable_id
-          ) as grade_levels,
-        count(distinct rl.student_id) as number_of_students,
-        date(po.created_at) as first_assigned,
-        date(min(rl.last_run)) as first_student_use,
-        date(max(rl.last_run)) as most_recent_student_use
-      """,
+          group by taggings.taggable_id)", "grade_levels"},
+        {"count(distinct rl.student_id)", "number_of_students"},
+        {"date(po.created_at)", "first_assigned"},
+        {"date(min(rl.last_run))", "first_student_use"},
+        {"date(max(rl.last_run))", "most_recent_student_use"},
+      ],
       from: "external_activities ea",
       join: [[
         "join portal_offerings po on (po.runnable_id = ea.id)",
@@ -40,7 +39,7 @@ defmodule ReportServer.Reports.ResourceMetricsDetails do
         "left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)"
       ]],
       group_by: "ea.id, pt.id, u.id",
-      order_by: "ea.name, u.last_name, u.first_name"
+      order_by: [{"activity_name", :asc}, {"teacher_name", :asc}]
     }
     |> apply_filters(report_filter)
   end

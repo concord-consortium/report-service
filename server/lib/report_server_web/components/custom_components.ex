@@ -98,7 +98,7 @@ defmodule ReportServerWeb.CustomComponents do
   end
 
   def sort_col_button(assigns) do
-    icon = if assigns.column == assigns.sort do
+    icon = if assigns.column == assigns.primary_sort do
       if assigns.sort_direction == :asc do
         "hero-arrow-down"
       else
@@ -119,7 +119,7 @@ defmodule ReportServerWeb.CustomComponents do
   Renders the report results
   """
   attr :results, :any, required: true
-  attr :sort, :string, default: nil
+  attr :primary_sort, :string, default: nil
   attr :sort_direction, :string, default: nil
   def report_results(assigns) do
     ~H"""
@@ -134,9 +134,9 @@ defmodule ReportServerWeb.CustomComponents do
       <table class="w-full border-collapse">
         <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
           <tr>
-            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @sort, do: "font-bold", else: "font-normal")]}>
+            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @primary_sort, do: "font-bold", else: "font-normal")]}>
               <%= String.replace(col, "_", " ") %>
-              <.sort_col_button column={col} sort={@sort} sort_direction={@sort_direction} />
+              <.sort_col_button column={col} primary_sort={@primary_sort} sort_direction={@sort_direction} />
             </th>
           </tr>
         </thead>
