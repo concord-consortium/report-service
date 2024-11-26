@@ -14,13 +14,19 @@ defmodule ReportServerWeb.NewReportLive.Form do
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportFilterQuery}
 
-  @filter_type_options [{"Schools", "school"}, {"Cohorts", "cohort"}, {"Teachers", "teacher"}, {"Assignments", "assignment"}]
+  @filter_types %{
+    :school => "Schools",
+    :cohort => "Cohorts",
+    :teacher => "Teachers",
+    :assignment => "Assignments",
+    :permission_form => "Permission Forms",
+  }
 
   @impl true
   def handle_params(%{"slug" => slug}, _uri, %{assigns: %{user: user}} = socket) do
     report = Tree.find_report(slug)
     %{title: title, subtitle: subtitle, report_runs: report_runs} = get_report_info(user, slug, report)
-
+    filter_type_options = report.include_filters |> Enum.map(fn filter -> {@filter_types[filter], filter} end)
     form = to_form(%{}, as: "filter_form")
 
     socket = socket
@@ -37,7 +43,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:error, nil)
     |> assign(:form, form)
     |> assign(:num_filters, 1)
-    |> assign(:filter_type_options, [@filter_type_options])
+    |> assign(:filter_types_included, filter_type_options)
+    |> assign(:filter_type_options, [filter_type_options])
     |> assign(:filter_options, [[]])
 
     {:noreply, socket}
@@ -115,8 +122,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
 
     new_num_filters = num_filters + 1
 
-    existing_filters = Enum.map(1..num_filters, &(form_params["filter#{&1}_type"]))
-    new_filter_type_options = Enum.filter(@filter_type_options, fn {_key, value} -> !Enum.member?(existing_filters, value) end)
+    existing_filters = Enum.map(1..num_filters, &(String.to_atom(form_params["filter#{&1}_type"])))
+    new_filter_type_options = Enum.filter(socket.assigns.filter_types_included, fn {_key, value} -> !Enum.member?(existing_filters, value) end)
 
     socket = socket
       |> assign(:num_filters, new_num_filters)

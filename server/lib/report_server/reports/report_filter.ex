@@ -3,9 +3,10 @@ defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.ReportFilter
 
-  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], start_date: nil, end_date: nil
+  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], permission_form: [],
+    start_date: nil, end_date: nil
 
-  @valid_filter_types ~w"cohort school teacher assignment"
+  @valid_filter_types ~w"cohort school teacher assignment permission_form"
   @filter_type_atoms Enum.map(@valid_filter_types, &String.to_atom/1)
 
   def from_form(form, filter_index) do
@@ -39,6 +40,8 @@ defmodule ReportServer.Reports.ReportFilter do
             ["SELECT 'teacher' AS table_name, pt.id, CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.email), '>') AS name FROM portal_teachers pt join users u on (u.id = pt.user_id) WHERE pt.id IN (#{in_ids})" | acc]
           :assignment ->
             ["SELECT 'assignment' AS table_name, id, TRIM(name) as name FROM external_activities WHERE id IN (#{in_ids})" | acc]
+          :permission_form ->
+            ["SELECT 'permission_form' AS table_name, ppf.id, CONCAT(TRIM(ap.name), ': ', TRIM(ppf.name)) as name FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id WHERE ppf.id IN (#{in_ids})" | acc]
         end
       else
         acc

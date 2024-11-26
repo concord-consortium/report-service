@@ -108,13 +108,15 @@ defmodule ReportServer.Reports.Tree do
         ResourceMetricsSummary.new(%Report{
           slug: "resource-metrics-summary",
           title: "Summary Metrics by Assignment",
-          subtitle: "Includes total number of schools, number of teachers, number of classes, and number of learners per resource."
+          subtitle: "Includes total number of schools, number of teachers, number of classes, and number of learners per resource.",
+          include_filters: [:cohort, :school, :teacher, :assignment]
         }),
         ResourceMetricsDetails.new(%Report{
           slug: "resource-metrics-details",
           title: "Detailed Metrics by Assignment",
-          subtitle: "Includes teacher information, school information, number of classes, number of students, and assignment information per resource."}
-        ),
+          subtitle: "Includes teacher information, school information, number of classes, number of students, and assignment information per resource.",
+          include_filters: [:cohort, :school, :teacher, :assignment]
+        }),
         TBDReport.new(%Report{
           slug: "student-assignment-usage",
           title: "Assignment Usage by Student",
@@ -147,7 +149,8 @@ defmodule ReportServer.Reports.Tree do
         TeacherStatus.new(%Report{
           slug: "teacher-status",
           title: "Teacher Status",
-          subtitle: "Shows what activities teachers have assigned to their classes and how many students have started them."
+          subtitle: "Shows what activities teachers have assigned to their classes and how many students have started them.",
+          include_filters: [:cohort, :school, :teacher, :assignment]
         }),
       ]},
       %ReportGroup{slug: "codap-reports", title: "CODAP Reports", subtitle: "Reports about CODAP (none yet defined)", tbd: true, children: [
