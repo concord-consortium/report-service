@@ -8,7 +8,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportQuery, ReportRun, Tree}
 
-  @row_limit 10
+  @row_limit 100
 
   @impl true
   def mount(_params, _session, socket) do
@@ -119,7 +119,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
 
   defp request_download(socket, data, filename) do
     socket
-    |> push_event("download_report", %{data: data, filename: filename}) # TODO: more informative filename
+    |> push_event("download_report", %{data: data, filename: filename})
   end
 
   defp format_results(%MyXQL.Result{} = result, "csv") do
