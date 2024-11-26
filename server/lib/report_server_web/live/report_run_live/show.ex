@@ -136,7 +136,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       |> PortalDbs.map_columns_on_rows()
       |> Jason.encode()
   end
-  defp format_results(result, filetype) do
+  defp format_results(_result, filetype) do
     {:error, "Unknown file type or malformed data: #{filetype}"}
   end
 
