@@ -8,10 +8,14 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportQuery, ReportRun, Tree}
 
+  @row_limit 10
+
   @impl true
   def mount(_params, _session, socket) do
     socket = socket
       |> assign(:sort, [])
+      |> assign(:row_count, nil)
+      |> assign(:row_limit, @row_limit)
       |> assign(:primary_sort, nil)
       |> assign(:sort_direction, :asc)
 
@@ -32,6 +36,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       |> assign(:report, report)
       |> assign(:report_run, report_run)
       |> assign(:breadcrumbs, breadcrumbs)
+      |> assign_async(:row_count, fn -> get_row_count(report, report_run, user) end)
       |> assign_async(:report_results, fn -> run_report(report, report_run, [], user) end)
 
       {:noreply, socket}
@@ -75,6 +80,22 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     end
   end
 
+  defp get_row_count(report = %Report{}, report_run = %ReportRun{}, user = %User{}) do
+    Logger.debug('getting row count')
+    with {:ok, query} <- report.get_query.(report_run.report_filter),
+      sql <- ReportQuery.get_count_sql(query),
+      {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
+        # Count will be the first value in the first (only) row of results
+        count = Enum.at(results.rows, 0) |> Enum.at(0)
+        {:ok, %{row_count: count}}
+
+    else
+      {:error, error} ->
+        Logger.error(error)
+        {:error, error}
+    end
+  end
+
   defp run_report(nil, report_run, _sort_columns, _user) do
     error = "Unable to find report: #{report_run.report_slug}"
     Logger.error(error)
@@ -85,7 +106,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     Logger.debug('running report')
     with {:ok, query} <- report.get_query.(report_run.report_filter),
       ordered_query <- ReportQuery.add_sort_columns(query, sort_columns),
-      sql <- ReportQuery.get_sql(ordered_query),
+      sql <- ReportQuery.get_sql(ordered_query, @row_limit),
       {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
         {:ok, %{report_results: results}}
 

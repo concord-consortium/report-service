@@ -115,6 +115,25 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  def report_header(assigns) do
+    ~H"""
+    <div class="flex justify-between items-center">
+      <strong>
+        <.async_result :let={count} assign={@row_count}>
+          <:loading>Counting records...</:loading>
+          <:failed>There was an error in counting the records</:failed>
+          <span>Total: <%= count %> rows.</span>
+          <span :if={count > @row_limit}>Showing the first <%= @row_limit %>.</span>
+        </.async_result>
+      </strong>
+      <span>
+        <.download_button filetype="csv"/>
+        <.download_button filetype="json"/>
+      </span>
+    </div>
+    """
+  end
+
   @doc """
   Renders the report results
   """
@@ -123,13 +142,6 @@ defmodule ReportServerWeb.CustomComponents do
   attr :sort_direction, :string, default: nil
   def report_results(assigns) do
     ~H"""
-    <div class="flex justify-between items-center">
-      <strong>Query result: <%= @results.num_rows %> rows</strong>
-      <span>
-        <.download_button filetype="csv"/>
-        <.download_button filetype="json"/>
-      </span>
-    </div>
     <div class="bg-white text-sm overflow-auto sm:overflow-auto">
       <table class="w-full border-collapse">
         <thead class="bg-gray-100 text-left leading-6 text-zinc-500">

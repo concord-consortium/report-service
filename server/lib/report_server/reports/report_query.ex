@@ -1,9 +1,9 @@
 defmodule ReportServer.Reports.ReportQuery do
   alias ReportServer.Reports.ReportQuery
 
-  defstruct cols: [], from: "", join: [], where: [], group_by: "", order_by: ""
+  defstruct cols: [], from: "", join: [], where: [], group_by: "", order_by: []
 
-  def get_sql(%ReportQuery{cols: cols, from: from, join: join, where: where, group_by: group_by, order_by: order_by}) do
+  def get_sql(%ReportQuery{cols: cols, from: from, join: join, where: where, group_by: group_by, order_by: order_by}, limit \\ nil) do
     select_sql = cols |> Enum.map(fn {col, alias} -> "#{col} AS #{alias}" end) |> Enum.join(", ")
     # NOTE: the reverse is before flatten to keep any sublists in order
     join_sql = join |> Enum.reverse() |> List.flatten() |> Enum.join(" ")
@@ -14,8 +14,16 @@ defmodule ReportServer.Reports.ReportQuery do
     else
       ""
     end
+    limit_sql = if limit != nil, do: "LIMIT #{limit}", else: ""
 
-    "SELECT #{select_sql} FROM #{from} #{join_sql} WHERE #{where_sql} #{group_by_sql} #{order_by_sql}"
+    "SELECT #{select_sql} FROM #{from} #{join_sql} WHERE #{where_sql} #{group_by_sql} #{order_by_sql} #{limit_sql}"
+  end
+
+  def get_count_sql(%ReportQuery{from: from, join: join, where: where, group_by: group_by}) do
+    query_without_cols_or_order = %ReportQuery{cols: [{"1", "row"}], from: from, join: join, where: where, group_by: group_by}
+    subquery = get_sql(query_without_cols_or_order)
+
+    "SELECT COUNT(*) AS count FROM (#{subquery}) AS subquery"
   end
 
   def update_query(report_query = %ReportQuery{}, opts) do

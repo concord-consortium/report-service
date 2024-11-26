@@ -7,8 +7,10 @@
   <.report_filter_values report_run={@report_run} />
 </div>
 
+<.report_header row_count={@row_count} row_limit={@row_limit} />
+
 <.async_result :let={report_results} assign={@report_results}>
   <:loading>Running report...</:loading>
-  <:failed :let={error}>There was an error in running the query</:failed>
+  <:failed>There was an error in running the query</:failed>
   <.report_results results={report_results} primary_sort={@primary_sort} sort_direction={@sort_direction} />
 </.async_result>
