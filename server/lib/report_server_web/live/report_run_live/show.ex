@@ -8,13 +8,18 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportQuery, ReportRun, Tree}
 
+  @row_limit 100
+
   @impl true
   def mount(_params, _session, socket) do
     socket = socket
-      |> assign(:sort, nil)
+      |> assign(:sort, [])
+      |> assign(:row_count, nil)
+      |> assign(:row_limit, @row_limit)
+      |> assign(:primary_sort, nil)
       |> assign(:sort_direction, :asc)
 
-    {:ok, socket}
+    {:ok, socket, temporary_assigns: [report_results: nil]}
   end
 
   @impl true
@@ -31,7 +36,8 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       |> assign(:report, report)
       |> assign(:report_run, report_run)
       |> assign(:breadcrumbs, breadcrumbs)
-      |> assign_async(:report_results, fn -> run_report(report, report_run, user) end)
+      |> assign_async(:row_count, fn -> get_row_count(report, report_run, user) end)
+      |> assign_async(:report_results, fn -> run_report(report, report_run, [], @row_limit, user) end)
 
       {:noreply, socket}
     else
@@ -43,48 +49,64 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   end
 
   @impl true
-  def handle_event("sort_column", %{"column" => column}, %{assigns: %{report_results: report_results}} = socket) do
-    dir = if socket.assigns.sort == column do
+  def handle_event("sort_column", %{"column" => column}, %{assigns: %{report: report, report_run: report_run, user: user, sort: sort}} = socket) do
+
+    dir = if socket.assigns.primary_sort == column do
       if socket.assigns.sort_direction == :asc, do: :desc, else: :asc
     else
       :asc
     end
 
-    %MyXQL.Result{columns: columns, rows: rows} = report_results.result
-    col_index = columns |> Enum.find_index(&(&1 == column))
-    sort_fn = if dir == :asc do &value_sorter/2 else &(value_sorter(&2, &1)) end
-    new_rows = Enum.sort_by(rows, &(Enum.at(&1, col_index)), sort_fn)
-    report_results = put_in(report_results.result.rows, new_rows)
-
+    new_sort = [{column, dir}| sort] |> ReportQuery.uniq_order_by()
     socket = socket
-      |> assign(:sort, column)
+      |> assign(:sort, new_sort)
+      |> assign(:primary_sort, column)
       |> assign(:sort_direction, dir)
-      |> assign(:report_results, report_results)
+      |> assign_async(:report_results, fn -> run_report(report, report_run, new_sort, @row_limit, user) end)
+
     {:noreply, socket}
   end
 
-  def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{report_results: report_results}} = socket) do
-    case format_results(report_results, filetype) do
-      {:ok, data} ->
+  def handle_event("download_report", %{"filetype" => filetype}, %{assigns: %{report: report, report_run: report_run, user: user, sort: sort}} = socket) do
+    filename = "#{report_run.report_slug}-run-#{report_run.id}.#{filetype}"
+    with {:ok, %{ report_results: report_results }} <- run_report(report, report_run, sort, nil, user),
+      {:ok, data} <- format_results(report_results, filetype) do
         # Ask browser to download the file
         # See https://elixirforum.com/t/download-or-export-file-from-phoenix-1-7-liveview/58484/10
-        {:noreply, request_download(socket, data, "report.#{filetype}")}
+        {:noreply, request_download(socket, data, filename)}
 
+    else
       {:error, error} ->
         socket = put_flash(socket, :error, "Failed to format results: #{error}")
         {:noreply, socket}
     end
   end
 
-  defp run_report(nil, report_run, _user) do
+  defp get_row_count(report = %Report{}, report_run = %ReportRun{}, user = %User{}) do
+    with {:ok, query} <- report.get_query.(report_run.report_filter),
+      sql <- ReportQuery.get_count_sql(query),
+      {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
+        # Count will be the first value in the first (only) row of results
+        count = Enum.at(results.rows, 0) |> Enum.at(0)
+        {:ok, %{row_count: count}}
+
+    else
+      {:error, error} ->
+        Logger.error(error)
+        {:error, error}
+    end
+  end
+
+  defp run_report(nil, report_run, _sort_columns, _row_limit, _user) do
     error = "Unable to find report: #{report_run.report_slug}"
     Logger.error(error)
     {:error, error}
   end
 
-  defp run_report(report = %Report{}, report_run = %ReportRun{}, user = %User{}) do
+  defp run_report(report = %Report{}, report_run = %ReportRun{}, sort_columns, row_limit, user = %User{}) do
     with {:ok, query} <- report.get_query.(report_run.report_filter),
-      sql <- ReportQuery.get_sql(query),
+      ordered_query <- ReportQuery.add_sort_columns(query, sort_columns),
+      sql <- ReportQuery.get_sql(ordered_query, row_limit),
       {:ok, results} <- PortalDbs.query(user.portal_server, sql, []) do
         {:ok, %{report_results: results}}
 
@@ -95,30 +117,27 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     end
   end
 
-  def request_download(socket, data, filename) do
+  defp request_download(socket, data, filename) do
     socket
-    |> push_event("download_report", %{data: data, filename: filename}) # TODO: more informative filename
+    |> push_event("download_report", %{data: data, filename: filename})
   end
 
-  def format_results(report_results = %Phoenix.LiveView.AsyncResult{result: result}, "csv") do
+  defp format_results(%MyXQL.Result{} = result, "csv") do
     csv = result
       |> PortalDbs.map_columns_on_rows()
       |> Stream.map(&(&1))
-      |> CSV.encode(headers: report_results.result.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
+      |> CSV.encode(headers: result.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
       |> Enum.to_list()
       |> Enum.join("")
     {:ok, csv}
   end
-  def format_results(%Phoenix.LiveView.AsyncResult{result: result}, "json") do
+  defp format_results(%MyXQL.Result{} = result, "json") do
     result
       |> PortalDbs.map_columns_on_rows()
       |> Jason.encode()
   end
-  def format_results(_report_results, filetype) do
-    {:error, "Unknown file type: #{filetype}"}
+  defp format_results(_result, filetype) do
+    {:error, "Unknown file type or malformed data: #{filetype}"}
   end
 
-  # Dates do not sort properly with normal <= operator
-  defp value_sorter(v1 = %Date{}, v2 = %Date{}), do: Date.compare(v1, v2) != :gt
-  defp value_sorter(v1, v2), do: v1 <= v2
 end

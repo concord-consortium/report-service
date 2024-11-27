@@ -98,7 +98,7 @@ defmodule ReportServerWeb.CustomComponents do
   end
 
   def sort_col_button(assigns) do
-    icon = if assigns.column == assigns.sort do
+    icon = if assigns.column == assigns.primary_sort do
       if assigns.sort_direction == :asc do
         "hero-arrow-down"
       else
@@ -115,28 +115,40 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
-  @doc """
-  Renders the report results
-  """
-  attr :results, :any, required: true
-  attr :sort, :string, default: nil
-  attr :sort_direction, :string, default: nil
-  def report_results(assigns) do
+  def report_header(assigns) do
     ~H"""
     <div class="flex justify-between items-center">
-      <strong>Query result: <%= @results.num_rows %> rows</strong>
+      <strong>
+        <.async_result :let={count} assign={@row_count}>
+          <:loading>Counting records...</:loading>
+          <:failed>There was an error in counting the records</:failed>
+          <span>Total: <%= count %> rows.</span>
+          <span :if={count > @row_limit}>Showing the first <%= @row_limit %>.</span>
+        </.async_result>
+      </strong>
       <span>
         <.download_button filetype="csv"/>
         <.download_button filetype="json"/>
       </span>
     </div>
+    """
+  end
+
+  @doc """
+  Renders the report results
+  """
+  attr :results, :any, required: true
+  attr :primary_sort, :string, default: nil
+  attr :sort_direction, :string, default: nil
+  def report_results(assigns) do
+    ~H"""
     <div class="bg-white text-sm overflow-auto sm:overflow-auto">
       <table class="w-full border-collapse">
         <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
           <tr>
-            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @sort, do: "font-bold", else: "font-normal")]}>
+            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @primary_sort, do: "font-bold", else: "font-normal")]}>
               <%= String.replace(col, "_", " ") %>
-              <.sort_col_button column={col} sort={@sort} sort_direction={@sort_direction} />
+              <.sort_col_button column={col} primary_sort={@primary_sort} sort_direction={@sort_direction} />
             </th>
           </tr>
         </thead>

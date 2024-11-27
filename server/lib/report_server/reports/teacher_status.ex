@@ -3,17 +3,17 @@ defmodule ReportServer.Reports.TeacherStatus do
 
   def get_query(report_filter = %ReportFilter{}) do
     %ReportQuery{
-      select: """
-        concat(u.last_name, ', ', u.first_name) as teacher_name,
-        u.email as teacher_email,
-        trim(ea.name) as activity_name,
-        pc.name as class_name,
-        date(po.created_at) as date_assigned,
-        (select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id) as num_students_in_class,
-        count(distinct rl.student_id) as num_students_started,
-        date(min(rl.last_run)) as date_of_first_use,
-        date(max(rl.last_run)) as date_of_last_use
-      """,
+      cols: [
+        {"concat(u.last_name, ', ', u.first_name)", "teacher_name"},
+        {"u.email", "teacher_email"},
+        {"trim(ea.name)", "activity_name"},
+        {"pc.name", "class_name"},
+        {"date(po.created_at)", "date_assigned"},
+        {"(select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id)", "num_students_in_class"},
+        {"count(distinct rl.student_id)", "num_students_started"},
+        {"date(min(rl.last_run))", "date_of_first_use"},
+        {"date(max(rl.last_run))", "date_of_last_use"}
+      ],
       from: "portal_teachers pt",
       join: [[
         "join users u on (u.id = pt.user_id)",
@@ -24,7 +24,7 @@ defmodule ReportServer.Reports.TeacherStatus do
         "left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)",
       ]],
       group_by: "u.id, ea.id, pc.id, po.id, ea.id",
-      order_by: "u.last_name, u.first_name, trim(ea.name)"
+      order_by: [{"teacher_name", :asc}, {"activity_name", :asc}]
     }
     |> apply_filters(report_filter)
   end

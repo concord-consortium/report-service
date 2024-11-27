@@ -3,13 +3,13 @@ defmodule ReportServer.Reports.ResourceMetricsSummary do
 
   def get_query(report_filter = %ReportFilter{}) do
     %ReportQuery{
-      select: """
-        trim(ea.name) as activity_name,
-        count(distinct pt.id) as number_of_teachers,
-        count(distinct ps.id) as number_of_schools,
-        count(distinct pc.id) as number_of_classes,
-        count(distinct rl.id) as number_of_students
-      """,
+      cols: [
+        {"trim(ea.name)", "activity_name"},
+        {"count(distinct pt.id)", "number_of_teachers"},
+        {"count(distinct ps.id)", "number_of_schools"},
+        {"count(distinct pc.id)", "number_of_classes"},
+        {"count(distinct rl.id)", "number_of_students"}
+      ],
       from: "external_activities ea",
       join: [[
         "join portal_offerings po on (po.runnable_id = ea.id)",
@@ -21,7 +21,7 @@ defmodule ReportServer.Reports.ResourceMetricsSummary do
         "left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)"
       ]],
       group_by: "ea.id",
-      order_by: "ea.name"
+      order_by: [{"activity_name", :asc}]
     }
     |> apply_filters(report_filter)
     |> tap(&IO.inspect/1)
