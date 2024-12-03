@@ -154,9 +154,9 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       value: "CONCAT(users.first_name, ' ', users.last_name, ' <', users.email, '>') AS fullname",
       from: "portal_teachers",
       join: ["JOIN users ON users.id = portal_teachers.user_id"],
-      where: maybe_add_like(like_text, ["users.first_name LIKE ? OR users.last_name LIKE ? OR users.email LIKE ?"]),
+      where: maybe_add_like(like_text, ["CONCAT(users.first_name, ' ', users.last_name, ' <', users.email, '>') LIKE ?"]),
       order_by: "fullname",
-      num_params: 3
+      num_params: 1
     }
 
     query = if Enum.empty?(cohort) do
