@@ -142,8 +142,8 @@ defmodule ReportServerWeb.CustomComponents do
   attr :sort_direction, :string, default: nil
   def report_results(assigns) do
     ~H"""
-    <div class="bg-white text-sm overflow-auto sm:overflow-auto">
-      <table class="w-full border-collapse">
+    <div class="bg-white text-sm">
+      <table class="w-full border-collapse bg-white">
         <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
           <tr>
             <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @primary_sort, do: "font-bold", else: "font-normal")]}>
