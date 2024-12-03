@@ -120,7 +120,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
           String.to_integer(numerals)
         _ -> nil
       end
-      socket = if changed_filter_index && changed_filter_index < socket.assigns.num_filters do
+
+      if changed_filter_index && changed_filter_index < socket.assigns.num_filters do
         # There was a change in the filter values, so we need to update the options for any following filters
         Enum.reduce((changed_filter_index+1)..socket.assigns.num_filters, socket, fn i, acc ->
           update_options(acc, i, form, form["filter#{i}_type"].value, "live_select#{i}")
