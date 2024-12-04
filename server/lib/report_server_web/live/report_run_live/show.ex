@@ -37,6 +37,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
 
       socket = socket
       |> assign(:report, report)
+      |> assign(:page_title, "Run #{id}: #{report.title}")
       |> assign(:report_run, report_run)
       |> assign(:breadcrumbs, breadcrumbs)
       |> assign_async(:row_count, fn -> get_row_count(report, report_run, user) end)
