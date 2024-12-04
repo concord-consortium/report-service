@@ -47,19 +47,31 @@ defmodule ReportServer.Reports.Report do
         end
       end
 
-      defp apply_log_start_date(where, start_date, table_name \\ "rl") do
-        if String.length(start_date || "") > 0 do
-          ["#{table_name}.time >= '#{start_date}'" | where]
-        else
-          where
-        end
+      defp apply_log_start_date(where, start_date, table_name \\ "log") do
+        apply_log_date(where, start_date, ">=", table_name)
       end
 
-      defp apply_log_end_date(where, end_date, table_name \\ "rl") do
-        if String.length(end_date || "") > 0 do
-          ["#{table_name}.time <= '#{end_date}'" | where]
-        else
-          where
+      defp apply_log_end_date(where, end_date, table_name \\ "log") do
+        apply_log_date(where, end_date, "<=", table_name)
+      end
+
+      defp apply_log_date(where, log_date, cmp, table_name \\ "log")
+      defp apply_log_date(where, nil, _cmp, _table_name), do: where
+      defp apply_log_date(where, "", _cmp, _table_name), do: where
+
+      defp apply_log_date(where, log_date, cmp, table_name) do
+        IO.inspect({log_date}, label: "*** log_date 1")
+        [year, month, day] = String.split(log_date, "-")
+        IO.inspect({log_date, year, month, day}, label: "*** log_date 2")
+        iso_date = "#{year}-#{month}-#{day}T00:00:00Z"
+
+        case DateTime.from_iso8601(iso_date) do
+          {:ok, datetime, _} ->
+            time = DateTime.to_unix(datetime)
+            ["#{table_name}.time #{cmp} #{time}" | where]
+
+          {:error, _} ->
+            where
         end
       end
 
