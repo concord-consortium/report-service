@@ -41,7 +41,8 @@ defmodule ReportServer.AthenaDB do
         case create_workgroup(client, user) do
           {:ok, workgroup_name} ->
             {:ok, workgroup_name}
-          error -> error
+          error ->
+            transform_aws_error(error)
         end
     end
   end

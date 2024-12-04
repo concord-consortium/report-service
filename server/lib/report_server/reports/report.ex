@@ -17,6 +17,10 @@ defmodule ReportServer.Reports.Report do
         "(#{list |> Enum.map(&Integer.to_string/1) |> Enum.join(",")})"
       end
 
+      defp string_list_to_single_quoted_in(list) do
+        "(#{list |> Enum.map(&("'#{escape_single_quote(&1)}'")) |> Enum.join(",")})"
+      end
+
       defp have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
       defp apply_start_date(where, start_date, table_name \\ "rl") do
@@ -41,6 +45,26 @@ defmodule ReportServer.Reports.Report do
         else
           where
         end
+      end
+
+      defp apply_log_start_date(where, start_date, table_name \\ "rl") do
+        if String.length(start_date || "") > 0 do
+          ["#{table_name}.time >= '#{start_date}'" | where]
+        else
+          where
+        end
+      end
+
+      defp apply_log_end_date(where, end_date, table_name \\ "rl") do
+        if String.length(end_date || "") > 0 do
+          ["#{table_name}.time <= '#{end_date}'" | where]
+        else
+          where
+        end
+      end
+
+      defp escape_single_quote(str) do
+        String.replace(str, "'", "''")
       end
 
     end

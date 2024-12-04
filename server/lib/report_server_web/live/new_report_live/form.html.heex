@@ -93,11 +93,14 @@
 
       <div class="mt-4">
         <.button type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
+        <%= if @dev do %>
+          <.button type="button" phx-click="debug_form"><.icon name="hero-bug-ant" /> Debug Report</.button>
+        <% end %>
       </div>
     <% end %>
   </.form>
 
-  <%= if @debug && false do %>
+  <%= if @dev && @debug do %>
     <div class="mt-2 font-mono text-sm">
       <strong>DEBUG INFO:</strong> <%= @debug %>
     </div>

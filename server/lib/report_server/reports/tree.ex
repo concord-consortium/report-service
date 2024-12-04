@@ -6,6 +6,7 @@ defmodule ReportServer.Reports.Tree do
     ResourceMetricsSummary,
     ResourceMetricsDetails,
     StudentActions,
+    TeacherActions,
     TBDReport
   }
 
@@ -124,7 +125,7 @@ defmodule ReportServer.Reports.Tree do
           subtitle: "Includes ids, usernames, and other information about the student, teacher, class, school, etc as well as summary information about the resource(s) in your query like total number of questions and answers."
         })
       ]},
-      %ReportGroup{slug: "student-reports", title: "Student Reports", subtitle: "Reports about students", tbd: true, children: [
+      %ReportGroup{slug: "student-reports", title: "Student Reports", subtitle: "Reports about students", children: [
         StudentActions.new(%Report{
           slug: "student-actions",
           title: "Student Actions",
@@ -143,11 +144,12 @@ defmodule ReportServer.Reports.Tree do
           subtitle: "Includes everything from the Assignment Usage by Student report plus details about student answers to all questions in the resource(s) in your query."
         }),
       ]},
-      %ReportGroup{slug: "teacher-reports", title: "Teacher Reports", subtitle: "Reports about teachers", tbd: true, children: [
-        TBDReport.new(%Report{
+      %ReportGroup{slug: "teacher-reports", title: "Teacher Reports", subtitle: "Reports about teachers", children: [
+        TeacherActions.new(%Report{
           slug: "teacher-actions",
           title: "Teacher Actions",
-          subtitle: "Includes log events for teacher actions in the activities, teacher edition, and class dashboard."
+          subtitle: "Includes log events for teacher actions in the activities, teacher edition, and class dashboard.",
+          include_filters: [:cohort, :school, :teacher, :assignment]
         }),
         TeacherStatus.new(%Report{
           slug: "teacher-status",

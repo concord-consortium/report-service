@@ -4,22 +4,27 @@ defmodule ReportServer.Reports.StudentActions do
   alias ReportServer.PortalDbs
 
   def get_query(report_filter = %ReportFilter{}, user = %User{}) do
-    run_remote_endpoints = get_run_remote_endpoints(report_filter, user)
-      |> Enum.map(&("'#{&1}'"))
-      |> Enum.join(", ")
+    case get_run_remote_endpoints(report_filter, user) do
+      {:ok, run_remote_endpoints} ->
+        run_remote_endpoints = run_remote_endpoints
+          |> Enum.map(&("'#{&1}'"))
+          |> Enum.join(", ")
 
-    # FIXME: when we add non-admin access update this code to only allow admins to not hide names
-    hide_names = report_filter.hide_names
-    remove_username = false
+        # FIXME: when we add non-admin access update this code to only allow admins to not hide names
+        hide_names = report_filter.hide_names
+        remove_username = false
 
-    if String.length(run_remote_endpoints) > 0 do
-      {:ok, %ReportQuery{
-        cols: ReportQuery.get_log_cols(hide_names: hide_names, remove_username: remove_username),
-        from: "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_time\" log",
-        where: [["\"log\".\"run_remote_endpoint\" IN (#{run_remote_endpoints})"]]
-      }}
-    else
-      {:error, "No learners found to match the requested filter(s)."}
+        if String.length(run_remote_endpoints) > 0 do
+          {:ok, %ReportQuery{
+            cols: ReportQuery.get_log_cols(hide_names: hide_names, remove_username: remove_username),
+            from: "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_time\" log",
+            where: [["\"log\".\"run_remote_endpoint\" IN (#{run_remote_endpoints})"]]
+          }}
+        else
+          {:error, "No learners found to match the requested filter(s)."}
+        end
+
+      error -> error
     end
   end
 
@@ -77,12 +82,12 @@ defmodule ReportServer.Reports.StudentActions do
       |> apply_start_date(start_date)
       |> apply_end_date(end_date)
 
-    {:ok, portal_query} = ReportQuery.update_query(portal_query, join: join, where: where)
-
-    {:ok, sql} = ReportQuery.get_sql(portal_query)
-
-    {:ok, result} = PortalDbs.query(user.portal_server, sql)
-
-    Enum.map(result.rows, &("https://#{user.portal_server}/dataservice/external_activity_data/#{&1}"))
+    with {:ok, portal_query} <- ReportQuery.update_query(portal_query, join: join, where: where),
+         {:ok, sql} <- ReportQuery.get_sql(portal_query),
+         {:ok, result} = PortalDbs.query(user.portal_server, sql) do
+      {:ok, Enum.map(result.rows, &("https://#{user.portal_server}/dataservice/external_activity_data/#{&1}"))}
+    else
+      error -> error
+    end
   end
 end
