@@ -1,0 +1,81 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "transcribe:GetTranscriptionJob",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::concord-staging-report-data/workgroup-output/*",
+                "arn:aws:s3:::token-service-files-private/interactive-attachments/*",
+                "arn:aws:transcribe:us-east-1:816253370536:transcription-job/*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:ListBucket"
+            ],
+            "Resource": "arn:aws:s3:::report-server-output/*"
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": "transcribe:StartTranscriptionJob",
+            "Resource": "*"
+        },
+        {
+            "Sid": "PortedQueryCreatorWorkgroupPolicy",
+            "Effect": "Allow",
+            "Action": [
+                "athena:GetWorkGroup",
+                "athena:CreateWorkGroup",
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution",
+                "athena:TagResource"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "PortedQueryCreatorS3OutputPolicy",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetBucketLocation",
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:PutObject",
+                "s3:PutObjectAcl"
+            ],
+            "Resource": [
+                "arn:aws:s3:::concord-staging-report-data",
+                "arn:aws:s3:::concord-staging-report-data/*"
+            ]
+        },
+        {
+            "Sid": "PortedQueryCreatorS3LogInputPolicy",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetBucketLocation",
+                "s3:GetObject",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::log-ingester-qa",
+                "arn:aws:s3:::log-ingester-qa/*"
+            ]
+        },
+        {
+            "Sid": "PortedQueryCreatorGluePolicy",
+            "Effect": "Allow",
+            "Action": "glue:GetTable",
+            "Resource": "*"
+        }
+    ]
+}
