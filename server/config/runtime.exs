@@ -23,18 +23,24 @@ end
 server_access_key_id =
   System.get_env("SERVER_ACCESS_KEY_ID") ||
     raise """
-    environment variable SERVER_ACCESS_KEY_ID is missing.
+    the required SERVER_ACCESS_KEY_ID environment variable is missing.
     """
 server_secret_access_key =
   System.get_env("SERVER_SECRET_ACCESS_KEY") ||
     raise """
-    environment variable SERVER_SECRET_ACCESS_KEY is missing.
+    the required SERVER_SECRET_ACCESS_KEY environment variable is missing.
     """
 
 report_service_token =
   System.get_env("REPORT_SERVICE_TOKEN") ||
     raise """
-    environment variable REPORT_SERVICE_TOKEN is missing.
+    the required REPORT_SERVICE_TOKEN environment variable is missing.
+    """
+
+hide_username_hash_salt =
+  System.get_env("HIDE_USERNAME_HASH_SALT") ||
+    raise """
+    the required HIDE_USERNAME_HASH_SALT environment variable is missing.
     """
 
 config :report_server, :aws_credentials,
@@ -108,6 +114,11 @@ if config_env() == :prod do
     bucket: System.get_env("OUTPUT_BUCKET") || "report-server-output",
     jobs_folder: System.get_env("JOBS_FOLDER") || "jobs",
     transcripts_folder: System.get_env("TRANSCRIPTS_FOLDER") || "transcripts"
+
+  config :report_server, :athena,
+    bucket: System.get_env("ATHENA_REPORT_BUCKET") || "concord-report-data", # production
+    log_db_name: System.get_env("ATHENA_LOG_DB_NAME") || "log_ingester_production", # production
+    hide_username_hash_salt: hide_username_hash_salt
 
   # ## SSL Support
   #

@@ -5,6 +5,7 @@ defmodule ReportServer.Reports.Tree do
     TeacherStatus,
     ResourceMetricsSummary,
     ResourceMetricsDetails,
+    StudentActions,
     TBDReport
   }
 
@@ -124,10 +125,12 @@ defmodule ReportServer.Reports.Tree do
         })
       ]},
       %ReportGroup{slug: "student-reports", title: "Student Reports", subtitle: "Reports about students", tbd: true, children: [
-        TBDReport.new(%Report{
+        StudentActions.new(%Report{
           slug: "student-actions",
           title: "Student Actions",
-          subtitle: "Returns the low-level log event stream for the learners, including model-level interactions."
+          subtitle: "Returns the low-level log event stream for the learners, including model-level interactions.",
+          include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
+          form_options: [enable_hide_names: true]
         }),
         TBDReport.new(%Report{
           slug: "student-actions-with-metadata",

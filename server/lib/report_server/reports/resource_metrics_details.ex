@@ -1,7 +1,7 @@
 defmodule ReportServer.Reports.ResourceMetricsDetails do
-  use ReportServer.Reports.Report
+  use ReportServer.Reports.Report, type: :portal
 
-  def get_query(report_filter = %ReportFilter{}) do
+  def get_query(report_filter = %ReportFilter{}, _user = %User{}) do
     %ReportQuery{
       cols: [
         {"trim(ea.name)", "activity_name"},

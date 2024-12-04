@@ -7,10 +7,17 @@
   <.report_filter_values report_run={@report_run} />
 </div>
 
-<.report_header row_count={@row_count} row_limit={@row_limit} />
+<.report_header report={@report} report_run={@report_run} row_count={@row_count} row_limit={@row_limit} />
+
 
 <.async_result :let={report_results} assign={@report_results}>
-  <:loading>Running report...</:loading>
-  <:failed>There was an error in running the query</:failed>
-  <.report_results results={report_results} primary_sort={@primary_sort} sort_direction={@sort_direction} />
+  <:loading>
+  <%= if @report.type == :portal do %>
+  Running report...
+  <% else %>
+  Running or loading previously created report status...
+  <% end %>
+  </:loading>
+  <:failed :let={{:error, error}}>There was an error while running the query: <%= error %></:failed>
+  <.report_results report={@report} results={report_results} primary_sort={@primary_sort} sort_direction={@sort_direction} />
 </.async_result>

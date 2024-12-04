@@ -54,7 +54,7 @@ defmodule ReportServer.Reports do
     Repo.all(query)
   end
 
-@doc """
+  @doc """
   Gets a single report_run.
 
   Raises `Ecto.NoResultsError` if the Report run does not exist.
@@ -69,6 +69,22 @@ defmodule ReportServer.Reports do
 
   """
   def get_report_run!(id), do: Repo.get!(ReportRun, id)
+
+  @doc """
+  Gets a single report_run with the user pre-loaded.
+
+  Raises `Ecto.NoResultsError` if the Report run does not exist.
+
+  ## Examples
+
+      iex> get_report_run_with_user!(123)
+      %ReportRun{}
+
+      iex> get_report_run_with_user!(456)
+      ** (Ecto.NoResultsError)
+
+  """
+  def get_report_run_with_user!(id), do: Repo.get!(ReportRun, id) |> Repo.preload(:user)
 
   @doc """
   Creates a report_run.

@@ -77,23 +77,27 @@ const Hooks = {
   },
   ReportDownloadButton: {
     mounted() {
-      this.handleEvent("download_report", ({filename, data}) => {
-        console.log("download_report", filename, data);
-        const blob = new Blob([data], { type: 'text/plain' });
-        // Create a URL for the blob and set it as the href of the link
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        // Set the download attribute with the desired file name
-        link.download = filename;
+      this.handleEvent("download_report", (options) => {
+        let blob;
 
-        // Append the link to the body (not displayed)
+        const link = document.createElement('a');
+        link.download = options.filename;
+
+        if (options.download_url) {
+          link.href = options.download_url;
+        } else {
+          blob = new Blob([options.data], { type: 'text/plain' });
+          link.href = URL.createObjectURL(blob);
+        }
+
         document.body.appendChild(link);
-
-        // Programmatically click the link to trigger the download
         link.click();
 
         // Clean up by revoking the blob URL and removing the link element
-        URL.revokeObjectURL(link.href);
+        if (blob) {
+          URL.revokeObjectURL(link.href);
+        }
+
         document.body.removeChild(link);
       })
     }

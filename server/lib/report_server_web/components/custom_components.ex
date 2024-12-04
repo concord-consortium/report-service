@@ -115,53 +115,84 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  @doc """
+  Renders the report results header
+  """
+  attr :report, :any, required: true
+  attr :report_run, :any, required: true
+  attr :row_count, :integer, required: true
+  attr :row_limit, :integer, required: true
   def report_header(assigns) do
-    ~H"""
-    <div class="flex justify-between items-center">
-      <strong>
-        <.async_result :let={count} assign={@row_count}>
-          <:loading>Counting records...</:loading>
-          <:failed>There was an error in counting the records</:failed>
-          <span>Total: <%= count %> rows.</span>
-          <span :if={count > @row_limit}>Showing the first <%= @row_limit %>.</span>
-        </.async_result>
-      </strong>
-      <span>
-        <.download_button filetype="csv"/>
-        <.download_button filetype="json"/>
-      </span>
-    </div>
-    """
+    if assigns.report.type == :athena do
+      if assigns.report_run.athena_query_state == "succeeded" do
+        ~H"""
+        <div class="flex justify-end items-center">
+          <span>
+            <.download_button filetype="csv"/>
+          </span>
+        </div>
+        """
+      else
+        ~H"""
+        <div>
+          Report status: <span class="font-bold"><%= @report_run.athena_query_state || "not started" %></span>
+        </div>
+        """
+      end
+    else
+      ~H"""
+      <div class="flex justify-between items-center">
+        <strong>
+          <.async_result :let={count} assign={@row_count}>
+            <:loading>Counting records...</:loading>
+            <:failed>There was an error in counting the records</:failed>
+            <span>Total: <%= count %> rows.</span>
+            <span :if={count > @row_limit}>Showing the first <%= @row_limit %>.</span>
+          </.async_result>
+        </strong>
+        <span>
+          <.download_button filetype="csv"/>
+          <.download_button filetype="json"/>
+        </span>
+      </div>
+      """
+    end
   end
 
   @doc """
   Renders the report results
   """
+  attr :report, :any, required: true
   attr :results, :any, required: true
   attr :primary_sort, :string, default: nil
   attr :sort_direction, :string, default: nil
   def report_results(assigns) do
-    ~H"""
-    <div class="bg-white text-sm">
-      <table class="w-full border-collapse bg-white">
-        <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
-          <tr>
-            <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @primary_sort, do: "font-bold", else: "font-normal")]}>
-              <%= String.replace(col, "_", " ") %>
-              <.sort_col_button column={col} primary_sort={@primary_sort} sort_direction={@sort_direction} />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={row <- @results.rows} class="group hover:bg-zinc-200 even:bg-gray-50">
-            <td :for={col <- row} class="p-2 font-normal border-b">
-              <%= col %>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    """
+    if assigns.report.type == :athena do
+      ~H"""
+      """
+    else
+      ~H"""
+      <div class="bg-white text-sm">
+        <table class="w-full border-collapse bg-white">
+          <thead class="bg-gray-100 text-left leading-6 text-zinc-500">
+            <tr>
+              <th :for={col <- @results.columns} class={["p-2 whitespace-nowrap border-b capitalize", (if col == @primary_sort, do: "font-bold", else: "font-normal")]}>
+                <%= String.replace(col, "_", " ") %>
+                <.sort_col_button column={col} primary_sort={@primary_sort} sort_direction={@sort_direction} />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- @results.rows} class="group hover:bg-zinc-200 even:bg-gray-50">
+              <td :for={col <- row} class="p-2 font-normal border-b">
+                <%= col %>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      """
+    end
   end
 
   attr :report, :any, required: true
@@ -194,6 +225,18 @@ defmodule ReportServerWeb.CustomComponents do
       <div class="table-row" :for={filter <- Enum.reverse(@report_run.report_filter.filters)}>
         <div class="table-cell capitalize font-bold"><%= filter %>s</div>
         <div class="table-cell pl-3"><%= Enum.join(Map.values(@report_run.report_filter_values[filter] || %{}), ", ") %></div>
+      </div>
+      <div class="table-row" :if={String.length(@report_run.report_filter.start_date || "") > 0}>
+        <div class="table-cell capitalize font-bold">Start Date</div>
+        <div class="table-cell pl-3"><%= @report_run.report_filter.start_date %></div>
+      </div>
+      <div class="table-row" :if={String.length(@report_run.report_filter.end_date || "") > 0}>
+        <div class="table-cell capitalize font-bold">End Date</div>
+        <div class="table-cell pl-3"><%= @report_run.report_filter.end_date %></div>
+      </div>
+      <div class="table-row" :if={@report_run.report_filter.hide_names}>
+        <div class="table-cell capitalize font-bold">Hide Names</div>
+        <div class="table-cell pl-3">True</div>
       </div>
     </div>
     """

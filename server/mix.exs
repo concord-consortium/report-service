@@ -4,7 +4,7 @@ defmodule ReportServer.MixProject do
   def project do
     [
       app: :report_server,
-      version: "1.2.0-pre.11",
+      version: "1.2.0-pre.12",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

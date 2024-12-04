@@ -16,14 +16,14 @@ defmodule ReportServer.Reports.ReportQuery do
     end
     limit_sql = if limit != nil, do: "LIMIT #{limit}", else: ""
 
-    "SELECT #{select_sql} FROM #{from} #{join_sql} WHERE #{where_sql} #{group_by_sql} #{order_by_sql} #{limit_sql}"
+    {:ok, "SELECT #{select_sql} FROM #{from} #{join_sql} WHERE #{where_sql} #{group_by_sql} #{order_by_sql} #{limit_sql}"}
   end
 
   def get_count_sql(%ReportQuery{from: from, join: join, where: where, group_by: group_by}) do
     query_without_cols_or_order = %ReportQuery{cols: [{"1", "row"}], from: from, join: join, where: where, group_by: group_by}
-    subquery = get_sql(query_without_cols_or_order)
+    {:ok, subquery} = get_sql(query_without_cols_or_order)
 
-    "SELECT COUNT(*) AS count FROM (#{subquery}) AS subquery"
+    {:ok, "SELECT COUNT(*) AS count FROM (#{subquery}) AS subquery"}
   end
 
   def update_query(report_query = %ReportQuery{}, opts) do
@@ -51,4 +51,25 @@ defmodule ReportServer.Reports.ReportQuery do
     %{report_query | order_by: new_order_by}
   end
 
+  def get_log_cols(opts) do
+    hide_names = Keyword.get(opts, :hide_names, false)
+    remove_username = Keyword.get(opts, :remove_username, false)
+
+    ["id", "session", "username", "application", "activity", "event", "event_value", "time", "parameters", "extras", "run_remote_endpoint", "timestamp"]
+      |> Enum.filter(&(!(&1 == "username" && remove_username)))
+      |> Enum.map(&(maybe_hash_username(&1 == "username" && hide_names, &1)))
+  end
+
+  def get_log_db_name() do
+    Application.get_env(:report_server, :athena) |> Keyword.get(:log_db_name, "log_ingester_production")
+  end
+
+  defp maybe_hash_username(hash, col) do
+    if hash do
+      hide_username_hash_salt = Application.get_env(:report_server, :athena) |> Keyword.get(:hide_username_hash_salt, "no-hide-username-salt-provided!!!");
+      {"TO_HEX(SHA1(CAST(('#{hide_username_hash_salt}' || \"log\".#{col}) AS VARBINARY)))", col}
+    else
+      {"\"log\".\"#{col}\"", col}
+    end
+  end
 end
