@@ -55,7 +55,7 @@
             mode={:tags}
             debounce={250}
             update_min_len={3}
-            placeholder={"Enter at least 3 characters of the #{filter_type_value}"}
+            placeholder={Enum.at(@placeholder_text, i - 1)}
             dropdown_extra_class="max-h-60 overflow-y-scroll"
             tag_class="flex px-2 py-1 rounded-full bg-teal text-white text-sm"
             container_extra_class="grow"

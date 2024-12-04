@@ -16,9 +16,13 @@ defmodule ReportServer.Reports.ReportFilter do
       Enum.reduce(1..filter_index, %ReportFilter{}, fn i, acc ->
         filter_type = get_filter_type!(form, i)
         filter_value = get_filter_value(form, i)
-        acc
-        |> Map.put(filter_type, filter_value)
-        |> Map.put(:filters, [filter_type | acc.filters])
+        if filter_type do
+          acc
+          |> Map.put(filter_type, filter_value)
+          |> Map.put(:filters, [filter_type | acc.filters])
+        else
+          acc
+        end
       end)
       # NOTE: we do not reverse the filters as they need to be processed from right to left
     end
@@ -69,10 +73,11 @@ defmodule ReportServer.Reports.ReportFilter do
 
   defp get_filter_type!(form, i) do
     filter_type = form.params["filter#{i}_type"]
-    if Enum.member?(@valid_filter_types, filter_type) do
-      String.to_atom(filter_type)
-    else
-      raise "Invalid filter type: #{filter_type}"
+    cond do
+      filter_type == "" -> nil
+      Enum.member?(@valid_filter_types, filter_type) ->
+        String.to_atom(filter_type)
+      true -> raise "Invalid filter type: #{filter_type}"
     end
   end
 
