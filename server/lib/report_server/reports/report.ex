@@ -60,9 +60,7 @@ defmodule ReportServer.Reports.Report do
       defp apply_log_date(where, "", _cmp, _table_name), do: where
 
       defp apply_log_date(where, log_date, cmp, table_name) do
-        IO.inspect({log_date}, label: "*** log_date 1")
         [year, month, day] = String.split(log_date, "-")
-        IO.inspect({log_date, year, month, day}, label: "*** log_date 2")
         iso_date = "#{year}-#{month}-#{day}T00:00:00Z"
 
         case DateTime.from_iso8601(iso_date) do
@@ -78,7 +76,6 @@ defmodule ReportServer.Reports.Report do
       defp escape_single_quote(str) do
         String.replace(str, "'", "''")
       end
-
     end
   end
 end
