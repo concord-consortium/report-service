@@ -4,28 +4,29 @@ defmodule ReportServer.Reports.StudentActions do
   alias ReportServer.PortalDbs
 
   def get_query(report_filter = %ReportFilter{}, user = %User{}) do
-    run_remote_endpoints = get_run_remote_endpoints(report_filter, user)
-      |> Enum.map(&("'#{&1}'"))
-      |> Enum.join(", ")
+    case get_run_remote_endpoints(report_filter, user) do
+      {:ok, run_remote_endpoints} ->
+        # FIXME: when we add non-admin access update this code to only allow admins to not hide names
+        hide_names = report_filter.hide_names
+        remove_username = false
 
-    # FIXME: when we add non-admin access update this code to only allow admins to not hide names
-    hide_names = report_filter.hide_names
-    remove_username = false
+        if !Enum.empty?(run_remote_endpoints) do
+          {:ok, %ReportQuery{
+            cols: ReportQuery.get_log_cols(hide_names: hide_names, remove_username: remove_username),
+            from: "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_time\" log",
+            where: [["\"log\".\"run_remote_endpoint\" IN #{string_list_to_single_quoted_in(run_remote_endpoints)}"]]
+          }}
+        else
+          {:error, "No learners found to match the requested filter(s)."}
+        end
 
-    if String.length(run_remote_endpoints) > 0 do
-      {:ok, %ReportQuery{
-        cols: ReportQuery.get_log_cols(hide_names: hide_names, remove_username: remove_username),
-        from: "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_time\" log",
-        where: [["\"log\".\"run_remote_endpoint\" IN (#{run_remote_endpoints})"]]
-      }}
-    else
-      {:error, "No learners found to match the requested filter(s)."}
+      error -> error
     end
   end
 
   defp get_run_remote_endpoints(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form, start_date: start_date, end_date: end_date}, user = %User{}) do
     portal_query = %ReportQuery{
-      cols: [{"DISTINCT pl.secure_key", "run_remote_endpoint"}],
+      cols: [{"DISTINCT pl.secure_key", "secure_key"}],
       from: "portal_learners pl",
       join: [[
         "JOIN report_learners rl ON (rl.learner_id = pl.id)",
@@ -77,12 +78,12 @@ defmodule ReportServer.Reports.StudentActions do
       |> apply_start_date(start_date)
       |> apply_end_date(end_date)
 
-    {:ok, portal_query} = ReportQuery.update_query(portal_query, join: join, where: where)
-
-    {:ok, sql} = ReportQuery.get_sql(portal_query)
-
-    {:ok, result} = PortalDbs.query(user.portal_server, sql)
-
-    Enum.map(result.rows, &("https://#{user.portal_server}/dataservice/external_activity_data/#{&1}"))
+    with {:ok, portal_query} <- ReportQuery.update_query(portal_query, join: join, where: where),
+         {:ok, sql} <- ReportQuery.get_sql(portal_query),
+         {:ok, result} = PortalDbs.query(user.portal_server, sql) do
+      {:ok, Enum.map(result.rows, fn [secure_key] -> "https://#{user.portal_server}/dataservice/external_activity_data/#{secure_key}" end)}
+    else
+      error -> error
+    end
   end
 end

@@ -12,7 +12,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
 
   alias Jason
   alias ReportServer.Reports
-  alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
 
   @filter_types %{
     :school => "Schools",
@@ -21,6 +21,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
     :assignment => "Assignments",
     :permission_form => "Permission Forms",
   }
+
+  @dev Application.compile_env(:report_server, :dev_routes)
 
   @impl true
   def handle_params(%{"slug" => slug}, _uri, %{assigns: %{user: user}} = socket) do
@@ -48,6 +50,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:filter_options, [[]])
     |> assign(:form_options, get_form_options(report))
     |> assign(:placeholder_text, [""])
+    |> assign(:dev, @dev)
 
     {:noreply, socket}
   end
@@ -180,17 +183,23 @@ defmodule ReportServerWeb.NewReportLive.Form do
     {:noreply, socket}
   end
 
-  # uncomment to debug athena reports instead of creating a run
-  # TODO: maybe add dev only button for this?
-  # @impl true
-  # def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{type: :athena} = report, form: form, num_filters: num_filters, user: user}} = socket) do
-  #   report_filter = ReportFilter.from_form(form, num_filters)
-  #   {:ok, query} = report.get_query.(report_filter, user)
-  #   {:ok, sql} = ReportServer.Reports.ReportQuery.get_sql(query)
-  #   socket = socket
-  #     |> assign(:debug, sql)
-  #   {:noreply, socket}
-  # end
+  @impl true
+  def handle_event("debug_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do
+    if @dev do
+      report_filter = ReportFilter.from_form(form, num_filters)
+
+      with {:ok, query} <- report.get_query.(report_filter, user),
+          {:ok, sql} <- ReportQuery.get_sql(query) do
+        {:noreply, assign(socket, :debug, sql)}
+      else
+        {:error, error} ->
+          {:noreply, assign(socket, :debug, "ERROR: #{error}")}
+      end
+    else
+      # noop on production
+      {:noreply, socket}
+    end
+  end
 
   @impl true
   def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do

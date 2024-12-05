@@ -51,7 +51,7 @@ defmodule ReportServer.Reports.ReportQuery do
     %{report_query | order_by: new_order_by}
   end
 
-  def get_log_cols(opts) do
+  def get_log_cols(opts \\ []) do
     hide_names = Keyword.get(opts, :hide_names, false)
     remove_username = Keyword.get(opts, :remove_username, false)
 
