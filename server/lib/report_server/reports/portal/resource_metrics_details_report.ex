@@ -1,4 +1,4 @@
-defmodule ReportServer.Reports.ResourceMetricsDetails do
+defmodule ReportServer.Reports.Portal.ResourceMetricsDetailsReport do
   use ReportServer.Reports.Report, type: :portal
 
   def get_query(report_filter = %ReportFilter{}, _user = %User{}) do

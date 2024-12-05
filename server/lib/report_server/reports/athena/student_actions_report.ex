@@ -1,4 +1,4 @@
-defmodule ReportServer.Reports.StudentActions do
+defmodule ReportServer.Reports.Athena.StudentActionsReport do
   use ReportServer.Reports.Report, type: :athena
 
   alias ReportServer.PortalDbs
