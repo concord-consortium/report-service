@@ -2,12 +2,16 @@ defmodule ReportServer.Reports.Tree do
   alias ReportServer.Reports
   alias ReportServer.Reports.{
     Report,
-    TeacherStatus,
-    ResourceMetricsSummary,
-    ResourceMetricsDetails,
-    StudentActions,
-    TeacherActions,
     TBDReport
+  }
+  alias ReportServer.Reports.Portal.{
+    TeacherStatusReport,
+    ResourceMetricsSummaryReport,
+    ResourceMetricsDetailsReport,
+  }
+  alias ReportServer.Reports.Athena.{
+    StudentActionsReport,
+    TeacherActionsReport,
   }
 
   @tree_cache :tree_cache
@@ -107,13 +111,13 @@ defmodule ReportServer.Reports.Tree do
     # NOTE: report slugs should never be changed once they are put into production as they are saved in the report runs
     %ReportGroup{slug: Reports.get_root_slug(), title: "Reports", subtitle: "Top Level Report Categories", children: [
       %ReportGroup{slug: "assignment-reports", title: "Assignment Reports", subtitle: "Reports about assignments", children: [
-        ResourceMetricsSummary.new(%Report{
+        ResourceMetricsSummaryReport.new(%Report{
           slug: "resource-metrics-summary",
           title: "Summary Metrics by Assignment",
           subtitle: "Includes total number of schools, number of teachers, number of classes, and number of learners per resource.",
           include_filters: [:cohort, :school, :teacher, :assignment]
         }),
-        ResourceMetricsDetails.new(%Report{
+        ResourceMetricsDetailsReport.new(%Report{
           slug: "resource-metrics-details",
           title: "Detailed Metrics by Assignment",
           subtitle: "Includes teacher information, school information, number of classes, number of students, and assignment information per resource.",
@@ -126,7 +130,7 @@ defmodule ReportServer.Reports.Tree do
         })
       ]},
       %ReportGroup{slug: "student-reports", title: "Student Reports", subtitle: "Reports about students", children: [
-        StudentActions.new(%Report{
+        StudentActionsReport.new(%Report{
           slug: "student-actions",
           title: "Student Actions",
           subtitle: "Returns the low-level log event stream for the learners, including model-level interactions.",
@@ -145,13 +149,13 @@ defmodule ReportServer.Reports.Tree do
         }),
       ]},
       %ReportGroup{slug: "teacher-reports", title: "Teacher Reports", subtitle: "Reports about teachers", children: [
-        TeacherActions.new(%Report{
+        TeacherActionsReport.new(%Report{
           slug: "teacher-actions",
           title: "Teacher Actions",
           subtitle: "Includes log events for teacher actions in the activities, teacher edition, and class dashboard.",
           include_filters: [:cohort, :school, :teacher, :assignment]
         }),
-        TeacherStatus.new(%Report{
+        TeacherStatusReport.new(%Report{
           slug: "teacher-status",
           title: "Teacher Status",
           subtitle: "Shows what activities teachers have assigned to their classes and how many students have started them.",
