@@ -56,6 +56,7 @@ config :report_server, ReportServerWeb.Endpoint,
 # Watch static and templates for browser reloading.
 config :report_server, ReportServerWeb.Endpoint,
   live_reload: [
+    web_console_logger: true,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
