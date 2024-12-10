@@ -12,14 +12,7 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsDetailsReport do
         {"ps.state", "school_state"},
         {"pco.two_letter", "school_country"},
         {"count(distinct pc.id)", "number_of_classes"},
-        {"(select group_concat(tags.name order by cast(tags.name as unsigned))
-          from taggings
-          join tags on (taggings.tag_id = tags.id)
-          where
-            taggings.taggable_type = 'ExternalActivity'
-            and taggings.taggable_id = ea.id
-            and taggings.context = 'grade_levels'
-          group by taggings.taggable_id)", "grade_levels"},
+        {"group_concat(distinct pg.name order by cast(pg.name as unsigned))", "grade_levels"},
         {"count(distinct rl.student_id)", "number_of_students"},
         {"date(po.created_at)", "first_assigned"},
         {"date(min(rl.last_run))", "first_student_use"},
@@ -29,6 +22,8 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsDetailsReport do
       join: [[
         "join portal_offerings po on (po.runnable_id = ea.id)",
         "join portal_clazzes pc on (pc.id = po.clazz_id)",
+        "left join portal_grade_levels pgl on (pgl.has_grade_levels_id = pc.id and pgl.has_grade_levels_type = 'Portal::Clazz')",
+        "left join portal_grades pg on (pg.id = pgl.grade_id)",
         "join portal_teacher_clazzes ptc on (ptc.clazz_id = pc.id)",
         "join portal_teachers pt on (pt.id = ptc.teacher_id)",
         "join users u on (u.id=pt.user_id)",
