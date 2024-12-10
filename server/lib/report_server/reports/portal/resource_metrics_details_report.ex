@@ -12,7 +12,7 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsDetailsReport do
         {"ps.state", "school_state"},
         {"pco.two_letter", "school_country"},
         {"count(distinct pc.id)", "number_of_classes"},
-        {"group_concat(distinct pg.name order by cast(pg.name as unsigned))", "grade_levels"},
+        {"group_concat(distinct pg.name order by cast(pg.name as unsigned))", "class_grade_levels"},
         {"count(distinct rl.student_id)", "number_of_students"},
         {"date(po.created_at)", "first_assigned"},
         {"date(min(rl.last_run))", "first_student_use"},
