@@ -8,6 +8,7 @@ defmodule ReportServer.Reports.ReportQuery do
     # NOTE: the reverse is before flatten to keep any sublists in order
     join_sql = join |> Enum.reverse() |> List.flatten() |> Enum.join(" ")
     where_sql = where |> Enum.reverse() |> List.flatten() |> Enum.map(&("(#{&1})")) |> Enum.join(" AND ")
+    where_sql = if String.length(where_sql) != 0, do: "WHERE #{where_sql}", else: ""
     group_by_sql = if String.length(group_by) != 0, do: "GROUP BY #{group_by}", else: ""
     order_by_sql = if !Enum.empty?(order_by) do
        "ORDER BY " <> (order_by |> Enum.map(fn {col, dir} -> "#{col} #{Atom.to_string(dir)}" end) |> Enum.join(", "))
@@ -16,7 +17,7 @@ defmodule ReportServer.Reports.ReportQuery do
     end
     limit_sql = if limit != nil, do: "LIMIT #{limit}", else: ""
 
-    {:ok, "SELECT #{select_sql} FROM #{from} #{join_sql} WHERE #{where_sql} #{group_by_sql} #{order_by_sql} #{limit_sql}"}
+    {:ok, "SELECT #{select_sql} FROM #{from} #{join_sql} #{where_sql} #{group_by_sql} #{order_by_sql} #{limit_sql}"}
   end
 
   def get_count_sql(%ReportQuery{from: from, join: join, where: where, group_by: group_by}) do
@@ -56,20 +57,38 @@ defmodule ReportServer.Reports.ReportQuery do
     remove_username = Keyword.get(opts, :remove_username, false)
 
     ["id", "session", "username", "application", "activity", "event", "event_value", "time", "parameters", "extras", "run_remote_endpoint", "timestamp"]
-      |> Enum.filter(&(!(&1 == "username" && remove_username)))
-      |> Enum.map(&(maybe_hash_username(&1 == "username" && hide_names, &1)))
+      |> Enum.map(&(to_col_tuple("log", &1)))
+      |> Enum.filter(&(!(is_username_col_tuple?(&1) && remove_username)))
+      |> Enum.map(&(hash_username_tuple(&1, hide_names)))
+  end
+
+  def get_learner_cols(opts \\ []) do
+    hide_names = Keyword.get(opts, :hide_names, false)
+
+    ["learner_id", "run_remote_endpoint", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run", "query_id"]
+      |> Enum.map(&(to_col_tuple("learner", &1)))
+      |> Enum.map(&(hash_username_tuple(&1, hide_names)))
+      |> Enum.map(&(hide_learner_student_name(&1, hide_names)))
   end
 
   def get_log_db_name() do
     Application.get_env(:report_server, :athena) |> Keyword.get(:log_db_name, "log_ingester_production")
   end
 
-  defp maybe_hash_username(hash, col) do
-    if hash do
-      hide_username_hash_salt = Application.get_env(:report_server, :athena) |> Keyword.get(:hide_username_hash_salt, "no-hide-username-salt-provided!!!");
-      {"TO_HEX(SHA1(CAST(('#{hide_username_hash_salt}' || \"log\".#{col}) AS VARBINARY)))", col}
-    else
-      {"\"log\".\"#{col}\"", col}
-    end
+  defp is_username_col_tuple?({_table, "username"}), do: true
+  defp is_username_col_tuple?({_table, _col}), do: false
+
+  defp hash_username_tuple({table, col = "username"}, true) do
+    hide_username_hash_salt = Application.get_env(:report_server, :athena) |> Keyword.get(:hide_username_hash_salt, "no-hide-username-salt-provided!!!");
+    {"TO_HEX(SHA1(CAST(('#{hide_username_hash_salt}' || \"#{table}\".#{col}) AS VARBINARY)))", col}
   end
+  defp hash_username_tuple(tuple, false), do: tuple
+
+  defp hide_learner_student_name({_table, "student_name"}, true) do
+    {"\"learner\".\"student_id\"", "student_name"}
+  end
+  defp hide_learner_student_name(tuple, false), do: tuple
+
+  def to_col_tuple(table, col), do: {"\"#{table}\".\"#{col}\"", col}
+
 end

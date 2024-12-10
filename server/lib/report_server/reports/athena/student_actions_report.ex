@@ -80,7 +80,7 @@ defmodule ReportServer.Reports.Athena.StudentActionsReport do
 
     with {:ok, portal_query} <- ReportQuery.update_query(portal_query, join: join, where: where),
          {:ok, sql} <- ReportQuery.get_sql(portal_query),
-         {:ok, result} = PortalDbs.query(user.portal_server, sql) do
+         {:ok, result} <- PortalDbs.query(user.portal_server, sql) do
       {:ok, Enum.map(result.rows, fn [secure_key] -> "https://#{user.portal_server}/dataservice/external_activity_data/#{secure_key}" end)}
     else
       error -> error

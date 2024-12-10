@@ -64,7 +64,8 @@ defmodule ReportServer.MixProject do
       {:ex_aws_s3, "~> 2.0"}, # for url signing
       {:sweet_xml, "~> 0.7.4"}, # for ex_aws
       {:csv, "~> 3.2"},
-      {:live_select, "~> 1.4"}
+      {:live_select, "~> 1.4"},
+      {:elixir_uuid, "~> 1.2"}
     ]
   end
 

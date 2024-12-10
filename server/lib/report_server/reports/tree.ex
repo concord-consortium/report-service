@@ -11,6 +11,7 @@ defmodule ReportServer.Reports.Tree do
   }
   alias ReportServer.Reports.Athena.{
     StudentActionsReport,
+    StudentActionsWithMetadataReport,
     TeacherActionsReport,
   }
 
@@ -137,10 +138,12 @@ defmodule ReportServer.Reports.Tree do
           include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
           form_options: [enable_hide_names: true]
         }),
-        TBDReport.new(%Report{
+        StudentActionsWithMetadataReport.new(%Report{
           slug: "student-actions-with-metadata",
           title: "Student Actions with Metadata",
-          subtitle: "Includes everything in the Student Actions report plus information provided by the Portal about the student, teacher, class, school, permission forms, portal ids, etc."
+          subtitle: "Includes everything in the Student Actions report plus information provided by the Portal about the student, teacher, class, school, permission forms, portal ids, etc.",
+          include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
+          form_options: [enable_hide_names: true]
         }),
         TBDReport.new(%Report{
           slug: "student-answers",
