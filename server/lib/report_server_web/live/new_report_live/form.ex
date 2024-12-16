@@ -22,6 +22,9 @@ defmodule ReportServerWeb.NewReportLive.Form do
     :permission_form => "Permission Forms",
   }
 
+  # These fields have few enough options that we can query them without a search string
+  @no_search_required_fields [:cohort]
+
   @dev Application.compile_env(:report_server, :dev_routes)
 
   @impl true
@@ -59,36 +62,40 @@ defmodule ReportServerWeb.NewReportLive.Form do
   def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form}}) do
     filter_index = get_filter_index(field)
     report_filter = ReportFilter.from_form(form, filter_index)
+    field_name = report_filter.filters |> Enum.at(filter_index - 1)
+    if Enum.member?(@no_search_required_fields, field_name) || String.length(text) >= 3 do
+      case ReportFilterQuery.get_options(report_filter, text) do
+        {:ok, options, sql, params} ->
+          send_update(LiveSelect.Component, id: live_select_id, options: options)
+          new_placeholder_text = socket.assigns.placeholder_text
+          |> List.replace_at(filter_index - 1, describe_options(field, text, options))
+          socket = socket
+            |> assign(:error, nil)
+            |> assign(:debug, debug_filter(sql ,params))
+            |> assign(:placeholder_text, new_placeholder_text)
+          {:noreply, socket}
 
-    case ReportFilterQuery.get_options(report_filter, text) do
-      {:ok, options, sql, params} ->
-        send_update(LiveSelect.Component, id: live_select_id, options: options)
-        new_placeholder_text = socket.assigns.placeholder_text
-        |> List.replace_at(filter_index - 1, describe_options(field, options))
-        socket = socket
-          |> assign(:error, nil)
-          |> assign(:debug, debug_filter(sql ,params))
-          |> assign(:placeholder_text, new_placeholder_text)
-        {:noreply, socket}
-
-      {:error, error, sql, params} ->
-        socket = socket
-          |> assign(:error, error)
-          |> assign(:debug, debug_filter(sql ,params))
-        {:noreply, socket}
+        {:error, error, sql, params} ->
+          socket = socket
+            |> assign(:error, error)
+            |> assign(:debug, debug_filter(sql ,params))
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
   def handle_event("form_updated", %{"_target" => ["filter_form", field], "filter_form" => form_values}, socket) do
     filter = String.replace_suffix(field, "_type", "")
     type_change? = String.ends_with?(field, "_type")
-    # empty_selection? = String.ends_with?(field, "empty_selection")
 
     filter_index = if type_change?, do: get_filter_index(filter), else: 0
     live_select_id = "live_select#{filter_index}"
 
     form_values = if type_change? do
       # remove any existing filter values
+      send_update(LiveSelect.Component, id: live_select_id, options: [])
       form_values |> Map.put(filter, [])
     else
       form_values
@@ -98,15 +105,15 @@ defmodule ReportServerWeb.NewReportLive.Form do
     socket = assign(socket, :form, form)
 
     socket = if type_change? do
-      if (filter_index > 1 || form_values[field] == "cohort") do
+      if (filter_index > 1 || Enum.member?(@no_search_required_fields, String.to_atom(form_values[field]))) do
         ## cohorts and subfilters we query the options right away, since there should be few
         update_options(socket, filter_index, form, field, live_select_id)
       else
-        ## Top level filter change that is not "cohort": we just clear the options
+        ## Top level filter change that requires search: we just clear the options
         filter_options = socket.assigns.filter_options
           |> List.replace_at(filter_index - 1, [])
         placeholder_text = socket.assigns.placeholder_text
-          |> List.replace_at(filter_index - 1, describe_options(form_values[field], nil))
+          |> List.replace_at(filter_index - 1, describe_options(form_values[field], "", nil))
         socket
           |> assign(:error, nil)
           |> assign(:filter_options, filter_options)
@@ -251,7 +258,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
         send_update(LiveSelect.Component, id: live_select_id, value: new_value)
 
         placeholder_text = socket.assigns.placeholder_text
-          |> List.replace_at(filter_index - 1, describe_options(form[field].value, options))
+          |> List.replace_at(filter_index - 1, describe_options(form[field].value, "", options))
 
         socket
           |> assign(:error, nil)
@@ -266,14 +273,15 @@ defmodule ReportServerWeb.NewReportLive.Form do
     end
   end
 
-  defp describe_options(field, options) do
+  defp describe_options(_field, search_text, options) do
+    text_message = if search_text == "", do: "", else: "*#{search_text}*: "
     if options == nil do
-      "Enter at least 3 characters of the #{field}"
+        "#{text_message}Type at least 3 characters to search"
     else
       case Enum.count(options) do
-        0 -> "No options available"
-        1 -> "1 option available"
-        n -> "#{n} options available"
+        0 -> "#{text_message}No options available"
+        1 -> "#{text_message}1 option available"
+        n -> "#{text_message}#{n} options available"
       end
     end
   end
