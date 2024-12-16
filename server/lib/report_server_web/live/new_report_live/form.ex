@@ -240,9 +240,14 @@ defmodule ReportServerWeb.NewReportLive.Form do
 
         # Remove any selected items in the filter value that are no longer among the options
         current_value = form["filter#{filter_index}"].value
-        valid_ids = Enum.map(options, fn {_name, id} -> id end)
-        new_value = current_value
-        |> Enum.filter(fn id -> Enum.member?(valid_ids, id) end)
+        new_value =
+          if current_value do
+            valid_ids = Enum.map(options, fn {_name, id} -> id end)
+            current_value
+            |> Enum.filter(fn id -> Enum.member?(valid_ids, id) end)
+          else
+            []
+          end
         send_update(LiveSelect.Component, id: live_select_id, value: new_value)
 
         placeholder_text = socket.assigns.placeholder_text
