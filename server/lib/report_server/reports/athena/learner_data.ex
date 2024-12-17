@@ -163,8 +163,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       |> Enum.uniq()
   end
 
-  def get_info_by_ids(id_map, ""), do: []
-  def get_info_by_ids(id_map, nil), do: []
+  def get_info_by_ids(_id_map, ""), do: []
+  def get_info_by_ids(_id_map, nil), do: []
   def get_info_by_ids(id_map, ids) do
     ids
     |> split_id_list()

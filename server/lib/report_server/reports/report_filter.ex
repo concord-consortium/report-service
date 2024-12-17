@@ -33,7 +33,7 @@ defmodule ReportServer.Reports.ReportFilter do
 
   def get_filter_values(report_filter = %ReportFilter{}, portal_server) do
     sql = Enum.reduce(@filter_type_atoms, [], fn filter_type, acc ->
-      ids = Map.get(report_filter, filter_type)
+      ids = Map.get(report_filter, filter_type) || []
       if length(ids) > 0 do
         in_ids = Enum.join(ids, ",")
         case filter_type do
