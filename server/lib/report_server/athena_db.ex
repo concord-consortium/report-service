@@ -31,6 +31,16 @@ defmodule ReportServer.AthenaDB do
     |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
   end
 
+  def put_file_contents(path, contents) do
+    client = get_aws_client()
+    bucket = get_output_bucket()
+    AWS.S3.put_object(client, bucket, path, %{"Body" => contents})
+  end
+
+  def get_output_bucket() do
+    Application.get_env(:report_server, :athena) |> Keyword.get(:bucket, "concord-report-data")
+  end
+
   defp ensure_workgroup(user = %User{}) do
     client = get_aws_client()
 
@@ -108,7 +118,7 @@ defmodule ReportServer.AthenaDB do
   end
 
   defp create_workgroup(client, user = %User{portal_server: portal_server, portal_email: portal_email}) do
-    output_bucket = Application.get_env(:report_server, :athena) |> Keyword.get(:bucket, "concord-report-data")
+    output_bucket = get_output_bucket()
     workgroup_name = get_workgroup_name(user)
 
     workgroup = %{
