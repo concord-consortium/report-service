@@ -3,7 +3,7 @@ defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.ReportFilter
 
-  defstruct filters: [], cohort: [], school: [], teacher: [], assignment: [], permission_form: [],
+  defstruct filters: [], cohort: nil, school: nil, teacher: nil, assignment: nil, permission_form: nil,
     start_date: nil, end_date: nil, hide_names: false
 
   @valid_filter_types ~w"cohort school teacher assignment permission_form"
