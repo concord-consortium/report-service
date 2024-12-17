@@ -24,7 +24,6 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
       order_by: [{"activity_name", :asc}]
     }
     |> apply_filters(report_filter)
-    |> tap(&IO.inspect/1)
   end
 
   defp apply_filters(report_query = %ReportQuery{},

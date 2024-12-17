@@ -11,6 +11,7 @@ defmodule ReportServer.Reports.ReportUtils do
     "(#{list |> Enum.map(&("'#{escape_single_quote(&1)}'")) |> Enum.join(",")})"
   end
 
+  def have_filter?(nil), do: false
   def have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
   def apply_start_date(where, start_date, table_name \\ "rl") do
