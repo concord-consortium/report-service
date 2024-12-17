@@ -1,12 +1,15 @@
 defmodule ReportServer.Reports.ReportUtils do
+  def list_to_in(nil), do: "()"
   def list_to_in(list) do
     "(#{list |> Enum.map(&Integer.to_string/1) |> Enum.join(",")})"
   end
 
+  def numeric_string_list_to_in(nil), do: "()"
   def numeric_string_list_to_in(list) do
     "(#{list |> Enum.join(",")})"
   end
 
+  def string_list_to_single_quoted_in(nil), do: "()"
   def string_list_to_single_quoted_in(list) do
     "(#{list |> Enum.map(&("'#{escape_single_quote(&1)}'")) |> Enum.join(",")})"
   end
