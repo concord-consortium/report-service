@@ -126,10 +126,13 @@ defmodule ReportServerWeb.CustomComponents do
     if assigns.report.type == :athena do
       if assigns.report_run.athena_query_state == "succeeded" do
         ~H"""
-        <div class="flex justify-end items-center">
-          <span>
+        <div class="flex justify-between items-center">
+          <div>
+          <strong>Note:</strong> Report preview and JSON download are not supported for this report type.
+          </div>
+          <div>
             <.download_button filetype="csv"/>
-          </span>
+          </div>
         </div>
         """
       else
