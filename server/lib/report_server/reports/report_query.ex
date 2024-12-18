@@ -59,7 +59,7 @@ defmodule ReportServer.Reports.ReportQuery do
     ["id", "session", "username", "application", "activity", "event", "event_value", "time", "parameters", "extras", "run_remote_endpoint", "timestamp"]
       |> Enum.map(&(to_col_tuple("log", &1)))
       |> Enum.filter(&(!(is_username_col_tuple?(&1) && remove_username)))
-      |> Enum.map(&(hash_username_tuple(&1, hide_names)))
+      |> Enum.map(&(hash_username_tuple(&1, "log", hide_names)))
   end
 
   def get_learner_cols(opts \\ []) do
@@ -67,7 +67,7 @@ defmodule ReportServer.Reports.ReportQuery do
 
     ["learner_id", "run_remote_endpoint", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run", "query_id"]
       |> Enum.map(&(to_col_tuple("learner", &1)))
-      |> Enum.map(&(hash_username_tuple(&1, hide_names)))
+      |> Enum.map(&(hash_username_tuple(&1, "learner", hide_names)))
       |> Enum.map(&(hide_learner_student_name(&1, hide_names)))
   end
 
@@ -75,19 +75,19 @@ defmodule ReportServer.Reports.ReportQuery do
     Application.get_env(:report_server, :athena) |> Keyword.get(:log_db_name, "log_ingester_production")
   end
 
-  defp is_username_col_tuple?({_table, "username"}), do: true
-  defp is_username_col_tuple?({_table, _col}), do: false
+  defp is_username_col_tuple?({_, "username"}), do: true
+  defp is_username_col_tuple?({_, _}), do: false
 
-  defp hash_username_tuple({table, col = "username"}, true) do
+  defp hash_username_tuple({_, col = "username"}, table, true) do
     hide_username_hash_salt = Application.get_env(:report_server, :athena) |> Keyword.get(:hide_username_hash_salt, "no-hide-username-salt-provided!!!");
-    {"TO_HEX(SHA1(CAST(('#{hide_username_hash_salt}' || \"#{table}\".#{col}) AS VARBINARY)))", col}
+    {"TO_HEX(SHA1(CAST(('#{hide_username_hash_salt}' || \"#{table}\".\"#{col}\") AS VARBINARY)))", col}
   end
-  defp hash_username_tuple(tuple, false), do: tuple
+  defp hash_username_tuple(tuple, _, _), do: tuple
 
-  defp hide_learner_student_name({_table, "student_name"}, true) do
+  defp hide_learner_student_name({_, "student_name"}, true) do
     {"\"learner\".\"student_id\"", "student_name"}
   end
-  defp hide_learner_student_name(tuple, false), do: tuple
+  defp hide_learner_student_name(tuple, _), do: tuple
 
   def to_col_tuple(table, col), do: {"\"#{table}\".\"#{col}\"", col}
 
