@@ -89,6 +89,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
   def handle_event("form_updated", %{"_target" => ["filter_form", field], "filter_form" => form_values}, socket) do
     filter = String.replace_suffix(field, "_type", "")
     type_change? = String.ends_with?(field, "_type")
+    exclusion_change? = (field == "exclude_internal")
 
     filter_index = if type_change?, do: get_filter_index(filter), else: 0
     live_select_id = "live_select#{filter_index}"
@@ -105,31 +106,23 @@ defmodule ReportServerWeb.NewReportLive.Form do
     socket = assign(socket, :form, form)
 
     socket = if type_change? do
-      if (filter_index > 1 || Enum.member?(@no_search_required_fields, String.to_atom(form_values[field]))) do
-        ## cohorts and subfilters we query the options right away, since there should be few
-        update_options(socket, filter_index, form, field, live_select_id)
-      else
-        ## Top level filter change that requires search: we just clear the options
-        filter_options = socket.assigns.filter_options
-          |> List.replace_at(filter_index - 1, [])
-        placeholder_text = socket.assigns.placeholder_text
-          |> List.replace_at(filter_index - 1, describe_options(form_values[field], "", nil))
-        socket
-          |> assign(:error, nil)
-          |> assign(:filter_options, filter_options)
-          |> assign(:placeholder_text, placeholder_text)
-      end
+     update_options(socket, filter_index, form, field, live_select_id)
     else
       # Not a filter-type change event
       # If the change was adding or removing a value from one of the filters, we'll get a field like "filter1" or "filter1_empty_selection"
-      changed_filter_index = case Regex.run(~r/^filter(\d+)(_empty_selection)?$/, field) do
-        [_, numerals] ->
-          # The user has added or deleted a value for this filter
-          String.to_integer(numerals)
-        [_, numerals, "_empty_selection"] ->
-          # This means the user has deleted the last value for this filter, so now it's empty
-          String.to_integer(numerals)
-        _ -> nil
+      changed_filter_index = if exclusion_change? do
+        # The user has toggled the "exclude internal" checkbox; need to re-evaluate all filters
+        0
+      else
+        case Regex.run(~r/^filter(\d+)(_empty_selection)?$/, field) do
+          [_, numerals] ->
+            # The user has added or deleted a value for this filter
+            String.to_integer(numerals)
+          [_, numerals, "_empty_selection"] ->
+            # This means the user has deleted the last value for this filter, so now it's empty
+            String.to_integer(numerals)
+          _ -> nil
+        end
       end
 
       if changed_filter_index && changed_filter_index < socket.assigns.num_filters do
@@ -239,38 +232,55 @@ defmodule ReportServerWeb.NewReportLive.Form do
   # Returns the new socket structure.
   defp update_options(socket, filter_index, form, field, live_select_id) do
     report_filter = ReportFilter.from_form(form, filter_index)
-    case ReportFilterQuery.get_options(report_filter) do
-      {:ok, options, sql, params} ->
-        filter_options = socket.assigns.filter_options
-          |> List.replace_at(filter_index - 1, options)
-        send_update(LiveSelect.Component, id: live_select_id, options: options)
+    primary_filter = List.first(report_filter.filters)
+    if (filter_index > 1 || Enum.member?(@no_search_required_fields, primary_filter)) do
+      ## cohorts and subfilters we query the options right away, since there should be few
+      case ReportFilterQuery.get_options(report_filter) do
+        {:ok, options, sql, params} ->
+          filter_options = socket.assigns.filter_options
+            |> List.replace_at(filter_index - 1, options)
+          send_update(LiveSelect.Component, id: live_select_id, options: options)
 
-        # Remove any selected items in the filter value that are no longer among the options
-        current_value = form["filter#{filter_index}"].value
-        new_value =
-          if current_value do
-            valid_ids = Enum.map(options, fn {_name, id} -> id end)
-            current_value
-            |> Enum.filter(fn id -> Enum.member?(valid_ids, id) end)
-          else
-            []
-          end
-        send_update(LiveSelect.Component, id: live_select_id, value: new_value)
+          # Remove any selected items in the filter value that are no longer among the options
+          current_value = form["filter#{filter_index}"].value
+          new_value =
+            if current_value do
+              valid_ids = Enum.map(options, fn {_name, id} -> id end)
+              current_value
+              |> Enum.filter(fn id -> Enum.member?(valid_ids, id) end)
+            else
+              []
+            end
+          send_update(LiveSelect.Component, id: live_select_id, value: new_value)
 
-        placeholder_text = socket.assigns.placeholder_text
-          |> List.replace_at(filter_index - 1, describe_options(form[field].value, "", options))
+          placeholder_text = socket.assigns.placeholder_text
+            |> List.replace_at(filter_index - 1, describe_options(form[field].value, "", options))
 
-        socket
-          |> assign(:error, nil)
-          |> assign(:filter_options, filter_options)
-          |> assign(:placeholder_text, placeholder_text)
-          |> assign(:debug, debug_filter(sql ,params))
+          socket
+            |> assign(:error, nil)
+            |> assign(:filter_options, filter_options)
+            |> assign(:placeholder_text, placeholder_text)
+            |> assign(:debug, debug_filter(sql ,params))
 
-      {:error, error, sql, params} ->
-        socket
-          |> assign(:error, error)
-          |> assign(:debug, debug_filter(sql ,params))
+        {:error, error, sql, params} ->
+          socket
+            |> assign(:error, error)
+            |> assign(:debug, debug_filter(sql ,params))
+      end
+    else
+      ## Top level filter change that requires search: we just clear the options
+      filter_options = socket.assigns.filter_options
+        |> List.replace_at(filter_index - 1, [])
+      send_update(LiveSelect.Component, id: live_select_id, options: [])
+      placeholder_text = socket.assigns.placeholder_text
+        |> List.replace_at(filter_index - 1, describe_options(form[field].value, "", nil))
+      socket
+        |> assign(:error, nil)
+        |> assign(:filter_options, filter_options)
+        |> assign(:placeholder_text, placeholder_text)
     end
+
+
   end
 
   defp describe_options(_field, search_text, options) do

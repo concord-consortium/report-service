@@ -16,7 +16,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     end
   end
 
-  def fetch(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form, start_date: start_date, end_date: end_date}, user = %User{}) do
+  def fetch(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form,
+        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
     portal_query = %ReportQuery{
       cols: [
         {"DISTINCT rl.learner_id", "learner_id"},
@@ -74,6 +75,22 @@ defmodule ReportServer.Reports.Athena.LearnerData do
         ],
         [
           "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
+          | where
+        ]
+      }
+    else
+      {join, where}
+    end
+
+    {join, where} = if exclude_internal do
+      {
+        [
+          "JOIN portal_teachers pt ON (pt.id = ptc.teacher_id)",
+          "JOIN users u ON u.id = pt.user_id"
+          | join,
+        ],
+        [
+          "u.email NOT LIKE '%@concord.org'"
           | where
         ]
       }

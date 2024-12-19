@@ -17,6 +17,11 @@ defmodule ReportServer.Reports.ReportUtils do
   def have_filter?(nil), do: false
   def have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
+  def exclude_internal_accounts(where, false), do: where
+  def exclude_internal_accounts(where, true) do
+    [ "u.email NOT LIKE '%@concord.org'" | where ]
+  end
+
   def apply_start_date(where, start_date, table_name \\ "run") do
     if String.length(start_date || "") > 0 do
       ["#{table_name}.start_time >= '#{start_date}'" | where]

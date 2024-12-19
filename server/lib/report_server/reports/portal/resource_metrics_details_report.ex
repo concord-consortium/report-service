@@ -45,9 +45,12 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsDetailsReport do
   end
 
   defp apply_filters(report_query = %ReportQuery{},
-      %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, start_date: start_date, end_date: end_date}) do
+      %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment,
+        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}) do
     join = []
     where = []
+
+    where = exclude_internal_accounts(where, exclude_internal)
 
     # check cohorts
     {join, where} = if have_filter?(cohort) do
