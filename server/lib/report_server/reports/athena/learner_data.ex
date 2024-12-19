@@ -42,6 +42,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
         "JOIN external_activities ea on (po.runnable_type = 'ExternalActivity' AND po.runnable_id = ea.id)",
         "JOIN portal_student_clazzes psc ON (psc.student_id = rl.student_id)",
         "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id AND rl.class_id = ptc.clazz_id)",
+        "LEFT JOIN portal_runs run on (run.learner_id = pl.id)",
       ]]
     }
 

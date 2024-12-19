@@ -8,7 +8,7 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
         {"count(distinct pt.id)", "number_of_teachers"},
         {"count(distinct ps.id)", "number_of_schools"},
         {"count(distinct pc.id)", "number_of_classes"},
-        {"count(distinct rl.id)", "number_of_students"}
+        {"count(distinct pl.student_id)", "number_of_students"}
       ],
       from: "external_activities ea",
       join: [[
@@ -18,7 +18,11 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
         "join portal_teachers pt on (pt.id = ptc.teacher_id)",
         "left join portal_school_memberships psm on (psm.member_id = pt.id and psm.member_type = 'Portal::Teacher')",
         "left join portal_schools ps on (ps.id = psm.school_id)",
-        "left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)"
+        "left join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
+        # The "exists" clause is so that portal_learners without runs don't count towards "# students started"
+        "left join portal_learners pl on (pl.offering_id = po.id and pl.student_id = psc.student_id
+          and exists (select 1 from portal_runs r2 where r2.learner_id = pl.id))",
+        "left join portal_runs run on (run.learner_id = pl.id)",
       ]],
       group_by: "ea.id",
       order_by: [{"activity_name", :asc}]

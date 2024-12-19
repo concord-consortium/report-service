@@ -17,17 +17,17 @@ defmodule ReportServer.Reports.ReportUtils do
   def have_filter?(nil), do: false
   def have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
-  def apply_start_date(where, start_date, table_name \\ "rl") do
+  def apply_start_date(where, start_date, table_name \\ "run") do
     if String.length(start_date || "") > 0 do
-      ["#{table_name}.last_run >= '#{start_date}'" | where]
+      ["#{table_name}.start_time >= '#{start_date}'" | where]
     else
       where
     end
   end
 
-  def apply_end_date(where, end_date, table_name \\ "rl") do
+  def apply_end_date(where, end_date, table_name \\ "run") do
     if String.length(end_date || "") > 0 do
-      ["#{table_name}.last_run <= '#{end_date}'" | where]
+      ["#{table_name}.start_time <= '#{end_date}'" | where]
     else
       where
     end
