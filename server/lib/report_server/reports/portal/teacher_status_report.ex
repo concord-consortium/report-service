@@ -11,9 +11,9 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
         {"date(po.created_at)", "date_assigned"},
         {"(select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id)", "num_students_in_class"},
         {"count(distinct pl.student_id)", "num_students_started"},
-        {"count(run.id)", "num_runs"},
-        {"date(min(run.start_time))", "date_of_first_use"},
-        {"date(max(run.start_time))", "date_of_last_use"}
+        {"count(run.id)", "number_of_runs"},
+        {"date(min(run.start_time))", "first_run"},
+        {"date(max(run.start_time))", "last_run"}
       ],
       from: "portal_teachers pt",
       join: [[
