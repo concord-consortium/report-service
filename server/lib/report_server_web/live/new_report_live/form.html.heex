@@ -77,7 +77,7 @@
     <%= if !blank?(@form.params["filter1"]) do %>
 
       <div class="mt-4 flex items-center gap-4">
-        <span class="font-bold">Include last run dates:</span>
+        <span class="font-bold">Include dates:</span>
         <label for="start_date" class="whitespace-nowrap">Earliest date:</label>
         <.input type="date" id="start_date" field={@form["start_date"]} />
         <label for="end_date" class="whitespace-nowrap">Latest date:</label>

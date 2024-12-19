@@ -33,6 +33,7 @@ defmodule ReportServer.Reports.Athena.StudentActionsReport do
         "JOIN portal_offerings po ON (po.id = rl.offering_id)",
         "JOIN portal_student_clazzes psc ON (psc.student_id = rl.student_id)",
         "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+        "LEFT JOIN portal_runs run on (run.learner_id = pl.id)",
       ]]
     }
 

@@ -10,9 +10,10 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
         {"pc.name", "class_name"},
         {"date(po.created_at)", "date_assigned"},
         {"(select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id)", "num_students_in_class"},
-        {"count(distinct rl.student_id)", "num_students_started"},
-        {"date(min(rl.last_run))", "date_of_first_use"},
-        {"date(max(rl.last_run))", "date_of_last_use"}
+        {"count(distinct pl.student_id)", "num_students_started"},
+        {"count(run.id)", "number_of_runs"},
+        {"date(min(run.start_time))", "first_run"},
+        {"date(max(run.start_time))", "last_run"}
       ],
       from: "portal_teachers pt",
       join: [[
@@ -21,7 +22,11 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
         "left join portal_clazzes pc on (pc.id = ptc.clazz_id)",
         "left join portal_offerings po on (po.clazz_id = pc.id)",
         "left join external_activities ea on (po.runnable_id = ea.id)",
-        "left join report_learners rl on (rl.class_id = pc.id and rl.runnable_id = ea.id and rl.last_run is not null)",
+        "left join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
+        # The "exists" clause is so that portal_learners without runs don't count towards "# students started"
+        "left join portal_learners pl on (pl.offering_id = po.id and pl.student_id = psc.student_id
+          and exists (select 1 from portal_runs r2 where r2.learner_id = pl.id))",
+        "left join portal_runs run on (run.learner_id = pl.id)",
       ]],
       group_by: "u.id, ea.id, pc.id, po.id, ea.id",
       order_by: [{"teacher_name", :asc}, {"activity_name", :asc}]
