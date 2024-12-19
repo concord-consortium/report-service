@@ -21,6 +21,12 @@
   </div>
 
   <.form for={@form} phx-change="form_updated" phx-submit="submit_form" :if={!@report.tbd}>
+
+    <div class="flex gap-2 items-center my-2">
+      <.input type="checkbox" id="exclude_internal" field={@form["exclude_internal"]} />
+      <label for="exclude_internal" class="whitespace-nowrap">Exclude Concord Consortium user accounts</label>
+    </div>
+
     <div
       let={last_filter = i == @num_filters}
       let={filter = "filter#{i}"}

@@ -237,6 +237,10 @@ defmodule ReportServerWeb.CustomComponents do
         <div class="table-cell capitalize font-bold">End Date</div>
         <div class="table-cell pl-3"><%= @report_run.report_filter.end_date %></div>
       </div>
+      <div class="table-row" :if={@report_run.report_filter.exclude_internal}>
+        <div class="table-cell capitalize font-bold">Exclude CC users</div>
+        <div class="table-cell pl-3">True</div>
+      </div>
       <div class="table-row" :if={@report_run.report_filter.hide_names}>
         <div class="table-cell capitalize font-bold">Hide Names</div>
         <div class="table-cell pl-3">True</div>
