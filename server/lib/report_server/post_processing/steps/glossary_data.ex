@@ -4,7 +4,7 @@ defmodule ReportServer.PostProcessing.Steps.GlossaryData do
   alias ReportServer.PostProcessing.JobParams
   alias ReportServer.PostProcessing.Step
   alias ReportServer.PostProcessing.Steps.Helpers
-  alias ReportServerWeb.{ReportService, PortalReport}
+  alias ReportServer.{ReportService, PortalReport}
 
   @id "glossary_data"
   @learner_id "learner_id"

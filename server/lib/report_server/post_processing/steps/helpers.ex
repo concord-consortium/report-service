@@ -2,7 +2,7 @@ defmodule ReportServer.PostProcessing.Steps.Helpers do
   require Logger
 
   alias ReportServer.PostProcessing.JobParams
-  alias ReportServerWeb.ReportService
+  alias ReportServer.ReportService
 
   @col_regex ~r/(?<res>res_\d+)_(?<question_id>.+)_/
 

@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.ReportService do
+defmodule ReportServer.ReportService do
   require Logger
 
   # answer for "Test Student One" in demo data
@@ -113,14 +113,19 @@ defmodule ReportServerWeb.ReportService do
   def get_plugin_states_from_response(%{"success" => false, "error" => error}), do: {:error, error}
   def get_plugin_states_from_response(_), do: {:error, "Something went wrong getting the plugin states"}
 
-  defp get_endpoint(endpoint) do
+  def get_endpoint(endpoint) do
     report_service = Application.get_env(:report_server, :report_service)
     url = report_service |> Keyword.get(:url, "https://us-central1-report-service-dev.cloudfunctions.net/api")
     token = report_service |> Keyword.get(:token)
     {"#{url}/#{endpoint}", token}
   end
 
-  defp get_request() do
+  def get_firebase_app() do
+    Application.get_env(:report_server, :report_service)
+    |> Keyword.get(:firebase_app, "report-service-dev")
+  end
+
+  def get_request() do
     Req.new()
     |> Req.Request.register_options([:debug])
     |> Req.Request.append_request_steps(debug: &debug/1)

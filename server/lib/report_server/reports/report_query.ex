@@ -1,7 +1,12 @@
 defmodule ReportServer.Reports.ReportQuery do
   alias ReportServer.Reports.ReportQuery
+  alias ReportServer.Reports.Athena.AthenaConfig
 
-  defstruct cols: [], from: "", join: [], where: [], group_by: "", order_by: []
+  defstruct cols: [], from: "", join: [], where: [], group_by: "", order_by: [], raw_sql: nil
+
+  def get_sql(%ReportQuery{raw_sql: raw_sql}) when not is_nil(raw_sql) do
+    {:ok, raw_sql}
+  end
 
   def get_sql(%ReportQuery{cols: cols, from: from, join: join, where: where, group_by: group_by, order_by: order_by}, limit \\ nil) do
     select_sql = cols |> Enum.map(fn {col, alias} -> "#{col} AS #{alias}" end) |> Enum.join(", ")
@@ -83,12 +88,12 @@ defmodule ReportServer.Reports.ReportQuery do
   # When the second parameter is true this hides the username to prevent PII from being exposed by hashing it concated with a secret salt.
   # (note: the || operator is used to concat strings by Athena)
   defp hash_username({table_and_col, col = "username"}, true) do
-    hide_username_hash_salt = Application.get_env(:report_server, :athena) |> Keyword.get(:hide_username_hash_salt, "no-hide-username-salt-provided!!!");
+    hide_username_hash_salt = AthenaConfig.get_hide_username_hash_salt()
     {"TO_HEX(SHA1(CAST(('#{hide_username_hash_salt}' || #{table_and_col}) AS VARBINARY)))", col}
   end
   defp hash_username(tuple, _), do: tuple
 
-  # when the second parameter is true this hides the student name to prevent PII from being exposed by replacing it with the student_id when keeping the column name as student_name.
+  # when the second parameter is true this hides the student name to prevent PII from being exposed by replacing it with the student_id while keeping the column name as student_name.
   defp hide_learner_student_name({_, "student_name"}, true) do
     {"\"learner\".\"student_id\"", "student_name"}
   end

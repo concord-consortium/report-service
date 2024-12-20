@@ -2,7 +2,7 @@ defmodule ReportServer.Reports.Tree do
   alias ReportServer.Reports
   alias ReportServer.Reports.{
     Report,
-    TBDReport
+    # TBDReport
   }
   alias ReportServer.Reports.Portal.{
     TeacherStatusReport,
@@ -13,6 +13,8 @@ defmodule ReportServer.Reports.Tree do
     StudentActionsReport,
     StudentActionsWithMetadataReport,
     TeacherActionsReport,
+    StudentAnswersReport,
+    StudentAssignmentUsageReport,
   }
 
   @tree_cache :tree_cache
@@ -124,10 +126,12 @@ defmodule ReportServer.Reports.Tree do
           subtitle: "Includes teacher information, school information, number of classes, number of students, and assignment information per resource.",
           include_filters: [:cohort, :school, :teacher, :assignment]
         }),
-        TBDReport.new(%Report{
+        StudentAssignmentUsageReport.new(%Report{
           slug: "student-assignment-usage",
           title: "Assignment Usage by Student",
-          subtitle: "Includes ids, usernames, and other information about the student, teacher, class, school, etc as well as summary information about the resource(s) in your query like total number of questions and answers."
+          subtitle: "Includes ids, usernames, and other information about the student, teacher, class, school, etc as well as summary information about the resource(s) in your query like total number of questions and answers.",
+          include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
+          form_options: [enable_hide_names: true]
         })
       ]},
       %ReportGroup{slug: "student-reports", title: "Student Reports", subtitle: "Reports about students", children: [
@@ -145,10 +149,12 @@ defmodule ReportServer.Reports.Tree do
           include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
           form_options: [enable_hide_names: true]
         }),
-        TBDReport.new(%Report{
+        StudentAnswersReport.new(%Report{
           slug: "student-answers",
           title: "Student Answers",
-          subtitle: "Includes everything from the Assignment Usage by Student report plus details about student answers to all questions in the resource(s) in your query."
+          subtitle: "Includes everything from the Assignment Usage by Student report plus details about student answers to all questions in the resource(s) in your query.",
+          include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
+          form_options: [enable_hide_names: true]
         }),
       ]},
       %ReportGroup{slug: "teacher-reports", title: "Teacher Reports", subtitle: "Reports about teachers", children: [

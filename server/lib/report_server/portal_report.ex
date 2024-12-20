@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.PortalReport do
+defmodule ReportServer.PortalReport do
   def get_url() do
     Application.get_env(:report_server, :portal_report)
     |> Keyword.get(:url, "https://portal-report.concord.org/branch/master/")

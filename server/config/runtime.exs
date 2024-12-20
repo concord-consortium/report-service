@@ -49,7 +49,8 @@ config :report_server, :aws_credentials,
 
 config :report_server, :report_service,
   url: System.get_env("REPORT_SERVICE_URL") || "https://us-central1-report-service-pro.cloudfunctions.net/api", # production
-  token: report_service_token
+  token: report_service_token,
+  firebase_app: System.get_env("REPORT_SERVICE_FIREBASE_APP") || "report-service-pro" # production
 
 config :report_server, :portal_report,
   url: System.get_env("PORTAL_REPORT_URL") || "https://portal-report.concord.org/branch/master/" # production (yes, prod uses master)
@@ -118,6 +119,7 @@ if config_env() == :prod do
   config :report_server, :athena,
     bucket: System.get_env("ATHENA_REPORT_BUCKET") || "concord-report-data", # production
     log_db_name: System.get_env("ATHENA_LOG_DB_NAME") || "log_ingester_production", # production
+    source_key: System.get_env("ATHENA_SOURCE_KEY") || "authoring.concord.org", # production
     hide_username_hash_salt: hide_username_hash_salt
 
   # ## SSL Support
