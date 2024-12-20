@@ -42,9 +42,8 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     resource_data
       |> Enum.each(fn {query_id, %{denormalized: denormalized}} ->
         if denormalized do
-          path = "activity-structure/#{query_id}/${queryId}-structure.json"
+          path = "activity-structure/#{query_id}/#{query_id}-structure.json"
           contents = Jason.encode!(denormalized)
-          Logger.info("Uploading resource data to #{path} (#{contents})")
           AthenaDB.put_file_contents(path, contents)
         end
       end)
@@ -61,7 +60,7 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     end)
   end
 
-  defp fetch_resource(nil), do: nil
+  defp fetch_resource(nil), do: {:ok, nil}
   defp fetch_resource(runnable_url) do
     {url, token} = ReportService.get_endpoint("resource")
 
