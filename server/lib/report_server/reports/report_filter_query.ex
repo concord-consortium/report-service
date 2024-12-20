@@ -1,5 +1,8 @@
 defmodule ReportServer.Reports.ReportFilterQuery do
   require Logger
+
+  import ReportServer.Reports.ReportUtils
+
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.{ReportFilter, ReportFilterQuery}
 
@@ -166,20 +169,24 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form}, like_text) do
+  defp get_filter_query(:teacher,
+      %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form, exclude_internal: exclude_internal},
+      like_text) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || school == [] || assignment == [] || permission_form == []) do
       nil
     else
     query = %ReportFilterQuery{
         id: "portal_teachers.id",
-        value: "CONCAT(users.first_name, ' ', users.last_name, ' <', users.email, '>') AS fullname",
+        value: "CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') AS fullname",
         from: "portal_teachers",
-        join: ["JOIN users ON users.id = portal_teachers.user_id"],
-        where: maybe_add_like(like_text, ["CONCAT(users.first_name, ' ', users.last_name, ' <', users.email, '>') LIKE ?"]),
+        join: ["JOIN users u ON u.id = portal_teachers.user_id"],
+        where: maybe_add_like(like_text, ["CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') LIKE ?"]),
         order_by: "fullname",
         num_params: 1
       }
+
+      query = %{query | where: exclude_internal_accounts(query.where, exclude_internal)}
 
       query = if cohort == nil do
         query
@@ -354,11 +361,6 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query
     end
-  end
-
-
-  defp list_to_in(list) do
-    "(#{list |> Enum.map(&Integer.to_string/1) |> Enum.join(",")})"
   end
 
   defp secondary_filter_query(query, join, where) do

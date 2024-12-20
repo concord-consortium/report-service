@@ -16,6 +16,7 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
         "join portal_clazzes pc on (pc.id = po.clazz_id)",
         "join portal_teacher_clazzes ptc on (ptc.clazz_id = pc.id)",
         "join portal_teachers pt on (pt.id = ptc.teacher_id)",
+        "join users u on (u.id = pt.user_id)",
         "left join portal_school_memberships psm on (psm.member_id = pt.id and psm.member_type = 'Portal::Teacher')",
         "left join portal_schools ps on (ps.id = psm.school_id)",
         "left join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
@@ -31,9 +32,12 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
   end
 
   defp apply_filters(report_query = %ReportQuery{},
-      %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, start_date: start_date, end_date: end_date}) do
+      %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment,
+        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}) do
     join = []
     where = []
+
+    where = exclude_internal_accounts(where, exclude_internal)
 
     # check cohorts
     {join, where} = if have_filter?(cohort) do
