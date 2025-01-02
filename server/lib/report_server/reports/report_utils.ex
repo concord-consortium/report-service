@@ -75,4 +75,21 @@ defmodule ReportServer.Reports.ReportUtils do
   def escape_single_quote(str) do
     String.replace(str, "'", "''")
   end
+
+  def ensure_not_empty(list, error_message) when is_list(list) do
+    if Enum.empty?(list) do
+      {:error, error_message}
+    else
+      {:ok, list}
+    end
+  end
+
+  def ensure_not_empty(map, error_message) when is_map(map) do
+    if map_size(map) == 0 do
+      {:error, error_message}
+    else
+      {:ok, map}
+    end
+  end
+
 end
