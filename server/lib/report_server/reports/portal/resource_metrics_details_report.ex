@@ -15,7 +15,7 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsDetailsReport do
         {"group_concat(distinct pg.name order by cast(pg.name as unsigned))", "class_grade_levels"},
         {"count(distinct pl.student_id)", "number_of_students"},
         {"date(po.created_at)", "first_assigned"},
-        {"count(run.id)", "number_of_runs"},
+        {"count(distinct run.id)", "number_of_runs"},
         {"date(min(run.start_time))", "first_run"},
         {"date(max(run.start_time))", "last_run"},
       ],
@@ -33,7 +33,7 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsDetailsReport do
         "left join portal_districts pd on (pd.id = ps.district_id)",
         "left join portal_countries pco on (pco.id = ps.country_id)",
         "left join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
-        # The "exists" clause is so that portal_learners without runs don't count towards "# students started"
+        # The "exists" clause is so that portal_learners without runs don't count towards "number_of_students"
         "left join portal_learners pl on (pl.offering_id = po.id and pl.student_id = psc.student_id
             and exists (select 1 from portal_runs r2 where r2.learner_id = pl.id))",
         "left join portal_runs run on (run.learner_id = pl.id)",
