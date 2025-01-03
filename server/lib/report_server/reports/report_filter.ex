@@ -1,5 +1,7 @@
 defmodule ReportServer.Reports.ReportFilter do
   require Logger
+
+  alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.ReportFilter
 
@@ -32,7 +34,7 @@ defmodule ReportServer.Reports.ReportFilter do
     |> Map.put(:exclude_internal, form.params["exclude_internal"] == "true")
   end
 
-  def get_filter_values(report_filter = %ReportFilter{}, portal_server) do
+  def get_filter_values(report_filter = %ReportFilter{}, user = %User{}) do
     sql = Enum.reduce(@filter_type_atoms, [], fn filter_type, acc ->
       ids = Map.get(report_filter, filter_type) || []
       if length(ids) > 0 do
@@ -55,7 +57,7 @@ defmodule ReportServer.Reports.ReportFilter do
     end)
     |> Enum.join("\nUNION ALL\n")
 
-    case PortalDbs.query(portal_server, sql) do
+    case PortalDbs.query(user.portal_server, sql) do
       {:ok, results} ->
         results.rows
         |> Enum.group_by(fn [table_name, _id, _name] -> table_name end)

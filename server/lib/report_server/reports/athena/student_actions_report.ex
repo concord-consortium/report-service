@@ -6,7 +6,6 @@ defmodule ReportServer.Reports.Athena.StudentActionsReport do
   def get_query(report_filter = %ReportFilter{}, user = %User{}) do
     case get_run_remote_endpoints(report_filter, user) do
       {:ok, run_remote_endpoints} ->
-        # FIXME: when we add non-admin access update this code to only allow admins to not hide names
         hide_names = report_filter.hide_names
         remove_username = false
 

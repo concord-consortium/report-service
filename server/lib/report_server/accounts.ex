@@ -24,6 +24,8 @@ defmodule ReportServer.Accounts do
       last_name: last_name,
       email: email,
       is_admin: is_admin,
+      is_project_admin: is_project_admin,
+      is_project_researcher: is_project_researcher,
       server: server
     } = portal_user_info
 
@@ -34,7 +36,9 @@ defmodule ReportServer.Accounts do
       portal_first_name: first_name,
       portal_last_name: last_name,
       portal_email: email,
-      portal_is_admin: !!is_admin
+      portal_is_admin: is_admin,
+      portal_is_project_admin: is_project_admin,
+      portal_is_project_researcher: is_project_researcher,
     } |> Repo.insert()
   end
 
@@ -45,6 +49,8 @@ defmodule ReportServer.Accounts do
       last_name: last_name,
       email: email,
       is_admin: is_admin,
+      is_project_admin: is_project_admin,
+      is_project_researcher: is_project_researcher,
     } = portal_user_info
 
     user |> User.changeset(%{
@@ -52,7 +58,9 @@ defmodule ReportServer.Accounts do
       portal_first_name: first_name,
       portal_last_name: last_name,
       portal_email: email,
-      portal_is_admin: !!is_admin
+      portal_is_admin: is_admin,
+      portal_is_project_admin: is_project_admin,
+      portal_is_project_researcher: is_project_researcher,
     })
     |> Repo.update()
   end

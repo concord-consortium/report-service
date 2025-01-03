@@ -311,6 +311,19 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  attr :user, :any, required: true
+  def user_info(assigns) do
+    ~H"""
+      <div><%= @user.portal_first_name %> <%= @user.portal_last_name %></div>
+      <div class="text-xs">
+        <%= @user.portal_server %>
+        <span :if={@user.portal_is_admin}>(admin)</span>
+        <span :if={!@user.portal_is_admin && @user.portal_is_project_admin}>(project admin)</span>
+        <span :if={!@user.portal_is_admin && !@user.portal_is_project_admin && @user.portal_is_project_researcher }>(researcher)</span>
+      </div>
+    """
+  end
+
   defp pluralize(count, word) do
     if count == 1, do: word, else: word <> "s"
   end

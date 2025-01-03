@@ -5,7 +5,7 @@ defmodule ReportServer.Accounts.User do
 
   alias ReportServer.Reports.ReportRun
 
-  @all_fields [:portal_server, :portal_user_id, :portal_login, :portal_first_name, :portal_last_name, :portal_email, :portal_is_admin]
+  @all_fields [:portal_server, :portal_user_id, :portal_login, :portal_first_name, :portal_last_name, :portal_email, :portal_is_admin, :portal_is_project_admin, :portal_is_project_researcher]
 
   schema "users" do
     field :portal_server, :string
@@ -15,6 +15,8 @@ defmodule ReportServer.Accounts.User do
     field :portal_last_name, :string
     field :portal_email, :string
     field :portal_is_admin, :boolean
+    field :portal_is_project_admin, :boolean
+    field :portal_is_project_researcher, :boolean
 
     has_many :report_runs, ReportRun, foreign_key: :user_id
 
