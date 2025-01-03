@@ -139,7 +139,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     teacher_ids = get_unique_ids(rows, :teachers_id)
     permission_form_ids = get_unique_ids(rows, :permission_forms_id)
 
-    with {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
+    with {:ok, rows} <- ensure_not_empty(rows, "No learner data found"),
+         {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
          {:ok, permission_form_map } <- get_permission_form_map(permission_form_ids, user) do
 
       result = rows
@@ -204,7 +205,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     end)
   end
 
-  defp get_teacher_map([], _user = %User{}), do: %{}
+  defp get_teacher_map([], _user = %User{}), do: {:ok, %{}}
   defp get_teacher_map(teacher_ids, user = %User{}) do
     portal_query = %ReportQuery{
       cols: [
@@ -241,7 +242,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     end
   end
 
-  defp get_permission_form_map([], _user = %User{}), do: %{}
+  defp get_permission_form_map([], _user = %User{}), do: {:ok, %{}}
   defp get_permission_form_map(permission_form_ids, user = %User{}) do
     portal_query = %ReportQuery{
       cols: [

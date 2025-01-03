@@ -131,6 +131,11 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       {:error, error} ->
         Logger.error(error)
         {:error, error}
+
+      error ->
+        # note: this is a catch-all for any errors that may occur
+        Logger.error("Failed to run Athena report: #{inspect(error)}")
+        {:error, "Unknown error: failed to run Athena report"}
     end
   end
 
