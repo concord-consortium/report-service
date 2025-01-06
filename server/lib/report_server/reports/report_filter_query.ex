@@ -26,7 +26,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  def get_counts(report_filter = %ReportFilter{}, %User{portal_server: portal_server}, allowed_project_ids, like_text \\ "") do
+  def get_option_count(report_filter = %ReportFilter{}, %User{portal_server: portal_server}, allowed_project_ids, like_text \\ "") do
     {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text)
     if query == nil do
       {:ok, [], "", params}
@@ -35,8 +35,9 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       case PortalDbs.query(portal_server, sql, params) do
         {:ok, result} ->
-          # TODO: fix
-          {:ok, Enum.map(result.rows, fn [id, value] -> {value, to_string(id)} end), sql, params}
+          # COUNT query should return a single row with a single column.
+          count = result.rows |> List.first |> List.first
+          {:ok, count}
         {:error, error} ->
           Logger.error(error)
           {:error, error, sql, params}
