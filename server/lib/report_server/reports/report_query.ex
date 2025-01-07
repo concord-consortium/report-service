@@ -11,7 +11,7 @@ defmodule ReportServer.Reports.ReportQuery do
   def get_sql(%ReportQuery{cols: cols, from: from, join: join, where: where, group_by: group_by, order_by: order_by}, limit \\ nil) do
     select_sql = cols |> Enum.map(fn {col, alias} -> "#{col} AS #{alias}" end) |> Enum.join(", ")
     # NOTE: the reverse is before flatten to keep any sublists in order
-    join_sql = join |> Enum.reverse() |> List.flatten() |> Enum.join(" ")
+    join_sql = join |> Enum.reverse() |> List.flatten() |> Enum.uniq() |> Enum.join(" ")
     where_sql = where |> Enum.reverse() |> List.flatten() |> Enum.map(&("(#{&1})")) |> Enum.join(" AND ")
     where_sql = if String.length(where_sql) != 0, do: "WHERE #{where_sql}", else: ""
     group_by_sql = if String.length(group_by) != 0, do: "GROUP BY #{group_by}", else: ""

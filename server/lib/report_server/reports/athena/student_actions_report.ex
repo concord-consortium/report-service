@@ -39,16 +39,36 @@ defmodule ReportServer.Reports.Athena.StudentActionsReport do
     join = []
     where = []
 
+    allowed_project_ids = PortalDbs.get_allowed_project_ids(user)
+    {join, where} = if allowed_project_ids == :all do
+      {join, where}
+    else
+      {
+        [
+          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)",
+          "join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' AND aci_assignment.item_id = po.runnable_id)",
+          "join admin_cohorts ac_teacher ON (ac_teacher.id = aci_teacher.admin_cohort_id)",
+          "join admin_cohorts ac_assignment ON (ac_assignment.id = aci_assignment.admin_cohort_id)"
+          | join
+        ],
+        [
+          "ac_teacher.project_id IN #{list_to_in(allowed_project_ids)}",
+          "ac_assignment.project_id IN #{list_to_in(allowed_project_ids)}"
+          | where
+        ]
+      }
+    end
+
     {join, where} = if have_filter?(cohort) do
       {
         [
-          "left join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)",
-          "left join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' AND aci_assignment.item_id = po.runnable_id)"
+          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)",
+          "join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' AND aci_assignment.item_id = po.runnable_id)"
           | join
         ],
         [
           "aci_teacher.admin_cohort_id in #{list_to_in(cohort)}",
-          "aci_assignment.admin_cohort_id in #{list_to_in(cohort)} and aci_assignment.item_id = po.runnable_id"
+          "aci_assignment.admin_cohort_id in #{list_to_in(cohort)}"
           | where
         ]
       }
