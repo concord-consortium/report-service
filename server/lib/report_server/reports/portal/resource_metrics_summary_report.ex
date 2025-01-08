@@ -17,9 +17,9 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
         "join portal_teacher_clazzes ptc on (ptc.clazz_id = pc.id)",
         "join portal_teachers pt on (pt.id = ptc.teacher_id)",
         "join users u on (u.id = pt.user_id)",
-        "join portal_school_memberships psm on (psm.member_id = pt.id and psm.member_type = 'Portal::Teacher')",
-        "join portal_schools ps on (ps.id = psm.school_id)",
-        "join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
+        "left join portal_school_memberships psm on (psm.member_id = pt.id and psm.member_type = 'Portal::Teacher')",
+        "left join portal_schools ps on (ps.id = psm.school_id)",
+        "left join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
         # The "exists" clause is so that portal_learners without runs don't count towards "# students started"
         "left join portal_learners pl on (pl.offering_id = po.id and pl.student_id = psc.student_id
           and exists (select 1 from portal_runs r2 where r2.learner_id = pl.id))",

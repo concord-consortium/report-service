@@ -20,9 +20,9 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
         "join users u on (u.id = pt.user_id)",
         "join portal_teacher_clazzes ptc on (ptc.teacher_id = pt.id)",
         "join portal_clazzes pc on (pc.id = ptc.clazz_id)",
-        "join portal_offerings po on (po.clazz_id = pc.id)",
+        "left join portal_offerings po on (po.clazz_id = pc.id)",
         "join external_activities ea on (po.runnable_id = ea.id)",
-        "join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
+        "left join portal_student_clazzes psc on (psc.clazz_id = pc.id)",
         # The "exists" clause is so that portal_learners without runs don't count towards "# students started"
         "left join portal_learners pl on (pl.offering_id = po.id and pl.student_id = psc.student_id
           and exists (select 1 from portal_runs r2 where r2.learner_id = pl.id))",
