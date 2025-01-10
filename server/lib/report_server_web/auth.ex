@@ -60,4 +60,8 @@ defmodule ReportServerWeb.Auth do
   def admin?(_session = %{"user" => %{portal_is_admin: true}}), do: true
   def admin?(_), do: false
 
+  def can_access_reports?(_session = %{"user" => user}) do
+    user.portal_is_admin || user.portal_is_project_admin || user.portal_is_project_researcher
+  end
+
 end

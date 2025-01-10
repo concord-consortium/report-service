@@ -18,7 +18,6 @@ defmodule ReportServer.Reports.Athena.StudentActionsWithMetadataReport do
     query_ids = Map.keys(learner_data)
 
     if !Enum.empty?(query_ids) do
-      # FIXME: when we add non-admin access update this code to only allow admins to not hide names
       hide_names = report_filter.hide_names
 
       log_cols = ReportQuery.get_log_cols(hide_names: hide_names, remove_username: true)

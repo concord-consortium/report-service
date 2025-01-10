@@ -3,20 +3,20 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
   import ReportServer.Reports.ReportUtils
 
+  alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.{ReportFilter, ReportFilterQuery}
 
   defstruct id: nil, value: nil, from: nil, join: [], where: [], order_by: nil, num_params: 1
 
-  def get_options(report_filter = %ReportFilter{}, like_text \\ "") do
-    {query, params} = get_query_and_params(report_filter, like_text)
+  def get_options(report_filter = %ReportFilter{}, %User{portal_server: portal_server}, allowed_project_ids, like_text \\ "") do
+    {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text)
     if query == nil do
       {:ok, [], "", params}
     else
       sql = get_options_sql(query)
 
-      dev_query_portal = "learn.concord.org" # FIXME
-      case PortalDbs.query(dev_query_portal, sql, params) do
+      case PortalDbs.query(portal_server, sql, params) do
         {:ok, result} ->
           {:ok, Enum.map(result.rows, fn [id, value] -> {value, to_string(id)} end), sql, params}
         {:error, error} ->
@@ -26,18 +26,18 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  def get_counts(report_filter = %ReportFilter{}, like_text \\ "") do
-    {query, params} = get_query_and_params(report_filter, like_text)
+  def get_option_count(report_filter = %ReportFilter{}, %User{portal_server: portal_server}, allowed_project_ids, like_text \\ "") do
+    {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text)
     if query == nil do
       {:ok, [], "", params}
     else
       sql = get_counts_sql(query)
 
-      dev_query_portal = "learn.concord.org" # FIXME
-      case PortalDbs.query(dev_query_portal, sql, params) do
+      case PortalDbs.query(portal_server, sql, params) do
         {:ok, result} ->
-          # TODO: fix
-          {:ok, Enum.map(result.rows, fn [id, value] -> {value, to_string(id)} end), sql, params}
+          # COUNT query should return a single row with a single column.
+          count = result.rows |> List.first |> List.first
+          {:ok, count}
         {:error, error} ->
           Logger.error(error)
           {:error, error, sql, params}
@@ -45,13 +45,17 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, like_text) do
-    query = get_filter_query(primary_filter, report_filter, like_text)
-    params = like_params(like_text, query)
-    {query, params}
+  def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, allowed_project_ids, like_text) do
+    if allowed_project_ids == :none do
+      {nil, []}
+    else
+      query = get_filter_query(primary_filter, report_filter, allowed_project_ids, like_text)
+      params = like_params(like_text, query)
+      {query, params}
+    end
   end
 
-  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment, permission_form: permission_form}, like_text) do
+  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (school == [] || teacher == [] || assignment == [] || permission_form == []) do
       nil
@@ -63,6 +67,13 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         where: maybe_add_like(like_text, ["admin_cohorts.name LIKE ?"]),
         order_by: "admin_cohorts.name"
       }
+
+      query = if allowed_project_ids == :all do
+        query
+      else
+        where = "admin_cohorts.project_id IN #{list_to_in(allowed_project_ids)}"
+        %{query | where: [ where | query.where ]}
+      end
 
       query = if school == nil do
         query
@@ -108,7 +119,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment, permission_form: permission_form}, like_text) do
+  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || teacher == [] || assignment == [] || permission_form == []) do
       nil
@@ -120,6 +131,18 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         where: maybe_add_like(like_text, ["portal_schools.name LIKE ?"]),
         order_by: "portal_schools.name"
       }
+
+      query = if allowed_project_ids == :all do
+        query
+      else
+        join = [
+          "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)",
+          "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id)",
+          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+        ]
+        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
+        secondary_filter_query(query, join, where)
+      end
 
       query = if cohort == nil do
         query
@@ -169,14 +192,12 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:teacher,
-      %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form, exclude_internal: exclude_internal},
-      like_text) do
+  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form, exclude_internal: exclude_internal}, allowed_project_ids, like_text) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || school == [] || assignment == [] || permission_form == []) do
       nil
     else
-    query = %ReportFilterQuery{
+      query = %ReportFilterQuery{
         id: "portal_teachers.id",
         value: "CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') AS fullname",
         from: "portal_teachers",
@@ -187,6 +208,17 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       }
 
       query = %{query | where: exclude_internal_accounts(query.where, exclude_internal)}
+
+      query = if allowed_project_ids == :all do
+        query
+      else
+        join = [
+          "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = portal_teachers.id)",
+          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+        ]
+        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
+        secondary_filter_query(query, join, where)
+      end
 
       query = if cohort == nil do
         query
@@ -231,7 +263,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher, permission_form: permission_form}, like_text) do
+  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher, permission_form: permission_form}, allowed_project_ids, like_text) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || school == [] || teacher == [] || permission_form == []) do
       nil
@@ -243,6 +275,17 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         where: maybe_add_like(like_text, ["external_activities.name LIKE ?"]),
         order_by: "external_activities.name",
       }
+
+      query = if allowed_project_ids == :all do
+        query
+      else
+        join = [
+          "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
+          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+        ]
+        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
+        secondary_filter_query(query, join, where)
+      end
 
       query = if cohort == nil do
         query
@@ -291,7 +334,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:permission_form, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}, like_text) do
+  defp get_filter_query(:permission_form, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}, allowed_project_ids, like_text) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || school == [] || teacher == [] || assignment == []) do
       nil
@@ -309,6 +352,46 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       ## That's ok since the later processing will remove duplicates.
       ## Just make sure that they are truly identical if they use the same table alias.
 
+      query = if allowed_project_ids == :all do
+        query
+      else
+        join = [
+          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id",
+          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
+          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+        ]
+        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if cohort == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id",
+          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
+        ]
+        where = "aci.admin_cohort_id IN #{list_to_in(cohort)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if school == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id",
+          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+          "JOIN portal_school_memberships psm ON (psm.member_id = ptc.teacher_id AND psm.member_type = 'Portal::Teacher')",
+        ]
+        where = "psm.school_id IN #{list_to_in(school)}"
+        secondary_filter_query(query, join, where)
+      end
+
       query = if teacher == nil do
         query
       else
@@ -321,38 +404,12 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         secondary_filter_query(query, join, where)
       end
 
-      query = if school == nil do
-        query
-      else
-        join = [
-          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id", # DUP
-          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id", # DUP
-          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)", # DUP
-          "JOIN portal_school_memberships psm ON (psm.member_id = ptc.teacher_id AND psm.member_type = 'Portal::Teacher')",
-        ]
-        where = "psm.school_id IN #{list_to_in(school)}"
-        secondary_filter_query(query, join, where)
-      end
-
-      query = if cohort == nil do
-        query
-      else
-        join = [
-          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id", # DUP
-          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id", # DUP
-          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)", # DUP
-          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
-        ]
-        where = "aci.admin_cohort_id IN #{list_to_in(cohort)}"
-        secondary_filter_query(query, join, where)
-      end
-
       query = if assignment == nil do
         query
       else
         join = [
-          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id", # DUP
-          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id", # DUP
+          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id",
+          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
           "JOIN portal_offerings po ON (po.clazz_id = psc.clazz_id AND po.runnable_type = 'ExternalActivity')"
         ]
         where = "po.runnable_id IN #{list_to_in(assignment)}"
@@ -391,4 +448,5 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   defp like_params("", %ReportFilterQuery{}), do: []
   defp like_params(_like_text, nil), do: []
   defp like_params(like_text, %ReportFilterQuery{num_params: num_params}), do: List.duplicate("%#{like_text}%", num_params)
+
 end

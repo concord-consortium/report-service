@@ -12,6 +12,8 @@ defmodule ReportServer.Accounts.UserTest do
       portal_last_name: "Testerson",
       portal_email: "test@example.com",
       portal_is_admin: false,
+      portal_is_project_admin: false,
+      portal_is_project_researcher: false,
     }
 
     {:ok, _result} = %User{}

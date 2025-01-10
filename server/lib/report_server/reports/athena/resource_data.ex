@@ -3,7 +3,7 @@ defmodule ReportServer.Reports.Athena.ResourceData do
   require Logger
 
   alias ReportServer.Accounts.User
-  alias ReportServer.{ReportService, PortalDbs, AthenaDB}
+  alias ReportServer.{ReportService, AthenaDB}
 
   # NOTE: no struct definition but the shape of the reports data is a map whose keys are the same generated UUIDs
   # used as keys in the learner data and the values are maps with the runnable url, the resource and denormalized resource

@@ -11,6 +11,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
   require Logger
 
   alias Jason
+  alias ReportServer.Accounts.User
+  alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
 
@@ -21,9 +23,6 @@ defmodule ReportServerWeb.NewReportLive.Form do
     :assignment => "Assignments",
     :permission_form => "Permission Forms",
   }
-
-  # These fields have few enough options that we can query them without a search string
-  @no_search_required_fields [:cohort]
 
   @dev Application.compile_env(:report_server, :dev_routes)
 
@@ -51,20 +50,21 @@ defmodule ReportServerWeb.NewReportLive.Form do
     |> assign(:filter_types_included, filter_type_options)
     |> assign(:filter_type_options, [filter_type_options])
     |> assign(:filter_options, [[]])
-    |> assign(:form_options, get_form_options(report))
+    |> assign(:form_options, get_form_options(report, user))
     |> assign(:placeholder_text, [""])
     |> assign(:dev, @dev)
+    |> assign(:allowed_project_ids, PortalDbs.get_allowed_project_ids(user))
 
     {:noreply, socket}
   end
 
+  ## Called when the text in one of the search boxes changes
   @impl true
-  def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form}}) do
+  def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form, user: user, allowed_project_ids: allowed_project_ids}}) do
     filter_index = get_filter_index(field)
     report_filter = ReportFilter.from_form(form, filter_index)
-    field_name = report_filter.filters |> Enum.at(filter_index - 1)
-    if Enum.member?(@no_search_required_fields, field_name) || String.length(text) >= 3 do
-      case ReportFilterQuery.get_options(report_filter, text) do
+    if String.length(text) >= 3 || has_few_options?(report_filter, filter_index, user, allowed_project_ids, text) do
+      case ReportFilterQuery.get_options(report_filter, user, allowed_project_ids, text) do
         {:ok, options, sql, params} ->
           send_update(LiveSelect.Component, id: live_select_id, options: options)
           new_placeholder_text = socket.assigns.placeholder_text
@@ -86,6 +86,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     end
   end
 
+  ## Called when the pulldowns are changed, selections are added/removed, or the "exclude internal" checkbox is toggled
   def handle_event("form_updated", %{"_target" => ["filter_form", field], "filter_form" => form_values}, socket) do
     filter = String.replace_suffix(field, "_type", "")
     type_change? = String.ends_with?(field, "_type")
@@ -106,7 +107,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     socket = assign(socket, :form, form)
 
     socket = if type_change? do
-     update_options(socket, filter_index, form, field, live_select_id)
+      update_options(socket, filter_index, form, field, live_select_id)
     else
       # Not a filter-type change event
       # If the change was adding or removing a value from one of the filters, we'll get a field like "filter1" or "filter1_empty_selection"
@@ -204,7 +205,8 @@ defmodule ReportServerWeb.NewReportLive.Form do
   @impl true
   def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do
     report_filter = ReportFilter.from_form(form, num_filters)
-    report_filter_values = ReportFilter.get_filter_values(report_filter, user.portal_server)
+      |> maybe_enforce_hide_names(user)
+    report_filter_values = ReportFilter.get_filter_values(report_filter, user)
 
     report_run_attrs = %{
       report_slug: report.slug,
@@ -230,12 +232,12 @@ defmodule ReportServerWeb.NewReportLive.Form do
   # Query for the set of options for one of the filters in the form and send an update to the LiveSelect component.
   # The values and placeholder text are also updated and socket values are assigned.
   # Returns the new socket structure.
-  defp update_options(socket, filter_index, form, field, live_select_id) do
+  defp update_options(socket = %{assigns: %{user: user, allowed_project_ids: allowed_project_ids}}, filter_index, form, field, live_select_id) do
     report_filter = ReportFilter.from_form(form, filter_index)
-    primary_filter = List.first(report_filter.filters)
-    if (filter_index > 1 || Enum.member?(@no_search_required_fields, primary_filter)) do
-      ## cohorts and subfilters we query the options right away, since there should be few
-      case ReportFilterQuery.get_options(report_filter) do
+
+    set_options_immediately = has_few_options?(report_filter, filter_index, user, allowed_project_ids)
+    if set_options_immediately do
+      case ReportFilterQuery.get_options(report_filter, user, allowed_project_ids) do
         {:ok, options, sql, params} ->
           filter_options = socket.assigns.filter_options
             |> List.replace_at(filter_index - 1, options)
@@ -279,8 +281,16 @@ defmodule ReportServerWeb.NewReportLive.Form do
         |> assign(:filter_options, filter_options)
         |> assign(:placeholder_text, placeholder_text)
     end
+  end
 
-
+  defp has_few_options?(report_filter, filter_index, user, allowed_project_ids, like_text \\ "") do
+    cond do
+      filter_index > 1 -> true
+      {:ok, count } = ReportFilterQuery.get_option_count(report_filter, user, allowed_project_ids, like_text) ->
+        Logger.debug("Count of options for filter #{filter_index}: #{inspect(count)}")
+        count < 100
+      true -> false
+    end
   end
 
   defp describe_options(_field, search_text, options) do
@@ -308,10 +318,23 @@ defmodule ReportServerWeb.NewReportLive.Form do
 
   defp debug_filter(sql, params), do: "#{sql} (#{params |> Enum.map(&("'#{&1}'")) |> Enum.join(", ")})"
 
-  defp get_form_options(%Report{form_options: form_options}) do
+  defp get_form_options(%Report{form_options: form_options}, user = %User{}) do
     %{
-      enable_hide_names: Keyword.get(form_options, :enable_hide_names, false)
+      enable_hide_names: allow_hide_names?(user) && Keyword.get(form_options, :enable_hide_names, false)
     }
+  end
+
+  # only allow users with admin and project admin privileges to hide names
+  defp allow_hide_names?(user = %User{}) do
+    user.portal_is_admin || user.portal_is_project_admin
+  end
+
+  defp maybe_enforce_hide_names(report_filter = %ReportFilter{}, user = %User{}) do
+    if allow_hide_names?(user) do
+      report_filter
+    else
+      report_filter |> Map.put(:hide_names, true)
+    end
   end
 
 end

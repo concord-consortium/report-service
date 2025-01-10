@@ -1,4 +1,5 @@
 defmodule ReportServer.Reports.ReportUtils do
+
   def list_to_in(nil), do: "()"
   def list_to_in(list) do
     "(#{list |> Enum.map(&Integer.to_string/1) |> Enum.join(",")})"
