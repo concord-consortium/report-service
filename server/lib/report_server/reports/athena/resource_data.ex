@@ -20,9 +20,9 @@ defmodule ReportServer.Reports.Athena.ResourceData do
   def fetch(learner_data) do
     resource_data = learner_data
       |> map_learner_data_to_runnable_data()
-      |> Enum.reduce(%{}, fn {query_id, value = %{runnable_url: runnable_url}}, acc ->
+      |> Enum.map(fn value = %{runnable_url: runnable_url, query_id: query_id} ->
 
-        updated_value = with {:ok, resource} <- fetch_resource(runnable_url),
+        with {:ok, resource} <- fetch_resource(runnable_url),
              {:ok, denormalized} <- denormalize_resource(resource) do
           %{value | resource: resource, denormalized: denormalized}
         else
@@ -31,8 +31,6 @@ defmodule ReportServer.Reports.Athena.ResourceData do
             # note: we don't want to stop the processing if a resource fails to fetch
             value
         end
-
-        Map.put(acc, query_id, updated_value)
       end)
 
     {:ok, resource_data}
@@ -40,10 +38,11 @@ defmodule ReportServer.Reports.Athena.ResourceData do
 
   def upload(resource_data) do
     resource_data
-      |> Enum.each(fn {query_id, %{denormalized: denormalized}} ->
+      |> Enum.each(fn %{query_id: query_id, denormalized: denormalized} ->
         if denormalized do
           path = "activity-structure/#{query_id}/#{query_id}-structure.json"
           contents = Jason.encode!(denormalized)
+          Logger.info("Uploading resource to #{path}")
           AthenaDB.put_file_contents(path, contents)
         end
       end)
@@ -53,10 +52,8 @@ defmodule ReportServer.Reports.Athena.ResourceData do
 
   defp map_learner_data_to_runnable_data(learner_data) do
     learner_data
-    |> Enum.reduce(%{}, fn {query_id, values}, acc ->
-      runnable_url = values
-        |> Enum.find_value(nil, fn %{runnable_url: url} -> url; _ -> nil end)
-      Map.put(acc, query_id, %{runnable_url: runnable_url, resource: nil, denormalized: nil})
+    |> Enum.map(fn %{runnable_url: runnable_url, query_id: query_id} ->
+      %{runnable_url: runnable_url, query_id: query_id, resource: nil, denormalized: nil}
     end)
   end
 
@@ -106,7 +103,8 @@ defmodule ReportServer.Reports.Athena.ResourceData do
   def denormalize_resource(resource) do
     denormalized = %{
       questions: %{},
-      choices: %{}
+      choices: %{},
+      question_order: []
     }
 
     denormalized = case Map.get(resource, "type") do
@@ -122,6 +120,8 @@ defmodule ReportServer.Reports.Athena.ResourceData do
       _ -> denormalized
     end
 
+    denormalized = %{denormalized | question_order: Enum.reverse(denormalized.question_order)}
+
     {:ok, denormalized}
   end
 
@@ -136,7 +136,7 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     end)
   end
 
-  defp denormalize_question(question = %{"id" => id}, %{questions: questions, choices: choices} = denormalized) do
+  defp denormalize_question(question = %{"id" => id}, %{questions: questions, choices: choices, question_order: question_order} = denormalized) do
     prompt =
       case Map.get(question, "prompt") do
         prompt when is_binary(prompt) -> strip_html(prompt)
@@ -182,9 +182,16 @@ defmodule ReportServer.Reports.Athena.ResourceData do
         {Map.put(questions, id, question_data), choices}
       end
 
-    %{denormalized | questions: questions, choices: choices}
+    %{denormalized | questions: questions, choices: choices, question_order: [id | question_order]}
   end
 
-  defp strip_html(html), do: Floki.text(html)
+  defp strip_html(html) do
+    case Floki.parse_fragment(html) do
+      {:ok, parsed} ->
+        Floki.text(parsed)
+      _ ->
+        html
+    end
+  end
 
 end

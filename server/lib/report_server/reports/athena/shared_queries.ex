@@ -8,10 +8,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
   # so it looks a like a lot like JavaScript in Elixir.
 
   def get_usage_or_answers_athena_query(report_type, report_filter = %ReportFilter{}, resource_data, auth_domain) do
-    has_resource =
-      resource_data
-      |> Map.values()
-      |> Enum.any?(fn %{resource: resource} -> not is_nil(resource); _ -> false end)
+    has_resource = Enum.any?(resource_data, &(not is_nil(&1.resource)))
 
     if has_resource do
       generate_resource_sql(report_type, report_filter, resource_data, auth_domain)
@@ -38,9 +35,8 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
     }
 
     query_info = resource_data
-      |> Map.keys()
       |> Enum.with_index(1)
-      |> Enum.reduce(query_info_acc, fn {query_id, res_index}, acc ->
+      |> Enum.reduce(query_info_acc, fn {%{runnable_url: runnable_url, query_id: query_id, resource: resource, denormalized: denormalized}, res_index}, acc ->
         %{
           denormalized_resources: denormalized_resources,
           activities_queries: activities_queries,
@@ -50,8 +46,6 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
           learners_and_answers_tables: learners_and_answers_tables,
           resource_columns: resource_columns
         } = acc
-
-        %{runnable_url: runnable_url, resource: resource, denormalized: denormalized} = Map.get(resource_data, query_id)
 
         {url, name} =
           case resource do
@@ -163,7 +157,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
       resource_columns: resource_columns
     } = query_info
 
-    query_ids = Map.keys(resource_data)
+    query_ids = resource_data |> Enum.map(&(&1.query_id))
 
     unique_user_class_query =
       """
@@ -216,9 +210,11 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
         |> Enum.with_index(1)
         |> Enum.reduce([], fn {denormalized_resource, activity_index}, acc ->
           if denormalized_resource do
+            questions = Map.get(denormalized_resource, :questions, %{})
             denormalized_resource
-            |> Map.get(:questions)
-            |> Enum.map(fn {question_id, question} ->
+            |> Map.get(:question_order)
+            |> Enum.map(fn question_id ->
+              question = Map.get(questions, question_id)
               question_columns = get_columns_for_question(question_id, question, denormalized_resource, auth_domain, activity_index)
               [[question_columns] | acc]
             end)
@@ -226,7 +222,6 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
             acc
           end
         end)
-        |> Enum.reverse()
         |> List.flatten()
 
       all_columns = all_columns ++ questions_columns
@@ -308,7 +303,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
   end
 
   def generate_no_resource_sql(%ReportFilter{hide_names: hide_names}, resource_data) do
-    query_ids = Map.keys(resource_data)
+    query_ids = resource_data |> Enum.map(&(&1.query_id))
 
     metadata_column_names = [
       "student_id",
