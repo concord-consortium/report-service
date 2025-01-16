@@ -68,6 +68,8 @@ defmodule ReportServer.Reports.Athena.ResourceData do
       |> Req.get(url: url,
         auth: {:bearer, token },
         params: [source: source, url: reported_url],
+        retry: false,
+        retry_log_level: false,
         debug: false
       )
       |> parse_resource_response()
