@@ -1,8 +1,10 @@
 defmodule ReportServer.Reports.Athena.LearnerData do
   require Logger
 
-  # NOTE: no struct definition but the shape of the learner data is a map whose keys are generated UUIDs
-  # used to group learners by their runnable_url and the values are lists of maps representing the learner data
+  # NOTE: no struct definition but the shape of the learner data is a list of maps in the form:
+  # %{runnable_url, query_id, learners}
+  # where query_id is a generated UUID and learners is a list of maps representing the learner data.
+  # The list is ordered by the order of the runnable_urls in the original data as they are processed.
 
   import ReportServer.Reports.ReportUtils
 
@@ -140,10 +142,9 @@ defmodule ReportServer.Reports.Athena.LearnerData do
 
   def upload(learner_data) do
     learner_data
-      |> Map.keys()
-      |> Enum.each(fn query_id ->
+      |> Enum.each(fn %{query_id: query_id, learners: learners} ->
         path = "learners/#{query_id}/#{UUID.uuid4()}.json"
-        contents = learner_data[query_id]
+        contents = learners
           |> Enum.map(&(Jason.encode!/1))
           |> Enum.join("\n")
         Logger.info("Uploading learners to #{path}")
@@ -188,7 +189,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
             created_at: row.created_at
           }
         end)
-        |> group_by_runnable_url_with_uuid()
+        |> group_learners_by_runnable_url()
 
       {:ok, result}
 
@@ -298,141 +299,48 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     end
   end
 
-  def group_by_runnable_url_with_uuid(rows) do
-    Enum.reduce(rows, %{url_to_uuid: %{}, grouped_rows: %{}}, fn row, %{url_to_uuid: url_to_uuid, grouped_rows: grouped_rows} ->
+  def group_learners_by_runnable_url(rows) do
+    result = Enum.reduce(rows, %{url_to_query_id: %{}, grouped_learners: %{}, runnable_urls: []}, fn row, %{url_to_query_id: url_to_query_id, grouped_learners: grouped_learners, runnable_urls: runnable_urls} ->
       runnable_url = Map.get(row, :runnable_url)
 
-      {url_to_uuid, uuid} = if uuid = Map.get(url_to_uuid, runnable_url) do
-        {url_to_uuid, uuid}
+      # Generate or retrieve query_id for runnable_url
+      {url_to_query_id, query_id} = if query_id = Map.get(url_to_query_id, runnable_url) do
+        {url_to_query_id, query_id}
       else
-        uuid = UUID.uuid4()
-        {Map.put(url_to_uuid, runnable_url, uuid), uuid}
+        query_id = UUID.uuid4()
+        {Map.put(url_to_query_id, runnable_url, query_id), query_id}
       end
 
-      grouped_rows =
-        Map.update(grouped_rows, uuid, [row], fn existing_rows ->
+      # Group rows by query_id
+      grouped_learners =
+        Map.update(grouped_learners, query_id, [row], fn existing_rows ->
           [row | existing_rows]
         end)
 
-      %{url_to_uuid: url_to_uuid, grouped_rows: grouped_rows}
-    end)
-    |> Map.get(:grouped_rows)
-    |> Enum.map(fn {uuid, rows} ->
-      {uuid, Enum.reverse(rows)}
-    end)
-    |> Enum.into(%{})
-  end
+      # Maintain order of first encountered runnable URLs (will be reversed later)
+      runnable_urls =
+        if runnable_url in runnable_urls do
+          runnable_urls
+        else
+          [runnable_url | runnable_urls]
+        end
 
-  # to use during development/debugging
-  def get_fake_learner_data() do
-    {:ok, %{
-      "3a27cdb4-1828-4096-ad74-1748d3170c2d" => [
-        %{
-          username: "done",
-          class: "Doug's Test Class",
-          school: "Buckland-shelburne Reg",
-          teachers: [
-            %{
-              name: "Doug Martin",
-              state: "MA",
-              user_id: 264,
-              email: "dmartin@concord.org",
-              district: "Mohawk Trail"
-            }
-          ],
-          permission_forms: ["Test: Test",
-           "Precipitating Change: Coastal Erosion (AK): TEST", "Test: Test Form2"],
-          run_remote_endpoint: "https://learn.concord.org/dataservice/external_activity_data/6040b7fe-478f-499a-8c04-4d03c67a2486",
-          student_id: 73333,
-          learner_id: 213661,
-          class_id: 481,
-          user_id: 77701,
-          offering_id: 16798,
-          student_name: "DougTest One",
-          last_run: nil,
-          runnable_url: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org%2Fapi%2Fv1%2Factivities%2F8806.json",
-          created_at: ~N[2018-06-20 10:03:51]
-        }
-      ],
-      "aa4a2fc5-936c-44fc-bb77-21dfe8f6bebc" => [
-        %{
-          username: "done",
-          class: "Doug's Test Class",
-          school: "Buckland-shelburne Reg",
-          teachers: [
-            %{
-              name: "Doug Martin",
-              state: "MA",
-              user_id: 264,
-              email: "dmartin@concord.org",
-              district: "Mohawk Trail"
-            }
-          ],
-          permission_forms: ["Test: Test",
-           "Precipitating Change: Coastal Erosion (AK): TEST", "Test: Test Form2"],
-          run_remote_endpoint: "https://learn.concord.org/dataservice/external_activity_data/073594bf-4032-4b0d-bb50-721538363759",
-          student_id: 73333,
-          learner_id: 211738,
-          class_id: 481,
-          user_id: 77701,
-          offering_id: 16522,
-          student_name: "DougTest One",
-          last_run: ~N[2024-12-16 14:31:57],
-          runnable_url: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org%2Fapi%2Fv1%2Factivities%2F7247.json",
-          created_at: ~N[2018-05-29 18:36:33]
-        },
-        %{
-          username: "jstudent",
-          class: "Doug's Test Class",
-          school: "Buckland-shelburne Reg",
-          teachers: [
-            %{
-              name: "Doug Martin",
-              state: "MA",
-              user_id: 264,
-              email: "dmartin@concord.org",
-              district: "Mohawk Trail"
-            }
-          ],
-          permission_forms: [],
-          run_remote_endpoint: "https://learn.concord.org/dataservice/external_activity_data/fac6ca0a-0105-4de2-98d5-b30b04bb84e4",
-          student_id: 50,
-          learner_id: 212105,
-          class_id: 481,
-          user_id: 104,
-          offering_id: 16522,
-          student_name: "Jen Student",
-          last_run: ~N[2018-05-30 18:09:51],
-          runnable_url: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org%2Fapi%2Fv1%2Factivities%2F7247.json",
-          created_at: ~N[2018-05-30 18:09:10]
-        },
-        %{
-          username: "dtwo",
-          class: "Doug's Test Class",
-          school: "Buckland-shelburne Reg",
-          teachers: [
-            %{
-              name: "Doug Martin",
-              state: "MA",
-              user_id: 264,
-              email: "dmartin@concord.org",
-              district: "Mohawk Trail"
-            }
-          ],
-          permission_forms: [],
-          run_remote_endpoint: "https://learn.concord.org/dataservice/external_activity_data/cf8e5bce-04ab-4030-9ddf-8b1cc16a70e4",
-          student_id: 73334,
-          learner_id: 212110,
-          class_id: 481,
-          user_id: 77702,
-          offering_id: 16522,
-          student_name: "DougTest Two",
-          last_run: ~N[2018-05-30 18:19:05],
-          runnable_url: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org%2Fapi%2Fv1%2Factivities%2F7247.json",
-          created_at: ~N[2018-05-30 18:17:19]
-        }
-      ]
-    }}
+      %{url_to_query_id: url_to_query_id, grouped_learners: grouped_learners, runnable_urls: runnable_urls}
+    end)
+
+    # Reverse runnable_urls to restore original order
+    ordered_runnable_urls = Enum.reverse(result.runnable_urls)
+
+    # Build the ordered list of %{uuid: uuid, rows: rows}
+    ordered_result =
+      Enum.map(ordered_runnable_urls, fn runnable_url ->
+        query_id = Map.get(result.url_to_query_id, runnable_url)
+        learners = Map.get(result.grouped_learners, query_id) |> Enum.reverse()
+        %{runnable_url: runnable_url, query_id: query_id, learners: learners}
+      end)
+
+    # Return the ordered result
+    ordered_result
   end
 
 end

@@ -15,7 +15,7 @@ defmodule ReportServer.Reports.Athena.StudentActionsWithMetadataReport do
   end
 
   defp get_athena_query(report_filter = %ReportFilter{}, learner_data) do
-    query_ids = Map.keys(learner_data)
+    query_ids = learner_data |> Enum.map(&(&1.query_id))
 
     if !Enum.empty?(query_ids) do
       hide_names = report_filter.hide_names
