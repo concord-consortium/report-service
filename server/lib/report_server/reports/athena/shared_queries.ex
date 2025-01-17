@@ -213,10 +213,10 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
             questions = Map.get(denormalized_resource, :questions, %{})
             denormalized_resource
             |> Map.get(:question_order)
-            |> Enum.map(fn question_id ->
+            |> Enum.reduce(acc, fn question_id, acc2 ->
               question = Map.get(questions, question_id)
               question_columns = get_columns_for_question(question_id, question, denormalized_resource, auth_domain, activity_index)
-              [[question_columns] | acc]
+              [[question_columns] | acc2]
             end)
           else
             acc
