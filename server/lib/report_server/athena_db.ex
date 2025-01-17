@@ -5,9 +5,10 @@ defmodule ReportServer.AthenaDB do
   alias ReportServer.Reports.Athena.AthenaConfig
 
   def query(sql, report_run_id, user = %User{}) do
-    case ensure_workgroup(user) do
-      {:ok, workgroup_name} ->
-         start_query_execution(sql, report_run_id, workgroup_name)
+    with :ok <- check_query_size(sql),
+         {:ok, workgroup_name} <- ensure_workgroup(user) do
+      start_query_execution(sql, report_run_id, workgroup_name)
+    else
       error -> error
     end
   end
@@ -160,5 +161,14 @@ defmodule ReportServer.AthenaDB do
     uri = URI.parse(s3_url)
     key = String.slice(uri.path, 1..-1//1) # remove starting /
     {uri.host, key}
+  end
+
+  defp check_query_size(sql) do
+    case String.length(sql) do
+      len when len > 262144 ->
+        {:error, "The resulting query is too large for Athena to process.  The max is 256KB."}
+      _ ->
+        :ok
+    end
   end
 end
