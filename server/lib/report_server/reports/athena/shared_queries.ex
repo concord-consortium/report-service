@@ -222,6 +222,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
             acc
           end
         end)
+        |> Enum.reverse()
         |> List.flatten()
 
       all_columns = all_columns ++ questions_columns
