@@ -102,7 +102,7 @@ config :report_server, :report_service,
   # NOTE: token is not set here as it is loaded in runtime.exs
 
 config :report_server, :output,
-  bucket: "report-server-output",
+  bucket: System.get_env("OUTPUT_BUCKET") || "report-server-output",
   jobs_folder: "jobs",
   transcripts_folder: "transcripts"
 
