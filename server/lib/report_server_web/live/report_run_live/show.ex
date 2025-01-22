@@ -8,6 +8,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.AthenaDB
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportQuery, ReportRun, Tree}
+  alias ReportServerWeb.NewReportLive.PostProcessingComponent
 
   @row_limit 100
 
@@ -79,6 +80,13 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   @impl true
   def handle_event("download_report", %{"filetype" => filetype}, socket) do
     download_portal_report(filetype, socket)
+  end
+
+  @impl true
+  def handle_info({:jobs, _query_id, jobs}, socket = %{assigns: %{report_run: report_run}}) do
+    # the job server sends the jobs via a pubsub message to the topic subscribed to in the initial update
+    send_update PostProcessingComponent, id: report_run.id, jobs: jobs
+    {:noreply, socket}
   end
 
   @impl true
