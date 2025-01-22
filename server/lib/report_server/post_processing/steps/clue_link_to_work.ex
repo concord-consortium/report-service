@@ -49,6 +49,7 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
     @clue_url <>
       "?class=#{URI.encode_www_form(class_url)}" <>
       "&offering=#{URI.encode_www_form(offering_url)}" <>
+      "&researcher=true" <>
       "&reportType=offering" <>
       "&authDomain=#{URI.encode_www_form(auth_domain_url)}" <>
       "&resourceLinkId=#{offering_id}" <>
