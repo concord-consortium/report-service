@@ -2,12 +2,11 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
   alias ReportServer.PostProcessing.JobParams
   alias ReportServer.PostProcessing.Step
   alias ReportServer.PostProcessing.Steps.Helpers
-  alias ReportServer.PortalReport
 
   @id "clue_link_to_work"
-
   @insert_after_col "time"
   @link_to_work_col "link_to_work"
+  @clue_url "https://collaborative-learning.concord.org/"
 
   def step do
     %Step{
@@ -19,11 +18,8 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
     }
   end
 
-  def init(%JobParams{step_state: step_state} = params) do
-    params = Helpers.add_output_column(params, @link_to_work_col, :after, @insert_after_col)
-    step_state = Map.put(step_state, @id, PortalReport.get_url())
-
-    %{params | step_state: step_state}
+  def init(params) do
+    Helpers.add_output_column(params, @link_to_work_col, :after, @insert_after_col)
   end
 
   # process each CLUE log row
@@ -32,8 +28,8 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
 
     if learner do
       case Jason.decode(parameters) do
-        {:ok, %{"documentKey" => document_key, "documentHistoryId" => document_history_id}} ->
-          link_to_work = generate_link_to_work(job_params, learner, document_key, document_history_id)
+        {:ok, json = %{"documentKey" => document_key}} ->
+          link_to_work = generate_link_to_work(job_params, learner, document_key, json["documentHistoryId"])
           {input, Map.put(output, @link_to_work_col, link_to_work)}
 
         _ -> row
@@ -45,21 +41,19 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
 
   def process_row(_job_params, row, _data_row?), do: row
 
-  defp generate_link_to_work(%JobParams{step_state: step_state, portal_url: portal_url}, _learner = %{offering_id: offering_id, class_id: class_id}, document_key, document_history_id) do
-    portal_report_url = Map.get(step_state, @id)
-
+  defp generate_link_to_work(%JobParams{portal_url: portal_url}, _learner = %{offering_id: offering_id, class_id: class_id}, document_key, maybe_document_history_id) do
     class_url = "https://#{portal_url}/api/v1/classes/#{class_id}"
     offering_url = "https://#{portal_url}/api/v1/offerings/#{offering_id}"
     auth_domain_url = "https://#{portal_url}/"
 
-    portal_report_url <>
+    @clue_url <>
       "?class=#{URI.encode_www_form(class_url)}" <>
       "&offering=#{URI.encode_www_form(offering_url)}" <>
       "&reportType=offering" <>
       "&authDomain=#{URI.encode_www_form(auth_domain_url)}" <>
       "&resourceLinkId=#{offering_id}" <>
       "&studentDocument=#{document_key}" <>
-      "&studentDocumentHistoryId=#{document_history_id}"
+      (if maybe_document_history_id, do: "&studentDocumentHistoryId=#{maybe_document_history_id}", else: "")
   end
 
 end

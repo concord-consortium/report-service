@@ -12,7 +12,7 @@ defmodule ReportServer.PostProcessing.Job do
   defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0, portal_url: nil
 
   def run(mode, job, query_result, job_server_pid) do
-    with {:ok, preprocessed} <- preprocess_rows(mode, job, query_result, job_server_pid),
+    with {:ok, preprocessed} <- preprocess_rows(mode, job, query_result),
          {:ok, result} <- process_rows(mode, job, query_result, job_server_pid, preprocessed) do
         {:ok, result}
     else
@@ -20,17 +20,20 @@ defmodule ReportServer.PostProcessing.Job do
     end
   end
 
-  defp preprocess_rows(mode, job, query_result, job_server_pid) do
+  defp preprocess_rows(mode, job, query_result) do
     preprocessed = %{
       learners: %{}
     }
 
     actions = get_preprocess_actions(job)
     if length(actions) > 0 do
+      # since reports can be huge we need to stream them and decode them line by line into rows
       case Aws.get_file_stream(mode, query_result.output_location) do
         {:ok, stream } ->
           preprocessed = stream
           |> CSV.decode()
+
+          # transform the csv stream into a steam of preprocessed rows with only the information needed for each preprocessing action
           |> Stream.transform(nil, fn {:ok, row}, row_acc ->
             if row_acc == nil do
               # the accumulator is nil on the first line
@@ -51,12 +54,15 @@ defmodule ReportServer.PostProcessing.Job do
               {[new_row], row_acc}
             end
           end)
+
+          # this reducer is called each time a new row is emitted from the stream to gather the input needed for the preprocessing actions
           |> Enum.reduce(preprocessed, fn row, acc ->
             learners = if row.rre != nil, do: Map.put(acc.learners, row.rre, nil), else: acc.learners
             # add future accumulators here...
             %{acc | learners: learners}
           end)
 
+          # finally we run the actions that need the preprocessed data
           preprocessed = Enum.reduce(actions, preprocessed, fn action, acc ->
             case action do
               :preprocess_learners ->
@@ -78,10 +84,13 @@ defmodule ReportServer.PostProcessing.Job do
   end
 
   defp process_rows(mode, job, query_result, job_server_pid, preprocessed) do
+    # since reports can be huge we need to stream them and decode them line by line into rows
     case Aws.get_file_stream(mode, query_result.output_location) do
       {:ok, stream } ->
         result = stream
         |> CSV.decode()
+
+        # this runs for each row of the csv, we transform the row with the steps and output the transformed row
         |> Stream.transform(nil, fn {:ok, row}, acc ->
           if acc == nil do
             # the accumulator is nil on the first line, with the headers which we parse and transform and
@@ -174,7 +183,7 @@ defmodule ReportServer.PostProcessing.Job do
     %{rre: nil}
   end
 
-  defp get_learners(%{portal_url: portal_url}, []), do: %{}
+  defp get_learners(_job_params, []), do: %{}
   defp get_learners(%{portal_url: portal_url}, run_remote_endpoints) do
     # extract the secure_key from the run_remote_endpoint
     secure_key_map = Enum.reduce(run_remote_endpoints, %{}, fn run_remote_endpoint, acc ->
