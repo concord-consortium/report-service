@@ -37,7 +37,7 @@ defmodule ReportServerWeb.Aws do
       "Query" => "-- name Demo Query ##{query_id}\n  -- type activity\n  -- reportType details\n",
       "QueryExecutionId" => query_id,
       "ResultConfiguration" => %{
-        "OutputLocation" => "/reports/demo.csv"
+        "OutputLocation" => "/old-reports/demo.csv"
       },
       "Status" => %{
         "State" => state,
@@ -58,7 +58,7 @@ defmodule ReportServerWeb.Aws do
   end
 
   def get_presigned_url("demo", _workgroup_credentials, _s3_url, _filename) do
-    {:ok, "/reports/demo.csv"}
+    {:ok, "/old-reports/demo.csv"}
   end
 
   def get_presigned_url(_mode, workgroup_credentials, s3_url, filename) do

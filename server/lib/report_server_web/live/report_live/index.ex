@@ -23,7 +23,7 @@ defmodule ReportServerWeb.ReportLive.Index do
         |> assign_async(:aws_data, fn -> async_get_aws_data(mode, portal_credentials) end)
       }
     else
-      {:ok, redirect(socket, to: ~p"/auth/login?return_to=/reports")}
+      {:ok, redirect(socket, to: ~p"/auth/login?return_to=/old-reports")}
     end
   end
 

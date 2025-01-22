@@ -208,12 +208,12 @@ defmodule ReportServerWeb.ReportLive.QueryComponent do
   @impl true
   def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{mode: "demo", jobs: jobs}}) do
     presigned_url = case type do
-      "original" -> "/reports/demo.csv"
+      "original" -> "/old-reports/demo.csv"
 
       "job" ->
         job = Enum.find(jobs, fn %{id: id} -> "#{id}" == params["jobId"] end)
         result = Base.encode64(job.result)
-        "/reports/job.csv?filename=job-#{job.id}.csv&result=#{result}"
+        "/old-reports/job.csv?filename=job-#{job.id}.csv&result=#{result}"
 
       _ -> nil
     end

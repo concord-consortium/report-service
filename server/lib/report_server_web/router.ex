@@ -45,7 +45,7 @@ defmodule ReportServerWeb.Router do
     end
   end
 
-  scope "/reports", ReportServerWeb do
+  scope "/old-reports", ReportServerWeb do
     pipe_through :browser
 
     live "/", ReportLive.Index, :index
