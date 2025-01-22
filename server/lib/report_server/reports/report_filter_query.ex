@@ -29,7 +29,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   def get_option_count(report_filter = %ReportFilter{}, %User{portal_server: portal_server}, allowed_project_ids, like_text \\ "") do
     {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text)
     if query == nil do
-      {:ok, [], "", params}
+      {:ok, 0}
     else
       sql = get_counts_sql(query)
 
@@ -43,6 +43,11 @@ defmodule ReportServer.Reports.ReportFilterQuery do
           {:error, error, sql, params}
       end
     end
+  end
+
+  # this handles the case where the user has not selected any filters but checked the "exclude CC users" checkbox
+  def get_query_and_params(report_filter = %ReportFilter{filters: []}, allowed_project_ids, like_text) do
+    {nil, []}
   end
 
   def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, allowed_project_ids, like_text) do
