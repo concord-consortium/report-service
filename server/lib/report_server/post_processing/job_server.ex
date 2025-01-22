@@ -6,7 +6,7 @@ defmodule ReportServer.PostProcessing.JobServer do
   alias Phoenix.PubSub
   alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.{Job, Output}
-  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio, GlossaryData}
+  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio, GlossaryData, ClueLinkToWork}
 
   @client_check_interval :timer.minutes(1)
 
@@ -26,6 +26,10 @@ defmodule ReportServer.PostProcessing.JobServer do
     HasAudio.step(),
     TranscribeAudio.step(),
     GlossaryData.step()
+  ] |> sort_steps()
+
+  def get_steps(_mode, "student-actions"), do: [
+    ClueLinkToWork.step(),
   ] |> sort_steps()
 
   def get_steps(_mode, _report_type), do: []
@@ -94,16 +98,22 @@ defmodule ReportServer.PostProcessing.JobServer do
     {:noreply, state}
   end
 
-  # The job completed successfully
+  # The job task completed
   def handle_info({ref, result}, state) do
     Process.demonitor(ref, [:flush])
+
+    {status, final_result} = case result do
+      {:ok, final_result} -> {:completed, final_result}
+      {:error, _} -> {:failed, nil}
+    end
+
     state = state
-      |> update_job(ref, :completed, result)
+      |> update_job(ref, status, final_result)
       |> save_jobs_file()
     {:noreply, state}
   end
 
-  # The job failed
+  # The job task threw an exception
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     state = state
       |> update_job(ref, :failed)
@@ -219,7 +229,7 @@ defmodule ReportServer.PostProcessing.JobServer do
     Map.new(json, &reduce_keys_to_atoms/1)
   end
 
-  def reduce_keys_to_atoms({key, val}) when is_map(val), do: {String.to_existing_atom(key), keys_to_atoms(val)}
-  def reduce_keys_to_atoms({key, val}) when is_list(val), do: {String.to_existing_atom(key), Enum.map(val, &keys_to_atoms(&1))}
-  def reduce_keys_to_atoms({key, val}), do: {String.to_existing_atom(key), val}
+  defp reduce_keys_to_atoms({key, val}) when is_map(val), do: {String.to_existing_atom(key), keys_to_atoms(val)}
+  defp reduce_keys_to_atoms({key, val}) when is_list(val), do: {String.to_existing_atom(key), Enum.map(val, &keys_to_atoms(&1))}
+  defp reduce_keys_to_atoms({key, val}), do: {String.to_existing_atom(key), val}
 end
