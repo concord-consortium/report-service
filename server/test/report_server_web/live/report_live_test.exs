@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.ReportLiveTest do
+defmodule ReportServerWeb.OldReportLiveTest do
   use ReportServerWeb.ConnCase
 
   import Phoenix.LiveViewTest

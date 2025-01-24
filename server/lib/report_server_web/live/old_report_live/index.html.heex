@@ -12,7 +12,7 @@
 
   <.live_component
     :for={query_id <- aws_data.query_ids}
-    module={ReportServerWeb.ReportLive.QueryComponent}
+    module={ReportServerWeb.OldReportLive.QueryComponent}
     id={query_id}
     workgroup_credentials={aws_data.workgroup_credentials}
     mode={aws_data.mode}

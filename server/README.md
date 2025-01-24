@@ -1,6 +1,6 @@
 # Report Server
 
-## Authentication
+## Old Authentication (to be removed)
 
 The report server authenticates with the portal using oauth2.  Because the portal returns the access token as a hash parameter in the url the "oauth dance" is a little complex.  Here are the steps:
 

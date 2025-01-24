@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.NewReportLive.Form do
+defmodule ReportServerWeb.ReportLive.Form do
   @doc """
   Render the form for a new report.
   May eventually get a different @live_action to show the result of the report.

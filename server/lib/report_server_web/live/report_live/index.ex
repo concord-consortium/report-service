@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.NewReportLive.Index do
+defmodule ReportServerWeb.ReportLive.Index do
   use ReportServerWeb, :live_view
 
   alias ReportServer.Reports
