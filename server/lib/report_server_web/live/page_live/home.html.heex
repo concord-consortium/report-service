@@ -6,14 +6,24 @@
   </div>
 </div>
 
-<div class="p-4">
-  <div class="flex w-full">
+<div class="p-4 flex gap-4">
+  <div class="flex">
     <.square_link
-      navigate={~p"/reports"}
+      navigate={~p"/old-reports"}
       class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
     >
       <.icon name="hero-document-chart-bar" />
-      Your Reports
+      Old Reports
+    </.square_link>
+  </div>
+
+  <div class="flex">
+    <.square_link
+      navigate={~p"/new-reports"}
+      class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
+    >
+      <.icon name="hero-document-chart-bar" />
+      New Reports
     </.square_link>
   </div>
 </div>
