@@ -53,7 +53,14 @@ defmodule ReportServerWeb.Router do
     get "/job.csv", DemoController, :job
   end
 
+  # this directs all requests to /new-reports to /reports for backwards compatibility
   scope "/new-reports", ReportServerWeb do
+    pipe_through :browser
+
+    get "/*path", RedirectToReports, []
+  end
+
+  scope "/reports", ReportServerWeb do
     pipe_through :browser
 
     live_session :reports, on_mount: ReportServerWeb.NewReportLive.Auth do
