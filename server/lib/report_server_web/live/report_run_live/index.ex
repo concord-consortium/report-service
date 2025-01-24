@@ -31,7 +31,7 @@ defmodule ReportServerWeb.ReportRunLive.Index do
     else
       socket = socket
         |> put_flash(:error, "Sorry, you don't have access to that page.")
-        |> redirect(to: "/new-reports")
+        |> redirect(to: "/reports")
 
       {:ok, socket}
     end

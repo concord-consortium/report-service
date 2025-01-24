@@ -48,7 +48,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     else
       socket = socket
         |> put_flash(:error, "You are not authorized to access the requested report.")
-        |> redirect(to: "/new-reports")
+        |> redirect(to: "/reports")
       {:noreply, socket}
     end
   end

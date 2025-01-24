@@ -218,7 +218,7 @@ defmodule ReportServerWeb.NewReportLive.Form do
     socket = case Reports.create_report_run(report_run_attrs) do
       {:ok, report_run} ->
         socket
-          |> redirect(to: ~p"/new-reports/runs/#{report_run.id}")
+          |> redirect(to: ~p"/reports/runs/#{report_run.id}")
 
       {:error, changeset} ->
         Logger.error(changeset)

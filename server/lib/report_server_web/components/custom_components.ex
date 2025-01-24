@@ -300,7 +300,7 @@ defmodule ReportServerWeb.CustomComponents do
         </thead>
         <tbody>
           <tr :for={report_run <- @report_runs} class="group hover:bg-zinc-200 even:bg-gray-50">
-            <td class="p-2 font-normal border-b align-top"><.link class="underline" href={"/new-reports/runs/#{report_run.id}"}><%= report_run.id %></.link></td>
+            <td class="p-2 font-normal border-b align-top"><.link class="underline" href={"/reports/runs/#{report_run.id}"}><%= report_run.id %></.link></td>
             <td class="p-2 font-normal border-b align-top" :if={@include_user}><%= report_run.user.portal_first_name %> <%= report_run.user.portal_last_name %></td>
             <td class="p-2 font-normal border-b align-top" :if={@include_report_titles}><%= @report_titles[report_run.report_slug] %></td>
             <td class="p-2 font-normal border-b align-top"><.report_filter_values report_run={report_run} /></td>
