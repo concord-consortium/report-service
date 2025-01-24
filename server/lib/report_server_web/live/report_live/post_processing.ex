@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.NewReportLive.PostProcessingComponent do
+defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
   use ReportServerWeb, :live_component
 
   require Logger

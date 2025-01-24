@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.ReportLive.QueryComponent do
+defmodule ReportServerWeb.OldReportLive.QueryComponent do
   require Logger
 
   alias ReportServer.PostProcessing.JobServer

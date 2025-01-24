@@ -1,4 +1,4 @@
-defmodule ReportServerWeb.NewReportLive.Auth do
+defmodule ReportServerWeb.ReportLive.Auth do
   import Phoenix.LiveView
   import Phoenix.Component
 

@@ -1,10 +1,10 @@
-defmodule ReportServerWeb.ReportLive.Index do
+defmodule ReportServerWeb.OldReportLive.Index do
   use ReportServerWeb, :live_view
 
   require Logger
 
   alias ReportServerWeb.{Auth, TokenService, Aws}
-  alias ReportServerWeb.ReportLive.QueryComponent
+  alias ReportServerWeb.OldReportLive.QueryComponent
 
   @impl true
   def mount(params, session, socket) do

@@ -8,7 +8,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.AthenaDB
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportQuery, ReportRun, Tree}
-  alias ReportServerWeb.NewReportLive.PostProcessingComponent
+  alias ReportServerWeb.ReportLive.PostProcessingComponent
 
   @row_limit 100
 

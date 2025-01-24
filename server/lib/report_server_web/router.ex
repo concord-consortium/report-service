@@ -48,7 +48,7 @@ defmodule ReportServerWeb.Router do
   scope "/old-reports", ReportServerWeb do
     pipe_through :browser
 
-    live "/", ReportLive.Index, :index
+    live "/", OldReportLive.Index, :index
     get "/demo.csv", DemoController, :csv
     get "/job.csv", DemoController, :job
   end
@@ -63,12 +63,12 @@ defmodule ReportServerWeb.Router do
   scope "/reports", ReportServerWeb do
     pipe_through :browser
 
-    live_session :reports, on_mount: ReportServerWeb.NewReportLive.Auth do
-      live "/new/:slug", NewReportLive.Form, :form
+    live_session :reports, on_mount: ReportServerWeb.ReportLive.Auth do
+      live "/new/:slug", ReportLive.Form, :form
       live "/runs", ReportRunLive.Index, :my_runs
       live "/all-runs", ReportRunLive.Index, :all_runs
       live "/runs/:id", ReportRunLive.Show, :show
-      live "/*path", NewReportLive.Index, :index
+      live "/*path", ReportLive.Index, :index
     end
   end
 
