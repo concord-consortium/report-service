@@ -365,7 +365,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
           "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
           "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
           "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
-          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+          "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
         ]
         where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
         secondary_filter_query(query, join, where)
