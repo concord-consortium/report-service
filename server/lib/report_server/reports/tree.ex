@@ -171,8 +171,8 @@ defmodule ReportServer.Reports.Tree do
           include_filters: [:cohort, :school, :teacher, :assignment]
         }),
       ]},
-      %ReportGroup{slug: "codap-reports", title: "CODAP Reports", subtitle: "Reports about CODAP (none yet defined)", tbd: true, children: [
-      ]},
+      # %ReportGroup{slug: "codap-reports", title: "CODAP Reports", subtitle: "Reports about CODAP (none yet defined)", tbd: true, children: [
+      # ]},
     ]}
     |> decorate_tree()
   end

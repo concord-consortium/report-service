@@ -4,8 +4,9 @@
     <:subtitle><%= @report_group.subtitle %></:subtitle>
   </.header>
 
-  <.described_link navigate={~p"/reports/runs"} description={"Lists your previous report runs"} :if={@is_root}>
-    Your Runs
+  <.described_link navigate={report.path} description={report.subtitle} :for={report <- @report_group.children}>
+    <%= report.title %>
+    <span :if={report.tbd}>🚧🛠️</span>
   </.described_link>
 
   <%= if @user.portal_is_admin do %>
@@ -14,9 +15,8 @@
     </.described_link>
   <% end %>
 
-  <.described_link navigate={report.path} description={report.subtitle} :for={report <- @report_group.children}>
-    <%= report.title %>
-    <span :if={report.tbd}>🚧🛠️</span>
+  <.described_link navigate={~p"/reports/runs"} description={"Lists your previous report runs"} :if={@is_root}>
+    Your Runs
   </.described_link>
 
 <% else %>
