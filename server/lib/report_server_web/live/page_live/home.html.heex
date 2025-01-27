@@ -24,7 +24,7 @@
 </div>
 
 <div class="flex gap-4 flex-wrap p-4">
-  <%= if @user.portal_is_admin do %>
+  <%= if @user && @user.portal_is_admin do %>
     <.square_link
       navigate={~p"/reports/all-runs"}
       class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
