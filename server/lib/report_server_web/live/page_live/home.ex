@@ -3,14 +3,18 @@ defmodule ReportServerWeb.PageLive.Home do
 
   alias ReportServer.Dashboard.StatsServer
   alias ReportServerWeb.Auth
+  alias ReportServer.Reports.Tree
 
   @impl true
   def mount(_params, session, socket) do
+    report_group = Tree.find_report_group([])
+
     socket = socket
       |> assign(:page_title, "Home")
       |> assign(Auth.public_session_vars(session))
       |> assign(:stats, StatsServer.get_dashboard_stats())
       |> assign(:stats_disabled, StatsServer.disabled?())
+      |> assign(:report_group, report_group)
 
     # listen for the stats server message that the dashboard stats updated
     if connected?(socket) do

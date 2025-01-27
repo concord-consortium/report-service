@@ -6,25 +6,38 @@
   </div>
 </div>
 
-<div class="p-4 flex gap-4">
+<div class="flex gap-4 flex-wrap p-4">
+  <.square_link
+    navigate={~p"/reports"}
+    class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
+  >
+    All Reports
+  </.square_link>
 
-  <div class="flex">
-    <.square_link
-      navigate={~p"/reports"}
-      class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
-    >
-      <.icon name="hero-document-chart-bar" />
-      Reports
-    </.square_link>
-  </div>
-
-  <div class="flex">
-    <.square_link
-      navigate={~p"/old-reports"}
-      class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
-    >
-      <.icon name="hero-document-chart-bar" />
-      Old Reports
-    </.square_link>
-  </div>
+  <.square_link :for={report <- @report_group.children}
+    navigate={report.path}
+    class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
+  >
+    <%= report.title %>
+    <span :if={report.tbd}>🚧🛠️</span>
+  </.square_link>
 </div>
+
+<div class="flex gap-4 flex-wrap p-4">
+  <%= if @user.portal_is_admin do %>
+    <.square_link
+      navigate={~p"/reports/all-runs"}
+      class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
+    >
+      All Runs
+    </.square_link>
+  <% end %>
+
+  <.square_link
+    navigate={~p"/reports/runs"}
+    class="gap-4 bg-orange hover:bg-light-orange hover:text-orange hover:border hover:border-orange"
+  >
+    Your Runs
+  </.square_link>
+</div>
+
