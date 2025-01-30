@@ -36,4 +36,14 @@ defmodule ReportServerWeb.ReportRunLive.Index do
       {:ok, socket}
     end
   end
+
+  # this is a catch-all mount function that will redirect to the reports when there is no user
+  @impl true
+  def mount(_params, _session, socket) do
+    socket = socket
+      |> put_flash(:error, "Sorry, you don't have access to that page.")
+      |> redirect(to: "/reports")
+
+    {:ok, socket}
+  end
 end
