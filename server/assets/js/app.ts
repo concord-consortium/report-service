@@ -26,6 +26,9 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
+// track the last time a download was initiated to prevent multiple downloads
+let lastDownloadAt = 0;
+
 const Hooks = {
   ...live_select,
   AuthCallback: {
@@ -79,6 +82,14 @@ const Hooks = {
     mounted() {
       this.handleEvent("download_report", (options) => {
         let blob;
+
+        // prevent multiple downloads in quick succession
+        const now = Date.now();
+        const lastDownloadInterval = now - lastDownloadAt;
+        lastDownloadAt = now;
+        if (lastDownloadInterval < 1000) {
+          return;
+        }
 
         const link = document.createElement('a');
         link.download = options.filename;
