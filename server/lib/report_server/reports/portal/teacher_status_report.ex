@@ -42,25 +42,7 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
 
     where = exclude_internal_accounts(where, exclude_internal)
 
-    allowed_project_ids = PortalDbs.get_allowed_project_ids(user)
-    {join, where} = if allowed_project_ids == :all do
-      {join, where}
-    else
-      {
-        [
-          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' and aci_teacher.item_id = pt.id)",
-          "join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.item_id = ea.id)",
-          "join admin_cohorts ac_teacher ON (ac_teacher.id = aci_teacher.admin_cohort_id)",
-          "join admin_cohorts ac_assignment ON (ac_assignment.id = aci_assignment.admin_cohort_id)"
-          | join
-        ],
-        [
-          "ac_teacher.project_id IN #{list_to_in(allowed_project_ids)}",
-          "ac_assignment.project_id IN #{list_to_in(allowed_project_ids)}"
-          | where
-        ]
-      }
-    end
+    {join, where} = apply_allowed_project_ids_filter(user, join, where, "ea.id", "pt.id")
 
     # check cohorts
     {join, where} = if have_filter?(cohort) do
