@@ -128,7 +128,7 @@ defmodule ReportServerWeb.CustomComponents do
         ~H"""
         <div class="flex justify-between items-center">
           <div>
-          <strong>Note:</strong> Report preview and JSON download are not supported for this report type.
+          <strong>Note:</strong> Only CSV download is available for this report type.
           </div>
           <div>
             <.download_button filetype="csv"/>
