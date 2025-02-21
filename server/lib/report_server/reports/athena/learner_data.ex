@@ -173,6 +173,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
           run_remote_endpoint = "https://#{user.portal_server}/dataservice/external_activity_data/#{row.secure_key}"
 
           # use same format as api
+          # These names must also be specified in the AWS Glue configuration
           %{
             student_id: row.student_id,
             learner_id: row.learner_id,
