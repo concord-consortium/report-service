@@ -70,7 +70,7 @@ defmodule ReportServer.Reports.ReportQuery do
   def get_learner_cols(opts \\ []) do
     hide_names = Keyword.get(opts, :hide_names, false)
 
-    ["learner_id", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run"]
+    ["learner_id", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "primary_user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run"]
       |> Enum.map(&(to_tuple("learner", &1)))
       |> Enum.map(&(hash_username(&1, hide_names)))
       |> Enum.map(&(hide_learner_student_name(&1, hide_names)))

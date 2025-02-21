@@ -113,11 +113,11 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       {
         [
           "JOIN portal_teachers pt ON (pt.id = ptc.teacher_id)",
-          "JOIN users u ON u.id = pt.user_id"
+          "JOIN users teacher_u ON u.id = pt.user_id"
           | join,
         ],
         [
-          "u.email NOT LIKE '%@concord.org'"
+          "teacher_u.email NOT LIKE '%@concord.org'"
           | where
         ]
       }
