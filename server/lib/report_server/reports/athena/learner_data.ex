@@ -142,7 +142,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     teacher_ids = get_unique_ids(rows, :teachers_id)
     permission_form_ids = get_unique_ids(rows, :permission_forms_id)
 
-    with {:ok, rows} <- ensure_not_empty(rows, "No learners were found matching the filters you selected"),
+    with {:ok, rows} <- ensure_not_empty(rows, "No learners were found matching the filters you selected."),
          {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
          {:ok, permission_form_map } <- get_permission_form_map(permission_form_ids, user) do
 

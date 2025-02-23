@@ -40,7 +40,7 @@ defmodule ReportServer.Reports.Athena.StudentActionsWithMetadataReport do
 
       {:ok, %ReportQuery{cols: cols, from: from, join: join }}
     else
-      {:error, "No learners found to match the requested filter(s)."}
+      {:error, "No learners were found matching the filters you selected."}
     end
   end
 end
