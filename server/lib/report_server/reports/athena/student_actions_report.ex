@@ -16,7 +16,7 @@ defmodule ReportServer.Reports.Athena.StudentActionsReport do
             where: [["\"log\".\"run_remote_endpoint\" IN #{string_list_to_single_quoted_in(run_remote_endpoints)}"]]
           }}
         else
-          {:error, "No learners found to match the requested filter(s)."}
+          {:error, "No learners were found matching the filters you selected."}
         end
 
       error -> error
