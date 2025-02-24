@@ -164,6 +164,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
       unique_user_class AS
         (SELECT class_id,
           user_id,
+          arbitrary(primary_user_id) as primary_user_id,
           arbitrary(student_id) as student_id,
           arbitrary(#{if hide_names, do: "student_id", else: "student_name"}) as student_name,
           arbitrary(#{maybe_hash_username(hide_names, "username", true)}) as username,
@@ -185,6 +186,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
     default_columns = [
       "student_id",
       "user_id",
+      "primary_user_id",
       "student_name",
       "username",
       "school",
@@ -276,6 +278,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
       SELECT
         unique_user_class.student_id,
         unique_user_class.user_id,
+        unique_user_class.primary_user_id,
         unique_user_class.student_name,
         unique_user_class.username,
         unique_user_class.school,
@@ -309,6 +312,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
     metadata_column_names = [
       "student_id",
       "user_id",
+      "primary_user_id",
       "student_name",
       "username",
       "school",
