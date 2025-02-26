@@ -24,6 +24,7 @@ defmodule ReportServerWeb.ReportLive.Form do
     :permission_form => "Permission Forms",
   }
 
+  @max_auto_options_length 200
   @dev Application.compile_env(:report_server, :dev_routes)
 
   @impl true
@@ -288,7 +289,7 @@ defmodule ReportServerWeb.ReportLive.Form do
       filter_index > 1 -> true
       {:ok, count } = ReportFilterQuery.get_option_count(report_filter, user, allowed_project_ids, like_text) ->
         Logger.debug("Count of options for filter #{filter_index}: #{inspect(count)}")
-        count < 100
+        count <= @max_auto_options_length
       true -> false
     end
   end

@@ -46,7 +46,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   end
 
   # this handles the case where the user has not selected any filters but checked the "exclude CC users" checkbox
-  def get_query_and_params(report_filter = %ReportFilter{filters: []}, allowed_project_ids, like_text) do
+  def get_query_and_params(_report_filter = %ReportFilter{filters: []}, _allowed_project_ids, _like_text) do
     {nil, []}
   end
 
@@ -285,10 +285,11 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         query
       else
         join = [
-          "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
-          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+          "LEFT JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
+          "LEFT JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
+          "LEFT JOIN admin_project_materials apm ON (apm.material_type = 'ExternalActivity' AND apm.material_id = external_activities.id)",
         ]
-        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
+        where = "(ac.project_id IN #{list_to_in(allowed_project_ids)}) OR (apm.project_id IN #{list_to_in(allowed_project_ids)})"
         secondary_filter_query(query, join, where)
       end
 

@@ -57,25 +57,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     join = []
     where = []
 
-    allowed_project_ids = PortalDbs.get_allowed_project_ids(user)
-    {join, where} = if allowed_project_ids == :all do
-      {join, where}
-    else
-      {
-        [
-          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)",
-          "join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' AND aci_assignment.item_id = po.runnable_id)",
-          "join admin_cohorts ac_teacher ON (ac_teacher.id = aci_teacher.admin_cohort_id)",
-          "join admin_cohorts ac_assignment ON (ac_assignment.id = aci_assignment.admin_cohort_id)"
-          | join
-        ],
-        [
-          "ac_teacher.project_id IN #{list_to_in(allowed_project_ids)}",
-          "ac_assignment.project_id IN #{list_to_in(allowed_project_ids)}"
-          | where
-        ]
-      }
-    end
+    {join, where} = apply_allowed_project_ids_filter(user, join, where, "po.runnable_id", "ptc.teacher_id")
 
     {join, where} = if have_filter?(cohort) do
       {
@@ -162,7 +144,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     teacher_ids = get_unique_ids(rows, :teachers_id)
     permission_form_ids = get_unique_ids(rows, :permission_forms_id)
 
-    with {:ok, rows} <- ensure_not_empty(rows, "No learner data found"),
+    with {:ok, rows} <- ensure_not_empty(rows, "No learners were found matching the filters you selected."),
          {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
          {:ok, permission_form_map } <- get_permission_form_map(permission_form_ids, user) do
 

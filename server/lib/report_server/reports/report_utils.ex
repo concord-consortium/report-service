@@ -93,4 +93,28 @@ defmodule ReportServer.Reports.ReportUtils do
     end
   end
 
+  def apply_allowed_project_ids_filter(user, join, where, assignment_id_ref, teacher_id_ref) do
+    allowed_project_ids = ReportServer.PortalDbs.get_allowed_project_ids(user)
+    if allowed_project_ids == :all do
+      {join, where}
+    else
+      {
+        [
+          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' and aci_teacher.item_id = #{teacher_id_ref})",
+          "join admin_cohorts ac_teacher ON (ac_teacher.id = aci_teacher.admin_cohort_id)",
+          "left join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.item_id = #{assignment_id_ref})",
+          "left join admin_cohorts ac_assignment ON (ac_assignment.id = aci_assignment.admin_cohort_id)",
+          "left join admin_project_materials apm ON (apm.material_type = 'ExternalActivity' AND apm.material_id = #{assignment_id_ref})"
+          | join
+        ],
+        [
+          "ac_teacher.project_id IN #{list_to_in(allowed_project_ids)}",
+          "(ac_assignment.project_id IN #{list_to_in(allowed_project_ids)}) or (apm.project_id IN #{list_to_in(allowed_project_ids)})"
+          | where
+        ]
+      }
+    end
+
+  end
+
 end
