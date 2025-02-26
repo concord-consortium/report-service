@@ -1,6 +1,9 @@
 defmodule ReportServer.Reports.ReportQuery do
+
   alias ReportServer.Reports.ReportQuery
   alias ReportServer.Reports.Athena.AthenaConfig
+  alias ReportServer.Reports.ReportFilter
+  alias ReportServer.Reports.ReportUtils
 
   defstruct cols: [], from: "", join: [], where: [], group_by: "", order_by: [], raw_sql: nil
 
@@ -68,12 +71,50 @@ defmodule ReportServer.Reports.ReportQuery do
   end
 
   def get_learner_cols(opts \\ []) do
-    hide_names = Keyword.get(opts, :hide_names, false)
+    format_as_learner_col_list(opts,
+      ["learner_id", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "primary_user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run"])
+  end
 
-    ["learner_id", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run"]
+  def get_minimal_learner_cols(opts \\ []) do
+    format_as_learner_col_list(opts,
+      ["user_id", "primary_user_id"])
+  end
+
+  defp format_as_learner_col_list(opts, column_names) do
+    hide_names = Keyword.get(opts, :hide_names, false)
+    column_names
       |> Enum.map(&(to_tuple("learner", &1)))
       |> Enum.map(&(hash_username(&1, hide_names)))
       |> Enum.map(&(hide_learner_student_name(&1, hide_names)))
+  end
+
+  def get_athena_query(report_filter = %ReportFilter{}, learner_data, learner_cols) do
+    query_ids = learner_data |> Enum.map(&(&1.query_id))
+
+    if !Enum.empty?(query_ids) do
+      hide_names = report_filter.hide_names
+
+      log_cols = ReportQuery.get_log_cols(hide_names: hide_names, remove_username: true)
+      cols = List.flatten([log_cols | learner_cols])
+
+      from = "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_time\" log"
+
+      join = [
+        """
+        INNER JOIN "report-service"."learners" learner
+        ON
+          (
+            learner.query_id IN #{ReportUtils.string_list_to_single_quoted_in(query_ids)}
+            AND
+            learner.run_remote_endpoint = log.run_remote_endpoint
+          )
+        """
+      ]
+
+      {:ok, %ReportQuery{cols: cols, from: from, join: join }}
+    else
+      {:error, "No learners found to match the requested filter(s)."}
+    end
   end
 
   def get_log_db_name() do

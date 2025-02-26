@@ -31,6 +31,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
         {"rl.class_name", "class"},
         {"rl.school_name", "school"},
         {"rl.user_id", "user_id"},
+        {"COALESCE(u.primary_account_id, u.id)", "primary_user_id"},
         {"rl.offering_id", "offering_id"},
         {"rl.username", "username"},
         {"rl.student_name", "student_name"},
@@ -44,6 +45,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       from: "report_learners rl",
       join: [[
         "JOIN portal_learners pl ON (rl.learner_id = pl.id)",
+        "JOIN users u ON (u.id = rl.user_id)",
         "JOIN portal_offerings po ON (po.id = rl.offering_id)",
         "JOIN external_activities ea on (po.runnable_type = 'ExternalActivity' AND po.runnable_id = ea.id)",
         "JOIN portal_student_clazzes psc ON (psc.student_id = rl.student_id)",
@@ -93,11 +95,11 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       {
         [
           "JOIN portal_teachers pt ON (pt.id = ptc.teacher_id)",
-          "JOIN users u ON u.id = pt.user_id"
+          "JOIN users teacher_u ON u.id = pt.user_id"
           | join,
         ],
         [
-          "u.email NOT LIKE '%@concord.org'"
+          "teacher_u.email NOT LIKE '%@concord.org'"
           | where
         ]
       }
@@ -153,6 +155,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
           run_remote_endpoint = "https://#{user.portal_server}/dataservice/external_activity_data/#{row.secure_key}"
 
           # use same format as api
+          # These names must also be specified in the AWS Glue configuration
           %{
             student_id: row.student_id,
             learner_id: row.learner_id,
@@ -160,6 +163,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
             class: row.class,
             school: row.school,
             user_id: row.user_id,
+            primary_user_id: row.primary_user_id,
             offering_id: row.offering_id,
             permission_forms: permission_forms,
             username: row.username,
