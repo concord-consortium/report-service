@@ -8,8 +8,8 @@ defmodule ReportServer.Reports.Athena.ResourceData do
   # NOTE: no struct definition but the shape of the reports data is a map whose keys are the same generated UUIDs
   # used as keys in the learner data and the values are maps with the runnable url, the resource and denormalized resource
 
-  def fetch_and_upload(learner_data, _user = %User{}) do
-    with {:ok, resource_data} <- fetch(learner_data),
+  def fetch_and_upload(learner_data, user = %User{}) do
+    with {:ok, resource_data} <- fetch(learner_data, user),
          {:ok, resource_data} <- upload(resource_data) do
       {:ok, resource_data}
     else
@@ -17,12 +17,12 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     end
   end
 
-  def fetch(learner_data) do
+  def fetch(learner_data, user = %User{}) do
     resource_data = learner_data
       |> map_learner_data_to_runnable_data()
       |> Enum.map(fn value = %{runnable_url: runnable_url, query_id: query_id, learners: learners} ->
 
-        with {:ok, resource} <- fetch_resource(runnable_url, learners),
+        with {:ok, resource} <- fetch_resource(runnable_url, learners, user),
              {:ok, denormalized} <- denormalize_resource(resource) do
           %{value | resource: resource, denormalized: denormalized}
         else
@@ -57,10 +57,10 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     end)
   end
 
-  defp fetch_resource(nil, _learners), do: {:ok, nil}
-  defp fetch_resource(runnable_url, learners) do
+  defp fetch_resource(nil, _learners, _user), do: {:ok, nil}
+  defp fetch_resource(runnable_url, learners,  user = %User{}) do
     if Clue.is_clue_url?(runnable_url) do
-      Clue.fetch_resource(runnable_url, learners)
+      Clue.fetch_resource(runnable_url, learners, user)
     else
       {url, token} = ReportService.get_endpoint("resource")
       reported_url = extract_reported_url(runnable_url)

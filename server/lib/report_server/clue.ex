@@ -1,16 +1,39 @@
 defmodule ReportServer.Clue do
 
   alias ReportServer.Reports.ReportUtils
+  alias ReportServer.AthenaDB
+  alias ReportServer.Accounts.User
+  alias ReportServer.AthenaQueryPoller
+  alias ReportServerWeb.Aws
+
+  def debug_clean_csv_col() do
+    csv =
+      """
+      "username","tile_title","document_key","document_history_id","text_value"
+      "266@learn.portal.staging.concord.org","4_5_Question1","-OK7YQig6OxOLf9F84zu","anntEAki_54lesjhGRaFO","""{\""object\"":\""value\"",\""document\"":{\""children\"":[{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Question 1\"",\""bold\"":true}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Write a few sentences telling the donor the volume of water needed for the tank and explain how you got your solution. \""}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""I've pulled in question 1 and am answering it.\""}]}]}}"""
+      """
+    {:ok, io} = StringIO.open(csv)
+    stream = IO.stream(io, :line)
+    |> CSV.decode(headers: true, validate_row_length: true)
+    |> Enum.each(fn {:ok, row} ->
+      IO.inspect(row, label: "** row")
+      text_field1 = IO.inspect(row["text_value"], label: "*******text_value")
+      ## For some reason removing the leading and trailing quotes seems to be necessary
+      text_field = String.trim_leading(text_field1, "\"") |> String.trim_trailing("\"")
+      {:ok, json} = IO.inspect(Jason.decode(text_field), label: "*******text_value as json")
+      plain_text = IO.inspect(extract_text(json), label: "*******text_value as plaintext")
+    end)
+  end
 
   def is_clue_url?(url) do
     String.contains?(url, "collaborative-learning.concord.org")
   end
 
-  def fetch_resource(url, learners) do
+  def fetch_resource(url, learners, user = %User{}) do
     IO.inspect(url, label: "****** fetch resource url")
     IO.inspect(learners, label: "****** fetch resource learners")
-    with {:ok, csv_path} <- query_for_text_tile_answers(url),
-         {:ok, data} <- parse_text_tile_answer_csv(url, csv_path, learners) do
+    with {:ok, csv_path} <- query_for_text_tile_answers(url, learners, user),
+         {:ok, data} <- read_text_tile_answer_csv(url, csv_path, learners) do
       {:ok, %{
         "type" => "clue",
         "url" => url,
@@ -22,12 +45,51 @@ defmodule ReportServer.Clue do
     end
   end
 
-  defp query_for_text_tile_answers(_url) do
-    # TODO
-    # Should kick off Athena query to fetch resource
-    # Wait for Athena query to complete
-    # Return reference to the S3 CSV file
-    {:ok, "TODO"}
+  defp query_for_text_tile_answers(_url, learners,  user = %User{}) do
+    run_remote_endpoints = Enum.map(learners, fn learner -> learner[:run_remote_endpoint] end)
+    sql = get_text_tile_answer_sql(run_remote_endpoints)
+    with {:ok, query_id, _status} <- AthenaDB.query(sql, UUID.uuid4(), user),
+          {:ok, path} <- AthenaQueryPoller.wait_for(query_id) do
+        IO.inspect(path, label: "****** Path to CSV")
+        {:ok, path}
+    else
+      error -> error
+    end
+  end
+
+  defp get_text_tile_answer_sql(run_remote_endpoints) do
+    """
+    WITH last_changes AS (
+      SELECT
+        json_extract_scalar("log1"."parameters", '$.toolId') as tileId,
+        MAX("log1"."time") AS time
+      FROM "log_ingester_qa"."logs_by_time" log1
+      WHERE "log1"."application" = 'CLUE'
+        AND "log1"."event" = 'TEXT_TOOL_CHANGE'
+        AND json_extract_scalar("log1"."parameters", '$.operation') = 'update'
+        AND "log1"."run_remote_endpoint" in #{ReportUtils.string_list_to_single_quoted_in(run_remote_endpoints)}
+      GROUP BY json_extract_scalar("log1"."parameters", '$.toolId')
+    )
+
+    SELECT
+      "log"."username" AS username,
+      json_extract_scalar("log"."parameters", '$.tileTitle') AS tile_title,
+      json_extract_scalar("log"."parameters", '$.documentKey') AS document_key,
+      json_extract_scalar("log"."parameters", '$.documentHistoryId') as document_history_id,
+      json_extract("log"."parameters", '$.args[0].text') as text_value
+    FROM "log_ingester_qa"."logs_by_time" log
+      JOIN "last_changes" on (
+        "last_changes"."tileId" = json_extract_scalar("log"."parameters", '$.toolId')
+        AND "log"."time" = "last_changes"."time")
+    WHERE "log"."application" = 'CLUE'
+      AND "log"."event" = 'TEXT_TOOL_CHANGE'
+      AND "log"."run_remote_endpoint" in #{ReportUtils.string_list_to_single_quoted_in(run_remote_endpoints)}
+      AND json_extract_scalar("log"."parameters", '$.operation') = 'update'
+      AND json_extract_scalar("log"."parameters", '$.tileTitle') is not null
+      AND json_extract_scalar("log"."parameters", '$.tileTitle') != ''
+      AND json_extract_scalar("log"."parameters", '$.tileTitle') != '<no title>'
+      AND json_extract_scalar("log"."parameters", '$.tileTitle') not like 'Text %'
+    """
   end
 
   defp get_parquet_file_path(url, username) do
@@ -53,26 +115,17 @@ defmodule ReportServer.Clue do
   ## Reads the CSV file in the given location
   ## Writes a parquet file with the answer data for each user in the dataset
   ## Returns the denormalized questions
-  defp parse_text_tile_answer_csv(url, _csv_path, learners) do
-    # TODO get stream from S3 rather than using this mock data
-    # case Aws.get_file_stream(mode, query_result.output_location) do
-    #   {:ok, stream } ->
-    #     preprocessed = stream
-    #     |> CSV.decode()...
+  defp read_text_tile_answer_csv(url, csv_path, learners) do
+    case Aws.get_file_stream(nil, csv_path) do
+      {:ok, stream } -> parse_text_tile_answer_csv(url, stream, learners)
+      error -> error
+    end
+  end
 
-    #     "GzbUjlUW67HRSUvjPEtAZ","266@learn.portal.staging.concord.org","pn1qe92Xkx_19YCP","4_5_Question1","-OK7YQig6OxOLf9F84zu","anntEAki_54lesjhGRaFO","{""text"":""{\""object\"":\""value\"",\""document\"":{\""children\"":[{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Question 1\"",\""bold\"":true}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Write a few sentences telling the donor the volume of water needed for the tank and explain how you got your solution. \""}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""I've pulled in question 1 and am answering it.\""}]}]}}""}"
-    # "GzbUjlUW67HRSUvjPEtAZ","266@learn.portal.staging.concord.org","pn1qe92Xkx_19YCP","4_5_Question1","-OK7YQig6OxOLf9F84zu","anntEAki_54lesjhGRaFO","{\""text\"":\""Question 1\""}"
-
-    sample_csv_data = """
-    "id","username","tile_title","documentKey","documentHistoryId","text_value"
-    "GzbUjlUW67HRSUvjPEtAZ","266@learn.portal.staging.concord.org","4_5_Question1","-OK7YQig6OxOLf9F84zu","anntEAki_54lesjhGRaFO","{\""object\"":\""value\"",\""document\"":{\""children\"":[{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Question 1\"",\""bold\"":true}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Write a few sentences telling the donor the volume of water needed for the tank and explain how you got your solution. \""}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""I've pulled in question 1 and am answering it.\""}]}]}}"
-    """
-    {:ok, io} = StringIO.open(sample_csv_data)
-    stream = IO.stream(io, :line)
-
+  defp parse_text_tile_answer_csv(url, stream, learners) do
     return_struct = %{
       structure: %{ questions: %{}, choices: %{}, question_order: []}, ## denormalized questions to return
-      answers: %{}                                                      ## answers that will be written to parquet, keyed by username
+      answers: %{}                                                     ## answer lists that will be written to parquet, keyed by username
     }
 
     result = stream
@@ -92,9 +145,10 @@ defmodule ReportServer.Clue do
       updated_question_order = [question_id | row_acc.structure.question_order]
 
       updated_answers = with text_field <- IO.inspect(row["text_value"], label: "*******text_value"),
-            {:ok, json} <- IO.inspect(Jason.decode(text_field), label: "*******text_value as json"),
+            text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
+            {:ok, json} <- IO.inspect(Jason.decode(text_trimmed), label: "*******text_value as json"),
             plain_text <- IO.inspect(extract_text(json), label: "*******text_value as plaintext"),
-            {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, url => "TODO" }) do
+            {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => "TODO" }) do
         learner = Enum.find(learners, fn learner -> Integer.to_string(learner.user_id) == user_id end)
         answer_row = %{
           question_id: question_id,
