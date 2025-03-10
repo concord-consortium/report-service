@@ -3,13 +3,13 @@ defmodule ReportServer.Reports.Athena.ResourceData do
   require Logger
 
   alias ReportServer.Accounts.User
-  alias ReportServer.{ReportService, AthenaDB}
+  alias ReportServer.{ReportService, AthenaDB, Clue}
 
   # NOTE: no struct definition but the shape of the reports data is a map whose keys are the same generated UUIDs
   # used as keys in the learner data and the values are maps with the runnable url, the resource and denormalized resource
 
-  def fetch_and_upload(learner_data, _user = %User{}) do
-    with {:ok, resource_data} <- fetch(learner_data),
+  def fetch_and_upload(learner_data, user = %User{}) do
+    with {:ok, resource_data} <- fetch(learner_data, user),
          {:ok, resource_data} <- upload(resource_data) do
       {:ok, resource_data}
     else
@@ -17,12 +17,12 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     end
   end
 
-  def fetch(learner_data) do
+  def fetch(learner_data, user = %User{}) do
     resource_data = learner_data
       |> map_learner_data_to_runnable_data()
-      |> Enum.map(fn value = %{runnable_url: runnable_url, query_id: query_id} ->
+      |> Enum.map(fn value = %{runnable_url: runnable_url, query_id: query_id, learners: learners} ->
 
-        with {:ok, resource} <- fetch_resource(runnable_url),
+        with {:ok, resource} <- fetch_resource(runnable_url, learners, user),
              {:ok, denormalized} <- denormalize_resource(resource) do
           %{value | resource: resource, denormalized: denormalized}
         else
@@ -52,27 +52,31 @@ defmodule ReportServer.Reports.Athena.ResourceData do
 
   defp map_learner_data_to_runnable_data(learner_data) do
     learner_data
-    |> Enum.map(fn %{runnable_url: runnable_url, query_id: query_id} ->
-      %{runnable_url: runnable_url, query_id: query_id, resource: nil, denormalized: nil}
+    |> Enum.map(fn %{runnable_url: runnable_url, query_id: query_id, learners: learners} ->
+      %{runnable_url: runnable_url, query_id: query_id, learners: learners, resource: nil, denormalized: nil}
     end)
   end
 
-  defp fetch_resource(nil), do: {:ok, nil}
-  defp fetch_resource(runnable_url) do
-    {url, token} = ReportService.get_endpoint("resource")
+  defp fetch_resource(nil, _learners, _user), do: {:ok, nil}
+  defp fetch_resource(runnable_url, learners,  user = %User{}) do
+    if Clue.is_clue_url?(runnable_url) do
+      Clue.fetch_resource(runnable_url, learners, user)
+    else
+      {url, token} = ReportService.get_endpoint("resource")
+      reported_url = extract_reported_url(runnable_url)
+      source = URI.parse(reported_url).host
 
-    reported_url = extract_reported_url(runnable_url)
-    source = URI.parse(reported_url).host
-
-    ReportService.get_request()
-      |> Req.get(url: url,
-        auth: {:bearer, token },
-        params: [source: source, url: reported_url],
-        retry: false,
-        retry_log_level: false,
-        debug: false
-      )
-      |> parse_resource_response()
+      ## API request that should return structure of the activity
+      ReportService.get_request()
+        |> Req.get(url: url,
+          auth: {:bearer, token },
+          params: [source: source, url: reported_url],
+          retry: false,
+          retry_log_level: false,
+          debug: false
+        )
+        |> parse_resource_response()
+    end
   end
 
   def parse_resource_response({:ok, %{body: %{"resource" => resource}}}) do
@@ -110,6 +114,9 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     }
 
     denormalized = case Map.get(resource, "type") do
+      "clue" ->
+        Map.get(resource, "denormalized")
+
       "activity" ->
         denormalize_activity(resource, denormalized)
 

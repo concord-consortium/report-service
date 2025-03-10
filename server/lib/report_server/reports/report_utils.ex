@@ -77,6 +77,10 @@ defmodule ReportServer.Reports.ReportUtils do
     String.replace(str, "'", "''")
   end
 
+  def escape_url_for_filename(url) do
+    String.replace(url, ~r/[^a-z0-9]/, "-")
+  end
+
   def ensure_not_empty(list, error_message) when is_list(list) do
     if Enum.empty?(list) do
       {:error, error_message}

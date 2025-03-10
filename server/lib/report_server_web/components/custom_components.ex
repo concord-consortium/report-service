@@ -138,7 +138,7 @@ defmodule ReportServerWeb.CustomComponents do
       else
         ~H"""
         <div>
-          Report status: <span class="font-bold capitalize"><%= @report_run.athena_query_state || "not started" %></span>
+          Report status: <span class="font-bold capitalize"><%= @report_run.athena_query_state || "gathering information..." %></span>
         </div>
         """
       end

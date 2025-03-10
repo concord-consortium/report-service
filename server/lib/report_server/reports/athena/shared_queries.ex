@@ -434,6 +434,11 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
 
     columns =
       case type do
+        "clue_text_tile" ->
+          [
+            %{name: "#{column_prefix}_text", value: "json_extract_scalar(#{answer}, '$.text')", header: prompt_header},
+            %{name: "#{column_prefix}_url", value: "json_extract_scalar(#{answer}, '$.url')", header: prompt_header}
+          ]
         "image_question" ->
           [
             %{name: "#{column_prefix}_image_url", value: "json_extract_scalar(#{answer}, '$.image_url')", header: prompt_header},

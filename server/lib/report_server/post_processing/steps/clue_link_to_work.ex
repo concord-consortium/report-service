@@ -2,11 +2,11 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
   alias ReportServer.PostProcessing.JobParams
   alias ReportServer.PostProcessing.Step
   alias ReportServer.PostProcessing.Steps.Helpers
+  alias ReportServer.Reports.Clue.HistoryLink
 
   @id "clue_link_to_work"
   @insert_after_col "time"
   @link_to_work_col "link_to_work"
-  @clue_url "https://collaborative-learning.concord.org/"
 
   def step do
     %Step{
@@ -42,20 +42,8 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
   def process_row(_job_params, row, _data_row?), do: row
 
   defp generate_link_to_work(%JobParams{portal_url: portal_url}, _learner = %{offering_id: offering_id, class_id: class_id}, document_key, document_uid, maybe_document_history_id) do
-    class_url = "https://#{portal_url}/api/v1/classes/#{class_id}"
-    offering_url = "https://#{portal_url}/api/v1/offerings/#{offering_id}"
-    auth_domain_url = "https://#{portal_url}/"
-
-    @clue_url <>
-      "?class=#{URI.encode_www_form(class_url)}" <>
-      "&offering=#{URI.encode_www_form(offering_url)}" <>
-      "&researcher=true" <>
-      "&reportType=offering" <>
-      "&authDomain=#{URI.encode_www_form(auth_domain_url)}" <>
-      "&resourceLinkId=#{offering_id}" <>
-      "&targetUserId=#{document_uid}" <>
-      "&studentDocument=#{document_key}" <>
-      (if maybe_document_history_id, do: "&studentDocumentHistoryId=#{maybe_document_history_id}", else: "")
+    HistoryLink.format_link_to_work(%HistoryLink{portal_url: portal_url, offering_id: offering_id, class_id: class_id,
+      document_key: document_key, document_uid: document_uid, maybe_document_history_id: maybe_document_history_id})
   end
 
 end
