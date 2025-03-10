@@ -2,6 +2,14 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
   use ReportServer.Reports.Report, type: :portal
 
   def get_query(report_filter = %ReportFilter{}, user = %User{}) do
+    students_in_class_subquery =
+      """
+      (select count(distinct coalesce(stu2.primary_account_id, stu2.id))
+       from portal_student_clazzes psc2
+       join portal_students pst2 on (psc2.student_id = pst2.id)
+       join users stu2 on (stu2.id = pst2.user_id)
+       where psc2.clazz_id = pc.id)
+      """
     %ReportQuery{
       cols: [
         {"concat(u.last_name, ', ', u.first_name)", "teacher_name"},
@@ -9,8 +17,8 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
         {"trim(ea.name)", "activity_name"},
         {"pc.name", "class_name"},
         {"date(po.created_at)", "date_assigned"},
-        {"(select count(*) from portal_student_clazzes psc where psc.clazz_id = pc.id)", "num_students_in_class"},
-        {"count(distinct pl.student_id)", "num_students_started"},
+        {students_in_class_subquery, "num_students_in_class"},
+        {"count(distinct coalesce(stu.primary_account_id, stu.id))", "num_students_started"},
         {"count(distinct run.id)", "number_of_runs"},
         {"date(min(run.start_time))", "first_run"},
         {"date(max(run.start_time))", "last_run"}
@@ -26,6 +34,8 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
         # The "exists" clause is so that portal_learners without runs don't count towards "# students started"
         "left join portal_learners pl on (pl.offering_id = po.id and pl.student_id = psc.student_id
           and exists (select 1 from portal_runs r2 where r2.learner_id = pl.id))",
+        "left join portal_students pst on (pst.id = pl.student_id)",
+        "left join users stu on (stu.id = pst.user_id)",
         "left join portal_runs run on (run.learner_id = pl.id)",
       ]],
       group_by: "u.id, ea.id, pc.id, po.id, ea.id",

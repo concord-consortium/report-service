@@ -8,7 +8,7 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
         {"count(distinct pt.id)", "number_of_teachers"},
         {"count(distinct ps.id)", "number_of_schools"},
         {"count(distinct pc.id)", "number_of_classes"},
-        {"count(distinct pl.student_id)", "number_of_students"}
+        {"count(distinct coalesce(stu.primary_account_id, stu.id))", "number_of_students"}
       ],
       from: "external_activities ea",
       join: [[
@@ -23,6 +23,8 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
         # The "exists" clause is so that portal_learners without runs don't count towards "# students started"
         "left join portal_learners pl on (pl.offering_id = po.id and pl.student_id = psc.student_id
           and exists (select 1 from portal_runs r2 where r2.learner_id = pl.id))",
+        "left join portal_students pst on (pst.id = pl.student_id)",
+        "left join users stu on (stu.id = pst.user_id)",
         "left join portal_runs run on (run.learner_id = pl.id)",
       ]],
       group_by: "ea.id",
