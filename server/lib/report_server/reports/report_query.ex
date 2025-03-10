@@ -29,7 +29,7 @@ defmodule ReportServer.Reports.ReportQuery do
   end
 
   def get_count_sql(%ReportQuery{from: from, join: join, where: where, group_by: group_by}) do
-    query_without_cols_or_order = %ReportQuery{cols: [{"1", "row"}], from: from, join: join, where: where, group_by: group_by}
+    query_without_cols_or_order = %ReportQuery{cols: [{"1", "qrow"}], from: from, join: join, where: where, group_by: group_by}
     {:ok, subquery} = get_sql(query_without_cols_or_order)
 
     {:ok, "SELECT COUNT(*) AS count FROM (#{subquery}) AS subquery"}
