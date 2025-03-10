@@ -6,25 +6,6 @@ defmodule ReportServer.Clue do
   alias ReportServer.AthenaQueryPoller
   alias ReportServerWeb.Aws
 
-  def debug_clean_csv_col() do
-    csv =
-      """
-      "username","tile_title","document_key","document_history_id","text_value"
-      "266@learn.portal.staging.concord.org","4_5_Question1","-OK7YQig6OxOLf9F84zu","anntEAki_54lesjhGRaFO","""{\""object\"":\""value\"",\""document\"":{\""children\"":[{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Question 1\"",\""bold\"":true}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""Write a few sentences telling the donor the volume of water needed for the tank and explain how you got your solution. \""}]},{\""type\"":\""paragraph\"",\""children\"":[{\""text\"":\""I've pulled in question 1 and am answering it.\""}]}]}}"""
-      """
-    {:ok, io} = StringIO.open(csv)
-    stream = IO.stream(io, :line)
-    |> CSV.decode(headers: true, validate_row_length: true)
-    |> Enum.each(fn {:ok, row} ->
-      IO.inspect(row, label: "** row")
-      text_field1 = IO.inspect(row["text_value"], label: "*******text_value")
-      ## For some reason removing the leading and trailing quotes seems to be necessary
-      text_field = String.trim_leading(text_field1, "\"") |> String.trim_trailing("\"")
-      {:ok, json} = IO.inspect(Jason.decode(text_field), label: "*******text_value as json")
-      plain_text = IO.inspect(extract_text(json), label: "*******text_value as plaintext")
-    end)
-  end
-
   def is_clue_url?(url) do
     String.contains?(url, "collaborative-learning.concord.org")
   end
@@ -76,7 +57,7 @@ defmodule ReportServer.Clue do
       json_extract_scalar("log"."parameters", '$.tileTitle') AS tile_title,
       json_extract_scalar("log"."parameters", '$.documentKey') AS document_key,
       json_extract_scalar("log"."parameters", '$.documentHistoryId') as document_history_id,
-      json_extract("log"."parameters", '$.args[0].text') as text_value
+      json_extract_scalar("log"."parameters", '$.args[0].text') as text_value
     FROM "log_ingester_qa"."logs_by_time" log
       JOIN "last_changes" on (
         "last_changes"."tileId" = json_extract_scalar("log"."parameters", '$.toolId')
@@ -92,13 +73,12 @@ defmodule ReportServer.Clue do
     """
   end
 
-  defp get_parquet_file_path(url, username) do
+  defp get_parquet_file_path(url, username, resource_link_id) do
     bucket = System.get_env("ATHENA_REPORT_BUCKET")
     escaped_url = ReportUtils.escape_url_for_filename(url)
     # The 'username' field will be something like "user_id@portal_site".
     [user_id, portal_site] = String.split(username, "@")
     platform_id = ReportUtils.escape_url_for_filename("https://#{portal_site}")
-    resource_link_id = "588" ## offering id
     path = "s3://#{bucket}/partitioned-answers/#{escaped_url}/#{platform_id}/#{resource_link_id}/#{user_id}.parquet";
     FSS.S3.parse(path, config: get_s3_config())
   end
@@ -191,7 +171,8 @@ defmodule ReportServer.Clue do
     ## Loop over answers and write a parquet file for each username
     write_attempts = Enum.map(result.answers, fn {username, answerlist} ->
       IO.inspect({username, answerlist}, label: "****** Answerlist")
-      with {:ok, path} <- get_parquet_file_path(url, username) do
+      resource_link_id = answerlist |> List.first() |> Map.get(:resource_link_id)
+      with {:ok, path} <- get_parquet_file_path(url, username, resource_link_id) do
         answers_df = Explorer.DataFrame.new(answerlist)
         IO.inspect(path, label: "****** Trying to dump parquet file")
         IO.inspect(answers_df, label: "****** Dataframe for parquet")
