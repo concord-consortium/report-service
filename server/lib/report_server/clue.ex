@@ -5,14 +5,13 @@ defmodule ReportServer.Clue do
   alias ReportServer.Accounts.User
   alias ReportServer.AthenaQueryPoller
   alias ReportServerWeb.Aws
+  alias ReportServer.Reports.Clue.HistoryLink
 
   def is_clue_url?(url) do
     String.contains?(url, "collaborative-learning.concord.org")
   end
 
   def fetch_resource(url, learners, user = %User{}) do
-    IO.inspect(url, label: "****** fetch resource url")
-    IO.inspect(learners, label: "****** fetch resource learners")
     with {:ok, csv_path} <- query_for_text_tile_answers(url, learners, user),
          {:ok, data} <- read_text_tile_answer_csv(url, csv_path, learners) do
       {:ok, %{
@@ -31,7 +30,6 @@ defmodule ReportServer.Clue do
     sql = get_text_tile_answer_sql(run_remote_endpoints)
     with {:ok, query_id, _status} <- AthenaDB.query(sql, UUID.uuid4(), user),
           {:ok, path} <- AthenaQueryPoller.wait_for(query_id) do
-        IO.inspect(path, label: "****** Path to CSV")
         {:ok, path}
     else
       error -> error
@@ -111,11 +109,12 @@ defmodule ReportServer.Clue do
     result = stream
     |> CSV.decode(headers: true, validate_row_length: true)
     |> Enum.reduce(return_struct, fn {:ok, row}, row_acc ->
-      IO.inspect(row, label: ">>>>>>> row")
       tile_title = row["tile_title"]
       question_id = String.downcase(tile_title)
       username = row["username"]
       [user_id, portal_site] = String.split(username, "@")
+      portal_url = "https://#{portal_site}"
+      learner = Enum.find(learners, fn learner -> Integer.to_string(learner.user_id) == user_id end)
 
       updated_questions = Map.put(row_acc.structure.questions, question_id, %{
         :type => "clue_text_tile",
@@ -124,12 +123,19 @@ defmodule ReportServer.Clue do
       })
       updated_question_order = [question_id | row_acc.structure.question_order]
 
-      updated_answers = with text_field <- IO.inspect(row["text_value"], label: "*******text_value"),
+      url = HistoryLink.format_link_to_work(%HistoryLink{
+        portal_url: portal_site,
+        offering_id: Integer.to_string(learner.offering_id),
+        class_id: Integer.to_string(learner.class_id),
+        document_key: row["document_key"],
+        document_uid: user_id,
+        maybe_document_history_id: row["document_history_id"]})
+
+      updated_answers = with text_field <- row["text_value"],
             text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
-            {:ok, json} <- IO.inspect(Jason.decode(text_trimmed), label: "*******text_value as json"),
-            plain_text <- IO.inspect(extract_text(json), label: "*******text_value as plaintext"),
-            {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => "TODO" }) do
-        learner = Enum.find(learners, fn learner -> Integer.to_string(learner.user_id) == user_id end)
+            {:ok, json} <- Jason.decode(text_trimmed),
+            plain_text <- extract_text(json),
+            {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => url }) do
         answer_row = %{
           question_id: question_id,
           answer: answer_json,
@@ -139,7 +145,7 @@ defmodule ReportServer.Clue do
           id: row["id"], ## Using the ID of the event here, but it could be any arbitrary ID
           ## The following are constant and could be added later
           resource_url: url,
-          platform_id: "https://#{portal_site}",
+          platform_id: portal_url,
           source_key: "collaborative-learning.concord.org",
           tool_id: "collaborative-learning.concord.org",
           version: "1",
@@ -170,18 +176,14 @@ defmodule ReportServer.Clue do
 
     ## Loop over answers and write a parquet file for each username
     write_attempts = Enum.map(result.answers, fn {username, answerlist} ->
-      IO.inspect({username, answerlist}, label: "****** Answerlist")
       resource_link_id = answerlist |> List.first() |> Map.get(:resource_link_id)
       with {:ok, path} <- get_parquet_file_path(url, username, resource_link_id) do
         answers_df = Explorer.DataFrame.new(answerlist)
-        IO.inspect(path, label: "****** Trying to dump parquet file")
-        IO.inspect(answers_df, label: "****** Dataframe for parquet")
         Explorer.DataFrame.to_parquet(answers_df, path)
       else
         _ -> IO.inspect({:error, "Failed to construct parquet file path"})
       end
     end)
-    IO.inspect(write_attempts, label: "****** Write attempts")
     if (Enum.all?(write_attempts, fn result -> result == :ok end)) do
       {:ok, result}
     else
