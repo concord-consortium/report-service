@@ -181,13 +181,13 @@ defmodule ReportServer.Clue do
         answers_df = Explorer.DataFrame.new(answerlist)
         Explorer.DataFrame.to_parquet(answers_df, path)
       else
-        _ -> IO.inspect({:error, "Failed to construct parquet file path"})
+        _ -> {:error, "Failed to construct parquet file path"}
       end
     end)
     if (Enum.all?(write_attempts, fn result -> result == :ok end)) do
       {:ok, result}
     else
-      IO.inspect({:error, "Failed to write parquet files"})
+      {:error, "Failed to write parquet files"}
     end
   end
 
