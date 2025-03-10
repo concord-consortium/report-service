@@ -11,7 +11,7 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
   def step do
     %Step{
       id: @id,
-      label: "Add \"link_to_work\" column to CLUE Student Actions report",
+      label: "Add \"link_to_work\" column to CLUE \"Student Actions\" or \"Student Actions with Metadata\" report",
       init: &init/1,
       process_row: &process_row/3,
       preprocess_learners: true
