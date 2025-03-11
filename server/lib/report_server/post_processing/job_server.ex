@@ -32,6 +32,10 @@ defmodule ReportServer.PostProcessing.JobServer do
     ClueLinkToWork.step(),
   ] |> sort_steps()
 
+  def get_steps(_mode, "student-actions-with-metadata"), do: [
+    ClueLinkToWork.step(),
+  ] |> sort_steps()
+
   def get_steps(_mode, _report_type), do: []
 
   def sort_steps(steps) do
