@@ -110,7 +110,7 @@ defmodule ReportServer.Clue do
     |> CSV.decode(headers: true, validate_row_length: true)
     |> Enum.reduce(return_struct, fn {:ok, row}, row_acc ->
       tile_title = row["tile_title"]
-      question_id = String.downcase(tile_title)
+      question_id = make_safe_id(tile_title)
       username = row["username"]
       [user_id, portal_site] = String.split(username, "@")
       portal_url = "https://#{portal_site}"
@@ -189,6 +189,15 @@ defmodule ReportServer.Clue do
     else
       {:error, "Failed to write parquet files"}
     end
+  end
+
+  ## Make arbitrary string into a legal SQL identifier.
+  ## These may not start with a digit or contain most special characters.
+  defp make_safe_id(title) do
+    title
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]/, "_")
+    |> String.replace(~r/^\d/, "q\\0")
   end
 
   def extract_text(%{"document" => %{"children" => nodes}}), do: extract_from_nodes(nodes) |> Enum.join(" ")
