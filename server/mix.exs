@@ -66,7 +66,8 @@ defmodule ReportServer.MixProject do
       {:csv, "~> 3.2"},
       {:live_select, "~> 1.4"},
       {:elixir_uuid, "~> 1.2"},
-      {:explorer, "~> 0.10.0"}
+      {:explorer, "~> 0.10.0"},
+      {:fss, "~> 0.1.1"}
     ]
   end
 
