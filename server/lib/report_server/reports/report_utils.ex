@@ -102,18 +102,19 @@ defmodule ReportServer.Reports.ReportUtils do
     if allowed_project_ids == :all do
       {join, where}
     else
+      ## Suffix all table aliases with "_a" ("allowed") to avoid conflicts with the main query table aliases
       {
         [
-          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' and aci_teacher.item_id = #{teacher_id_ref})",
-          "join admin_cohorts ac_teacher ON (ac_teacher.id = aci_teacher.admin_cohort_id)",
-          "left join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.item_id = #{assignment_id_ref})",
-          "left join admin_cohorts ac_assignment ON (ac_assignment.id = aci_assignment.admin_cohort_id)",
-          "left join admin_project_materials apm ON (apm.material_type = 'ExternalActivity' AND apm.material_id = #{assignment_id_ref})"
+          "join admin_cohort_items aci_teacher_a on (aci_teacher_a.item_type = 'Portal::Teacher' and aci_teacher_a.item_id = #{teacher_id_ref})",
+          "join admin_cohorts ac_teacher_a ON (ac_teacher_a.id = aci_teacher_a.admin_cohort_id)",
+          "left join admin_cohort_items aci_assignment_a on (aci_assignment_a.item_type = 'ExternalActivity' and aci_assignment_a.item_id = #{assignment_id_ref})",
+          "left join admin_cohorts ac_assignment_a ON (ac_assignment_a.id = aci_assignment_a.admin_cohort_id)",
+          "left join admin_project_materials apm_a ON (apm_a.material_type = 'ExternalActivity' AND apm_a.material_id = #{assignment_id_ref})"
           | join
         ],
         [
-          "ac_teacher.project_id IN #{list_to_in(allowed_project_ids)}",
-          "(ac_assignment.project_id IN #{list_to_in(allowed_project_ids)}) or (apm.project_id IN #{list_to_in(allowed_project_ids)})"
+          "ac_teacher_a.project_id IN #{list_to_in(allowed_project_ids)}",
+          "(ac_assignment_a.project_id IN #{list_to_in(allowed_project_ids)}) or (apm_a.project_id IN #{list_to_in(allowed_project_ids)})"
           | where
         ]
       }
