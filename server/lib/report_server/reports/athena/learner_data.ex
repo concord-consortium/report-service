@@ -83,7 +83,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
           | join
         ],
         [
-          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)} AND pspf.signed = true"
+          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
           | where
         ]
       }
@@ -139,10 +139,14 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   end
 
   defp map_learner_data(result = %MyXQL.Result{}, user = %User{}) do
+    IO.inspect(result, label: "****** result")
     rows = PortalDbs.map_columns_on_rows(result)
 
     teacher_ids = get_unique_ids(rows, :teachers_id)
     permission_form_ids = get_unique_ids(rows, :permission_forms_id)
+
+    IO.inspect(teacher_ids, label: "****** teacher_ids")
+    IO.inspect(permission_form_ids, label: "****** permission_form_ids")
 
     with {:ok, rows} <- ensure_not_empty(rows, "No learners were found matching the filters you selected."),
          {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
@@ -185,6 +189,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   end
 
   defp get_unique_ids(rows, key) do
+    IO.inspect(rows, label: "****** rows")
     rows
       |> Enum.map(&(split_id_list(Map.get(&1, key, ""))))
       |> List.flatten()
