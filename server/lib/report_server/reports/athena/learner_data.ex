@@ -83,7 +83,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
           | join
         ],
         [
-          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)} AND pspf.signed = true"
+          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
           | where
         ]
       }
