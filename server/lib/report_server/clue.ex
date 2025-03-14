@@ -37,12 +37,14 @@ defmodule ReportServer.Clue do
   end
 
   defp get_text_tile_answer_sql(run_remote_endpoints) do
+    ## Get configuration value for log_db_name
+    log_db_name = Application.get_env(:report_server, :athena)[:log_db_name]
     """
     WITH last_changes AS (
       SELECT
         json_extract_scalar("log1"."parameters", '$.toolId') as tileId,
         MAX("log1"."time") AS time
-      FROM "log_ingester_qa"."logs_by_time" log1
+      FROM "#{log_db_name}"."logs_by_time" log1
       WHERE "log1"."application" = 'CLUE'
         AND "log1"."event" = 'TEXT_TOOL_CHANGE'
         AND json_extract_scalar("log1"."parameters", '$.operation') = 'update'
@@ -56,7 +58,7 @@ defmodule ReportServer.Clue do
       json_extract_scalar("log"."parameters", '$.documentKey') AS document_key,
       json_extract_scalar("log"."parameters", '$.documentHistoryId') as document_history_id,
       json_extract_scalar("log"."parameters", '$.args[0].text') as text_value
-    FROM "log_ingester_qa"."logs_by_time" log
+    FROM "#{log_db_name}"."logs_by_time" log
       JOIN "last_changes" on (
         "last_changes"."tileId" = json_extract_scalar("log"."parameters", '$.toolId')
         AND "log"."time" = "last_changes"."time")
@@ -67,12 +69,11 @@ defmodule ReportServer.Clue do
       AND json_extract_scalar("log"."parameters", '$.tileTitle') is not null
       AND json_extract_scalar("log"."parameters", '$.tileTitle') != ''
       AND json_extract_scalar("log"."parameters", '$.tileTitle') != '<no title>'
-      AND json_extract_scalar("log"."parameters", '$.tileTitle') not like 'Text %'
     """
   end
 
   defp get_parquet_file_path(url, username, resource_link_id) do
-    bucket = System.get_env("ATHENA_REPORT_BUCKET")
+    bucket = Application.get_env(:report_server, :athena)[:bucket]
     escaped_url = ReportUtils.escape_url_for_filename(url)
     # The 'username' field will be something like "user_id@portal_site".
     [user_id, portal_site] = String.split(username, "@")
@@ -172,6 +173,11 @@ defmodule ReportServer.Clue do
         },
         answers: updated_answers
       }
+    end)
+
+    ## CLUE answers have no natural order, so just sort alphabetically
+    result = Map.update!(result, :structure, fn structure ->
+      Map.put(structure, :question_order, Enum.sort(structure.question_order))
     end)
 
     ## Loop over answers and write a parquet file for each username
