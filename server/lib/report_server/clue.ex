@@ -117,12 +117,24 @@ defmodule ReportServer.Clue do
       portal_url = "https://#{portal_site}"
       learner = Enum.find(learners, fn learner -> Integer.to_string(learner.user_id) == user_id end)
 
-      updated_questions = Map.put(row_acc.structure.questions, question_id, %{
-        :type => "clue_text_tile",
-        :prompt => tile_title,
-        :required => false
-      })
-      updated_question_order = [question_id | row_acc.structure.question_order]
+      ## Add the question to the structure if it doesn't already exist
+      new_question = not Map.has_key?(row_acc.structure.questions, question_id)
+      updated_questions = if new_question do
+        row_acc.structure.questions
+        |> Map.put(question_id, %{
+          :type => "clue_text_tile",
+          :prompt => tile_title,
+          :required => false
+        })
+      else
+        row_acc.structure.questions
+      end
+
+      updated_question_order = if new_question do
+        [question_id | row_acc.structure.question_order]
+      else
+        row_acc.structure.question_order
+      end
 
       url = HistoryLink.format_link_to_work(%HistoryLink{
         portal_url: portal_site,
