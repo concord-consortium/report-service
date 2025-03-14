@@ -22,14 +22,20 @@ defmodule ReportServer.Reports.Athena.ResourceData do
       |> map_learner_data_to_runnable_data()
       |> Enum.map(fn value = %{runnable_url: runnable_url, query_id: query_id, learners: learners} ->
 
-        with {:ok, resource} <- fetch_resource(runnable_url, learners, user),
-             {:ok, denormalized} <- denormalize_resource(resource) do
-          %{value | resource: resource, denormalized: denormalized}
-        else
-          {:error, _error} ->
-            Logger.error("Error fetching resource for query_id: #{query_id}")
+        case fetch_resource(runnable_url, learners, user) do
+          {:ok, resource} ->
+            case denormalize_resource(resource) do
+              {:ok, denormalized} ->
+                %{value | resource: resource, denormalized: denormalized}
+              {:error, _error} ->
+                Logger.error("Error denormalizing resource for query_id: #{query_id}")
+                value
+            end
+          {:warn, warning} ->
+            Logger.error("Error fetching resource for query_id: #{query_id}: #{inspect(warning)}")
             # note: we don't want to stop the processing if a resource fails to fetch
             value
+          error -> error
         end
       end)
 
@@ -83,7 +89,8 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     {:ok, resource}
   end
   def parse_resource_response(_) do
-    {:error, "Error parsing resource response"}
+    ## This returns :warn, not :error, because we don't want to stop the processing if a resource fails to fetch
+    {:warn, "Error parsing resource response"}
   end
 
   # Activity Player activities that have been imported from LARA have a resource url like
