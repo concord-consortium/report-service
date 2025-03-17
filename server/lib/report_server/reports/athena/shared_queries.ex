@@ -398,15 +398,17 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
     portal_report_url = PortalReport.get_url()
     firebase_app = ReportService.get_firebase_app()
 
+    auth_domain_with_scheme = ensure_auth_domain_with_scheme(auth_domain)
+
     model_url = fn answers_source_key ->
       "CONCAT('#{portal_report_url}" <>
-        "?auth-domain=#{URI.encode_www_form(auth_domain)}" <>
+        "?auth-domain=#{URI.encode_www_form(auth_domain_with_scheme)}" <>
         "&firebase-app=#{firebase_app}" <>
         "&sourceKey=#{source_key}" <>
         "&iframeQuestionId=#{question_id}" <>
-        "&class=#{URI.encode_www_form("#{auth_domain}/api/v1/classes/")}'," <>
+        "&class=#{URI.encode_www_form("#{auth_domain_with_scheme}/api/v1/classes/")}'," <>
         " CAST(#{learners_and_answers_table}.class_id AS VARCHAR), " <>
-        "'&offering=#{URI.encode_www_form("#{auth_domain}/api/v1/offerings/")}'," <>
+        "'&offering=#{URI.encode_www_form("#{auth_domain_with_scheme}/api/v1/offerings/")}'," <>
         " CAST(#{learners_and_answers_table}.offering_id AS VARCHAR), " <>
         "'&studentId='," <>
         " CAST(#{learners_and_answers_table}.user_id AS VARCHAR), " <>
@@ -508,5 +510,13 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
   end
 
   defp select_from_column(%{name: name, value: value}), do: "#{value} AS #{name}"
+
+  defp ensure_auth_domain_with_scheme(auth_domain) do
+    cond do
+      String.starts_with?(auth_domain, "http") -> auth_domain
+      String.starts_with?(auth_domain, "localhost") -> "http://#{auth_domain}"
+      true -> "https://#{auth_domain}"
+    end
+  end
 
 end
