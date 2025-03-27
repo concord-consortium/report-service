@@ -10,7 +10,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   defstruct id: nil, value: nil, from: nil, join: [], where: [], order_by: nil, num_params: 1
 
   def get_options(report_filter = %ReportFilter{}, %User{portal_server: portal_server}, allowed_project_ids, like_text \\ "") do
-    {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text)
+    {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text, portal_server)
     if query == nil do
       {:ok, [], "", params}
     else
@@ -27,7 +27,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   end
 
   def get_option_count(report_filter = %ReportFilter{}, %User{portal_server: portal_server}, allowed_project_ids, like_text \\ "") do
-    {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text)
+    {query, params} = get_query_and_params(report_filter, allowed_project_ids, like_text, portal_server)
     if query == nil do
       {:ok, 0}
     else
@@ -46,21 +46,21 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   end
 
   # this handles the case where the user has not selected any filters but checked the "exclude CC users" checkbox
-  def get_query_and_params(_report_filter = %ReportFilter{filters: []}, _allowed_project_ids, _like_text) do
+  def get_query_and_params(_report_filter = %ReportFilter{filters: []}, _allowed_project_ids, _like_text, _portal_server) do
     {nil, []}
   end
 
-  def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, allowed_project_ids, like_text) do
+  def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, allowed_project_ids, like_text, portal_server) do
     if allowed_project_ids == :none do
       {nil, []}
     else
-      query = get_filter_query(primary_filter, report_filter, allowed_project_ids, like_text)
+      query = get_filter_query(primary_filter, report_filter, allowed_project_ids, like_text, portal_server)
       params = like_params(like_text, query)
       {query, params}
     end
   end
 
-  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text) do
+  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (school == [] || teacher == [] || assignment == [] || permission_form == []) do
       nil
@@ -124,7 +124,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text) do
+  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || teacher == [] || assignment == [] || permission_form == []) do
       nil
@@ -197,7 +197,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form, exclude_internal: exclude_internal}, allowed_project_ids, like_text) do
+  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form, exclude_internal: exclude_internal}, allowed_project_ids, like_text, portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || school == [] || assignment == [] || permission_form == []) do
       nil
@@ -212,7 +212,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         num_params: 1
       }
 
-      query = %{query | where: exclude_internal_accounts(query.where, exclude_internal)}
+      query = %{query | where: exclude_internal_accounts(query.where, exclude_internal, portal_server, "portal_teachers")}
 
       query = if allowed_project_ids == :all do
         query
@@ -268,7 +268,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher, permission_form: permission_form}, allowed_project_ids, like_text) do
+  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher, permission_form: permission_form}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || school == [] || teacher == [] || permission_form == []) do
       nil
@@ -340,7 +340,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:permission_form, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}, allowed_project_ids, like_text) do
+  defp get_filter_query(:permission_form, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if (cohort == [] || school == [] || teacher == [] || assignment == []) do
       nil

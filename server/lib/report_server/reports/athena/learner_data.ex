@@ -91,15 +91,20 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       {join, where}
     end
 
-    {join, where} = if exclude_internal do
+    internal_teacher_ids = if exclude_internal do
+      get_internal_teacher_ids(user.portal_server)
+    else
+      []
+    end
+
+    {join, where} = if exclude_internal && length(internal_teacher_ids) > 0 do
       {
         [
-          "JOIN portal_teachers pt ON (pt.id = ptc.teacher_id)",
-          "JOIN users teacher_u ON u.id = pt.user_id"
+          "JOIN portal_teachers pt ON (pt.id = ptc.teacher_id)"
           | join,
         ],
         [
-          "teacher_u.email NOT LIKE '%@concord.org'"
+          "pt.id NOT IN #{list_to_in(internal_teacher_ids)}"
           | where
         ]
       }
