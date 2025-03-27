@@ -119,7 +119,20 @@ defmodule ReportServer.Reports.ReportUtils do
         ]
       }
     end
+  end
 
+  # returns the portal_teacher ids for any teacher of a CC school
+  def get_internal_teacher_ids(portal_server) do
+    sql = """
+      select member_id from portal_school_memberships psm where member_type = 'Portal::Teacher' and school_id in (
+        select id from portal_schools ps where name like '%concord consortium%'
+      )
+    """
+    case ReportServer.PortalDbs.query(portal_server, sql) do
+      {:ok, result} ->
+        result.rows |> Enum.map(&(List.first(&1)))
+      {:error, _} -> []
+    end
   end
 
 end

@@ -7,7 +7,7 @@ defmodule ReportServer.Reports.Athena.StudentActionsReport do
     hide_names = report_filter.hide_names
     learner_cols = ReportQuery.get_minimal_learner_cols(hide_names: hide_names)
     with {:ok, learner_data} <- LearnerData.fetch_and_upload(report_filter, user),
-    {:ok, query} <- ReportQuery.get_athena_query(report_filter, learner_data, learner_cols) do
+         {:ok, query} <- ReportQuery.get_athena_query(report_filter, learner_data, learner_cols) do
       {:ok, query}
     else
       error -> error
