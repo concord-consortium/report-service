@@ -204,6 +204,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   defp split_id_list(id_list) do
     id_list
       |> String.split(",")
+      |> Enum.map(&String.trim/1)
   end
 
   def key_by_id(maps) do
