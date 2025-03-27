@@ -35,11 +35,11 @@ defmodule ReportServer.Reports.Portal.ResourceMetricsSummaryReport do
 
   defp apply_filters(report_query = %ReportQuery{},
       %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment,
-        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
+        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{portal_server: portal_server}) do
     join = []
     where = []
 
-    where = exclude_internal_accounts(where, exclude_internal)
+    where = exclude_internal_accounts(where, exclude_internal, portal_server)
 
     {join, where} = apply_allowed_project_ids_filter(user, join, where, "ea.id", "pt.id")
 

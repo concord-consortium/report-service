@@ -18,9 +18,14 @@ defmodule ReportServer.Reports.ReportUtils do
   def have_filter?(nil), do: false
   def have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
-  def exclude_internal_accounts(where, false), do: where
-  def exclude_internal_accounts(where, true) do
-    [ "u.email NOT LIKE '%@concord.org'" | where ]
+  def exclude_internal_accounts(where, false, _portal_server, _teacher_table), do: where
+  def exclude_internal_accounts(where, true, portal_server, teacher_table \\ "pt") do
+    internal_teacher_ids = get_internal_teacher_ids(portal_server)
+    if length(internal_teacher_ids) == 0 do
+      where
+    else
+      [ "#{teacher_table}.id NOT IN #{list_to_in(internal_teacher_ids)}" | where ]
+    end
   end
 
   def apply_start_date(where, start_date, table_name \\ "run") do
