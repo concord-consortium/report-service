@@ -41,10 +41,10 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
     end)
   end
 
-  def process_row(%JobParams{mode: mode, step_state: step_state}, row, _data_row? = true) do
+  def process_row(%JobParams{step_state: step_state}, row, _data_row? = true) do
     text_cols = Map.get(step_state, @id)
     Enum.reduce(text_cols, row, fn {text_col, _index}, {input, output} ->
-      output = case transcribe_audio(mode, output, text_col) do
+      output = case transcribe_audio(output, text_col) do
         {:ok, transcription} ->
           output
           |> Map.put(audio_transcription_status_col(text_col), "transcribed")
@@ -65,8 +65,8 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
   defp audio_transcription_status_col(text_col), do: "#{text_col}_transcription_status"
   defp audio_transcription_result_col(text_col), do: "#{text_col}_transcription_result"
 
-  defp transcribe_audio(mode, output, text_col) do
-    with {:ok, answer} <- Helpers.get_answer(mode, output, text_col),
+  defp transcribe_audio(output, text_col) do
+    with {:ok, answer} <- Helpers.get_answer(output, text_col),
          {:ok, %{ interactive_state: interactive_state }} <- Helpers.parse_report_state(answer["report_state"]),
          {:ok, audio_file} <- get_audio_file(interactive_state),
          {:ok, audio_path} <- get_audio_path(answer, audio_file),
@@ -127,7 +127,7 @@ defmodule ReportServer.PostProcessing.Steps.TranscribeAudio do
 
   defp get_transcription(id, :completed) do
     s3_url = Output.get_transcripts_url("#{id}.json")
-    with {:ok, contents} <- Aws.get_file_contents("prod", s3_url), # prod here as we get the file contents in demo mode also
+    with {:ok, contents} <- Aws.get_file_contents(s3_url),
          {:ok, json} <- Jason.decode(contents),
          {:ok, transcript} <- get_transcript(json) do
         {:ok, transcript}

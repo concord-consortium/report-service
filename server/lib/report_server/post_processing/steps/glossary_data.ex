@@ -56,7 +56,7 @@ defmodule ReportServer.PostProcessing.Steps.GlossaryData do
   end
 
   # data rows
-  def process_row(params = %JobParams{mode: mode, step_state: step_state, portal_url: portal_url}, row, _data_row? = true) do
+  def process_row(params = %JobParams{step_state: step_state, portal_url: portal_url}, row, _data_row? = true) do
     all_resource_cols = Map.get(step_state, @id)
 
     Enum.reduce(all_resource_cols, row, fn {resource, resource_cols}, {input, output} ->
@@ -74,7 +74,7 @@ defmodule ReportServer.PostProcessing.Steps.GlossaryData do
         _ -> @staging_firebase_app
       end
 
-      output = case get_glossary_data(mode, remote_endpoint, resource_url) do
+      output = case get_glossary_data(remote_endpoint, resource_url) do
         {:ok, source, key, word_definitions, audio_definitions} ->
           audio_link_opts = [
             auth_domain: portal_url, # authenticate with the portal the report server is authenticated to
@@ -99,9 +99,9 @@ defmodule ReportServer.PostProcessing.Steps.GlossaryData do
     end)
   end
 
-  defp get_glossary_data(mode, remote_endpoint, resource_url) do
+  defp get_glossary_data(remote_endpoint, resource_url) do
     source = URI.parse(resource_url).host
-    with {:ok, plugin_states} <- ReportService.get_plugin_states(mode, source, remote_endpoint),
+    with {:ok, plugin_states} <- ReportService.get_plugin_states(source, remote_endpoint),
          {:ok, {key, plugin_state}} <- get_first_glossary_plugin_key_and_state(plugin_states),
          {:ok, {word_definitions, audio_definitions}} <- parse_plugin_state(plugin_state) do
       {:ok, source, key, word_definitions, audio_definitions}

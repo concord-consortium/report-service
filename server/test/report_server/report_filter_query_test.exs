@@ -14,7 +14,8 @@ defmodule ReportServer.ReportFilterQueryTest do
           # assignment: [4]
         },
         :all,
-        "abc")
+        "abc",
+        "portal.example.com")
       assert query ==
         %ReportFilterQuery{
           id: "ppf.id",
@@ -46,7 +47,8 @@ defmodule ReportServer.ReportFilterQueryTest do
           assignment: [4]
         },
         :all,
-        "abc")
+        "abc",
+        "portal.example.com")
       assert query ==
         %ReportFilterQuery{
           id: "ppf.id",

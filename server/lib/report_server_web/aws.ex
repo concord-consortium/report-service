@@ -5,14 +5,9 @@
 defmodule ReportServerWeb.Aws do
   require Logger
 
-  alias ReportServer.Demo
   alias ReportServer.PostProcessing.Output
 
-  def get_workgroup_query_ids("demo", _workgroup_credentials, _workgroup) do
-    {:ok, ["1", "2", "3", "4", "5"]}
-  end
-
-  def get_workgroup_query_ids(_mode, workgroup_credentials, _workgroup = %{"name" => name, "id" => id}) do
+  def get_workgroup_query_ids(workgroup_credentials, _workgroup = %{"name" => name, "id" => id}) do
     client = get_aws_client(workgroup_credentials)
     case AWS.Athena.list_query_executions(client, %{"WorkGroup" => "#{name}-#{id}"}) do
       {:ok, %{"QueryExecutionIds" => query_ids}, _resp} ->
@@ -23,30 +18,7 @@ defmodule ReportServerWeb.Aws do
     end
   end
 
-  def get_query_execution("demo", _workgroup_credentials, query_id) do
-    state = case query_id do
-      "1" -> "SUCCEEDED"
-      "2" -> "QUEUED"
-      "3" -> "RUNNING"
-      "4" -> "FAILED"
-      "5" -> "CANCELLED"
-    end
-
-    # the actual AWS response is bigger but these are the only fields we currently need
-    {:ok, %{
-      "Query" => "-- name Demo Query ##{query_id}\n  -- type activity\n  -- reportType details\n",
-      "QueryExecutionId" => query_id,
-      "ResultConfiguration" => %{
-        "OutputLocation" => "/old-reports/demo.csv"
-      },
-      "Status" => %{
-        "State" => state,
-        "SubmissionDateTime" => 1714579921
-      }
-    }}
-  end
-
-  def get_query_execution(_mode, workgroup_credentials, query_id) do
+  def get_query_execution(workgroup_credentials, query_id) do
     client = get_aws_client(workgroup_credentials)
     case AWS.Athena.get_query_execution(client, %{"QueryExecutionId" => query_id}) do
       {:ok, %{"QueryExecution" => query}, _resp} ->
@@ -57,11 +29,7 @@ defmodule ReportServerWeb.Aws do
     end
   end
 
-  def get_presigned_url("demo", _workgroup_credentials, _s3_url, _filename) do
-    {:ok, "/old-reports/demo.csv"}
-  end
-
-  def get_presigned_url(_mode, workgroup_credentials, s3_url, filename) do
+  def get_presigned_url(workgroup_credentials, s3_url, filename) do
     client = get_exaws_client(workgroup_credentials)
 
     {bucket, path} = get_bucket_and_path(s3_url)
@@ -70,11 +38,7 @@ defmodule ReportServerWeb.Aws do
     |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
   end
 
-  def get_file_stream("demo", _s3_url) do
-    {:ok, io} = Demo.raw_demo_csv() |> StringIO.open()
-    {:ok, IO.stream(io, :line)}
-  end
-  def get_file_stream(_mode, s3_url) do
+  def get_file_stream(s3_url) do
     try do
       client = get_exaws_client(get_server_credentials())
       {bucket, path} = get_bucket_and_path(s3_url)
@@ -88,18 +52,8 @@ defmodule ReportServerWeb.Aws do
     end
   end
 
-  def put_file_stream("demo", _s3_url, _stream) do
-    {:error, "No stream output in demo mode"}
-  end
-  def put_file_stream(_mode, s3_url, stream) do
-    client = get_exaws_client(get_server_credentials())
-    {bucket, path} = get_bucket_and_path(s3_url)
-    ExAws.S3.upload(stream, bucket, path)
-    |> ExAws.request(client)
-  end
-
-  def get_file_contents(mode, s3_url) do
-    case get_file_stream(mode, s3_url) do
+  def get_file_contents(s3_url) do
+    case get_file_stream(s3_url) do
       {:ok, stream} ->
         {:ok, Enum.join(stream)}
       error ->
@@ -108,10 +62,7 @@ defmodule ReportServerWeb.Aws do
     end
   end
 
-  def put_file_contents("demo", _s3_url, _contents) do
-    {:error, "Not implemented for demo"}
-  end
-  def put_file_contents(_mode, s3_url, contents) do
+  def put_file_contents(s3_url, contents) do
     client = get_aws_client(get_server_credentials())
     {bucket, path} = get_bucket_and_path(s3_url)
     AWS.S3.put_object(client, bucket, path, %{"Body" => contents})
