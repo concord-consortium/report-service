@@ -11,16 +11,16 @@ defmodule ReportServer.PostProcessing.Job do
   @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
   defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0, portal_url: nil
 
-  def run(mode, job, query_result, job_server_pid) do
-    with {:ok, preprocessed} <- preprocess_rows(mode, job, query_result),
-         {:ok, result} <- process_rows(mode, job, query_result, job_server_pid, preprocessed) do
+  def run(job, query_result, job_server_pid) do
+    with {:ok, preprocessed} <- preprocess_rows(job, query_result),
+         {:ok, result} <- process_rows(job, query_result, job_server_pid, preprocessed) do
         {:ok, result}
     else
       {:error, error} -> {:error, error}
     end
   end
 
-  defp preprocess_rows(mode, job, query_result) do
+  defp preprocess_rows(job, query_result) do
     preprocessed = %{
       learners: %{}
     }
@@ -28,7 +28,7 @@ defmodule ReportServer.PostProcessing.Job do
     actions = get_preprocess_actions(job)
     if length(actions) > 0 do
       # since reports can be huge we need to stream them and decode them line by line into rows
-      case Aws.get_file_stream(mode, query_result.output_location) do
+      case Aws.get_file_stream(query_result.output_location) do
         {:ok, stream } ->
           preprocessed = stream
           |> CSV.decode()
@@ -83,9 +83,9 @@ defmodule ReportServer.PostProcessing.Job do
     end
   end
 
-  defp process_rows(mode, job, query_result, job_server_pid, preprocessed) do
+  defp process_rows(job, query_result, job_server_pid, preprocessed) do
     # since reports can be huge we need to stream them and decode them line by line into rows
-    case Aws.get_file_stream(mode, query_result.output_location) do
+    case Aws.get_file_stream(query_result.output_location) do
       {:ok, stream } ->
         result = stream
         |> CSV.decode()
@@ -97,7 +97,6 @@ defmodule ReportServer.PostProcessing.Job do
             # replace the line with the transformed header in the stream
             header_map = Helpers.get_header_map(row)
             params = %JobParams{
-              mode: mode,
               input_header: row,
               input_header_map: header_map,
               output_header: row,
@@ -113,7 +112,7 @@ defmodule ReportServer.PostProcessing.Job do
           end
         end)
         |> CSV.encode()
-        |> output_stream(mode, job, query_result.id)
+        |> output_stream(job, query_result.id)
 
         {:ok, result}
 
@@ -152,15 +151,10 @@ defmodule ReportServer.PostProcessing.Job do
     end
   end
 
-  defp output_stream(stream, "demo", _job, _query_id) do
-    stream
-    |> Enum.join()
-  end
-
-  defp output_stream(stream, mode, job, query_id) do
+  defp output_stream(stream, job, query_id) do
     s3_url = Output.get_jobs_url("#{query_id}_job_#{job.id}.csv")
     contents = stream |> Enum.join()
-    Aws.put_file_contents(mode, s3_url, contents)
+    Aws.put_file_contents(s3_url, contents)
     s3_url
   end
 

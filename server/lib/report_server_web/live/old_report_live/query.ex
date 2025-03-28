@@ -20,7 +20,7 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
 
   # initial load
   @impl true
-  def update(%{id: id, workgroup_credentials: _, mode: _mode} = assigns, socket) do
+  def update(%{id: id, workgroup_credentials: _} = assigns, socket) do
 
     # listen for pubsub messages from the post processing server
     PubSub.subscribe(ReportServer.PubSub, JobServer.query_topic(id))
@@ -161,10 +161,10 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
   end
 
   @impl true
-  def handle_event("show_form", _params, socket = %{assigns: %{id: id, mode: mode, show_form: show_form}}) do
+  def handle_event("show_form", _params, socket = %{assigns: %{id: id, show_form: show_form}}) do
     show_form = !show_form
     if show_form do
-      JobSupervisor.maybe_start_server(id, mode)
+      JobSupervisor.maybe_start_server(id)
       JobServer.register_client(id, self())
       JobServer.request_job_status(id)
     end
@@ -206,24 +206,7 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
   end
 
   @impl true
-  def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{mode: "demo", jobs: jobs}}) do
-    presigned_url = case type do
-      "original" -> "/old-reports/demo.csv"
-
-      "job" ->
-        job = Enum.find(jobs, fn %{id: id} -> "#{id}" == params["jobId"] end)
-        result = Base.encode64(job.result)
-        "/old-reports/job.csv?filename=job-#{job.id}.csv&result=#{result}"
-
-      _ -> nil
-    end
-
-    {:reply, %{url: presigned_url}, socket}
-  end
-
-
-  @impl true
-  def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{query: query, workgroup_credentials: workgroup_credentials, mode: mode, jobs: jobs}}) do
+  def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{query: query, workgroup_credentials: workgroup_credentials, jobs: jobs}}) do
     {download, credentials} = case type do
       "original" ->
         query = query
@@ -243,7 +226,7 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
     presigned_url = if download && credentials do
       {s3_url, basename, extension} = download
       basename = basename |> String.downcase() |> String.replace(~r/\W/, "-")
-      case Aws.get_presigned_url(mode, credentials, s3_url, "#{basename}.#{extension}") do
+      case Aws.get_presigned_url(credentials, s3_url, "#{basename}.#{extension}") do
         {:ok, url} -> url
         _ -> nil
       end
@@ -254,16 +237,16 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
     {:reply, %{url: presigned_url}, socket}
   end
 
-  defp get_query_info(%{id: query_id, workgroup_credentials: workgroup_credentials, mode: mode}, socket) do
+  defp get_query_info(%{id: query_id, workgroup_credentials: workgroup_credentials}, socket) do
     # the assign_async callback runs in a task so get the current pid to pass to it to use to start the poller
     self = self()
-    socket |> assign_async(:query, fn -> async_get_query_info(mode, workgroup_credentials, query_id, self) end)
+    socket |> assign_async(:query, fn -> async_get_query_info(workgroup_credentials, query_id, self) end)
   end
 
-  defp async_get_query_info(mode, workgroup_credentials, query_id, self) do
-    case Aws.get_query_execution(mode, workgroup_credentials, query_id) do
+  defp async_get_query_info(workgroup_credentials, query_id, self) do
+    case Aws.get_query_execution(workgroup_credentials, query_id) do
       {:ok, raw_query} ->
-        query = parse_query(mode, query_id, raw_query)
+        query = parse_query(query_id, raw_query)
         if trigger_poll?(query.state) do
           # this sends a message to the parent liveview after @poll_interval milliseconds which then sends a message back to this component to poll for changes
           Process.send_after(self, {:trigger_poll, query_id}, @poll_interval)
@@ -275,7 +258,7 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
     end
   end
 
-  defp parse_query(mode, query_id, query = %{"Query" => sql, "Status" => %{"State" => state, "SubmissionDateTime" => submission_date_time}}) do
+  defp parse_query(query_id, query = %{"Query" => sql, "Status" => %{"State" => state, "SubmissionDateTime" => submission_date_time}}) do
     name = case Regex.run(@name_regex, sql) do
       [_, name] -> name
       _ -> nil
@@ -289,7 +272,7 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
       _ -> nil
     end
 
-    steps = JobServer.get_steps(mode, report_type)
+    steps = JobServer.get_steps(report_type)
     default_form_params =  steps |> Enum.map(fn step -> {step.id, false} end) |> Enum.into(%{})
     form = to_form(default_form_params)
 

@@ -95,7 +95,7 @@ defmodule ReportServer.Clue do
   ## Writes a parquet file with the answer data for each user in the dataset
   ## Returns the denormalized questions
   defp read_text_tile_answer_csv(url, csv_path, learners) do
-    case Aws.get_file_stream(nil, csv_path) do
+    case Aws.get_file_stream(csv_path) do
       {:ok, stream } -> parse_text_tile_answer_csv(url, stream, learners)
       error -> error
     end

@@ -10,10 +10,10 @@ defmodule ReportServer.PostProcessing.JobSupervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  def maybe_start_server(query_id, mode) do
+  def maybe_start_server(query_id) do
     child_spec = %{
       id: query_id,
-      start: {JobServer, :start_link, [{query_id, mode}]},
+      start: {JobServer, :start_link, [{query_id}]},
       restart: :temporary,
       shutdown: 0,
       type: :worker,

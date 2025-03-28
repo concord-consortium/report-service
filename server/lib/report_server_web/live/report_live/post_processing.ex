@@ -10,10 +10,6 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
 
   @button_class "rounded px-2 py-1 text-xs bg-orange border border-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange disabled:bg-slate-500 disabled:border-slate-500 disabled:text-white disabled:opacity-35"
 
-  # always use live mode for post processing in this component
-  @mode "live"
-
-
   # initial load
   @impl true
   def update(%{report: report, report_run: report_run} = assigns, socket) do
@@ -42,13 +38,13 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
     # listen for pubsub messages from the post processing server
     PubSub.subscribe(ReportServer.PubSub, JobServer.query_topic(query_id))
 
-    JobSupervisor.maybe_start_server(query_id, @mode)
+    JobSupervisor.maybe_start_server(query_id)
     JobServer.register_client(query_id, self())
     JobServer.request_job_status(query_id)
 
     report_type = get_report_type(report_run)
 
-    steps = JobServer.get_steps(@mode, report_type)
+    steps = JobServer.get_steps(report_type)
     default_form_params =  steps |> Enum.map(fn step -> {step.id, false} end) |> Enum.into(%{})
     form = to_form(default_form_params)
 
@@ -195,7 +191,7 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
   def show_component?(report = %Report{}, report_run = %ReportRun{}) do
     if report.type == :athena && report_run.athena_query_state == "succeeded" do
       report_type = get_report_type(report_run)
-      steps = JobServer.get_steps(@mode, report_type)
+      steps = JobServer.get_steps(report_type)
       length(steps) > 0
     else
       false

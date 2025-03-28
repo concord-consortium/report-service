@@ -49,8 +49,6 @@ defmodule ReportServerWeb.Router do
     pipe_through :browser
 
     live "/", OldReportLive.Index, :index
-    get "/demo.csv", DemoController, :csv
-    get "/job.csv", DemoController, :job
   end
 
   # this directs all requests to /new-reports to /reports for backwards compatibility

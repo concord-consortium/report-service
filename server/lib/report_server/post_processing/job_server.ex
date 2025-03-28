@@ -6,37 +6,29 @@ defmodule ReportServer.PostProcessing.JobServer do
   alias Phoenix.PubSub
   alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.{Job, Output}
-  alias ReportServer.PostProcessing.Steps.{DemoUpperCase, DemoAddAnswerLength, HasAudio, TranscribeAudio, GlossaryData, ClueLinkToWork}
+  alias ReportServer.PostProcessing.Steps.{HasAudio, TranscribeAudio, GlossaryData, ClueLinkToWork}
 
   @client_check_interval :timer.minutes(1)
 
-  def start_link({query_id, mode}) do
-    GenServer.start_link(__MODULE__, %{query_id: query_id, mode: mode, jobs: [], clients: %{}}, name: {:via, Registry, {ReportServer.PostProcessingRegistry, query_id}})
+  def start_link({query_id}) do
+    GenServer.start_link(__MODULE__, %{query_id: query_id, jobs: [], clients: %{}}, name: {:via, Registry, {ReportServer.PostProcessingRegistry, query_id}})
   end
 
-  def get_steps("demo", "details"), do: [
-    DemoUpperCase.step(),
-    DemoAddAnswerLength.step(),
-    HasAudio.step(),
-    GlossaryData.step(),
-    TranscribeAudio.step()
-  ] |> sort_steps()
-
-  def get_steps(_mode, "details"), do: [
+  def get_steps("details"), do: [
     HasAudio.step(),
     TranscribeAudio.step(),
     GlossaryData.step()
   ] |> sort_steps()
 
-  def get_steps(_mode, "student-actions"), do: [
+  def get_steps("student-actions"), do: [
     ClueLinkToWork.step(),
   ] |> sort_steps()
 
-  def get_steps(_mode, "student-actions-with-metadata"), do: [
+  def get_steps("student-actions-with-metadata"), do: [
     ClueLinkToWork.step(),
   ] |> sort_steps()
 
-  def get_steps(_mode, _report_type), do: []
+  def get_steps(_report_type), do: []
 
   def sort_steps(steps) do
     Enum.sort(steps, &(&1.label < &2.label))
@@ -79,14 +71,14 @@ defmodule ReportServer.PostProcessing.JobServer do
     {:noreply, state}
   end
 
-  def handle_cast({:add_job, query_result, steps, portal_url}, state = %{mode: mode, jobs: jobs}) do
+  def handle_cast({:add_job, query_result, steps, portal_url}, state = %{jobs: jobs}) do
     job = %Job{id: length(jobs) + 1, query_id: query_result.id, steps: steps, status: :started, started_at: :os.system_time(:millisecond), portal_url: portal_url, ref: nil, result: nil}
     step_labels = Enum.map(steps, &(&1.label)) |> Enum.join(", ")
     Logger.info("Adding job ##{job.id} for query #{query_result.id} (#{step_labels})")
 
     job_server = self()
     task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
-      Job.run(mode, job, query_result, job_server)
+      Job.run(job, query_result, job_server)
     end)
 
     job = Map.put(job, :ref, task.ref)
@@ -162,12 +154,8 @@ defmodule ReportServer.PostProcessing.JobServer do
     state
   end
 
-  defp read_jobs_file(%{mode: "demo"} = state) do
-    # no saved jobs file in demo mode
-    state
-  end
-  defp read_jobs_file(%{mode: mode} = state) do
-    case Aws.get_file_contents(mode, get_jobs_file_url(state)) do
+  defp read_jobs_file(state) do
+    case Aws.get_file_contents(get_jobs_file_url(state)) do
       {:ok, contents} ->
         json = keys_to_atoms(Jason.decode!(contents))
         jobs = Enum.map(json.jobs, fn job -> struct(Job, job) end)
@@ -177,16 +165,12 @@ defmodule ReportServer.PostProcessing.JobServer do
     end
   end
 
-  defp save_jobs_file(%{mode: "demo"} = state) do
-    # no saved jobs file in demo mode
-    state
-  end
-  defp save_jobs_file(%{mode: mode, query_id: _query_id, jobs: jobs} = state) do
+  defp save_jobs_file(%{query_id: _query_id, jobs: jobs} = state) do
     contents = Jason.encode!(%{
       version: 1,
       jobs: jobs
     })
-    Aws.put_file_contents(mode, get_jobs_file_url(state), contents)
+    Aws.put_file_contents(get_jobs_file_url(state), contents)
     state
   end
 

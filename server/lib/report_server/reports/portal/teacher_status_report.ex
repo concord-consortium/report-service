@@ -50,7 +50,7 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
     join = []
     where = []
 
-    where = exclude_internal_accounts(where, exclude_internal, portal_server)
+    where = exclude_internal_accounts(exclude_internal, where, portal_server)
 
     {join, where} = apply_allowed_project_ids_filter(user, join, where, "ea.id", "pt.id")
 
