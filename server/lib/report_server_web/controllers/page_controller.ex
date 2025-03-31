@@ -13,7 +13,7 @@ defmodule ReportServerWeb.PageController do
       report_service_url = Application.get_env(:report_server, :report_service) |> Keyword.get(:url)
 
       portal_credentials = Auth.get_portal_credentials(session)
-      {:ok, token_service_env} = TokenService.get_env("prod", portal_credentials)
+      {:ok, token_service_env} = TokenService.get_env(portal_credentials)
 
       config = %{
         portal: portal,

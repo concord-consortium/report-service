@@ -18,8 +18,9 @@ defmodule ReportServer.Reports.ReportUtils do
   def have_filter?(nil), do: false
   def have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
-  def exclude_internal_accounts(where, false, _portal_server, _teacher_table), do: where
-  def exclude_internal_accounts(where, true, portal_server, teacher_table \\ "pt") do
+  def exclude_internal_accounts(exclude, where, portal_server, teacher_table \\ "pt")
+  def exclude_internal_accounts(false, where, _portal_server, _teacher_table), do: where
+  def exclude_internal_accounts(true, where, portal_server, teacher_table) do
     internal_teacher_ids = get_internal_teacher_ids(portal_server)
     if length(internal_teacher_ids) == 0 do
       where

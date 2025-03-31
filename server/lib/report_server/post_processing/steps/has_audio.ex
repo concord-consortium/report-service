@@ -35,15 +35,15 @@ defmodule ReportServer.PostProcessing.Steps.HasAudio do
     end)
   end
 
-  def process_row(%JobParams{mode: mode, step_state: step_state}, row, _data_row? = true) do
+  def process_row(%JobParams{step_state: step_state}, row, _data_row? = true) do
     text_cols = Map.get(step_state, @id)
     Enum.reduce(text_cols, row, fn {text_col, _index}, {input, output} ->
-      {input, Map.put(output, has_audio_col(text_col), has_audio?(mode, output, text_col))}
+      {input, Map.put(output, has_audio_col(text_col), has_audio?(output, text_col))}
     end)
   end
 
-  defp has_audio?(mode, output, text_col) do
-    with {:ok, answer} <- Helpers.get_answer(mode, output, text_col),
+  defp has_audio?(output, text_col) do
+    with {:ok, answer} <- Helpers.get_answer(output, text_col),
          {:ok, %{ interactive_state: interactive_state }} <- Helpers.parse_report_state(answer["report_state"]) do
         interactive_state["audioFile"] != nil
     else

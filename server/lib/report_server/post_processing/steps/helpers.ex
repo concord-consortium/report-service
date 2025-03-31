@@ -70,10 +70,10 @@ defmodule ReportServer.PostProcessing.Steps.Helpers do
     {res, question_id}
   end
 
-  def get_answer(mode, output, col) do
+  def get_answer(output, col) do
     with {:ok, question_id, remote_endpoint, url} <- parse_res_answer_col(output, col),
          {:ok, source} <- get_source_from_url(url) do
-      ReportService.get_answer(mode, source, remote_endpoint, question_id)
+      ReportService.get_answer(source, remote_endpoint, question_id)
     else
       {:error, error} ->
         Logger.error("Error getting answer: #{error}")

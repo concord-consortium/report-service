@@ -7,20 +7,16 @@ defmodule ReportServerWeb.OldReportLive.Index do
   alias ReportServerWeb.OldReportLive.QueryComponent
 
   @impl true
-  def mount(params, session, socket) do
-    mode = Map.get(params, "mode", "live")
-
-    if Auth.logged_in?(session) || mode == "demo" do
+  def mount(_params, session, socket) do
+    if Auth.logged_in?(session) do
       portal_credentials = Auth.get_portal_credentials(session)
 
       {:ok,
       socket
         # assign the session vars for the login/logout links
         |> assign(Auth.public_session_vars(session))
-        # track the mode
-        |> assign(:mode, mode)
         # get the aws data from the token service via async (the fn is wrapped in a task)
-        |> assign_async(:aws_data, fn -> async_get_aws_data(mode, portal_credentials) end)
+        |> assign_async(:aws_data, fn -> async_get_aws_data(portal_credentials) end)
       }
     else
       {:ok, redirect(socket, to: ~p"/auth/login?return_to=/old-reports")}
@@ -52,15 +48,14 @@ defmodule ReportServerWeb.OldReportLive.Index do
     {:noreply, socket}
   end
 
-  defp async_get_aws_data(mode, portal_credentials) do
-    with {:ok, env} <- TokenService.get_env(mode, portal_credentials),
-         {:ok, jwt} <- TokenService.get_firebase_jwt(mode, portal_credentials),
-         {:ok, workgroup} <- TokenService.get_athena_workgroup(mode, env, jwt),
-         {:ok, workgroup_credentials} <- TokenService.get_workgroup_credentials(mode, env, jwt, workgroup),
-         {:ok, query_ids} <- Aws.get_workgroup_query_ids(mode, workgroup_credentials, workgroup) do
+  defp async_get_aws_data(portal_credentials) do
+    with {:ok, env} <- TokenService.get_env(portal_credentials),
+         {:ok, jwt} <- TokenService.get_firebase_jwt(portal_credentials),
+         {:ok, workgroup} <- TokenService.get_athena_workgroup(env, jwt),
+         {:ok, workgroup_credentials} <- TokenService.get_workgroup_credentials(env, jwt, workgroup),
+         {:ok, query_ids} <- Aws.get_workgroup_query_ids(workgroup_credentials, workgroup) do
       {:ok, %{
         aws_data: %{
-          mode: mode,
           jwt: jwt,
           workgroup: workgroup,
           workgroup_credentials: workgroup_credentials,

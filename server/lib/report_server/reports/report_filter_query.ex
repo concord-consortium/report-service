@@ -212,7 +212,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         num_params: 1
       }
 
-      query = %{query | where: exclude_internal_accounts(query.where, exclude_internal, portal_server, "portal_teachers")}
+      query = %{query | where: exclude_internal_accounts(exclude_internal, query.where, portal_server, "portal_teachers")}
 
       query = if allowed_project_ids == :all do
         query
