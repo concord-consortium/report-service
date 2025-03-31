@@ -11,16 +11,20 @@ defmodule ReportServer.PostProcessing.Job do
   @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
   defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0, portal_url: nil
 
-  def run(job, query_result, job_server_pid) do
-    with {:ok, preprocessed} <- preprocess_rows(job, query_result),
-         {:ok, result} <- process_rows(job, query_result, job_server_pid, preprocessed) do
+  defmodule JobOverrides do
+    defstruct output: nil, get_input: nil, learners: nil
+  end
+
+  def run(job, query_result, job_server_pid, %JobOverrides{} = overrides \\ {}) do
+    with {:ok, preprocessed} <- preprocess_rows(job, query_result, overrides),
+         {:ok, result} <- process_rows(job, query_result, job_server_pid, preprocessed, overrides) do
         {:ok, result}
     else
       {:error, error} -> {:error, error}
     end
   end
 
-  defp preprocess_rows(job, query_result) do
+  defp preprocess_rows(job, query_result, overrides) do
     preprocessed = %{
       learners: %{}
     }
@@ -28,7 +32,7 @@ defmodule ReportServer.PostProcessing.Job do
     actions = get_preprocess_actions(job)
     if length(actions) > 0 do
       # since reports can be huge we need to stream them and decode them line by line into rows
-      case Aws.get_file_stream(query_result.output_location) do
+      case get_input_stream(query_result, overrides) do
         {:ok, stream } ->
           preprocessed = stream
           |> CSV.decode()
@@ -67,7 +71,7 @@ defmodule ReportServer.PostProcessing.Job do
             case action do
               :preprocess_learners ->
                 run_remote_endpoints = Map.keys(acc.learners)
-                %{acc | learners: get_learners(job, run_remote_endpoints)}
+                %{acc | learners: get_learners(job, run_remote_endpoints, overrides)}
               # add future actions here...
             end
           end)
@@ -83,11 +87,11 @@ defmodule ReportServer.PostProcessing.Job do
     end
   end
 
-  defp process_rows(job, query_result, job_server_pid, preprocessed) do
+  defp process_rows(job, query_result, job_server_pid, preprocessed, overrides) do
     # since reports can be huge we need to stream them and decode them line by line into rows
-    case Aws.get_file_stream(query_result.output_location) do
+    case get_input_stream(query_result, overrides) do
       {:ok, stream } ->
-        result = stream
+        s3_url = stream
         |> CSV.decode()
 
         # this runs for each row of the csv, we transform the row with the steps and output the transformed row
@@ -112,9 +116,9 @@ defmodule ReportServer.PostProcessing.Job do
           end
         end)
         |> CSV.encode()
-        |> output_stream(job, query_result.id)
+        |> put_output_stream(job, query_result, overrides)
 
-        {:ok, result}
+        {:ok, s3_url}
 
       {:error, error} ->
         Logger.error(error)
@@ -124,7 +128,9 @@ defmodule ReportServer.PostProcessing.Job do
 
   defp increment_rows_processed(params = %{rows_processed: rows_processed}, job_server_pid, job_id) do
     rows_processed = rows_processed + 1
-    send(job_server_pid, {:processed_row, job_id, rows_processed})
+    if job_server_pid != nil do
+      send(job_server_pid, {:processed_row, job_id, rows_processed})
+    end
     %{params | rows_processed: rows_processed}
   end
 
@@ -151,11 +157,24 @@ defmodule ReportServer.PostProcessing.Job do
     end
   end
 
-  defp output_stream(stream, job, query_id) do
-    s3_url = Output.get_jobs_url("#{query_id}_job_#{job.id}.csv")
-    contents = stream |> Enum.join()
-    Aws.put_file_contents(s3_url, contents)
-    s3_url
+  defp get_input_stream(_query_result, %JobOverrides{get_input: get_input}) when not is_nil(get_input) do
+    {:ok, get_input.()}
+  end
+  defp get_input_stream(query_result, _overrides) do
+    Aws.get_file_stream(query_result.output_location)
+  end
+
+  defp put_output_stream(input_stream, job, query_result, overrides) do
+    filename = "#{query_result.id}_job_#{job.id}.csv"
+    if overrides.output do
+      Enum.into(input_stream, overrides.output)
+      "s3://streamed_output/jobs/#{filename}"
+    else
+      s3_url = Output.get_jobs_url(filename)
+      contents = input_stream |> Enum.join()
+      Aws.put_file_contents(s3_url, contents)
+      s3_url
+    end
   end
 
   defp get_preprocess_actions(job) do
@@ -177,8 +196,9 @@ defmodule ReportServer.PostProcessing.Job do
     %{rre: nil}
   end
 
-  defp get_learners(_job_params, []), do: %{}
-  defp get_learners(%{portal_url: portal_url}, run_remote_endpoints) do
+  defp get_learners(_job_params, [], _overrides), do: %{}
+  defp get_learners(_job_params, _run_remote_endpoints, %JobOverrides{learners: learners}) when not is_nil(learners), do: learners
+  defp get_learners(%{portal_url: portal_url}, run_remote_endpoints, _overrides) do
     # extract the secure_key from the run_remote_endpoint
     secure_key_map = Enum.reduce(run_remote_endpoints, %{}, fn run_remote_endpoint, acc ->
       secure_key = run_remote_endpoint |> String.split("/") |> List.last()
