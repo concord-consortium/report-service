@@ -155,8 +155,6 @@ defmodule ReportServer.PostProcessing.Job do
             end
           end)
 
-          IO.inspect(preprocessed, label: "Preprocessed Data")
-
           {:ok, preprocessed}
 
         {:error, error} ->
