@@ -24,9 +24,25 @@ defmodule ReportServer.PostProcessing.Job do
     end
   end
 
+  def user_in_class_key(class_id, user_id) do
+    "#{class_id}-#{user_id}"
+  end
+
+  def user_from_user_in_class_key(user_in_class_key) do
+    user_in_class_key
+    |> String.split("-")
+    |> List.last()
+  end
+
+  # NOTE: if you add another preprocessing action here, this should be refactored to
+  # put the preprocessing in each step instead of it all being here - the learner
+  # preprocessing should be moved to a helper module that could be imported into the step
+  # so that it could be used for multiple steps
   defp preprocess_rows(job, query_result, overrides) do
     preprocessed = %{
-      learners: %{}
+      learners: %{},         # map of run_remote_endpoint to offering_id and class_id
+      merged_user_ids: %{},  # map of user_in_class_key (class_id + "-" + user_id) to a list of user_in_class_keys
+      user_resources: %{},   # map of user_in_class_key to a map of resource headers to values
     }
 
     actions = get_preprocess_actions(job)
@@ -40,11 +56,27 @@ defmodule ReportServer.PostProcessing.Job do
           # transform the csv stream into a steam of preprocessed rows with only the information needed for each preprocessing action
           |> Stream.transform(nil, fn {:ok, row}, row_acc ->
             if row_acc == nil do
-              # the accumulator is nil on the first line
+              # this is the first line of the csv
               header_map = Helpers.get_header_map(row)
               rre_index = header_map["run_remote_endpoint"]
-              # add other index lookups here for future actions
-              {[new_preprocessed_row()], %{rre_index: rre_index}}
+              user_id_index = header_map["user_id"]
+              primary_user_id_index = header_map["primary_user_id"]
+              class_id_index = header_map["class_id"]
+              resource_header_map = Enum.reduce(header_map, %{}, fn {k,v}, acc ->
+                if Regex.match?(~r/^res_\d+/, k) do
+                  Map.put(acc, k, v)
+                else
+                  acc
+                end
+              end)
+              {[new_preprocessed_row()], %{
+                rre_index: rre_index,
+                user_answers: %{},
+                resource_header_map: resource_header_map,
+                user_id_index: user_id_index,
+                primary_user_id_index: primary_user_id_index,
+                class_id_index: class_id_index,
+              }}
             else
               input = row_to_input(row)
               new_row = Enum.reduce(actions, new_preprocessed_row(), fn action, new_row_acc ->
@@ -52,7 +84,21 @@ defmodule ReportServer.PostProcessing.Job do
                   action == :preprocess_learners && row_acc.rre_index != nil ->
                     %{new_row_acc | rre: input[row_acc.rre_index]}
 
+                  action == :preprocess_gather_primary_user_info ->
+                    primary_user_id = input[row_acc.primary_user_id_index] || ""
+                    if String.length(primary_user_id) > 0 do
+                      # we need to gather the primary user id and the resources for each row
+                      resources = Enum.reduce(row_acc.resource_header_map, %{}, fn {k,v}, acc -> Map.put(acc, k, input[v]) end)
+                      user_id = input[row_acc.user_id_index] || ""
+                      class_id = input[row_acc.class_id_index] || ""
+                      %{new_row_acc | user_id: user_id, class_id: class_id, primary_user_id: primary_user_id, resources: resources}
+                    else
+                      new_row_acc
+                    end
+
                   # add future actions here...
+                  true ->
+                    new_row_acc
                 end
               end)
               {[new_row], row_acc}
@@ -62,8 +108,29 @@ defmodule ReportServer.PostProcessing.Job do
           # this reducer is called each time a new row is emitted from the stream to gather the input needed for the preprocessing actions
           |> Enum.reduce(preprocessed, fn row, acc ->
             learners = if row.rre != nil, do: Map.put(acc.learners, row.rre, nil), else: acc.learners
+            user_key = user_in_class_key(row.class_id, row.user_id)
+            primary_user_key = if row.primary_user_id != nil do
+              user_in_class_key(row.class_id, row.primary_user_id)
+            else
+              nil
+            end
+            merged_user_ids = if primary_user_key != nil && primary_user_key != user_key do
+              Map.update(acc.merged_user_ids, primary_user_key, [user_key], fn user_ids ->
+                user_ids ++ [user_key]
+              end)
+            else
+              acc.merged_user_ids
+            end
+            user_resources = if primary_user_key != nil do
+              Map.update(acc.user_resources, primary_user_key, [row.resources], fn user_resources ->
+                user_resources ++ [row.resources]
+              end)
+            else
+              acc.user_resources
+            end
+
             # add future accumulators here...
-            %{acc | learners: learners}
+            %{acc | learners: learners, merged_user_ids: merged_user_ids, user_resources: user_resources}
           end)
 
           # finally we run the actions that need the preprocessed data
@@ -72,7 +139,19 @@ defmodule ReportServer.PostProcessing.Job do
               :preprocess_learners ->
                 run_remote_endpoints = Map.keys(acc.learners)
                 %{acc | learners: get_learners(job, run_remote_endpoints, overrides)}
+
+              :preprocess_gather_primary_user_info ->
+                merged_user_ids = Enum.reduce(acc.merged_user_ids, %{}, fn {key, user_ids}, acc ->
+                  Map.put(acc, key, Enum.uniq(user_ids))
+                end)
+                user_resources = Enum.reduce(acc.user_resources, %{}, fn {key, resources}, acc ->
+                  Map.put(acc, key, resources)
+                end) |> combine_user_resources()
+
+                %{acc | merged_user_ids: merged_user_ids, user_resources: user_resources}
+
               # add future actions here...
+              _ -> acc
             end
           end)
 
@@ -112,7 +191,14 @@ defmodule ReportServer.PostProcessing.Job do
             params = Enum.reduce(job.steps, params, fn step, acc -> step.init.(acc) end)
             {[params.output_header], increment_rows_processed(params, job_server_pid, job.id)}
           else
-            {[run_steps(row, job.steps, acc)], increment_rows_processed(acc, job_server_pid, job.id)}
+            output = run_steps(row, job.steps, acc)
+            acc = increment_rows_processed(acc, job_server_pid, job.id)
+            if length(output) == 0 do
+              # this signals to the stream transformer to skip the row
+              {[], acc}
+            else
+              {[output], acc}
+            end
           end
         end)
         |> CSV.encode()
@@ -140,13 +226,23 @@ defmodule ReportServer.PostProcessing.Job do
 
     data_row? = is_data_row?(input_row)
     {_input, output} = Enum.reduce(steps, {input, output}, fn step, acc ->
-      step.process_row.(params, acc, data_row?)
+      {_, step_output} = acc
+      if step_output != false do
+        step.process_row.(params, acc, data_row?)
+      else
+        acc
+      end
     end)
 
-    Enum.reduce(output_header, [], fn k, acc ->
-      [output[k] | acc]
-    end)
-    |> Enum.reverse()
+    if map_size(output) == 0 do
+      # skip output if the output is empty, which is how the step signals to skip the row
+      []
+    else
+      Enum.reduce(output_header, [], fn k, acc ->
+        [output[k] | acc]
+      end)
+      |> Enum.reverse()
+    end
   end
 
   defp is_data_row?(row) do
@@ -179,10 +275,13 @@ defmodule ReportServer.PostProcessing.Job do
 
   defp get_preprocess_actions(job) do
     Enum.reduce(job.steps, MapSet.new(), fn step, acc ->
-      if step.preprocess_learners do
-        MapSet.put(acc, :preprocess_learners)
-      else
-        acc
+      cond do
+        step.preprocess_learners ->
+          MapSet.put(acc, :preprocess_learners)
+        step.preprocess_gather_primary_user_info ->
+          MapSet.put(acc, :preprocess_gather_primary_user_info)
+        true ->
+          acc
       end
     end)
     |> MapSet.to_list()
@@ -193,7 +292,7 @@ defmodule ReportServer.PostProcessing.Job do
   end
 
   defp new_preprocessed_row() do
-    %{rre: nil}
+    %{rre: nil, user_id: nil, class_id: nil, primary_user_id: nil, resources: %{}}
   end
 
   defp get_learners(_job_params, [], _overrides), do: %{}
@@ -223,6 +322,29 @@ defmodule ReportServer.PostProcessing.Job do
 
       _ -> %{}
     end
+  end
+
+  # combine the user resources into a single map for each user
+  # and merge the values into a single list with the list converted
+  # to the value if the list has only one value
+  defp combine_user_resources(user_resources) do
+    Enum.into(user_resources, %{}, fn {user_id, entries} ->
+      combined =
+        entries
+        |> Enum.reduce(%{}, fn entry, acc ->
+          Map.merge(acc, entry, fn _key, v1, v2 ->
+            List.wrap(v1) ++ List.wrap(v2)
+          end)
+        end)
+        |> Enum.map(fn {k, v} ->
+          unique = Enum.uniq(List.wrap(v))
+          v = if length(unique) == 1, do: hd(unique), else: unique
+          {k, v}
+        end)
+        |> Enum.into(%{})
+
+      {user_id, combined}
+    end)
   end
 
 end
