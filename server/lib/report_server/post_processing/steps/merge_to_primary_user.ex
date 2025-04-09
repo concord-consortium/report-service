@@ -1,4 +1,5 @@
 defmodule ReportServer.PostProcessing.Steps.MergeToPrimaryUser do
+  alias ReportServer.PostProcessing.Job
   alias ReportServer.PostProcessing.JobParams
   alias ReportServer.PostProcessing.Step
   alias ReportServer.PostProcessing.Steps.Helpers
@@ -22,16 +23,19 @@ defmodule ReportServer.PostProcessing.Steps.MergeToPrimaryUser do
   end
 
   # process each data row
-  def process_row(%JobParams{preprocessed: preprocessed}, _row = {input, output = %{"user_id" => user_id}}, _data_row? = true) do
-    if Map.has_key?(preprocessed.user_resources, user_id) do
-      output = if Map.has_key?(preprocessed.merged_user_ids, user_id) do
-        merged = Enum.join(preprocessed.merged_user_ids[user_id], ",")
+  def process_row(%JobParams{preprocessed: preprocessed}, _row = {input, output = %{"class_id" => class_id, "user_id" => user_id}}, _data_row? = true) do
+    user_key = Job.user_in_class_key(class_id, user_id)
+    if Map.has_key?(preprocessed.user_resources, user_key) do
+      output = if Map.has_key?(preprocessed.merged_user_ids, user_key) do
+        merged = preprocessed.merged_user_ids[user_key]
+          |> Enum.map(&(Job.user_from_user_in_class_key(&1)))
+          |> Enum.join(",")
         Map.put(output, @merged_user_ids_col, merged)
       else
         Map.put(output, @merged_user_ids_col, "")
       end
 
-      output = Enum.reduce(preprocessed.user_resources[user_id], output, fn {key, value}, acc ->
+      output = Enum.reduce(preprocessed.user_resources[user_key], output, fn {key, value}, acc ->
         value = if is_list(value) do
           Enum.join(value, ",")
         else
