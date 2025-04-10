@@ -15,7 +15,7 @@ defmodule ReportServer.PostProcessing.Job do
     defstruct output: nil, get_input: nil, learners: nil
   end
 
-  def run(job, query_result, job_server_pid, %JobOverrides{} = overrides \\ {}) do
+  def run(job, query_result, job_server_pid, %JobOverrides{} = overrides \\ %JobOverrides{}) do
     with {:ok, preprocessed} <- preprocess_rows(job, query_result, overrides),
          {:ok, result} <- process_rows(job, query_result, job_server_pid, preprocessed, overrides) do
         {:ok, result}
