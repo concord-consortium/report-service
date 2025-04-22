@@ -42,7 +42,7 @@ defmodule ReportServer.PostProcessing.Job do
     preprocessed = %{
       learners: %{},         # map of run_remote_endpoint to offering_id and class_id
       merged_user_ids: %{},  # map of user_in_class_key (class_id + "-" + user_id) to a list of user_in_class_keys
-      user_resources: %{},   # map of user_in_class_key to a map of resource headers to values
+      user_resources: %{},   # map of user_in_class_key to a map of user ids to a map of resource headers to values
     }
 
     actions = get_preprocess_actions(job)
@@ -122,8 +122,8 @@ defmodule ReportServer.PostProcessing.Job do
               acc.merged_user_ids
             end
             user_resources = if primary_user_key != nil do
-              Map.update(acc.user_resources, primary_user_key, [row.resources], fn user_resources ->
-                user_resources ++ [row.resources]
+              Map.update(acc.user_resources, primary_user_key, Map.put(%{}, row.user_id, row.resources), fn user_resources ->
+                Map.put(user_resources, row.user_id, row.resources)
               end)
             else
               acc.user_resources
@@ -329,16 +329,26 @@ defmodule ReportServer.PostProcessing.Job do
   # to the value if the list has only one value
   defp combine_user_resources(user_resources) do
     Enum.into(user_resources, %{}, fn {user_id, entries} ->
-      combined =
+      # merge the user id with the answers to form a tuple
+      merged_entries =
         entries
+        |> Enum.map(fn {outer_key, inner_map} ->
+          Enum.reduce(inner_map, %{}, fn {k, v}, acc ->
+            Map.put(acc, k, {outer_key, v})
+          end)
+        end)
+
+      combined =
+        merged_entries
         |> Enum.reduce(%{}, fn entry, acc ->
           Map.merge(acc, entry, fn _key, v1, v2 ->
             List.wrap(v1) ++ List.wrap(v2)
           end)
         end)
         |> Enum.map(fn {k, v} ->
-          unique = Enum.uniq(List.wrap(v))
-          v = if length(unique) == 1, do: hd(unique), else: unique
+          v_list = v |> List.wrap()
+          unique_values = v_list |> Enum.map(fn {_, v} -> v end) |> Enum.uniq
+          v = if length(unique_values) == 1, do: hd(v_list), else: v_list
           {k, v}
         end)
         |> Enum.into(%{})

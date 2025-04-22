@@ -37,9 +37,12 @@ defmodule ReportServer.PostProcessing.Steps.MergeToPrimaryUser do
 
       output = Enum.reduce(preprocessed.user_resources[user_key], output, fn {key, value}, acc ->
         value = if is_list(value) do
-          Enum.join(value, ",")
-        else
           value
+          |> Enum.map(fn {user_id, user_value} -> "#{user_id}: #{user_value}" end)
+          |> Enum.join("\n")
+        else
+          {_user_id, user_value} = value
+          user_value
         end
         Map.put(acc, key, value)
       end)
