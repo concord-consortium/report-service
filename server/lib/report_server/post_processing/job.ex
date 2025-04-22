@@ -41,8 +41,9 @@ defmodule ReportServer.PostProcessing.Job do
   defp preprocess_rows(job, query_result, overrides) do
     preprocessed = %{
       learners: %{},         # map of run_remote_endpoint to offering_id and class_id
+      primary_user_map: %{},
       merged_user_ids: %{},  # map of user_in_class_key (class_id + "-" + user_id) to a list of user_in_class_keys
-      user_resources: %{},   # map of user_in_class_key to a map of resource headers to values
+      user_resources: %{},   # map of user_in_class_key to a map of user ids to a map of resource headers to values
     }
 
     actions = get_preprocess_actions(job)
@@ -122,15 +123,20 @@ defmodule ReportServer.PostProcessing.Job do
               acc.merged_user_ids
             end
             user_resources = if primary_user_key != nil do
-              Map.update(acc.user_resources, primary_user_key, [row.resources], fn user_resources ->
-                user_resources ++ [row.resources]
+              Map.update(acc.user_resources, primary_user_key, Map.put(%{}, row.user_id, row.resources), fn user_resources ->
+                Map.put(user_resources, row.user_id, row.resources)
               end)
             else
               acc.user_resources
             end
+            primary_user_map = if primary_user_key != nil do
+              Map.put(acc.primary_user_map, user_key, primary_user_key)
+            else
+              acc.primary_user_map
+            end
 
             # add future accumulators here...
-            %{acc | learners: learners, merged_user_ids: merged_user_ids, user_resources: user_resources}
+            %{acc | learners: learners, merged_user_ids: merged_user_ids, user_resources: user_resources, primary_user_map: primary_user_map}
           end)
 
           # finally we run the actions that need the preprocessed data
@@ -148,7 +154,22 @@ defmodule ReportServer.PostProcessing.Job do
                   Map.put(acc, key, resources)
                 end) |> combine_user_resources()
 
-                %{acc | merged_user_ids: merged_user_ids, user_resources: user_resources}
+                # reduce the primary user map to contain users with primary user ids such that
+                # the primary user id is not also a user id in the map
+                primary_user_map =
+                  acc.primary_user_map
+                  |> Enum.filter(fn {_key, value} -> not Map.has_key?(acc.primary_user_map, value) end)
+                  |> Enum.reduce(%{}, fn {key, value}, acc ->
+                    if Enum.any?(acc, fn {_k, v} -> v == value end) do
+                      # primary user id already exists as a value, so ignore it
+                      acc
+                    else
+                      # first time we see this primary user id, so we add it to the map
+                      Map.put(acc, key, value)
+                    end
+                  end)
+
+                %{acc | merged_user_ids: merged_user_ids, user_resources: user_resources, primary_user_map: primary_user_map}
 
               # add future actions here...
               _ -> acc
@@ -329,16 +350,30 @@ defmodule ReportServer.PostProcessing.Job do
   # to the value if the list has only one value
   defp combine_user_resources(user_resources) do
     Enum.into(user_resources, %{}, fn {user_id, entries} ->
-      combined =
+      # merge the user id with the answers to form a tuple
+      merged_entries =
         entries
+        |> Enum.map(fn {outer_key, inner_map} ->
+          Enum.reduce(inner_map, %{}, fn {k, v}, acc ->
+            Map.put(acc, k, {outer_key, v})
+          end)
+        end)
+
+      combined =
+        merged_entries
         |> Enum.reduce(%{}, fn entry, acc ->
           Map.merge(acc, entry, fn _key, v1, v2 ->
             List.wrap(v1) ++ List.wrap(v2)
           end)
         end)
         |> Enum.map(fn {k, v} ->
-          unique = Enum.uniq(List.wrap(v))
-          v = if length(unique) == 1, do: hd(unique), else: unique
+          v_list = v |> List.wrap()
+          non_empty_v_list = v_list
+            |> Enum.map(fn {k, v} -> {k, String.trim(v)} end)
+            |> Enum.filter(fn {_, v} -> String.length(v) > 0 end)
+          non_empty_values = non_empty_v_list |> Enum.map(fn {_, v} -> v end)
+          unique_non_empty_values = Enum.uniq(non_empty_values)
+          v = if length(unique_non_empty_values) <= 1, do: hd(v_list), else: non_empty_v_list
           {k, v}
         end)
         |> Enum.into(%{})
