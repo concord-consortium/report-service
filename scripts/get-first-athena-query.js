@@ -3,6 +3,13 @@ const path = require("path");
 const { AthenaClient, GetQueryExecutionCommand, ListQueryExecutionsCommand } = require("@aws-sdk/client-athena");
 const { parse } = require("json2csv");
 
+function formatBytes(bytes) {
+  if (bytes === 0) return "0 Bytes";
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + " " + sizes[i];
+}
+
 async function getAllAthenaQueries() {
   const client = new AthenaClient({ region: "us-east-1" }); // Replace with your AWS region
 
@@ -40,6 +47,7 @@ async function getAllAthenaQueries() {
       "Status.CompletionDateTime",
       "Status.SubmissionDateTime",
       "Statistics.DataScannedInBytes",
+      "Statistics.DataScannedHumanReadable",
     ];
 
     const csvData = queryExecutions.map((execution) => ({
@@ -49,6 +57,7 @@ async function getAllAthenaQueries() {
       "Status.CompletionDateTime": execution.Status?.CompletionDateTime,
       "Status.SubmissionDateTime": execution.Status?.SubmissionDateTime,
       "Statistics.DataScannedInBytes": execution.Statistics?.DataScannedInBytes,
+      "Statistics.DataScannedHumanReadable": formatBytes(execution.Statistics?.DataScannedInBytes || 0),
     }));
 
     const csv = parse(csvData, { fields });
