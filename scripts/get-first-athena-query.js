@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { AthenaClient, GetQueryExecutionCommand, ListQueryExecutionsCommand } = require("@aws-sdk/client-athena");
+const { AthenaClient, GetQueryExecutionCommand, ListQueryExecutionsCommand, ListWorkGroupsCommand } = require("@aws-sdk/client-athena");
 const { parse } = require("json2csv");
 
 function formatBytes(bytes) {
@@ -10,28 +10,78 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + " " + sizes[i];
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function getAllAthenaQueries() {
-  const client = new AthenaClient({ region: "us-east-1" }); // Replace with your AWS region
+  // Disable middleware logger to avoid accessing undefined properties
+  const client = new AthenaClient({
+    region: "us-east-1", // Replace with your AWS region
+    maxAttempts: 7, // Set maximum retry attempts
+  });
 
   try {
-    // Replace with your workgroup name
-    const workgroupName = "scytacki-concord-org-cvmQK4PvbL7Ccxey3px7";
+    // List all workgroups
+    const listWorkGroupsCommand = new ListWorkGroupsCommand({ MaxResults: 50 });
+    let listWorkGroupsResponse = await client.send(listWorkGroupsCommand);
+    const allWorkGroups = listWorkGroupsResponse.WorkGroups;
 
-    // List query executions (you may need to implement pagination if there are many queries)
-    const listQueryExecutionsCommand = new ListQueryExecutionsCommand({ WorkGroup: workgroupName });
-    const listQueryExecutionsResponse = await client.send(listQueryExecutionsCommand);
+    while (listWorkGroupsResponse.NextToken) {
+      listWorkGroupsResponse = await client.send(
+        new ListWorkGroupsCommand({ MaxResults: 50, NextToken: listWorkGroupsResponse.NextToken })
+      );
+      allWorkGroups.push(...listWorkGroupsResponse.WorkGroups);
+    }
 
-    if (listQueryExecutionsResponse.QueryExecutionIds.length === 0) {
-      console.log("No queries found in the workgroup.");
+    if (allWorkGroups.length === 0) {
+      console.log("No workgroups found.");
       return;
     }
 
     const queryExecutions = [];
 
-    for (const queryExecutionId of listQueryExecutionsResponse.QueryExecutionIds) {
-      const getQueryExecutionCommand = new GetQueryExecutionCommand({ QueryExecutionId: queryExecutionId });
-      const getQueryExecutionResponse = await client.send(getQueryExecutionCommand);
-      queryExecutions.push(getQueryExecutionResponse.QueryExecution);
+    for (const workgroup of allWorkGroups) {
+      const workgroupName = workgroup.Name;
+      console.log(`Fetching queries for workgroup: ${workgroupName}`);
+
+      // List query executions for the workgroup
+      const listQueryExecutionsCommand = new ListQueryExecutionsCommand({ WorkGroup: workgroupName, MaxResults: 50 });
+      let listQueryExecutionsResponse = await client.send(listQueryExecutionsCommand);
+      const allQueryExecutionIds = listQueryExecutionsResponse.QueryExecutionIds || [];
+
+      while (listQueryExecutionsResponse.NextToken) {
+        listQueryExecutionsResponse = await client.send(
+          new ListQueryExecutionsCommand({ WorkGroup: workgroupName, MaxResults: 50, NextToken: listQueryExecutionsResponse.NextToken })
+        );
+        allQueryExecutionIds.push(...(listQueryExecutionsResponse.QueryExecutionIds || []));
+      }
+
+      if (allQueryExecutionIds.length === 0) {
+        console.log(`No query executions found for workgroup: ${workgroupName}`);
+        continue;
+      }
+
+      console.log(`Found ${allQueryExecutionIds.length} query executions for workgroup: ${workgroupName}`);
+
+      for (const queryExecutionId of allQueryExecutionIds) {
+        const getQueryExecutionCommand = new GetQueryExecutionCommand({ QueryExecutionId: queryExecutionId });
+        let getQueryExecutionResponse;
+
+        try {
+          getQueryExecutionResponse = await client.send(getQueryExecutionCommand);
+        } catch (error) {
+          if (error.name === "ThrottlingException") {
+            console.log("ThrottlingException encountered. Retrying after a delay...");
+            await sleep(2000); // Wait for 2 seconds before retrying
+            getQueryExecutionResponse = await client.send(getQueryExecutionCommand);
+          } else {
+            throw error;
+          }
+        }
+
+        queryExecutions.push(getQueryExecutionResponse.QueryExecution);
+      }
     }
 
     // Write JSON file
