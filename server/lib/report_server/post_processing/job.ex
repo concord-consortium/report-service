@@ -368,12 +368,12 @@ defmodule ReportServer.PostProcessing.Job do
         end)
         |> Enum.map(fn {k, v} ->
           v_list = v |> List.wrap()
-          non_empty_v_list = v_list
-            |> Enum.map(fn {k, v} -> {k, String.trim(v)} end)
-            |> Enum.filter(fn {_, v} -> String.length(v) > 0 end)
-          non_empty_values = non_empty_v_list |> Enum.map(fn {_, v} -> v end)
-          unique_non_empty_values = Enum.uniq(non_empty_values)
-          v = if length(unique_non_empty_values) <= 1, do: hd(v_list), else: non_empty_v_list
+          values = Enum.map(v_list, fn {_, value} -> value end)
+          v = if Enum.uniq(values) |> length == 1 do
+            hd(v_list)
+          else
+            Enum.filter(v_list, fn {_, value} -> value != "" end)
+          end
           {k, v}
         end)
         |> Enum.into(%{})
