@@ -25,7 +25,13 @@ defmodule ReportServer.PostProcessing.Steps.MergeToPrimaryUser do
   # process each data row
   def process_row(%JobParams{preprocessed: preprocessed}, _row = {input, output = %{"class_id" => class_id, "user_id" => user_id}}, _data_row? = true) do
     user_key = Job.user_in_class_key(class_id, user_id)
-    if Map.has_key?(preprocessed.user_resources, user_key) do
+    user_key = if Map.has_key?(preprocessed.user_resources, user_key) do
+      user_key
+    else
+      # the user id isn't a primary user id, so we need to find the primary user key
+      Map.get(preprocessed.primary_user_map, user_key)
+    end
+    if user_key do
       output = if Map.has_key?(preprocessed.merged_user_ids, user_key) do
         merged = preprocessed.merged_user_ids[user_key]
           |> Enum.map(&(Job.user_from_user_in_class_key(&1)))
@@ -37,9 +43,12 @@ defmodule ReportServer.PostProcessing.Steps.MergeToPrimaryUser do
 
       output = Enum.reduce(preprocessed.user_resources[user_key], output, fn {key, value}, acc ->
         value = if is_list(value) do
-          Enum.join(value, ",")
-        else
           value
+          |> Enum.map(fn {user_id, user_value} -> "#{user_id}: #{user_value}" end)
+          |> Enum.join("\n")
+        else
+          {_user_id, user_value} = value
+          user_value
         end
         Map.put(acc, key, value)
       end)
