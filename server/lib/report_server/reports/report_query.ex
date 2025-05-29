@@ -97,7 +97,13 @@ defmodule ReportServer.Reports.ReportQuery do
       log_cols = ReportQuery.get_log_cols(hide_names: hide_names, remove_username: true)
       cols = List.flatten([log_cols | learner_cols])
 
-      from = "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_time\" log"
+      from = "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_app_and_secure_key\" log"
+
+      secure_keys = learner_data
+        |> Enum.flat_map(fn %{learners: learners} -> learners end)
+        |> Enum.map(& &1.run_remote_endpoint)
+        |> Enum.uniq()
+        |> Enum.map(&List.last(String.split(&1, "/")))
 
       join = [
         """
@@ -111,7 +117,11 @@ defmodule ReportServer.Reports.ReportQuery do
         """
       ]
 
-      {:ok, %ReportQuery{cols: cols, from: from, join: join }}
+      where = [
+        "log.secure_key IN #{ReportUtils.string_list_to_single_quoted_in(secure_keys)}"
+      ]
+
+      {:ok, %ReportQuery{cols: cols, from: from, join: join, where: where }}
     else
       {:error, "No learners found to match the requested filter(s)."}
     end
