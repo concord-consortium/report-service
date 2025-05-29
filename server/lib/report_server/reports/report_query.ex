@@ -88,7 +88,7 @@ defmodule ReportServer.Reports.ReportQuery do
       |> Enum.map(&(hide_learner_student_name(&1, hide_names)))
   end
 
-  def get_athena_query(report_filter = %ReportFilter{}, learner_data, learner_cols) do
+  def get_athena_query(report_filter = %ReportFilter{start_date: start_date, end_date: end_date}, learner_data, learner_cols) do
     query_ids = learner_data |> Enum.map(&(&1.query_id))
 
     if !Enum.empty?(query_ids) do
@@ -97,7 +97,13 @@ defmodule ReportServer.Reports.ReportQuery do
       log_cols = ReportQuery.get_log_cols(hide_names: hide_names, remove_username: true)
       cols = List.flatten([log_cols | learner_cols])
 
-      from = "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_time\" log"
+      from = "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_app_and_secure_key\" log"
+
+      secure_keys = learner_data
+        |> Enum.flat_map(fn %{learners: learners} -> learners end)
+        |> Enum.map(& &1.run_remote_endpoint)
+        |> Enum.uniq()
+        |> Enum.map(&List.last(String.split(&1, "/")))
 
       join = [
         """
@@ -111,7 +117,14 @@ defmodule ReportServer.Reports.ReportQuery do
         """
       ]
 
-      {:ok, %ReportQuery{cols: cols, from: from, join: join }}
+      where = [
+        "log.secure_key IN #{ReportUtils.string_list_to_single_quoted_in(secure_keys)}"
+      ]
+
+      where = where
+        |> apply_date_range(start_date, end_date)
+
+      {:ok, %ReportQuery{cols: cols, from: from, join: join, where: where }}
     else
       {:error, "No learners found to match the requested filter(s)."}
     end
@@ -139,4 +152,43 @@ defmodule ReportServer.Reports.ReportQuery do
     {"\"learner\".\"student_id\"", "student_name"}
   end
   defp hide_learner_student_name(tuple, _), do: tuple
+
+  defp apply_date_range(where, start_date, end_date) do
+    start_date = normalize_date(start_date)
+    end_date = normalize_date(end_date)
+
+    {start_clauses, start_ts_clause} =
+      case start_date do
+        {:ok, date} ->
+          timestamp = DateTime.new!(date, ~T[00:00:00], "Etc/UTC") |> DateTime.to_unix()
+          {
+            [
+              "(log.year > #{date.year} OR (log.year = #{date.year} AND log.month >= #{date.month}))"
+            ],
+            "log.time >= #{timestamp}"
+          }
+
+        _ -> {[], nil}
+      end
+
+    {end_clauses, end_ts_clause} =
+      case end_date do
+        {:ok, date} ->
+          timestamp = DateTime.new!(date, ~T[23:59:59], "Etc/UTC") |> DateTime.to_unix()
+          {
+            [
+              "(log.year < #{date.year} OR (log.year = #{date.year} AND log.month <= #{date.month}))"
+            ],
+            "log.time <= #{timestamp}"
+          }
+
+        _ -> {[], nil}
+      end
+
+    where ++ start_clauses ++ end_clauses ++ Enum.filter([start_ts_clause, end_ts_clause], & &1)
+  end
+
+  defp normalize_date(nil), do: nil
+  defp normalize_date(""), do: nil
+  defp normalize_date(date_str), do: Date.from_iso8601(date_str)
 end

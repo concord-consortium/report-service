@@ -160,3 +160,99 @@ This production policy has been created under the name `report-server-prod` and 
  ]
 }
 ```
+
+# S3 Log Partitioning
+
+Here is the DDL to create the two tables.  Note that the S3 bucket for production is `log-ingester-production` and for staging it is `log-ingester-qa`.
+The DDL below is for production, to use on staging you'll need to change the bucket in `LOCATION` and in `storage.location.template`.
+
+NOTE: when new applications are added these tables need to be recreated on AWS.
+
+```
+CREATE EXTERNAL TABLE `logs_by_app_and_secure_key`(
+  `id` string,
+  `session` string,
+  `username` string,
+  `application` string,
+  `activity` string,
+  `event` string,
+  `event_value` string,
+  `time` bigint,
+  `parameters` string,
+  `extras` string,
+  `run_remote_endpoint` string,
+  `timestamp` bigint)
+PARTITIONED BY (
+  `app` string,
+  `year` int,
+  `month` int,
+  `secure_key` string)
+ROW FORMAT SERDE
+  'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+STORED AS INPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+OUTPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+LOCATION
+  's3://log-ingester-production/logs_by_app_and_secure_key'
+TBLPROPERTIES (
+  'projection.app.type'='enum',
+  'projection.app.values'='Activity_Player,CEASAR,CLUE,CODAP,CollabSpace,Dataflow,DEVOPS,GeniStarDev,GRASP,HASBot-Dashboard,IS,LARA-log-poc,none,portal-report,rigse-log',
+  'projection.enabled'='true',
+
+  'projection.year.type'='integer',
+  'projection.year.range'='2014,2050',
+  'projection.year.interval'='1',
+
+  'projection.month.type'='integer',
+  'projection.month.range'='1,12',
+  'projection.month.interval'='1',
+  'projection.month.digits'='2',
+
+  'projection.secure_key.type'='injected',
+
+  'storage.location.template'='s3://log-ingester-production/logs_by_app_and_secure_key/${app}/${year}/${month}/${secure_key}/'
+)
+
+CREATE EXTERNAL TABLE `logs_by_app`(
+  `id` string,
+  `session` string,
+  `username` string,
+  `application` string,
+  `activity` string,
+  `event` string,
+  `event_value` string,
+  `time` bigint,
+  `parameters` string,
+  `extras` string,
+  `run_remote_endpoint` string,
+  `timestamp` bigint)
+PARTITIONED BY (
+  `app` string,
+  `year` int,
+  `month` int)
+ROW FORMAT SERDE
+  'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+STORED AS INPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+OUTPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+LOCATION
+  's3://log-ingester-production/logs_by_app_and_secure_key'
+TBLPROPERTIES (
+  'projection.app.type'='enum',
+  'projection.app.values'='Activity_Player,CEASAR,CLUE,CODAP,CollabSpace,Dataflow,DEVOPS,GeniStarDev,GRASP,HASBot-Dashboard,IS,LARA-log-poc,none,portal-report,rigse-log',
+  'projection.enabled'='true',
+
+  'projection.year.type'='integer',
+  'projection.year.range'='2014,2050',
+  'projection.year.interval'='1',
+
+  'projection.month.type'='integer',
+  'projection.month.range'='1,12',
+  'projection.month.interval'='1',
+  'projection.month.digits'='2',
+
+  'storage.location.template'='s3://log-ingester-production/logs_by_app_and_secure_key/${app}/${year}/${month}/'
+)
+```
