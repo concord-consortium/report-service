@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Run report-service partitioner using AWS Batch on Fargate
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: S3 bucket for log-ingester files
+    AllowedValues:
+      - log-ingester-production
+      - log-ingester-qa
+    Default: log-ingester-production
+
+  ContainerImageUri:
+    Type: String
+    Description: ECR image URI containing the Node.js app with AWS CLI
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of subnet IDs for the Fargate compute environment
+
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: List of security group IDs for the Fargate compute environment
+
+  BatchJobTriggerTime:
+    Type: String
+    Description: "Time of day (UTC, cron format: mm HH * * ? *) to trigger the batch job (e.g., '0 2 * * ? *' for 2:00 AM UTC)"
+    Default: '0 2 * * ? *'
+
+Resources:
+
+  BatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rspBatchExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonElasticContainerRegistryPublicReadOnly
+
+  BatchJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rspBatchJobRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: rspS3ReadWriteAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # List the bucket (required for aws s3 cp --recursive, sync, or listing prefixes)
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub arn:aws:s3:::${S3BucketName}
+
+              # Read/write objects
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub arn:aws:s3:::${S3BucketName}/*
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/batch/job/report-service-partitioner
+      RetentionInDays: 7
+
+  BatchJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: report-service-partitioner-queue
+      Priority: 1
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref BatchComputeEnvironment
+
+  BatchComputeEnvironment:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      Type: MANAGED
+      ComputeEnvironmentName: report-service-partitioner-env
+      State: ENABLED
+      ComputeResources:
+        Type: FARGATE
+        MaxvCpus: 2
+        Subnets: !Ref SubnetIds
+        SecurityGroupIds: !Ref SecurityGroupIds
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rspBatchServiceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: batch.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
+
+  BatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: report-service-partitioner-job
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      ContainerProperties:
+        Image: !Ref ContainerImageUri
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ResourceRequirements:
+          - Type: VCPU
+            Value: "0.25"
+          - Type: MEMORY
+            Value: "512"
+        EphemeralStorage:
+          SizeInGiB: 30
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: /aws/batch/job/report-service-partitioner
+            awslogs-region: !Ref AWS::Region
+            awslogs-stream-prefix: report-service-partitioner
+        NetworkConfiguration:
+          AssignPublicIp: ENABLED
+        Environment:
+          - Name: AWS_S3_BUCKET
+            Value: !Ref S3BucketName
+
+  PartitionerEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: report-service-partitioner-schedule
+      Description: Schedule to trigger the report-service partitioner batch job
+      ScheduleExpression: !Sub 'cron(${BatchJobTriggerTime})'
+      State: ENABLED
+      Targets:
+        - Arn: !Ref BatchJobQueue
+          Id: report-service-partitioner-batch-target
+          RoleArn: !GetAtt EventBridgeInvokeBatchRole.Arn
+          BatchParameters:
+            JobDefinition: !Ref BatchJobDefinition
+            JobName: report-service-partitioner-job
+
+  EventBridgeInvokeBatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rspEventBridgeInvokeBatchRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: rspAllowBatchSubmitJob
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - batch:SubmitJob
+                Resource: '*'
+
