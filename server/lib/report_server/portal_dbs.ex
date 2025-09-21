@@ -3,6 +3,10 @@ defmodule ReportServer.PortalDbs do
 
   alias ReportServer.Accounts.User
 
+  @connect_timeout 15_000   # the default is 15 seconds, but we want to be more explicit
+  @handshake_timeout 15_000 # the default is 15 seconds, but we want to be more explicit
+  @ping_timeout 300_000     # the default is 15 seconds, but we want to increase it to 5 minutes
+
   defmodule PortalUserInfo do
     defstruct id: nil, login: nil, first_name: nil, last_name: nil, email: nil, is_admin: false, is_project_admin: false, is_project_researcher: false, server: nil
   end
@@ -137,7 +141,10 @@ defmodule ReportServer.PortalDbs do
           port: parsed.port,
           username: username,
           password: password,
-          database: "portal"
+          database: "portal",
+          connect_timeout: @connect_timeout,
+          handshake_timeout: @handshake_timeout,
+          ping_timeout: @ping_timeout
         ]}
       else
         {:error, "Missing username:password in connection string for #{server}"}
