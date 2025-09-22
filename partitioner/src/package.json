@@ -1,0 +1,15 @@
+{
+  "name": "partitioner",
+  "version": "1.0.0",
+  "description": "Partitions log-ingester S3 files",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Doug Martin",
+  "license": "MIT",
+  "dependencies": {
+    "glob": "^11.0.2",
+    "parquetjs": "^0.11.2"
+  }
+}
