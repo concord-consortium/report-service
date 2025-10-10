@@ -5,10 +5,10 @@ defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.ReportFilter
 
-  defstruct filters: [], cohort: nil, school: nil, teacher: nil, assignment: nil, permission_form: nil,
-    start_date: nil, end_date: nil, hide_names: false, exclude_internal: false
+  defstruct filters: [], cohort: nil, school: nil, teacher: nil, assignment: nil, class: nil, student: nil,
+    permission_form: nil, start_date: nil, end_date: nil, hide_names: false, exclude_internal: false
 
-  @valid_filter_types ~w"cohort school teacher assignment permission_form"
+  @valid_filter_types ~w"cohort school teacher assignment class student permission_form"
   @filter_type_atoms Enum.map(@valid_filter_types, &String.to_atom/1)
 
   def from_form(form, filter_index) do
@@ -50,6 +50,14 @@ defmodule ReportServer.Reports.ReportFilter do
             ["SELECT 'assignment' AS table_name, id, TRIM(name) as name FROM external_activities WHERE id IN (#{in_ids})" | acc]
           :permission_form ->
             ["SELECT 'permission_form' AS table_name, ppf.id, CONCAT(TRIM(ap.name), ': ', TRIM(ppf.name)) as name FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id WHERE ppf.id IN (#{in_ids})" | acc]
+          :class ->
+            ["SELECT 'class' AS table_name, pc.id, CONCAT(TRIM(pc.name), ' (', TRIM(pc.class_word), ')') as name FROM portal_clazzes pc WHERE pc.id IN (#{in_ids})" | acc]
+          :student ->
+            if report_filter.hide_names do
+              ["SELECT 'student' AS table_name, ps.id, CAST(u.id AS CHAR) AS name FROM portal_students ps join users u on (u.id = ps.user_id) WHERE ps.id IN (#{in_ids})" | acc]
+            else
+              ["SELECT 'student' AS table_name, ps.id, CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.id), '>') AS name FROM portal_students ps join users u on (u.id = ps.user_id) WHERE ps.id IN (#{in_ids})" | acc]
+            end
         end
       else
         acc

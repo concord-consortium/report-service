@@ -221,12 +221,21 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  attr :filter, :string, required: true
+  def report_filter_label(assigns) do
+    label = if assigns.filter == "class", do: "Classes", else: "#{String.capitalize(assigns.filter)}s"
+    assigns = assign(assigns, :label, label)
+    ~H"""
+    <%= @label %>
+    """
+  end
+
   attr :report_run, :any, required: true
   def report_filter_values(assigns) do
     ~H"""
     <div class="table">
       <div class="table-row" :for={filter <- Enum.reverse(@report_run.report_filter.filters)}>
-        <div class="table-cell capitalize font-bold"><%= filter %>s</div>
+        <div class="table-cell capitalize font-bold"><.report_filter_label filter={filter} /></div>
         <div class="table-cell pl-3"><%= Enum.join(Map.values(@report_run.report_filter_values[filter] || %{}), ", ") %></div>
       </div>
       <div class="table-row" :if={String.length(@report_run.report_filter.start_date || "") > 0}>

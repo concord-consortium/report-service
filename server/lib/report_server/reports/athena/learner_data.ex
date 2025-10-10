@@ -22,7 +22,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   end
 
   def fetch(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form,
-        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
+        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
     portal_query = %ReportQuery{
       cols: [
         {"DISTINCT rl.learner_id", "learner_id"},
@@ -116,6 +116,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       |> apply_where_filter(school, "rl.school_id IN #{list_to_in(school)}")
       |> apply_where_filter(teacher, "ptc.teacher_id IN #{list_to_in(teacher)}")
       |> apply_where_filter(assignment, "po.runnable_id IN #{list_to_in(assignment)}")
+      |> apply_where_filter(class, "rl.class_id IN #{list_to_in(class)}")
+      |> apply_where_filter(student, "rl.student_id IN #{list_to_in(student)}")
       |> apply_start_date(start_date)
       |> apply_end_date(end_date)
 

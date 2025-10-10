@@ -50,7 +50,7 @@
                 field={@form[filter_type]}
               />
               <div class="font-bold capitalize">
-                <%= filter_type_value %>s
+                <.report_filter_label filter={filter_type_value} />
               </div>
             <% end %>
           </div>
@@ -73,6 +73,9 @@
               Remove Filter
             </.button>
           </div>
+        </div>
+        <div :if={filter_type_value == "student" && i == 1} class="text-sm text-gray-600 italic mt-2">
+          NOTE: Searching by student as the first filter is <strong>not</strong> recommended as it is very slow.
         </div>
       </div>
       <div class="mt-4">
