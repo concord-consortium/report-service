@@ -60,9 +60,9 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
-  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text, _portal_server) do
+  defp get_filter_query(:cohort, %ReportFilter{school: school, teacher: teacher, assignment: assignment, permission_form: permission_form, class: class, student: student}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
-    if (school == [] || teacher == [] || assignment == [] || permission_form == []) do
+    if (school == [] || teacher == [] || assignment == [] || permission_form == [] || class == [] || student == []) do
       nil
     else
       query = %ReportFilterQuery{
@@ -120,13 +120,37 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         secondary_filter_query(query, join, where)
       end
 
+      query = if class == nil do
+        query
+      else
+        join = [
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' and aci.admin_cohort_id = admin_cohorts.id)",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = aci.item_id)",
+          "JOIN portal_clazzes pc ON (pc.id = ptc.clazz_id)"
+        ]
+        where = "pc.id IN #{list_to_in(class)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if student == nil do
+        query
+      else
+        join = [
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' and aci.admin_cohort_id = admin_cohorts.id)",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = aci.item_id)",
+          "JOIN portal_student_clazzes psc ON (psc.clazz_id = ptc.clazz_id)"
+        ]
+        where = "psc.student_id IN #{list_to_in(student)}"
+        secondary_filter_query(query, join, where)
+      end
+
       query
     end
   end
 
-  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment, permission_form: permission_form}, allowed_project_ids, like_text, _portal_server) do
+  defp get_filter_query(:school, %ReportFilter{cohort: cohort, teacher: teacher, assignment: assignment, permission_form: permission_form, class: class, student: student}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
-    if (cohort == [] || teacher == [] || assignment == [] || permission_form == []) do
+    if (cohort == [] || teacher == [] || assignment == [] || permission_form == [] || class == [] || student == []) do
       nil
     else
       query = %ReportFilterQuery{
@@ -193,13 +217,37 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         secondary_filter_query(query, join, where)
       end
 
+      query = if class == nil do
+        query
+      else
+        join = [
+          "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = psm.member_id)",
+          "JOIN portal_clazzes pc ON (pc.id = ptc.clazz_id)"
+        ]
+        where = "pc.id IN #{list_to_in(class)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if student == nil do
+        query
+      else
+        join = [
+          "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = psm.member_id)",
+          "JOIN portal_student_clazzes psc ON (psc.clazz_id = ptc.clazz_id)"
+        ]
+        where = "psc.student_id IN #{list_to_in(student)}"
+        secondary_filter_query(query, join, where)
+      end
+
       query
     end
   end
 
-  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form, exclude_internal: exclude_internal}, allowed_project_ids, like_text, portal_server) do
+  defp get_filter_query(:teacher, %ReportFilter{cohort: cohort, school: school, assignment: assignment, permission_form: permission_form, exclude_internal: exclude_internal, class: class, student: student}, allowed_project_ids, like_text, portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
-    if (cohort == [] || school == [] || assignment == [] || permission_form == []) do
+    if (cohort == [] || school == [] || assignment == [] || permission_form == [] || class == [] || student == []) do
       nil
     else
       query = %ReportFilterQuery{
@@ -264,13 +312,35 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         secondary_filter_query(query, join, where)
       end
 
+      query = if class == nil do
+        query
+      else
+        join = [
+          "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = portal_teachers.id)",
+          "JOIN portal_clazzes pc ON (pc.id = ptc.clazz_id)"
+        ]
+        where = "pc.id IN #{list_to_in(class)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if student == nil do
+        query
+      else
+        join = [
+          "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = portal_teachers.id)",
+          "JOIN portal_student_clazzes psc ON (psc.clazz_id = ptc.clazz_id)"
+        ]
+        where = "psc.student_id IN #{list_to_in(student)}"
+        secondary_filter_query(query, join, where)
+      end
+
       query
     end
   end
 
-  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher, permission_form: permission_form}, allowed_project_ids, like_text, _portal_server) do
+  defp get_filter_query(:assignment, %ReportFilter{cohort: cohort, school: school, teacher: teacher, permission_form: permission_form, class: class, student: student}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
-    if (cohort == [] || school == [] || teacher == [] || permission_form == []) do
+    if (cohort == [] || school == [] || teacher == [] || permission_form == [] || class == [] || student == []) do
       nil
     else
       query = %ReportFilterQuery{
@@ -336,13 +406,35 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         secondary_filter_query(query, join, where)
       end
 
+      query = if class == nil do
+        query
+      else
+        join = [
+          "JOIN portal_offerings po ON (po.runnable_type = 'ExternalActivity' AND po.runnable_id = external_activities.id)",
+          "JOIN portal_teacher_clazzes ptc_class ON (ptc_class.clazz_id = po.clazz_id)"
+        ]
+        where = "ptc_class.clazz_id IN #{list_to_in(class)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if student == nil do
+        query
+      else
+        join = [
+          "JOIN portal_offerings po ON (po.runnable_type = 'ExternalActivity' AND po.runnable_id = external_activities.id)",
+          "JOIN portal_student_clazzes psc ON (psc.clazz_id = po.clazz_id)"
+        ]
+        where = "psc.student_id IN #{list_to_in(student)}"
+        secondary_filter_query(query, join, where)
+      end
+
       query
     end
   end
 
-  defp get_filter_query(:permission_form, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment}, allowed_project_ids, like_text, _portal_server) do
+  defp get_filter_query(:permission_form, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, class: class, student: student}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
-    if (cohort == [] || school == [] || teacher == [] || assignment == []) do
+    if (cohort == [] || school == [] || teacher == [] || assignment == [] || class == [] || student == []) do
       nil
     else
       query = %ReportFilterQuery{
@@ -419,6 +511,220 @@ defmodule ReportServer.Reports.ReportFilterQuery do
           "JOIN portal_offerings po ON (po.clazz_id = psc.clazz_id AND po.runnable_type = 'ExternalActivity')"
         ]
         where = "po.runnable_id IN #{list_to_in(assignment)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if class == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id",
+          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
+        ]
+        where = "psc.clazz_id IN #{list_to_in(class)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if student == nil do
+        query
+      else
+        join = "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id"
+        where = "pspf.portal_student_id IN #{list_to_in(student)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query
+    end
+  end
+
+  defp get_filter_query(:class, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form, student: student}, allowed_project_ids, like_text, _portal_server) do
+    ## If there are any empty-set filters, do not bother querying and just return nil.
+    if (cohort == [] || school == [] || teacher == [] || assignment == [] || permission_form == [] || student == []) do
+      nil
+    else
+      query = %ReportFilterQuery{
+        id: "pc.id",
+        value: "CONCAT(pc.name, ' (', pc.class_word, ')') AS fullname",
+        from: "portal_clazzes pc",
+        where: maybe_add_like(like_text, ["pc.name LIKE ? OR pc.class_word LIKE ?"]),
+        order_by: "fullname",
+        num_params: 2,
+      }
+
+      query = if allowed_project_ids == :all do
+        query
+      else
+        join = [
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = pc.id)",
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
+          "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
+        ]
+        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if cohort == nil do
+        query
+      else
+        join = [
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = pc.id)",
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
+        ]
+        where = "aci.admin_cohort_id IN #{list_to_in(cohort)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if school == nil do
+        query
+      else
+        join = [
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = pc.id)",
+          "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.member_id = ptc.teacher_id)",
+          "JOIN portal_schools ps ON (ps.id = psm.school_id)"
+        ]
+        where = "ps.id IN #{list_to_in(school)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if teacher == nil do
+        query
+      else
+        join = "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = pc.id)"
+        where = "ptc.teacher_id IN #{list_to_in(teacher)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if assignment == nil do
+        query
+      else
+        join = [
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = pc.id)",
+          "JOIN portal_offerings po ON (po.clazz_id = pc.id AND po.runnable_type = 'ExternalActivity')"
+        ]
+        where = "po.runnable_id IN #{list_to_in(assignment)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if permission_form == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_clazzes psc ON (psc.clazz_id = pc.id)",
+          "JOIN portal_student_permission_forms pspf ON pspf.portal_student_id = psc.student_id"
+        ]
+        where = "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if student == nil do
+        query
+      else
+        join = "JOIN portal_student_clazzes psc ON (psc.clazz_id = pc.id)"
+        where = "psc.student_id IN #{list_to_in(student)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query
+    end
+  end
+
+  defp get_filter_query(:student, %ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form, class: class, hide_names: hide_names}, allowed_project_ids, like_text, _portal_server) do
+          ## If there are any empty-set filters, do not bother querying and just return nil.
+    if (cohort == [] || school == [] || teacher == [] || assignment == [] || permission_form == [] || class == []) do
+      nil
+    else
+      value = if hide_names do
+        "CAST(u.id AS CHAR) AS fullname"
+      else
+        "CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') AS fullname"
+      end
+      where = if hide_names do
+        maybe_add_like(like_text, ["CAST(u.id AS CHAR) LIKE ?"])
+      else
+        maybe_add_like(like_text, ["CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') LIKE ?"])
+      end
+
+      query = %ReportFilterQuery{
+        id: "ps.id",
+        value: value,
+        from: "portal_students ps JOIN users u ON u.id = ps.user_id",
+        where: where,
+        order_by: "fullname",
+        num_params: 1
+      }
+
+      query = if allowed_project_ids == :all do
+        query
+      else
+        join = [
+          "JOIN portal_student_clazzes psc ON psc.student_id = ps.id",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
+          "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
+        ]
+        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if cohort == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_clazzes psc ON psc.student_id = ps.id",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
+        ]
+        where = "aci.admin_cohort_id IN #{list_to_in(cohort)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if school == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_clazzes psc ON psc.student_id = ps.id",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+          "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.member_id = ptc.teacher_id)",
+        ]
+        where = "psm.school_id IN #{list_to_in(school)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if teacher == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_clazzes psc ON psc.student_id = ps.id",
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
+        ]
+        where = "ptc.teacher_id IN #{list_to_in(teacher)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if assignment == nil do
+        query
+      else
+        join = [
+          "JOIN portal_student_clazzes psc ON psc.student_id = ps.id",
+          "JOIN portal_offerings po ON (po.clazz_id = psc.clazz_id AND po.runnable_type = 'ExternalActivity')"
+        ]
+        where = "po.runnable_id IN #{list_to_in(assignment)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if permission_form == nil do
+        query
+      else
+        join = "JOIN portal_student_permission_forms pspf ON pspf.portal_student_id = ps.id"
+        where = "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
+        secondary_filter_query(query, join, where)
+      end
+
+      query = if class == nil do
+        query
+      else
+        join = "JOIN portal_student_clazzes psc ON psc.student_id = ps.id"
+        where = "psc.clazz_id IN #{list_to_in(class)}"
         secondary_filter_query(query, join, where)
       end
 

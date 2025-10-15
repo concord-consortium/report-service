@@ -139,21 +139,21 @@ defmodule ReportServer.Reports.Tree do
           slug: "student-actions",
           title: "Student Actions",
           subtitle: "Returns the low-level log event stream for the learners, including model-level interactions.",
-          include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
+          include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
           form_options: [enable_hide_names: true]
         }),
         StudentActionsWithMetadataReport.new(%Report{
           slug: "student-actions-with-metadata",
           title: "Student Actions with Metadata",
           subtitle: "Includes everything in the Student Actions report plus information provided by the Portal about the student, teacher, class, school, permission forms, portal ids, etc.",
-          include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
+          include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
           form_options: [enable_hide_names: true]
         }),
         StudentAnswersReport.new(%Report{
           slug: "student-answers",
           title: "Student Answers",
           subtitle: "Includes everything from the Assignment Usage by Student report plus details about student answers to all questions in the resource(s) in your query.",
-          include_filters: [:cohort, :school, :teacher, :assignment, :permission_form],
+          include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
           form_options: [enable_hide_names: true]
         }),
       ]},

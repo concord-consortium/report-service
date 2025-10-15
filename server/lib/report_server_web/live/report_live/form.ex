@@ -21,6 +21,8 @@ defmodule ReportServerWeb.ReportLive.Form do
     :cohort => "Cohorts",
     :teacher => "Teachers",
     :assignment => "Assignments",
+    :class => "Classes",
+    :student => "Students",
     :permission_form => "Permission Forms",
   }
 
@@ -64,6 +66,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form, user: user, allowed_project_ids: allowed_project_ids}}) do
     filter_index = get_filter_index(field)
     report_filter = ReportFilter.from_form(form, filter_index)
+      |> maybe_enforce_hide_names(user)
     if String.length(text) >= 3 || has_few_options?(report_filter, filter_index, user, allowed_project_ids, text) do
       case ReportFilterQuery.get_options(report_filter, user, allowed_project_ids, text) do
         {:ok, options, sql, params} ->
@@ -189,6 +192,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   def handle_event("debug_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do
     if @dev do
       report_filter = ReportFilter.from_form(form, num_filters)
+        |> maybe_enforce_hide_names(user)
 
       with {:ok, query} <- report.get_query.(report_filter, user),
           {:ok, sql} <- ReportQuery.get_sql(query) do
@@ -235,6 +239,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   # Returns the new socket structure.
   defp update_options(socket = %{assigns: %{user: user, allowed_project_ids: allowed_project_ids}}, filter_index, form, field, live_select_id) do
     report_filter = ReportFilter.from_form(form, filter_index)
+      |> maybe_enforce_hide_names(user)
 
     set_options_immediately = has_few_options?(report_filter, filter_index, user, allowed_project_ids)
     if set_options_immediately do
@@ -284,7 +289,16 @@ defmodule ReportServerWeb.ReportLive.Form do
     end
   end
 
-  defp has_few_options?(report_filter, filter_index, user, allowed_project_ids, like_text \\ "") do
+  defp has_few_options?(report_filter, filter_index, user, allowed_project_ids, like_text \\ "")
+
+  # since there are a lot of students in the system, we should skip getting the count
+  # when it is the first filter
+  defp has_few_options?(%ReportFilter{filters: [:student]}, 1, _user, _allowed_project_ids, _like_text) do
+    Logger.debug("Skipping student count for first filter")
+    false
+  end
+
+  defp has_few_options?(report_filter, filter_index, user, allowed_project_ids, like_text) do
     cond do
       filter_index > 1 -> true
       {:ok, count } = ReportFilterQuery.get_option_count(report_filter, user, allowed_project_ids, like_text) ->
