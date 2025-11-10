@@ -24,7 +24,7 @@ defmodule ReportServer.PostProcessing.Steps.LinkToHistory do
   end
 
   # process each log row
-  def process_row(job_params = %JobParams{preprocessed: preprocessed, portal_url: portal_url}, row = {input, output = %{"extras" => extras, "run_remote_endpoint" => run_remote_endpoint}}, _data_row?) do
+  def process_row(%JobParams{preprocessed: preprocessed, portal_url: portal_url}, row = {input, output = %{"extras" => extras, "run_remote_endpoint" => run_remote_endpoint}}, _data_row?) do
     learner = Map.get(preprocessed.learners, run_remote_endpoint)
 
     if learner do
@@ -78,30 +78,17 @@ defmodule ReportServer.PostProcessing.Steps.LinkToHistory do
     end
   end
 
-  @doc """
-  Converts an ID from "prefix_id_number" format to "id_number-Prefix" format,
-  where id_number is always the last part of the string.
-
-  ## Examples
-      iex> convert_id("managed_interactive_10200")
-      "10200-ManagedInteractive"
-  """
   defp convert_id(id) when is_binary(id) do
-    # use rsplit to ensure the last part is always separated as the ID number.
-    case String.rsplit(id, "_", parts: 2) do
-      [prefix_string, id_number] ->
-        prefix_parts = String.split(prefix_string, "_")
+    parts = String.split(id, "_")
+    id_number = List.last(parts)
+    prefix_parts = Enum.take(parts, length(parts) - 1)
 
-        prefix =
-          prefix_parts
-          |> Enum.map(&String.capitalize/1)
-          |> Enum.join("")
+    prefix =
+      prefix_parts
+      |> Enum.map(&String.capitalize/1)
+      |> Enum.join("")
 
-        "#{id_number}-#{prefix}"
-
-      _ ->
-        id
-    end
+    "#{id_number}-#{prefix}"
   end
   defp convert_id(id), do: id
 end
