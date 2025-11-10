@@ -6,7 +6,7 @@ defmodule ReportServer.PostProcessing.JobServer do
   alias Phoenix.PubSub
   alias ReportServerWeb.Aws
   alias ReportServer.PostProcessing.{Job, Output}
-  alias ReportServer.PostProcessing.Steps.{HasAudio, TranscribeAudio, GlossaryData, ClueLinkToWork, MergeToPrimaryUser}
+  alias ReportServer.PostProcessing.Steps.{HasAudio, TranscribeAudio, GlossaryData, ClueLinkToWork, MergeToPrimaryUser, LinkToHistory}
 
   @client_check_interval :timer.minutes(1)
 
@@ -22,11 +22,11 @@ defmodule ReportServer.PostProcessing.JobServer do
   ] |> sort_steps()
 
   def get_steps("student-actions"), do: [
-    ClueLinkToWork.step(),
+    ClueLinkToWork.step(), LinkToHistory.step(),
   ] |> sort_steps()
 
   def get_steps("student-actions-with-metadata"), do: [
-    ClueLinkToWork.step(),
+    ClueLinkToWork.step(), LinkToHistory.step(),
   ] |> sort_steps()
 
   def get_steps(_report_type), do: []
