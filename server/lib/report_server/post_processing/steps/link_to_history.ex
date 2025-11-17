@@ -42,7 +42,7 @@ defmodule ReportServer.PostProcessing.Steps.LinkToHistory do
 
   def process_row(_job_params, row, _data_row?), do: row
 
-  defp generate_link_to_history(portal_url, _learner = %{offering_id: offering_id, class_id: class_id, student_id: student_id}, history_id, interactive_id, url) do
+  defp generate_link_to_history(portal_url, _learner = %{offering_id: offering_id, class_id: class_id, user_id: user_id}, history_id, interactive_id, url) do
 
     source_key = AthenaConfig.get_source_key()
     portal_report_url = PortalReport.get_url()
@@ -52,7 +52,7 @@ defmodule ReportServer.PostProcessing.Steps.LinkToHistory do
     auth_domain_with_scheme = ensure_auth_domain_with_scheme(portal_url)
 
     answers_source_key = case URI.parse(url) do
-      %URI{host: host} -> ensure_auth_domain_with_scheme(host)
+      %URI{host: host} -> host
       _ -> ""
     end
 
@@ -63,7 +63,7 @@ defmodule ReportServer.PostProcessing.Steps.LinkToHistory do
         "&iframeQuestionId=#{question_id}" <>
         "&class=#{URI.encode_www_form("#{auth_domain_with_scheme}/api/v1/classes/#{class_id}")}" <>
         "&offering=#{URI.encode_www_form("#{auth_domain_with_scheme}/api/v1/offerings/#{offering_id}")}" <>
-        "&studentId=#{student_id}" <>
+        "&studentId=#{user_id}" <>
         "&answersSourceKey=#{answers_source_key}" <>
         "&interactiveStateHistoryId=#{history_id}"
 
@@ -78,17 +78,20 @@ defmodule ReportServer.PostProcessing.Steps.LinkToHistory do
     end
   end
 
-  defp convert_id(id) when is_binary(id) do
-    parts = String.split(id, "_")
-    id_number = List.last(parts)
-    prefix_parts = Enum.take(parts, length(parts) - 1)
+  # Converts ids in the form of "10200-ManagedInteractive" to "managed_interactive_10200"
+  defp convert_id(id) do
+    id
+    |> String.split("-", parts: 2)
+    |> case do
+      [number_part, text_part] ->
+        underscored_text =
+          text_part
+          |> String.replace(~r/([a-z])([A-Z])/, "\\1_\\2") # Insert underscore before capital letters
+          |> String.downcase()                            # Convert to lowercase
+        "#{underscored_text}_#{number_part}"
 
-    prefix =
-      prefix_parts
-      |> Enum.map(&String.capitalize/1)
-      |> Enum.join("")
-
-    "#{id_number}-#{prefix}"
+      _ ->
+        id
+    end
   end
-  defp convert_id(id), do: id
 end
