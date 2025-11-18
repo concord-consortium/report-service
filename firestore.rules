@@ -123,6 +123,18 @@ service cloud.firestore {
       allow update: if studentWorkUpdate();
     }
 
+    match /sources/{source}/interactive_state_histories/{document=**} {
+      allow create: if studentWorkCreate();
+      allow read: if studentWorkRead();
+      allow update: if studentWorkUpdate();
+    }
+
+    match /sources/{source}/interactive_state_history_states/{document=**} {
+      allow create: if studentWorkCreate();
+      allow read: if studentWorkRead();
+      allow update: if studentWorkUpdate();
+    }
+
     match /sources/{source}/plugin_states/{document=**} {
       allow create: if studentWorkCreate();
       allow read: if studentWorkRead();

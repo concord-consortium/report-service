@@ -328,17 +328,18 @@ defmodule ReportServer.PostProcessing.Job do
 
     # get the needed learner data from the portal
     sql = """
-    SELECT pl.secure_key, pl.offering_id, po.clazz_id FROM portal_learners pl
+    SELECT pl.secure_key, pl.offering_id, ps.user_id, po.clazz_id FROM portal_learners pl
     JOIN portal_offerings po ON (po.id = pl.offering_id)
+    JOIN portal_students ps ON (ps.id = pl.student_id)
     where pl.secure_key in #{ReportUtils.string_list_to_single_quoted_in(secure_keys)}
     """
 
     # generate a map of run_remote_endpoint to offering_id and class_id
     case PortalDbs.query(portal_url, sql) do
       {:ok, result} ->
-        Enum.reduce(result.rows, %{}, fn [secure_key, offering_id, class_id], acc ->
+        Enum.reduce(result.rows, %{}, fn [secure_key, offering_id, user_id, class_id], acc ->
           run_remote_endpoint = secure_key_map[secure_key]
-          acc |> Map.put(run_remote_endpoint, %{offering_id: offering_id, class_id: class_id})
+          acc |> Map.put(run_remote_endpoint, %{offering_id: offering_id, class_id: class_id, user_id: user_id})
         end)
 
       _ -> %{}
