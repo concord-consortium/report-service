@@ -24,6 +24,9 @@ defmodule ReportServerWeb.ReportLive.Form do
     :class => "Classes",
     :student => "Students",
     :permission_form => "Permission Forms",
+    :country => "Countries",
+    :state => "States",
+    :subject_area => "Subject Areas",
   }
 
   @max_auto_options_length 200
