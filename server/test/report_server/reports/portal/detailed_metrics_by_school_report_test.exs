@@ -42,7 +42,7 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReportTest do
       assert String.contains?(sql, "count(distinct pt.id) AS number_of_teachers")
       assert String.contains?(sql, "count(distinct po_class.id) AS number_of_classes")
       assert String.contains?(sql, "count(distinct coalesce(stu.primary_account_id, stu.id)) AS number_of_students")
-      assert String.contains?(sql, "group_concat(distinct pg.name order by pg.name separator ', ') AS class_grade_levels")
+      assert String.contains?(sql, "group_concat(distinct pg.name order by cast(pg.name as unsigned) separator ', ') AS class_grade_levels")
       assert String.contains?(sql, "group_concat(distinct at.tag order by at.tag separator ', ') AS subject_areas")
 
       # Verify expected joins are present
