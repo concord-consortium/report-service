@@ -223,7 +223,12 @@ defmodule ReportServerWeb.CustomComponents do
 
   attr :filter, :string, required: true
   def report_filter_label(assigns) do
-    label = if assigns.filter == "class", do: "Classes", else: "#{String.capitalize(assigns.filter)}s"
+    label = case assigns.filter do
+      "class" -> "Classes"
+      "country" -> "Countries"
+      "subject_area" -> "Subject Areas"
+      _ -> "#{String.capitalize(assigns.filter)}s"
+    end
     assigns = assign(assigns, :label, label)
     ~H"""
     <%= @label %>

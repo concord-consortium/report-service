@@ -6,17 +6,18 @@ defmodule ReportServer.PortalDbs do
   @connect_timeout 15_000   # the default is 15 seconds, but we want to be more explicit
   @handshake_timeout 15_000 # the default is 15 seconds, but we want to be more explicit
   @ping_timeout 300_000     # the default is 15 seconds, but we want to increase it to 5 minutes
+  @query_timeout 60_000     # 60 seconds for long-running queries
 
   defmodule PortalUserInfo do
     defstruct id: nil, login: nil, first_name: nil, last_name: nil, email: nil, is_admin: false, is_project_admin: false, is_project_researcher: false, server: nil
   end
 
-  # FUTURE WORK: change this to use a connection pool
   def query(server, statement, params \\ [], options \\ []) do
-    with {:ok, server_opts} <- get_server_opts(server),
-          {:ok, pid} = MyXQL.start_link(server_opts) do
+    with {:ok, pool_name} <- get_or_start_pool(server) do
+      # Merge user options with default timeout
+      query_options = Keyword.merge([timeout: @query_timeout], options)
 
-      result = case MyXQL.query(pid, statement, params, options) do
+      case MyXQL.query(pool_name, statement, params, query_options) do
         {:ok, result} ->
           {:ok, result}
 
@@ -32,13 +33,40 @@ defmodule ReportServer.PortalDbs do
           Logger.error("Unknown error query on #{server}")
           {:error, "Unknown error query on #{server}"}
       end
-
-      GenServer.stop(pid)
-
-      result
     else
       error -> error
     end
+  end
+
+  defp get_or_start_pool(server) do
+    pool_name = pool_name_for_server(server)
+
+    case Process.whereis(pool_name) do
+      nil ->
+        # Pool doesn't exist, start it
+        with {:ok, server_opts} <- get_server_opts(server) do
+          pool_opts = Keyword.merge(server_opts, [
+            name: pool_name,
+            pool_size: 5
+          ])
+
+          case MyXQL.start_link(pool_opts) do
+            {:ok, _pid} -> {:ok, pool_name}
+            {:error, {:already_started, _pid}} -> {:ok, pool_name}
+            error -> error
+          end
+        end
+
+      _pid ->
+        # Pool already exists
+        {:ok, pool_name}
+    end
+  end
+
+  defp pool_name_for_server(server) do
+    # Convert server name to a valid atom for the pool name
+    # ie: "learn.concord.org" -> :"portal_pool_learn.concord.org"
+    String.to_atom("portal_pool_#{server}")
   end
 
   # converts columns: ["foo", "bar"], rows:[[1, 2], ...] to [%{:foo => 1, :bar => 2}, ...]

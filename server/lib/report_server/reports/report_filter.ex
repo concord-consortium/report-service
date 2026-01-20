@@ -6,9 +6,10 @@ defmodule ReportServer.Reports.ReportFilter do
   alias ReportServer.Reports.ReportFilter
 
   defstruct filters: [], cohort: nil, school: nil, teacher: nil, assignment: nil, class: nil, student: nil,
-    permission_form: nil, start_date: nil, end_date: nil, hide_names: false, exclude_internal: false
+    permission_form: nil, country: nil, state: nil, subject_area: nil, start_date: nil, end_date: nil,
+    hide_names: false, exclude_internal: false
 
-  @valid_filter_types ~w"cohort school teacher assignment class student permission_form"
+  @valid_filter_types ~w"cohort school teacher assignment class student permission_form country state subject_area"
   @filter_type_atoms Enum.map(@valid_filter_types, &String.to_atom/1)
 
   def from_form(form, filter_index) do
@@ -58,6 +59,12 @@ defmodule ReportServer.Reports.ReportFilter do
             else
               ["SELECT 'student' AS table_name, ps.id, CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.id), '>') AS name FROM portal_students ps join users u on (u.id = ps.user_id) WHERE ps.id IN (#{in_ids})" | acc]
             end
+          :country ->
+            ["SELECT 'country' AS table_name, id, TRIM(name) as name FROM portal_countries WHERE id IN (#{in_ids})" | acc]
+          :state ->
+            ["SELECT 'state' AS table_name, TRIM(state) as id, TRIM(state) as name FROM portal_schools WHERE state IN (#{Enum.map(ids, fn id -> "'#{id}'" end) |> Enum.join(",")}) GROUP BY state" | acc]
+          :subject_area ->
+            ["SELECT 'subject_area' AS table_name, id, TRIM(tag) as name FROM admin_tags WHERE scope = 'subject_areas' AND id IN (#{in_ids})" | acc]
         end
       else
         acc
@@ -93,7 +100,13 @@ defmodule ReportServer.Reports.ReportFilter do
   end
 
   defp get_filter_value(form, i) do
-    (form.params["filter#{i}"] || [])
-    |> Enum.map(&String.to_integer/1)
+    filter_type = get_filter_type!(form, i)
+    values = form.params["filter#{i}"] || []
+
+    # State filter uses string values (e.g., "CA", "NY"), all others use integer IDs
+    case filter_type do
+      :state -> values
+      _ -> Enum.map(values, &String.to_integer/1)
+    end
   end
 end
