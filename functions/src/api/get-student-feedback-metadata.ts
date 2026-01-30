@@ -15,8 +15,12 @@ const getFeedbackMetadata = (path: string, platformId: string, platformStudentId
       snapshot.docs.forEach((doc) => {
         const data = doc.data();
         const {resourceLinkId, updatedAt} = data;
-        if (resourceLinkId && updatedAt && updatedAt._seconds) {
-          map[resourceLinkId] = {updatedAt: updatedAt._seconds};
+        const seconds = updatedAt?.seconds ?? updatedAt?._seconds;
+        if (resourceLinkId && seconds) {
+          const existing = map[resourceLinkId];
+          if (!existing || seconds > existing.updatedAt) {
+            map[resourceLinkId] = {updatedAt: seconds};
+          }
         }
       });
       return map;
