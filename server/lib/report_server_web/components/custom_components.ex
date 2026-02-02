@@ -87,12 +87,21 @@ defmodule ReportServerWeb.CustomComponents do
     """
   end
 
+  attr :filetype, :string, required: true
+  attr :downloading, :string, default: nil
+
   def download_button(assigns) do
     ~H"""
-      <button id={"report-download-button-#{@filetype}"} class="my-2 p-2 bg-rose-50 rounded text-sm"
-              phx-hook="ReportDownloadButton" phx-click="download_report" phx-value-filetype={@filetype}>
-        <.icon name="hero-arrow-down-tray" />
-        Download as <%= String.upcase(@filetype) %>
+      <button id={"report-download-button-#{@filetype}"} class="my-2 p-2 bg-rose-50 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              phx-hook="ReportDownloadButton" phx-click="download_report" phx-value-filetype={@filetype}
+              disabled={@downloading != nil}>
+        <%= if @downloading == @filetype do %>
+          <.icon name="hero-arrow-path" class="animate-spin" />
+          Downloading as <%= String.upcase(@filetype) %>...
+        <% else %>
+          <.icon name="hero-arrow-down-tray" />
+          Download as <%= String.upcase(@filetype) %>
+        <% end %>
       </button>
     """
   end
@@ -122,6 +131,7 @@ defmodule ReportServerWeb.CustomComponents do
   attr :report_run, :any, required: true
   attr :row_count, :integer, required: true
   attr :row_limit, :integer, required: true
+  attr :downloading, :string, default: nil
   def report_header(assigns) do
     if assigns.report.type == :athena do
       if assigns.report_run.athena_query_state == "succeeded" do
@@ -131,7 +141,7 @@ defmodule ReportServerWeb.CustomComponents do
           <strong>Note:</strong> Only CSV download is available for this report type.
           </div>
           <div>
-            <.download_button filetype="csv"/>
+            <.download_button filetype="csv" downloading={@downloading}/>
           </div>
         </div>
         """
@@ -154,8 +164,8 @@ defmodule ReportServerWeb.CustomComponents do
           </.async_result>
         </strong>
         <span>
-          <.download_button filetype="csv"/>
-          <.download_button filetype="json"/>
+          <.download_button filetype="csv" downloading={@downloading}/>
+          <.download_button filetype="json" downloading={@downloading}/>
         </span>
       </div>
       """

@@ -7,7 +7,7 @@
   <.report_filter_values report_run={@report_run} />
 </div>
 
-<.report_header report={@report} report_run={@report_run} row_count={@row_count} row_limit={@row_limit} />
+<.report_header report={@report} report_run={@report_run} row_count={@row_count} row_limit={@row_limit} downloading={@downloading} />
 
 <.async_result :let={report_results} assign={@report_results}>
   <:loading>

@@ -20,6 +20,8 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       |> assign(:row_limit, @row_limit)
       |> assign(:primary_sort, nil)
       |> assign(:sort_direction, :asc)
+      |> assign(:downloading, nil)
+      |> assign(:download_task_ref, nil)
 
     {:ok, socket, temporary_assigns: [report_results: nil]}
   end
@@ -72,6 +74,13 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:noreply, socket}
   end
 
+  # Ignore download clicks while a download is already in progress.
+  @impl true
+  def handle_event("download_report", _params, %{assigns: %{downloading: filetype}} = socket) when filetype != nil do
+    {:noreply, socket}
+  end
+
+  # Athena downloads fetch a presigned S3 URL which is fast, so no need for async task handling.
   @impl true
   def handle_event("download_report", _params, %{assigns: %{report: %{type: :athena}}} = socket) do
     download_athena_report(socket)
@@ -86,6 +95,38 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   def handle_info({:jobs, _query_id, jobs}, socket = %{assigns: %{report_run: report_run}}) do
     # the job server sends the jobs via a pubsub message to the topic subscribed to in the initial update
     send_update PostProcessingComponent, id: report_run.id, jobs: jobs
+    {:noreply, socket}
+  end
+
+  # Handle successful async download task result — push the file data to the client.
+  @impl true
+  def handle_info({ref, {:ok, %{data: data, filename: filename}}}, socket) when ref == socket.assigns.download_task_ref do
+    Process.demonitor(ref, [:flush])
+    socket = socket
+      |> assign(:downloading, nil)
+      |> assign(:download_task_ref, nil)
+      |> push_event("download_report", %{data: data, filename: filename})
+    {:noreply, socket}
+  end
+
+  # Handle async download task returning an error (e.g. query timeout).
+  @impl true
+  def handle_info({ref, {:error, error}}, socket) when ref == socket.assigns.download_task_ref do
+    Process.demonitor(ref, [:flush])
+    socket = socket
+      |> assign(:downloading, nil)
+      |> assign(:download_task_ref, nil)
+      |> put_flash(:error, "Failed to generate download: #{error}")
+    {:noreply, socket}
+  end
+
+  # Handle async download task crashing unexpectedly.
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, socket) when ref == socket.assigns.download_task_ref do
+    socket = socket
+      |> assign(:downloading, nil)
+      |> assign(:download_task_ref, nil)
+      |> put_flash(:error, "Download failed unexpectedly: #{inspect(reason)}")
     {:noreply, socket}
   end
 
@@ -217,16 +258,18 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   defp download_portal_report(filetype, %{assigns: %{report: report, report_run: report_run, sort: sort}} = socket) do
     filename = get_download_filename(filetype, report_run)
 
-    with {:ok, %{ report_results: report_results }} <- run_report(report, report_run, sort, nil, nil),
-      {:ok, data} <- format_results(report_results, filetype) do
-        socket = socket |> push_event("download_report", %{data: data, filename: filename})
-        {:noreply, socket}
+    task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
+      with {:ok, %{report_results: report_results}} <- run_report(report, report_run, sort, nil, nil),
+           {:ok, data} <- format_results(report_results, filetype) do
+        {:ok, %{data: data, filename: filename}}
+      end
+    end)
 
-    else
-      {:error, error} ->
-        socket = put_flash(socket, :error, "Failed to format results: #{error}")
-        {:noreply, socket}
-    end
+    socket = socket
+      |> assign(:downloading, filetype)
+      |> assign(:download_task_ref, task.ref)
+
+    {:noreply, socket}
   end
 
   defp download_athena_report(%{assigns: %{report_run: report_run}} = socket) do
