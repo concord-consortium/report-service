@@ -76,7 +76,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
 
   # Ignore download clicks while a download is already in progress.
   @impl true
-  def handle_event("download_report", _params, %{assigns: %{downloading: filetype}} = socket) when filetype != nil do
+  def handle_event("download_report", _params, %{assigns: %{downloading: downloading}} = socket) when downloading != nil do
     {:noreply, socket}
   end
 
@@ -262,6 +262,9 @@ defmodule ReportServerWeb.ReportRunLive.Show do
       with {:ok, %{report_results: report_results}} <- run_report(report, report_run, sort, nil, nil),
            {:ok, data} <- format_results(report_results, filetype) do
         {:ok, %{data: data, filename: filename}}
+      else
+        {:error, error} -> {:error, error}
+        error -> {:error, "Unexpected error: #{inspect(error)}"}
       end
     end)
 
