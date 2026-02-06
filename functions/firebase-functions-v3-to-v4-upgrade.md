@@ -78,24 +78,16 @@ All 18 TypeScript files in `src/` were reviewed for firebase-related patterns.
 | App Check enforcement change | No callable functions (`onCall`) used |
 | Internal file path imports | All imports use standard entry points |
 
-### Deprecation Warning: `functions.config()`
+### ~~Deprecation Warning: `functions.config()`~~ RESOLVED
 
-`functions.config()` is deprecated in v4 but **still works for 1st gen functions**. It will log deprecation warnings. This is used in two files:
+`functions.config()` has been fully migrated to the `firebase-functions/params` API (`defineString`/`defineSecret`). See REPORT-55.
 
-**`src/middleware/bearer-token-auth.ts` (line 15):**
-```typescript
-const authConfig = functions.config().auth
-const serverBearerToken = authConfig && authConfig.bearer_token
-```
+- `functions.config().aws.key` → `defineSecret("AWS_KEY")`
+- `functions.config().aws.secret_key` → `defineSecret("AWS_SECRET_KEY")`
+- `functions.config().aws.s3_bucket` → `defineString("AWS_S3_BUCKET")`
+- `functions.config().auth.bearer_token` → `defineSecret("AUTH_BEARER_TOKEN")`
 
-**`src/auto-importer.ts` (lines 167-168, 205, 234):**
-```typescript
-functions.config().aws.key
-functions.config().aws.secret_key
-functions.config().aws.s3_bucket
-```
-
-**No action required now.** These will continue to work. To suppress the deprecation warnings in the future, migrate to parameterized configuration using `defineString()` from `firebase-functions/params`.
+Secrets are stored in Google Cloud Secret Manager. Non-secret config uses per-project `.env.<alias>` files.
 
 ## Issues Encountered During Deployment
 

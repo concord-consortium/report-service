@@ -16,34 +16,80 @@ Then install the dependencies
 
 `npm install`
 
-### Configuring AWS credentials
+### Configuration
 
-First we need a bucket to write to, e.g. `concord-staging-report-data`. We need to set this as an environment variable
-for the auto_update function:
+The functions use Firebase's parameterized configuration (`firebase-functions/params`):
 
-`firebase functions:config:set aws.s3_bucket=concord-staging-report-data`
+| Parameter | Type | Env Var Name | Purpose |
+|---|---|---|---|
+| S3 bucket | `defineString` | `AWS_S3_BUCKET` | Target bucket for parquet file storage |
+| AWS access key | `defineSecret` | `AWS_KEY` | S3 authentication |
+| AWS secret key | `defineSecret` | `AWS_SECRET_KEY` | S3 authentication |
+| Bearer token | `defineSecret` | `AUTH_BEARER_TOKEN` | API endpoint authentication |
 
-In order to write to S3, a user needs to be created in AWS IAM with permission to write to the S3 bucket.
-For instance there exists a user, `report-service-qa`, within the AminConcordQA role, with permission to write
-to the `concord-staging-report-data` S3 bucket.
+**Non-secret config** is stored in per-project `.env.<alias>` files committed to the repo:
+- `.env.report-service-dev` — staging
+- `.env.report-service-pro` — production
 
-We can download the AWS key and Secret Key for this user (check 1Password), and then push it up to Firebase with
+**Secrets** are stored in Google Cloud Secret Manager, set per project:
 
-`firebase functions:config:set aws.key=<VALUE>`
-`firebase functions:config:set aws.secret_key=<VALUE>`
+```
+firebase use report-service-dev
+firebase functions:secrets:set AWS_KEY
+firebase functions:secrets:set AWS_SECRET_KEY
+firebase functions:secrets:set AUTH_BEARER_TOKEN
+```
 
-These three values are now accessible to the Functions via `functions.config().aws.s3_bucket`, `key` and `secret_key`
+Repeat for `report-service-pro`.
 
-For local development via the emulator, or just to check that they are set correctly, the firebase environment config
-can be saved to `.runtimeconfig.json`, a special file that the emulator looks for to set the environment variables.
+### Local Development (Emulator)
 
-To create that file use:
+For the emulator, secrets are read from `functions/.secret.local` and non-secret config from `functions/.env`.
 
-`firebase functions:config:get > .runtimeconfig.json`
+**Migrating from `.runtimeconfig.json`**: If you have an existing `.runtimeconfig.json`, run the migration script:
 
-The `.runtimeconfig.json` file is present in the `.gitignore` so it won't be committed.
+```
+cd functions
+bash scripts/migrate-config.sh
+```
+
+This creates `.env` and `.secret.local` from your existing config. These files are gitignored.
+
+**Manual setup** (without migration script):
+
+1. Create `functions/.env`:
+   ```
+   AWS_S3_BUCKET=concord-staging-report-data
+   ```
+
+2. Create `functions/.secret.local`:
+   ```
+   AWS_KEY=<your-aws-access-key>
+   AWS_SECRET_KEY=<your-aws-secret-key>
+   AUTH_BEARER_TOKEN=<your-bearer-token>
+   ```
+
+Then run: `firebase emulators:start --only functions` (or with `--import=./emulator-data --export-on-exit` to persist data)
 
 ## Deploying
+
+### First-time setup (after migration)
+
+Before the first deploy with parameterized config, set secrets for each project:
+
+```
+firebase use report-service-dev
+firebase functions:secrets:set AWS_KEY
+firebase functions:secrets:set AWS_SECRET_KEY
+firebase functions:secrets:set AUTH_BEARER_TOKEN
+
+firebase use report-service-pro
+firebase functions:secrets:set AWS_KEY
+firebase functions:secrets:set AWS_SECRET_KEY
+firebase functions:secrets:set AUTH_BEARER_TOKEN
+```
+
+The deploy will fail with clear instructions if any required secrets are missing.
 
 ### To deploy to the development server:
 
@@ -75,10 +121,9 @@ All api endpoints except for the root (`api/`) require a bearer token.
 The code looks for the bearer token in the `bearer` query parameter first,
 then the post body and finally falls back to the `Bearer` HTTP header.
 
-The value of the bearer token is set with the `firebase` cli using the following
-command:
+The bearer token value is managed as a secret in Google Cloud Secret Manager:
 
-`firebase functions:config:set auth.bearer_token=<VALUE>`
+`firebase functions:secrets:set AUTH_BEARER_TOKEN`
 
 ## Rules
 
