@@ -5,6 +5,7 @@ import https from "https"
 import crypto from "crypto";
 import { performance } from 'perf_hooks';
 import * as functions from "firebase-functions";
+import { defineString, defineSecret } from "firebase-functions/params";
 import admin, { firestore } from "firebase-admin";
 import axios from "axios";
 
@@ -19,6 +20,10 @@ const unlink = util.promisify(fs.unlink);
 const readFile = util.promisify(fs.readFile);
 
 import { AnswerData, schema, parquetInfo, AnswerMetadata, getAnswerMetadata, getSyncDocId } from "./shared/s3-answers"
+
+const s3Bucket = defineString("AWS_S3_BUCKET");
+const awsKey = defineSecret("AWS_KEY");
+const awsSecretKey = defineSecret("AWS_SECRET_KEY");
 
 interface PartialCollaborationData {
   collaborators: {platform_user_id: string}[]
@@ -160,12 +165,11 @@ const deleteSyncDoc = (syncSource: string, runKey: string) => {
   return getAnswerSyncCollection(syncSource).doc(runKey).delete();
 }
 
-// gets AWS creds from firebase config.
 const s3Client = () => new S3Client({
   region,
   credentials: {
-    accessKeyId: functions.config().aws.key,
-    secretAccessKey: functions.config().aws.secret_key,
+    accessKeyId: awsKey.value(),
+    secretAccessKey: awsSecretKey.value(),
   }
 });
 
@@ -202,7 +206,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
       const body = await readFile(tmpFilePath);
 
       const putObjectCommand = new PutObjectCommand({
-        Bucket: functions.config().aws.s3_bucket,
+        Bucket: s3Bucket.value(),
         Key: key,
         Body: body,
         ContentType: 'application/octet-stream'
@@ -231,7 +235,7 @@ const syncToS3 = (answers: AnswerData[]): Promise<S3SyncInfo> => {
 const deleteFromS3 = (answerMetadata: AnswerMetadata) => {
   const {key} = parquetInfo(answerDirectory, answerMetadata);
   const deleteObjectCommand = new DeleteObjectCommand({
-    Bucket: functions.config().aws.s3_bucket,
+    Bucket: s3Bucket.value(),
     Key: key
   })
   return s3Client().send(deleteObjectCommand)
@@ -453,7 +457,9 @@ export const monitorSyncDocCount = functions.pubsub.schedule(monitorSyncDocSched
     });
 });
 
-export const syncToS3AfterSyncDocWritten = functions.firestore
+export const syncToS3AfterSyncDocWritten = functions
+  .runWith({ secrets: [awsKey, awsSecretKey] })
+  .firestore
   .document(`${answersSyncPathAllSources}/{id}`) // {id} is a wildcard passed to Firebase.
   .onWrite((change, context) => {
     return getSettings()

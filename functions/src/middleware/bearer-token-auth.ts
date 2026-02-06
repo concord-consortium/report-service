@@ -1,7 +1,9 @@
 import express from "express"
-import * as functions from "firebase-functions"
+import { defineSecret } from "firebase-functions/params"
 
 // extracted from https://raw.githubusercontent.com/tkellen/js-express-bearer-token/master/index.js
+
+export const bearerToken = defineSecret("AUTH_BEARER_TOKEN");
 
 export default function (req: express.Request, res: express.Response, next: express.NextFunction) {
   let clientBearerToken: string|null = null;
@@ -12,10 +14,9 @@ export default function (req: express.Request, res: express.Response, next: expr
     return
   }
 
-  const authConfig = functions.config().auth
-  const serverBearerToken = authConfig && authConfig.bearer_token
+  const serverBearerToken = bearerToken.value()
   if (!serverBearerToken) {
-    res.error(500, "No bearer_token set in Firebase auth config!")
+    res.error(500, "No AUTH_BEARER_TOKEN secret set!")
     return
   }
 

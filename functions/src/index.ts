@@ -3,7 +3,7 @@ import cors from "cors"
 import admin from "firebase-admin"
 import * as functions from "firebase-functions"
 
-import bearerTokenAuth from "./middleware/bearer-token-auth"
+import bearerTokenAuth, { bearerToken } from "./middleware/bearer-token-auth"
 import responseMethods from "./middleware/response-methods"
 
 import importRun from "./api/import-run"
@@ -58,12 +58,14 @@ api.get("/fakeAnswer", fakeAnswer)
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.
-const wrappedApi = functions.https.onRequest( (req: express.Request, res: express.Response) =>  {
-  if (!req.path) {
-    req.url = `/${req.url}` // prepend '/' to keep query params if any
-  }
-  api(req, res)
-})
+const wrappedApi = functions
+  .runWith({ secrets: [bearerToken] })
+  .https.onRequest( (req: express.Request, res: express.Response) =>  {
+    if (!req.path) {
+      req.url = `/${req.url}` // prepend '/' to keep query params if any
+    }
+    api(req, res)
+  })
 
 module.exports = {
   api: wrappedApi,
