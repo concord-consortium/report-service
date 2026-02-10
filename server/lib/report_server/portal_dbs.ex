@@ -6,7 +6,7 @@ defmodule ReportServer.PortalDbs do
   @connect_timeout 15_000   # the default is 15 seconds, but we want to be more explicit
   @handshake_timeout 15_000 # the default is 15 seconds, but we want to be more explicit
   @ping_timeout 300_000     # the default is 15 seconds, but we want to increase it to 5 minutes
-  @query_timeout 60_000     # 60 seconds for long-running queries
+  @query_timeout 300_000    # 5 minutes for long-running queries
 
   defmodule PortalUserInfo do
     defstruct id: nil, login: nil, first_name: nil, last_name: nil, email: nil, is_admin: false, is_project_admin: false, is_project_researcher: false, server: nil
