@@ -298,10 +298,13 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
       """
     ]
 
+    # Use CASE to guarantee Prompt (-2) and Correct answer (-1) header rows sort before data rows (0).
+    # All data rows get the same value (0) so the secondary sort keys (class, username) control their ordering.
+    # This is needed because the header rows have NULL class/username values which are otherwise indistinguishable.
     {:ok, %ReportQuery{raw_sql: """
       WITH #{Enum.join([activities, grouped_answers, learners_and_answers, unique_user_class_query, one_row_table_for_join], ",\n\n")}
       #{Enum.join(selects, "\nUNION ALL\n")}
-      ORDER BY class NULLS FIRST, username
+      ORDER BY CASE student_id WHEN 'Prompt' THEN -2 WHEN 'Correct answer' THEN -1 ELSE 0 END, class NULLS FIRST, username
       """
     }}
   end
