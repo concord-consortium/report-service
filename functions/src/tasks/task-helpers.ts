@@ -29,20 +29,45 @@ export const updateJobInfo = async (
 };
 
 /**
- * Transition job to "running" status with startedAt and updatedAt.
+ * Atomically update jobInfo fields only if the current status is in the allowed set.
+ * Returns true if the update was applied, false if skipped (doc missing or wrong status).
  */
-export const markRunning = async (jobPath: string): Promise<void> => {
-  const now = Date.now();
-  await updateJobInfo(jobPath, {
-    status: "running",
-    startedAt: now,
-    updatedAt: now,
+export const guardedUpdate = async (
+  jobPath: string,
+  allowedStatuses: IJobInfo["status"][],
+  updates: Record<string, any>
+): Promise<boolean> => {
+  const docRef = db().doc(jobPath);
+  return db().runTransaction(async (txn) => {
+    const snap = await txn.get(docRef);
+    if (!snap.exists) {
+      return false;
+    }
+    const data = snap.data() as IJobDocument;
+    if (!allowedStatuses.includes(data.jobInfo?.status)) {
+      return false;
+    }
+    txn.update(docRef, updates);
+    return true;
   });
 };
 
 /**
- * Transition job to a final status ("success" or "failure") with result,
- * updatedAt, and completedAt.
+ * Transition job to "running" status with startedAt and updatedAt.
+ * Returns false if the job was cancelled (or otherwise not in "queued" state).
+ */
+export const markRunning = async (jobPath: string): Promise<boolean> => {
+  const now = Date.now();
+  return guardedUpdate(jobPath, ["queued"], {
+    "jobInfo.status": "running",
+    "jobInfo.startedAt": now,
+    "jobInfo.updatedAt": now,
+  });
+};
+
+/**
+ * Transition job to a final status ("success" or "failure") with result.
+ * Skips if job is already in a final state (cancelled/success/failure).
  */
 export const markComplete = async (
   jobPath: string,
@@ -50,24 +75,25 @@ export const markComplete = async (
   result: { message: string; processingMessage?: string } & Record<string, any>
 ): Promise<void> => {
   const now = Date.now();
-  await updateJobInfo(jobPath, {
-    status,
-    result,
-    updatedAt: now,
-    completedAt: now,
+  await guardedUpdate(jobPath, ["queued", "running"], {
+    "jobInfo.status": status,
+    "jobInfo.result": result,
+    "jobInfo.updatedAt": now,
+    "jobInfo.completedAt": now,
   });
 };
 
 /**
  * Set the processingMessage on a running job (before the task delay).
+ * Skips if job is no longer running (e.g. cancelled).
  */
 export const setProcessingMessage = async (
   jobPath: string,
   processingMessage: string
 ): Promise<void> => {
-  await updateJobInfo(jobPath, {
-    result: { message: "", processingMessage },
-    updatedAt: Date.now(),
+  await guardedUpdate(jobPath, ["running"], {
+    "jobInfo.result": { message: "", processingMessage },
+    "jobInfo.updatedAt": Date.now(),
   });
 };
 

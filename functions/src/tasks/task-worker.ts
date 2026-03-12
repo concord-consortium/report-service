@@ -37,12 +37,13 @@ export async function executeTask(jobPath: string): Promise<void> {
     return;
   }
 
-  if (jobInfo.status === "cancelled") {
-    functions.logger.info(`executeTask: job at ${jobPath} is cancelled, skipping`);
+  // markRunning uses a transaction: only transitions queued → running.
+  // Returns false if the job was cancelled (or otherwise not queued).
+  const started = await markRunning(jobPath);
+  if (!started) {
+    functions.logger.info(`executeTask: job at ${jobPath} is not in queued state (status: ${jobInfo.status}), skipping`);
     return;
   }
-
-  await markRunning(jobPath);
 
   const taskName = jobInfo.request.task;
   const handler = taskHandlers[taskName];

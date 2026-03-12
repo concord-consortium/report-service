@@ -3,7 +3,7 @@ import admin from "firebase-admin";
 import cors from "cors";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { IJobInfo, IJobDocument, TASK_WORKER_QUEUE, TASK_WORKER_LOCATION } from "./types";
-import { makeFailureResponse, updateJobInfo, getJobDocument } from "./task-helpers";
+import { makeFailureResponse, updateJobInfo, getJobDocument, guardedUpdate } from "./task-helpers";
 import { executeTask } from "./task-worker";
 
 const corsHandler = cors({ origin: true });
@@ -249,18 +249,24 @@ async function handleCancel(
     }
   }
 
-  // Update job to cancelled
+  // Cancel via transaction — only if still in queued/running state
   const now = Date.now();
-  await updateJobInfo(jobPath, {
-    status: "cancelled",
-    updatedAt: now,
-    completedAt: now,
+  const cancelled = await guardedUpdate(jobPath, ["queued", "running"], {
+    "jobInfo.status": "cancelled",
+    "jobInfo.updatedAt": now,
+    "jobInfo.completedAt": now,
   });
 
-  res.status(200).json({
-    ...jobInfo,
-    status: "cancelled",
-    updatedAt: now,
-    completedAt: now,
-  });
+  if (cancelled) {
+    res.status(200).json({
+      ...jobInfo,
+      status: "cancelled",
+      updatedAt: now,
+      completedAt: now,
+    });
+  } else {
+    // Another transition won the race — return current state
+    const freshDoc = await getJobDocument(jobPath);
+    res.status(200).json(freshDoc?.jobInfo ?? jobInfo);
+  }
 }
