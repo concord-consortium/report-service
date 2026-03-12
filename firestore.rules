@@ -147,7 +147,7 @@ service cloud.firestore {
       allow update: if studentWorkUpdate();
     }
 
-    match /sources/{source}/jobs/{document=**} {
+    match /sources/{source}/jobs/{jobId} {
       allow read: if studentWorkRead();
     }
 

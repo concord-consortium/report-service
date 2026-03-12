@@ -62,6 +62,15 @@ async function handleCreateJob(
     return;
   }
 
+  // Validate source_key format (no path traversal)
+  if (!/^[a-zA-Z0-9._-]+$/.test(context.source_key)) {
+    res.status(400).json(makeFailureResponse(
+      request,
+      "Invalid context.source_key format"
+    ));
+    return;
+  }
+
   // Create job document with Firestore auto-ID
   const now = Date.now();
   const jobsCollection = db().collection(`sources/${context.source_key}/jobs`);
@@ -76,8 +85,25 @@ async function handleCreateJob(
     createdAt: now,
   };
 
+  // Whitelist context fields — don't spread untrusted input.
+  // Authenticated: interactiveId, user_type, source_key, resource_url, tool_id,
+  //   platform_id, platform_user_id, context_id, resource_link_id, remote_endpoint
+  // Anonymous: interactiveId, user_type, source_key, resource_url, tool_id,
+  //   run_key, tool_user_id, platform_user_id
+  const ALLOWED_CONTEXT_KEYS = [
+    "interactiveId", "user_type", "source_key", "resource_url", "tool_id",
+    "platform_id", "platform_user_id", "context_id", "resource_link_id",
+    "remote_endpoint", "run_key", "tool_user_id",
+  ];
+  const safeContext: Record<string, any> = {};
+  for (const key of ALLOWED_CONTEXT_KEYS) {
+    if (context[key] !== undefined) {
+      safeContext[key] = context[key];
+    }
+  }
+
   const jobDocument: IJobDocument = {
-    ...context,
+    ...safeContext,
     jobInfo,
   };
 
@@ -164,6 +190,22 @@ async function handleCancel(
     res.status(400).json(makeFailureResponse(
       { task: "" },
       "Missing required field: context.source_key"
+    ));
+    return;
+  }
+
+  // Validate source_key and jobId format (no path traversal)
+  if (!/^[a-zA-Z0-9._-]+$/.test(context.source_key)) {
+    res.status(400).json(makeFailureResponse(
+      { task: "" },
+      "Invalid context.source_key format"
+    ));
+    return;
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(jobId)) {
+    res.status(400).json(makeFailureResponse(
+      { task: "" },
+      "Invalid jobId format"
     ));
     return;
   }
