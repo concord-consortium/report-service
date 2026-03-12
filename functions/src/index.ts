@@ -21,6 +21,9 @@ import {
   syncToS3AfterSyncDocWritten
 } from "./auto-importer";
 
+import { submitTask } from "./tasks/submit-task";
+import { taskWorker } from "./tasks/task-worker";
+
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
 
@@ -71,5 +74,7 @@ module.exports = {
   api: wrappedApi,
   createSyncDocAfterAnswerWritten,
   monitorSyncDocCount,
-  syncToS3AfterSyncDocWritten
+  syncToS3AfterSyncDocWritten,
+  submitTask,
+  taskWorker,
 }

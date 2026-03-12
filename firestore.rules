@@ -147,6 +147,10 @@ service cloud.firestore {
       allow update: if studentWorkUpdate();
     }
 
+    match /sources/{source}/jobs/{document=**} {
+      allow read: if studentWorkRead();
+    }
+
 
     //
     //  -----------  User Settings -------------
