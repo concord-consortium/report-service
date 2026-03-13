@@ -7,10 +7,11 @@ import { ai4vsFlvs } from "./ai4vs-flvs";
 
 interface TaskPayload {
   jobPath: string;
+  firebaseJwt?: string;
 }
 
 // Task router: maps task name to handler function
-const taskHandlers: Record<string, (jobPath: string, jobDoc: any) => Promise<void>> = {
+const taskHandlers: Record<string, (jobPath: string, jobDoc: any, firebaseJwt?: string) => Promise<void>> = {
   success: testSuccess,
   failure: testFailure,
   "ai4vs-flvs": ai4vsFlvs,
@@ -20,7 +21,7 @@ const taskHandlers: Record<string, (jobPath: string, jobDoc: any) => Promise<voi
  * Core task execution logic — shared by onTaskDispatched (production)
  * and direct invocation (emulator, where CloudTasksClient is unavailable).
  */
-export async function executeTask(jobPath: string): Promise<void> {
+export async function executeTask(jobPath: string, firebaseJwt?: string): Promise<void> {
   const jobDoc = await getJobDocument(jobPath);
 
   if (!jobDoc) {
@@ -58,7 +59,7 @@ export async function executeTask(jobPath: string): Promise<void> {
   }
 
   try {
-    await handler(jobPath, jobDoc);
+    await handler(jobPath, jobDoc, firebaseJwt);
   } catch (error) {
     await markComplete(jobPath, "failure", {
       message: `Task "${taskName}" failed: ${String(error)}`,
@@ -72,13 +73,13 @@ export const taskWorker = onTaskDispatched(
     rateLimits: { maxConcurrentDispatches: 1 },
   },
   async (req) => {
-    const { jobPath } = req.data as TaskPayload;
+    const { jobPath, firebaseJwt } = req.data as TaskPayload;
 
     if (!jobPath) {
       functions.logger.error("taskWorker: missing jobPath in payload, skipping");
       return;
     }
 
-    await executeTask(jobPath);
+    await executeTask(jobPath, firebaseJwt);
   }
 );
