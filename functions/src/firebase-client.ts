@@ -69,8 +69,11 @@ export async function getClientFirestore(jwt: string): Promise<{
   const firestore = getFirestore(app);
 
   const cleanup = async () => {
-    await auth.signOut();
-    await deleteApp(app);
+    try {
+      await auth.signOut();
+    } finally {
+      await deleteApp(app);
+    }
   };
 
   return { firestore, cleanup };

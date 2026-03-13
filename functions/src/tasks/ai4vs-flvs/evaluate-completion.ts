@@ -54,6 +54,10 @@ export const evaluateCompletion = async ({
       message: `evaluate-completion: found ${snapshot.size} answer(s) via client SDK`,
     };
   } finally {
-    await cleanup();
+    try {
+      await cleanup();
+    } catch (cleanupErr) {
+      functions.logger.warn("evaluate-completion: cleanup failed", cleanupErr);
+    }
   }
 };
