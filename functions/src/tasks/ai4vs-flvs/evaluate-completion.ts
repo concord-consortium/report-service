@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { StepContext, StepResult } from "./types";
 import { getClientFirestore } from "../../firebase-client";
+import { answerIsCompleted } from "../answer-utils";
 
 export const evaluateCompletion = async ({
   jobPath,
@@ -21,6 +22,23 @@ export const evaluateCompletion = async ({
     };
   }
 
+  // Validate min_completed_questions before establishing Firestore connection
+  const { request } = jobDoc.jobInfo;
+  const rawMinCompleted = request.min_completed_questions;
+  if (rawMinCompleted === undefined || rawMinCompleted === null) {
+    return {
+      success: false,
+      message: "evaluate-completion: request is missing required parameter min_completed_questions",
+    };
+  }
+  const minCompleted = Number(rawMinCompleted);
+  if (!Number.isInteger(minCompleted) || minCompleted < 1) {
+    return {
+      success: false,
+      message: `evaluate-completion: min_completed_questions must be a positive integer, got: ${JSON.stringify(rawMinCompleted)}`,
+    };
+  }
+
   const { firestore, cleanup } = await getClientFirestore(firebaseJwt);
   try {
     // Query answers using client SDK — matches getAnswerDocsQuery() in activity-player.
@@ -36,22 +54,30 @@ export const evaluateCompletion = async ({
 
     const snapshot = await getDocs(q);
 
+    // Count completed answers
+    const completed = snapshot.docs.filter(doc => answerIsCompleted(doc.data())).length;
+
     functions.logger.info(
-      `evaluate-completion: found ${snapshot.size} answer(s) for user ${platform_user_id} in ${source_key} at ${jobPath}`
+      `evaluate-completion: ${completed} of ${snapshot.size} answer(s) completed (need ${minCompleted}) for user ${platform_user_id} at ${jobPath}`
     );
 
-    // For this experiment, simply log that we successfully read the answers
-    // and return success. A real implementation would check completeness.
-    if (snapshot.empty) {
-      return {
-        success: false,
-        message: `evaluate-completion: no answers found for user ${platform_user_id}`,
-      };
+    // Compare against threshold
+    if (completed < minCompleted) {
+      // Configurable failure message with template variables
+      const defaultMessage = `You have completed ${completed} of ${minCompleted} required questions. Please answer more questions in this activity.`;
+      const customTemplate = request.min_completed_questions_failure_message;
+      let message = defaultMessage;
+      if (customTemplate && typeof customTemplate === "string") {
+        message = customTemplate
+          .replace(/\$\{completed\}/g, String(completed))
+          .replace(/\$\{min_completed_questions\}/g, String(minCompleted));
+      }
+      return { success: false, message };
     }
 
     return {
       success: true,
-      message: `evaluate-completion: found ${snapshot.size} answer(s) via client SDK`,
+      message: `evaluate-completion: ${completed} of ${minCompleted} questions completed`,
     };
   } finally {
     try {
