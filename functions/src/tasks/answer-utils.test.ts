@@ -120,6 +120,13 @@ describe("answerIsCompleted", () => {
         attachments: {},
       })).toBe(false);
     });
+
+    it("returns false when attachments is an array", () => {
+      expect(answerIsCompleted({
+        type: "interactive_state",
+        attachments: ["x"],
+      })).toBe(false);
+    });
   });
 
   describe("unknown type", () => {

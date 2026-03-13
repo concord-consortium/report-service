@@ -2,8 +2,6 @@
 
 **Jira**: https://concord-consortium.atlassian.net/browse/REPORT-62
 
-**Source Spec**: [specs/REPORT-62-activity-completion-check/](specs/REPORT-62-activity-completion-check/)
-
 **Status**: **Closed**
 
 ## Overview

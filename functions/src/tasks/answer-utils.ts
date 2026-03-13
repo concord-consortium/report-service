@@ -5,11 +5,11 @@
  * attachments override. Inspired by Activity Player's answerHasResponse() but
  * intentionally stricter — checks answer content rather than just answer type.
  *
- * See: specs/REPORT-62-activity-completion-check/requirements.md, R4
+ * See: specs/REPORT-62-activity-completion-check.md, R4
  */
 export const answerIsCompleted = (doc: Record<string, any>): boolean => {
   // Attachments override: any type with attachments is completed
-  if (doc.attachments && typeof doc.attachments === "object" && Object.keys(doc.attachments).length > 0) {
+  if (doc.attachments && typeof doc.attachments === "object" && !Array.isArray(doc.attachments) && Object.keys(doc.attachments).length > 0) {
     return true;
   }
 
