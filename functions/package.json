@@ -49,6 +49,7 @@
   "main": "lib/index.js",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.11.0",
+    "@google-cloud/tasks": "^6.2.1",
     "axios": "^0.23.0",
     "cors": "^2.8.5",
     "express": "^4.16.4",
@@ -60,8 +61,8 @@
   "devDependencies": {
     "@types/cors": "^2.8.5",
     "@types/express": "^4.17.11",
-    "@types/node": "^22.0.0",
     "@types/jest": "^24.0.15",
+    "@types/node": "^22.0.0",
     "firebase-functions-test": "^0.3.3",
     "jest": "^24.8.0",
     "ts-jest": "^24.0.2",
