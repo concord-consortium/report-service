@@ -3,6 +3,7 @@ import { onTaskDispatched } from "firebase-functions/v2/tasks";
 import { getJobDocument, markRunning, markComplete } from "./task-helpers";
 import { testSuccess } from "./test-success";
 import { testFailure } from "./test-failure";
+import { ai4vsFlvs } from "./ai4vs-flvs";
 
 interface TaskPayload {
   jobPath: string;
@@ -12,6 +13,7 @@ interface TaskPayload {
 const taskHandlers: Record<string, (jobPath: string, jobDoc: any) => Promise<void>> = {
   success: testSuccess,
   failure: testFailure,
+  "ai4vs-flvs": ai4vsFlvs,
 };
 
 /**
