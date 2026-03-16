@@ -24,11 +24,16 @@ export const submitTask = functions.https.onRequest((req, res) => {
 
       const body = req.body;
 
+      // Extract Firebase JWT from Authorization header (if present) to forward to task handler.
+      // Not all tasks need it — individual handlers decide whether to require it.
+      const authHeader = req.headers?.authorization;
+      const firebaseJwt = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+
       // Route: cancel vs. job creation
       if (body.action === "cancel") {
         await handleCancel(body, res);
       } else {
-        await handleCreateJob(body, res);
+        await handleCreateJob(body, res, firebaseJwt);
       }
     } catch (error) {
       functions.logger.error("submitTask: unexpected error", error);
@@ -42,7 +47,8 @@ export const submitTask = functions.https.onRequest((req, res) => {
 
 async function handleCreateJob(
   body: any,
-  res: functions.Response
+  res: functions.Response,
+  firebaseJwt?: string
 ): Promise<void> {
   const { request, context } = body;
 
@@ -115,7 +121,7 @@ async function handleCreateJob(
     if (process.env.FUNCTIONS_EMULATOR === "true") {
       // In the emulator, CloudTasksClient connects to the real GCP API (not the emulator).
       // Call the worker logic directly instead.
-      executeTask(jobPath).catch(err => {
+      executeTask(jobPath, firebaseJwt).catch(err => {
         functions.logger.error("submitTask: emulator direct execution failed", err);
       });
     } else {
@@ -136,7 +142,7 @@ async function handleCreateJob(
             httpMethod: "POST",
             url: taskWorkerUrl,
             headers: { "Content-Type": "application/json" },
-            body: Buffer.from(JSON.stringify({ data: { jobPath } })).toString("base64"),
+            body: Buffer.from(JSON.stringify({ data: { jobPath, firebaseJwt } })).toString("base64"),
             oidcToken: {
               serviceAccountEmail,
               audience: taskWorkerUrl,

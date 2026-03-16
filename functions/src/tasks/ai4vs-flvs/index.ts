@@ -1,7 +1,7 @@
 import * as functions from "firebase-functions";
 import { IJobDocument } from "../types";
 import { markComplete, setProcessingMessage } from "../task-helpers";
-import { StepHandler } from "./types";
+import { StepContext, StepHandler } from "./types";
 import { evaluateCompletion } from "./evaluate-completion";
 import { lockActivity } from "./lock-activity";
 import { randomAssignment } from "./random-assignment";
@@ -22,13 +22,21 @@ const PIPELINES: Record<string, PipelineStep[]> = {
   ],
 };
 
-export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument): Promise<void> => {
+export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJwt?: string): Promise<void> => {
   const { request } = jobDoc.jobInfo;
 
   // Validate required pilot parameter
   if (!request.pilot) {
     await markComplete(jobPath, "failure", {
       message: "Missing required field: request.pilot",
+    });
+    return;
+  }
+
+  // Validate JWT is present — this task requires an authenticated user (R7)
+  if (!firebaseJwt) {
+    await markComplete(jobPath, "failure", {
+      message: "Missing Firebase JWT — authenticated user required for this task",
     });
     return;
   }
@@ -42,10 +50,11 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument): Promise<
   }
 
   // Execute pipeline steps in order
+  const stepContext: StepContext = { jobPath, jobDoc, firebaseJwt };
   for (const step of pipeline) {
     await setProcessingMessage(jobPath, step.processingMessage);
 
-    const result = await step.handler(jobPath, jobDoc);
+    const result = await step.handler(stepContext);
     if (!result.success) {
       await markComplete(jobPath, "failure", {
         message: result.message ?? `Step "${step.name}" failed`,

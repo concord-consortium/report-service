@@ -1,4 +1,11 @@
 import { IJobDocument } from "../types";
 
 export type StepResult = { success: boolean; message?: string };
-export type StepHandler = (jobPath: string, jobDoc: IJobDocument) => Promise<StepResult>;
+
+export interface StepContext {
+  jobPath: string;
+  jobDoc: IJobDocument;
+  firebaseJwt?: string;
+}
+
+export type StepHandler = (context: StepContext) => Promise<StepResult>;
