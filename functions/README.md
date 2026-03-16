@@ -71,6 +71,35 @@ This creates `.env` and `.secret.local` from your existing config. These files a
 
 Then run: `firebase emulators:start --only functions` (or with `--import=./emulator-data --export-on-exit` to persist data)
 
+### Portal OIDC Authentication (Emulator)
+
+When running in the Firebase emulator, the shared `portalOidcFetch` utility (used by pipeline steps
+like lock-activity and send-email) requires a pre-generated OIDC token since `GoogleAuth` cannot
+mint tokens in the emulator environment.
+
+1. Ensure you have the `iam.serviceAccountTokenCreator` role on the target service account:
+   ```bash
+   gcloud iam service-accounts add-iam-policy-binding \
+     button-function@report-service-dev.iam.gserviceaccount.com \
+     --member="user:<your-email>" \
+     --role="roles/iam.serviceAccountTokenCreator"
+   ```
+
+2. Generate a token (expires in 1 hour):
+   ```bash
+   gcloud auth print-identity-token \
+     --impersonate-service-account=button-function@report-service-dev.iam.gserviceaccount.com \
+     --audiences=https://learn.portal.staging.concord.org
+   ```
+
+3. Set the environment variable before starting the emulator:
+   ```bash
+   export PORTAL_OIDC_TOKEN="<token-from-step-2>"
+   firebase emulators:start --only functions
+   ```
+
+The token expires after 1 hour. Regenerate it if you see 401 errors from the Portal.
+
 ## Deploying
 
 ### First-time setup (after migration)
