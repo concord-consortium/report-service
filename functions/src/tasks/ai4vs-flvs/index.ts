@@ -50,7 +50,7 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
   }
 
   // Execute pipeline steps in order
-  const stepContext: StepContext = { jobPath, jobDoc, firebaseJwt };
+  const stepContext: StepContext = { jobPath, jobDoc, firebaseJwt, stepResults: {} };
   for (const step of pipeline) {
     await setProcessingMessage(jobPath, step.processingMessage);
 
@@ -62,10 +62,11 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
       return;
     }
 
+    stepContext.stepResults[step.name] = result;
     functions.logger.info(`ai4vs-flvs: step "${step.name}" completed successfully for ${jobPath}`);
   }
 
   await markComplete(jobPath, "success", {
-    message: "Task completed (stub mode \u2014 no real actions performed).",
+    message: "Done! Your teacher has been notified.",
   });
 };
