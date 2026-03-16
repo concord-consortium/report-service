@@ -34,6 +34,7 @@ const makeContext = (overrides: Partial<IJobDocument> = {}): StepContext => ({
     },
     ...overrides,
   } as IJobDocument,
+  stepResults: {},
 });
 
 describe("lockActivity", () => {
