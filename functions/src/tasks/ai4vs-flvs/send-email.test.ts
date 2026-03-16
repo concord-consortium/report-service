@@ -1,4 +1,3 @@
-import { sendEmail } from "./send-email";
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
 
@@ -17,6 +16,9 @@ jest.mock("firebase-functions", () => ({
     error: (...args: any[]) => mockLoggerError(...args),
   },
 }));
+
+// Must import after jest.mock
+import { sendEmail } from "./send-email";
 
 const makeContext = (
   overrides: Partial<IJobDocument> = {},
