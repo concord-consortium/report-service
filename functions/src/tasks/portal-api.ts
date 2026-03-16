@@ -49,7 +49,7 @@ export const portalOidcFetch = async (options: PortalRequestOptions): Promise<Po
   }
 
   const headers: Record<string, string> = {
-    ...extraHeaders,
+    ...(extraHeaders ?? {}),
     Authorization: authHeader,
   };
 

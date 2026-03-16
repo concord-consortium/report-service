@@ -11,6 +11,7 @@ jest.mock("google-auth-library", () => ({
 import { portalOidcFetch } from "./portal-api";
 
 // Mock global fetch
+const originalFetch = global.fetch;
 const mockFetch = jest.fn();
 (global as any).fetch = mockFetch;
 
@@ -42,6 +43,7 @@ describe("portalOidcFetch", () => {
 
   afterAll(() => {
     process.env = originalEnv;
+    global.fetch = originalFetch;
   });
 
   describe("production mode", () => {
