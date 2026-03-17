@@ -165,7 +165,7 @@ describe("randomAssignment", () => {
     mockGetDocs.mockResolvedValue(makeStandardAnswerDocs());
   });
 
-  describe("request parameter validation (R18)", () => {
+  describe("request parameter validation", () => {
     it("returns student-friendly message when treatment_class_id is missing", async () => {
       const result = await randomAssignment(makeContext({}, { treatment_class_id: undefined }));
 
@@ -196,6 +196,17 @@ describe("randomAssignment", () => {
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringMatching(/treatment_class_id.*control_class_id/)
       );
+    });
+
+    it("rejects whitespace-only class IDs", async () => {
+      const result = await randomAssignment(makeContext({}, {
+        treatment_class_id: "   ",
+        control_class_id: "  ",
+      }));
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("Unable to complete your assignment");
+      expect(mockGetDocs).not.toHaveBeenCalled();
     });
 
     it("returns student-friendly message when firebaseJwt is missing", async () => {
@@ -251,7 +262,7 @@ describe("randomAssignment", () => {
     });
   });
 
-  describe("prompt substring matching (R2)", () => {
+  describe("prompt substring matching", () => {
     it("matches case-insensitively", async () => {
       // Default prompts contain mixed case ("What is your sex?") and substrings are lowercase
       const result = await randomAssignment(makeContext());
@@ -288,7 +299,7 @@ describe("randomAssignment", () => {
     });
   });
 
-  describe("choice content resolution (R3)", () => {
+  describe("choice content resolution", () => {
     it("resolves choice IDs to content text via authoredState.choices", async () => {
       // The happy path already exercises this; verify via successful result
       const result = await randomAssignment(makeContext());
@@ -423,7 +434,7 @@ describe("randomAssignment", () => {
     });
   });
 
-  describe("Race binary reduction (R5)", () => {
+  describe("Race binary reduction", () => {
     it("maps only-White to White", async () => {
       mockGetDocs.mockResolvedValue(makeStandardAnswerDocs({ raceChoices: ["White"] }));
 
@@ -531,7 +542,7 @@ describe("randomAssignment", () => {
     );
   });
 
-  describe("missing/empty answers (R16)", () => {
+  describe("missing/empty answers", () => {
     it("names dimension in error when answer doc is missing for one dimension", async () => {
       const snapshot = makeStandardAnswerDocs();
       // Remove the Module answer doc (third doc)
@@ -581,24 +592,12 @@ describe("randomAssignment", () => {
     });
   });
 
-  describe("missing stratum (R7)", () => {
-    it("fails when stratum is not in assignment table", async () => {
-      // Create a scenario with a stratum that doesn't exist in the table.
-      // The table has all 24 combinations of {Female,Male} x {White,non-White} x {High,Mid} x {Mod1,Mod2,Other}.
-      // We need to produce a stratum not in the table — but all are covered.
-      // Instead, test by mocking a doc that produces an unmapped category... but that would be caught by R17.
-      // The only way to get an unmapped stratum is if the table itself is incomplete.
-      // Since all 24 strata are covered, we can't produce this via normal inputs.
-      // We'll verify the code path by checking that the table has exactly 24 entries
-      // and that a hypothetical miss would fail correctly.
-      // For a real test, we need to manipulate the answer to produce a combo not in the table.
-      // Since Module has a default fallback and Race is binary, all combos are covered.
-      // This test documents that the code path exists but is not reachable with current mappings.
-      expect(true).toBe(true);
-    });
-  });
+  // Note: The "missing stratum" code path (assignment table miss) is not reachable
+  // through the public API because the category mappings produce exactly the 2×2×2×3 = 24
+  // combinations covered by ASSIGNMENT_TABLE. The "all 24 assignment strata" test.each
+  // above proves table completeness. The guard exists for safety if mappings change.
 
-  describe("Portal enrollment (R9–R11)", () => {
+  describe("Portal enrollment", () => {
     it("succeeds on 2xx with {success: true}", async () => {
       mockPortalOidcFetch.mockResolvedValue({ status: 200, data: { success: true } });
 
@@ -638,7 +637,7 @@ describe("randomAssignment", () => {
       expect(result.success).toBe(false);
       expect(result.message).toContain("Unable to complete your assignment");
       expect(mockLoggerError).toHaveBeenCalledWith(
-        expect.stringContaining("Portal request failed"),
+        expect.stringContaining("unexpected error"),
         expect.any(Error)
       );
     });
@@ -675,15 +674,26 @@ describe("randomAssignment", () => {
     });
   });
 
+  describe("Firestore errors", () => {
+    it("returns failure when Firestore query throws", async () => {
+      mockGetDocs.mockRejectedValue(new Error("Firestore query failed"));
+
+      const result = await randomAssignment(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("Unable to complete your assignment");
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        expect.stringContaining("unexpected error"),
+        expect.any(Error)
+      );
+    });
+  });
+
   describe("cleanup", () => {
     it("calls cleanup even on error", async () => {
       mockGetDocs.mockRejectedValue(new Error("Firestore query failed"));
 
-      try {
-        await randomAssignment(makeContext());
-      } catch {
-        // Expected — getDocs failure propagates
-      }
+      await randomAssignment(makeContext());
 
       expect(mockCleanup).toHaveBeenCalled();
     });

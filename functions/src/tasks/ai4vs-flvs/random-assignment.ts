@@ -223,8 +223,8 @@ export const randomAssignment = async ({
 }: StepContext): Promise<StepResult> => {
   // Validate request parameters first
   const { request } = jobDoc.jobInfo;
-  const treatmentClassId = request.treatment_class_id;
-  const controlClassId = request.control_class_id;
+  const treatmentClassId = String(request.treatment_class_id ?? "").trim();
+  const controlClassId = String(request.control_class_id ?? "").trim();
 
   if (!treatmentClassId || !controlClassId) {
     const missing = [
@@ -255,8 +255,11 @@ export const randomAssignment = async ({
   }
 
   // Query Firestore for answer docs
-  const { firestore, cleanup } = await getClientFirestore(firebaseJwt);
+  let firestoreCleanup: (() => Promise<void>) | undefined;
   try {
+    const { firestore, cleanup } = await getClientFirestore(firebaseJwt);
+    firestoreCleanup = cleanup;
+
     const answersRef = collection(firestore, `sources/${source_key}/answers`);
     const q = query(
       answersRef,
@@ -319,38 +322,38 @@ export const randomAssignment = async ({
       `random-assignment: enrolling user ${platform_user_id} in class ${className} (${classId}) at ${platform_id} (${jobPath})`
     );
 
-    try {
-      const response = await portalOidcFetch({
-        portalUrl: platform_id,
-        path: "/api/v1/students/add_to_class",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: String(platform_user_id),
-          clazz_id: String(classId),
-        }),
-      });
+    const response = await portalOidcFetch({
+      portalUrl: platform_id,
+      path: "/api/v1/students/add_to_class",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: String(platform_user_id),
+        clazz_id: String(classId),
+      }),
+    });
 
-      if (response.status >= 200 && response.status < 300 && response.data?.success === true) {
-        functions.logger.info(
-          `random-assignment: successfully enrolled user ${platform_user_id} in ${className} (${jobPath})`
-        );
-        return { success: true, summary: `Assigned to ${className}` };
-      }
-
-      // Portal returned non-success
-      functions.logger.error(
-        `random-assignment: Portal enrollment failed for ${jobPath}`,
-        { status: response.status, data: response.data }
+    if (response.status >= 200 && response.status < 300 && response.data?.success === true) {
+      functions.logger.info(
+        `random-assignment: successfully enrolled user ${platform_user_id} in ${className} (${jobPath})`
       );
-      return { success: false, message: STUDENT_FAILURE_MESSAGE };
-    } catch (error) {
-      functions.logger.error(`random-assignment: Portal request failed for ${jobPath}`, error);
-      return { success: false, message: STUDENT_FAILURE_MESSAGE };
+      return { success: true, summary: `Assigned to ${className}` };
     }
+
+    // Portal returned non-success
+    functions.logger.error(
+      `random-assignment: Portal enrollment failed for ${jobPath}`,
+      { status: response.status, data: response.data }
+    );
+    return { success: false, message: STUDENT_FAILURE_MESSAGE };
+  } catch (error) {
+    functions.logger.error(`random-assignment: unexpected error for ${jobPath}`, error);
+    return { success: false, message: STUDENT_FAILURE_MESSAGE };
   } finally {
     try {
-      await cleanup();
+      if (firestoreCleanup) {
+        await firestoreCleanup();
+      }
     } catch (cleanupErr) {
       functions.logger.warn("random-assignment: cleanup failed", cleanupErr);
     }
