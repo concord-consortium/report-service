@@ -68,10 +68,8 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
 
   const DEFAULT_COMPLETION_MESSAGE = "Done! Your teacher has been notified.";
   const customMessage = request.completion_message;
-  const completionMessage =
-    typeof customMessage === "string" && customMessage.trim()
-      ? customMessage
-      : DEFAULT_COMPLETION_MESSAGE;
+  const trimmed = typeof customMessage === "string" ? customMessage.trim() : "";
+  const completionMessage = trimmed || DEFAULT_COMPLETION_MESSAGE;
 
   await markComplete(jobPath, "success", {
     message: completionMessage,
