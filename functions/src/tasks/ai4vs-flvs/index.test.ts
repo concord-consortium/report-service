@@ -93,13 +93,13 @@ describe("orchestrator stepResults accumulation", () => {
   it("stepResults contains first step's result when second handler runs", async () => {
     const evalResult = { success: true, message: "8 of 10 completed" };
     mockEvaluateCompletion.mockResolvedValue(evalResult);
-    mockLockActivity.mockResolvedValue({ success: true });
     mockRandomAssignment.mockResolvedValue({ success: true, message: "stub" });
+    mockLockActivity.mockResolvedValue({ success: true });
     mockSendEmail.mockResolvedValue({ success: true });
 
     await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
 
-    expect(stepResultsSnapshots["lock-activity"]).toEqual({
+    expect(stepResultsSnapshots["random-assignment"]).toEqual({
       "evaluate-completion": evalResult,
     });
   });
@@ -124,17 +124,17 @@ describe("orchestrator stepResults accumulation", () => {
 
   it("does not record the failed step's result when pipeline aborts", async () => {
     mockEvaluateCompletion.mockResolvedValue({ success: true, message: "ok" });
-    mockLockActivity.mockResolvedValue({ success: false, message: "lock failed" });
+    mockRandomAssignment.mockResolvedValue({ success: false, message: "assignment failed" });
 
     await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
 
-    expect(mockRandomAssignment).not.toHaveBeenCalled();
+    expect(mockLockActivity).not.toHaveBeenCalled();
     expect(mockSendEmail).not.toHaveBeenCalled();
 
     expect(mockMarkComplete).toHaveBeenCalledWith(
       "jobs/test",
       "failure",
-      expect.objectContaining({ message: "lock failed" })
+      expect.objectContaining({ message: "assignment failed" })
     );
   });
 
@@ -145,6 +145,103 @@ describe("orchestrator stepResults accumulation", () => {
     mockSendEmail.mockResolvedValue({ success: true });
 
     await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
+
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "success",
+      expect.objectContaining({ message: "Done! Your teacher has been notified." })
+    );
+  });
+});
+
+describe("configurable completion message", () => {
+  const makeJobDocWithMessage = (completion_message?: any): IJobDocument => ({
+    platform_id: "https://learn.concord.org",
+    platform_user_id: 12345,
+    resource_link_id: "678",
+    source_key: "test-source",
+    jobInfo: {
+      version: 1,
+      id: "test-job-123",
+      status: "running",
+      request: {
+        task: "ai4vs-flvs",
+        pilot: "spring-2026",
+        ...(completion_message !== undefined ? { completion_message } : {}),
+      },
+      createdAt: Date.now(),
+    },
+  } as IJobDocument);
+
+  const setupAllStepsSuccess = () => {
+    mockEvaluateCompletion.mockResolvedValue({ success: true });
+    mockLockActivity.mockResolvedValue({ success: true });
+    mockRandomAssignment.mockResolvedValue({ success: true });
+    mockSendEmail.mockResolvedValue({ success: true });
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMarkComplete.mockResolvedValue(undefined);
+    mockSetProcessingMessage.mockResolvedValue(undefined);
+    for (const key of Object.keys(stepResultsSnapshots)) {
+      delete stepResultsSnapshots[key];
+    }
+    setupAllStepsSuccess();
+  });
+
+  it("uses custom completion_message when provided as non-empty string", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDocWithMessage("Great job! You're all set."), "jwt-token");
+
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "success",
+      expect.objectContaining({ message: "Great job! You're all set." })
+    );
+  });
+
+  it("falls back to default when completion_message is not provided", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDocWithMessage(), "jwt-token");
+
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "success",
+      expect.objectContaining({ message: "Done! Your teacher has been notified." })
+    );
+  });
+
+  it("falls back to default when completion_message is empty string", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDocWithMessage(""), "jwt-token");
+
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "success",
+      expect.objectContaining({ message: "Done! Your teacher has been notified." })
+    );
+  });
+
+  it("falls back to default when completion_message is whitespace-only", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDocWithMessage("   \t  "), "jwt-token");
+
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "success",
+      expect.objectContaining({ message: "Done! Your teacher has been notified." })
+    );
+  });
+
+  it("falls back to default when completion_message is a number", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDocWithMessage(42), "jwt-token");
+
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "success",
+      expect.objectContaining({ message: "Done! Your teacher has been notified." })
+    );
+  });
+
+  it("falls back to default when completion_message is a boolean", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDocWithMessage(true), "jwt-token");
 
     expect(mockMarkComplete).toHaveBeenCalledWith(
       "jobs/test",
