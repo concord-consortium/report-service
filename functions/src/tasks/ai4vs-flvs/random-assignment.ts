@@ -1,5 +1,7 @@
 import * as functions from "firebase-functions";
 import { collection, query, where, getDocs } from "firebase/firestore";
+import { createHash } from "crypto";
+import admin from "firebase-admin";
 import { StepContext, StepResult } from "./types";
 import { getClientFirestore } from "../../firebase-client";
 import { portalOidcFetch } from "../portal-api";
@@ -214,6 +216,68 @@ const mapToCategory = (dimension: Dimension, choiceTexts: string[]): string => {
   }
 };
 
+// --- Assignment document helpers ---
+
+export const computeAssignmentDocId = (
+  interactiveId: string,
+  platform_id: string,
+  resource_link_id: string,
+  context_id: string,
+): string => {
+  const input = `ai4vs-flvs-assignments|${interactiveId}|${platform_id}|${resource_link_id}|${context_id}`;
+  return createHash("sha256").update(input).digest("hex");
+};
+
+export const getAlternatingAssignment = async (
+  source_key: string,
+  interactiveId: string,
+  platform_id: string,
+  resource_link_id: string,
+  context_id: string,
+  platform_user_id: string,
+  stratumKey: string,
+  n1Assignment: "treatment" | "control",
+): Promise<"treatment" | "control"> => {
+  const db = admin.firestore();
+  const docId = computeAssignmentDocId(interactiveId, platform_id, resource_link_id, context_id);
+  const docRef = db.doc(`sources/${source_key}/jobs-task-data/${docId}`);
+
+  return db.runTransaction(async (tx) => {
+    const doc = await tx.get(docRef);
+    const data = doc.data() || {};
+    const strata = data.strata || {};
+    const stratum = strata[stratumKey] || {};
+    const users = stratum.users || {};
+
+    // Dedup: if user already assigned, return cached assignment
+    if (users[platform_user_id]) {
+      return users[platform_user_id] as "treatment" | "control";
+    }
+
+    // Determine assignment: use nextAssignment if set, otherwise n1
+    const assignment: "treatment" | "control" = stratum.nextAssignment || n1Assignment;
+    const opposite: "treatment" | "control" = assignment === "treatment" ? "control" : "treatment";
+
+    // Write back
+    tx.set(docRef, {
+      type: "ai4vs-flvs-assignments",
+      interactiveId,
+      platform_id,
+      resource_link_id,
+      context_id,
+      strata: {
+        ...strata,
+        [stratumKey]: {
+          nextAssignment: opposite,
+          users: { ...users, [platform_user_id]: assignment },
+        },
+      },
+    }, { merge: true });
+
+    return assignment;
+  });
+};
+
 // --- Main step function ---
 
 export const randomAssignment = async ({
@@ -240,15 +304,16 @@ export const randomAssignment = async ({
     return { success: false, message: STUDENT_FAILURE_MESSAGE };
   }
 
-  const { source_key, platform_user_id, platform_id, resource_link_id, context_id } = jobDoc;
+  const { source_key, platform_user_id, platform_id, resource_link_id, context_id, interactiveId } = jobDoc;
 
-  if (!source_key || !platform_user_id || !platform_id || !resource_link_id || !context_id) {
+  if (!source_key || !platform_user_id || !platform_id || !resource_link_id || !context_id || !interactiveId) {
     const missing = [
       !source_key && "source_key",
       !platform_user_id && "platform_user_id",
       !platform_id && "platform_id",
       !resource_link_id && "resource_link_id",
       !context_id && "context_id",
+      !interactiveId && "interactiveId",
     ].filter(Boolean).join(", ");
     functions.logger.error(`random-assignment: missing required context fields: ${missing} for ${jobPath}`);
     return { success: false, message: STUDENT_FAILURE_MESSAGE };
@@ -306,13 +371,19 @@ export const randomAssignment = async ({
 
     // Look up assignment
     const stratumKey = `${categories.Gender}|${categories.Race}|${categories.Grade}|${categories.Module}`;
-    const assignment = ASSIGNMENT_TABLE[stratumKey];
-    if (!assignment) {
+    const n1Assignment = ASSIGNMENT_TABLE[stratumKey];
+    if (!n1Assignment) {
       functions.logger.error(
         `random-assignment: no matching stratum for ${stratumKey} for user ${platform_user_id} at ${jobPath}`
       );
       return { success: false, message: STUDENT_FAILURE_MESSAGE };
     }
+
+    const assignment = await getAlternatingAssignment(
+      source_key, String(interactiveId), String(platform_id),
+      String(resource_link_id), String(context_id),
+      String(platform_user_id), stratumKey, n1Assignment,
+    );
 
     const className = CLASS_NAMES[assignment];
     const classId = assignment === "treatment" ? treatmentClassId : controlClassId;
