@@ -91,7 +91,7 @@ const makeStandardAnswerDocs = (overrides?: {
           { id: "c2", content: "Male" },
           { id: "c3", content: "Prefer not to answer" },
         ],
-        [genderIdMap[gender]!],
+        [genderIdMap[gender]],
       ),
       makeAnswerDoc(
         "<p>What grade are you in?</p>",
@@ -101,7 +101,7 @@ const makeStandardAnswerDocs = (overrides?: {
           { id: "g10", content: "10th Grade" }, { id: "g11", content: "11th Grade" },
           { id: "g12", content: "12th Grade" }, { id: "gO", content: "Other" },
         ],
-        [gradeIdMap[grade]!],
+        [gradeIdMap[grade]],
       ),
       makeAnswerDoc(
         "<p>Which Algebra 1 module are you currently working on?</p>",
@@ -121,7 +121,7 @@ const makeStandardAnswerDocs = (overrides?: {
           { id: "rH", content: "Hispanic or Latino" },
           { id: "rP", content: "Prefer to not answer" },
         ],
-        races.map(r => raceIdMap[r]!),
+        races.map(r => raceIdMap[r]),
       ),
     ],
   };
