@@ -16,8 +16,8 @@ interface PipelineStep {
 const PIPELINES: Record<string, PipelineStep[]> = {
   "spring-2026": [
     { name: "evaluate-completion", processingMessage: "Checking your answers\u2026", handler: evaluateCompletion },
-    { name: "lock-activity", processingMessage: "Locking your pre-test\u2026", handler: lockActivity },
     { name: "random-assignment", processingMessage: "Assigning you to a class\u2026", handler: randomAssignment },
+    { name: "lock-activity", processingMessage: "Locking your pre-test\u2026", handler: lockActivity },
     { name: "send-email", processingMessage: "Notifying your teacher\u2026", handler: sendEmail },
   ],
 };
@@ -66,7 +66,12 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
     functions.logger.info(`ai4vs-flvs: step "${step.name}" completed successfully for ${jobPath}`);
   }
 
+  const DEFAULT_COMPLETION_MESSAGE = "Done! Your teacher has been notified.";
+  const customMessage = request.completion_message;
+  const trimmed = typeof customMessage === "string" ? customMessage.trim() : "";
+  const completionMessage = trimmed || DEFAULT_COMPLETION_MESSAGE;
+
   await markComplete(jobPath, "success", {
-    message: "Done! Your teacher has been notified.",
+    message: completionMessage,
   });
 };
