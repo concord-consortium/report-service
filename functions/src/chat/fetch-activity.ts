@@ -85,7 +85,8 @@ async function readBodyWithCap(resp: Response, maxBytes: number): Promise<string
     return text;
   }
   const fallback = await resp.text();
-  if (fallback.length > maxBytes) throw new Error("resource exceeds size cap");
+  // byte length (not .length, which counts UTF-16 code units) for parity with the streaming branch.
+  if (Buffer.byteLength(fallback) > maxBytes) throw new Error("resource exceeds size cap");
   return fallback;
 }
 
@@ -108,17 +109,22 @@ export async function fetchWithGuards(url: string, opts: FetchGuardOptions): Pro
 // Parse + validate a fetched body into an Activity (converting a v1 legacy resource). Separated from the
 // network so it is unit-testable. Throws on non-JSON, invalid JSON, or a non-LARA shape.
 export function parseActivityResource(fetched: FetchedBody): Activity {
-  if (!fetched.contentType.includes("application/json")) throw new Error("non-JSON resource");
+  // Compare the bare MIME type (drop any ";charset=…" params) so "application/json; charset=utf-8" passes
+  // but a lookalike like "application/jsonp" does not.
+  const mimeType = fetched.contentType.split(";")[0].trim().toLowerCase();
+  if (mimeType !== "application/json") throw new Error("non-JSON resource");
   let raw: any;
   try {
     raw = JSON.parse(fetched.body);
   } catch (e) {
     throw new Error("resource is not valid JSON");
   }
-  if (typeof raw !== "object" || raw === null || !("pages" in raw || raw.version === 1)) {
-    throw new Error("not a LARA resource");
-  }
-  return (raw.version === 1 ? convertLegacyResource(raw) : raw) as Activity;
+  if (typeof raw !== "object" || raw === null) throw new Error("not a LARA resource");
+  // A v1 legacy resource is validated + normalized by convertLegacyResource; a v2 resource must already
+  // carry a `pages` ARRAY (getVisiblePages assumes it) — a missing/mis-typed `pages` is not a LARA resource.
+  const isLegacy = raw.version === 1;
+  if (!isLegacy && !Array.isArray(raw.pages)) throw new Error("not a LARA resource");
+  return (isLegacy ? convertLegacyResource(raw) : raw) as Activity;
 }
 
 interface CacheEntry {

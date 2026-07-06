@@ -7,7 +7,7 @@
 //     They self-SKIP when FIRESTORE_EMULATOR_HOST is unset, and run under:
 //       firebase emulators:exec --only firestore --project report-service-dev "npx jest chat-tutor"
 import * as admin from "firebase-admin";
-import { extractUnit, processAndDrain, acquireLock, DrainContext } from "./drain";
+import { extractUnit, buildLogBatchEnvelope, processAndDrain, acquireLock, DrainContext } from "./drain";
 
 // A minimal QueryDocumentSnapshot stand-in for extractUnit (it only calls .get("kind") + reads .id/.docs).
 const fakeSnap = (id: string, kind: string) =>
@@ -31,6 +31,25 @@ describe("extractUnit (coalescing)", () => {
     const u = extractUnit(logs);
     expect(u.kind).toBe("log");
     expect(u.docs).toHaveLength(20);
+  });
+});
+
+// A fake snapshot whose .data() returns a log doc (buildLogBatchEnvelope reads .data()).
+const fakeLogSnap = (data: any) => ({ data: () => data } as any);
+
+describe("buildLogBatchEnvelope", () => {
+  it("emits valid JSON for a normal log run", () => {
+    const env = buildLogBatchEnvelope([fakeLogSnap({ action: "change", value: 3, data: { a: 1 } })]);
+    expect(() => JSON.parse(env)).not.toThrow();
+    expect(JSON.parse(env).type).toBe("activity_log");
+  });
+
+  it("stays valid JSON AND bounded when a huge `data` payload blows past the cap", () => {
+    const env = buildLogBatchEnvelope([fakeLogSnap({ action: "change", data: { blob: "x".repeat(50_000) } })]);
+    // must not cut mid-token: still parseable, and clearly marked as truncated + bounded.
+    const parsed = JSON.parse(env);
+    expect(parsed.type).toBe("activity_log_truncated");
+    expect(env.length).toBeLessThan(50_000);
   });
 });
 

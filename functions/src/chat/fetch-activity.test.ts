@@ -77,8 +77,17 @@ describe("parseActivityResource shape checks", () => {
       .toThrow(/not valid JSON/);
   });
 
+  it("rejects a lookalike content-type (application/jsonp)", () => {
+    expect(() => parseActivityResource({ contentType: "application/jsonp", body: "{}" })).toThrow(/non-JSON/);
+  });
+
   it("rejects JSON that is not a LARA resource (no pages, not v1)", () => {
     expect(() => parseActivityResource({ contentType: "application/json", body: JSON.stringify({ foo: 1 }) }))
+      .toThrow(/not a LARA resource/);
+  });
+
+  it("rejects a v2 resource whose `pages` is not an array", () => {
+    expect(() => parseActivityResource({ contentType: "application/json", body: JSON.stringify({ version: 2, pages: "nope" }) }))
       .toThrow(/not a LARA resource/);
   });
 
@@ -141,6 +150,13 @@ describe("fetchWithGuards", () => {
 
   it("enforces the size cap on the text fallback path", async () => {
     (global as any).fetch = jest.fn(async () => textResponse("x".repeat(50), { contentType: "application/json" }));
+    await expect(fetchWithGuards("https://authoring.concord.org/x.json", { timeoutMs: 1000, maxBytes: 10 }))
+      .rejects.toThrow(/size cap/);
+  });
+
+  it("caps the text fallback path by BYTES, not UTF-16 code units", async () => {
+    // 5 "€" = 5 code units but 15 bytes; a code-unit check (5 <= 10) would wrongly pass.
+    (global as any).fetch = jest.fn(async () => textResponse("€".repeat(5), { contentType: "application/json" }));
     await expect(fetchWithGuards("https://authoring.concord.org/x.json", { timeoutMs: 1000, maxBytes: 10 }))
       .rejects.toThrow(/size cap/);
   });

@@ -120,6 +120,13 @@ describe("chat rules: create whitelisting", () => {
     delete msg.createdAt;
     await firebase.assertFails(anon.firestore().collection(messages).add(msg));
   });
+
+  it("DENIES a createdAt of a non-orderable type (string would wedge the drain's orderBy)", async () => {
+    const { messages } = chatPaths();
+    await firebase.assertFails(anon.firestore().collection(messages).add({
+      ...wellFormedUserMsg({ run_key: RUN_KEY }), createdAt: "2026-01-01",
+    }));
+  });
 });
 
 describe("chat read path: owner fields required on function-written docs", () => {

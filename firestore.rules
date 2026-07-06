@@ -174,9 +174,13 @@ service cloud.firestore {
       // whitelisted payload keys only. Rejects kind:'assistant' (Admin-only) and any server-owned field.
       return studentWorkCreate()
         && (request.resource.data.kind == 'user' || request.resource.data.kind == 'log')
-        // require createdAt: the function's drain orders by it, and a doc lacking createdAt is excluded
-        // from that orderBy — so an omitted createdAt would silently burn a lock cycle with no reply.
+        // require createdAt AND constrain it to an orderable type: the function's drain orders by it, so a
+        // doc that omits createdAt (excluded from that orderBy) or carries a non-orderable type (string/map/
+        // list) would silently burn a lock cycle with no reply, or wedge ordering for the conversation.
         && ('createdAt' in request.resource.data)
+        && (request.resource.data.createdAt is timestamp
+            || request.resource.data.createdAt is int
+            || request.resource.data.createdAt is float)
         && request.resource.data.keys().hasOnly(
              ['run_key', 'platform_user_id', 'platform_id', 'context_id',
               'kind', 'text', 'createdAt', 'activityUrl', 'activityId', 'pageId',

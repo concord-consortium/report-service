@@ -97,7 +97,7 @@ function composePagePrompt(genericText: string, pageContextText: string, simFrag
 
 // wrap forwarded logs as delimited developer-role telemetry so student-authored fields inside
 // are DATA, not instructions. A coalesced run goes in as one batch envelope.
-function buildLogBatchEnvelope(docs: MsgSnap[]): string {
+export function buildLogBatchEnvelope(docs: MsgSnap[]): string {
   const events = docs.map(d => {
     const x = d.data();
     return {
@@ -110,9 +110,15 @@ function buildLogBatchEnvelope(docs: MsgSnap[]): string {
     };
   });
   const json = JSON.stringify(events.length === 1 ? events[0] : { type: "activity_log_batch", events });
-  // bound the request size — arbitrary client `data` (up to the 1 MB Firestore doc cap) must
-  // not produce an oversized OpenAI request.
-  return json.length > MAX_LOG_ENVELOPE_CHARS ? json.slice(0, MAX_LOG_ENVELOPE_CHARS) + "…[truncated]" : json;
+  if (json.length <= MAX_LOG_ENVELOPE_CHARS) return json;
+  // bound the request size — arbitrary client `data` (up to the 1 MB Firestore doc cap) must not produce
+  // an oversized OpenAI request. Wrap the capped slice as a JSON string VALUE so the envelope stays valid
+  // JSON (a raw slice could cut mid-token), while remaining clearly marked + bounded.
+  return JSON.stringify({
+    type: "activity_log_truncated",
+    note: "log payload exceeded the size cap; content truncated",
+    preview: json.slice(0, MAX_LOG_ENVELOPE_CHARS),
+  });
 }
 
 // Take the next processing unit off the ordered pending list: a lone user message, or the leading run of
