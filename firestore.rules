@@ -153,6 +153,51 @@ service cloud.firestore {
 
 
     //
+    //  -----------  Chat  -------------
+    //
+    // Browser writes are governed exactly like student work (studentWorkCreate/Read); the report-service
+    // function writes via the Admin SDK, which bypasses these rules. studentWorkCreate() validates
+    // owner IDENTITY but does not whitelist fields or constrain `kind`, so raw use would let a client write
+    // server-owned lock fields or forge a kind:'assistant' tutor reply. So the chat block adds
+    // field-whitelisting create helpers.
+
+    function chatParentCreate() {
+      // owner fields ONLY — rejects status / lockedAt / lastProcessedCreatedAt / lastProcessedMessageId /
+      // conversationId / promptInstalled (all Admin-written). hasOnly() permits a subset of the listed keys.
+      return studentWorkCreate()
+        && request.resource.data.keys().hasOnly(
+             ['run_key', 'platform_user_id', 'platform_id', 'context_id']);
+    }
+
+    function chatMessageCreate() {
+      // kind:'user' (typed message) or kind:'log' (forwarded interactive telemetry) +
+      // whitelisted payload keys only. Rejects kind:'assistant' (Admin-only) and any server-owned field.
+      return studentWorkCreate()
+        && (request.resource.data.kind == 'user' || request.resource.data.kind == 'log')
+        // require createdAt: the function's drain orders by it, and a doc lacking createdAt is excluded
+        // from that orderBy — so an omitted createdAt would silently burn a lock cycle with no reply.
+        && ('createdAt' in request.resource.data)
+        && request.resource.data.keys().hasOnly(
+             ['run_key', 'platform_user_id', 'platform_id', 'context_id',
+              'kind', 'text', 'createdAt', 'activityUrl', 'activityId', 'pageId',
+              'sequenceTitle', 'activityTitle', 'activityIndex', 'activityCount',
+              'interactive_id', 'interactive_url', 'action', 'value', 'data']);
+    }
+
+    match /sources/{source}/chats/{key}/activities/{activityId}/pages/{pageId} {
+      allow read:   if studentWorkRead();      // parent must carry owner fields to be readable
+      allow create: if chatParentCreate();     // owner fields only — no server-owned fields
+      // no client update — lock/cursor/conversation fields are Admin-written (Admin bypasses rules)
+
+      match /messages/{messageId} {
+        allow read:   if studentWorkRead();     // Admin-written assistant docs must carry owner fields
+        allow create: if chatMessageCreate();   // kind:'user' + whitelisted fields only
+        // no client update/delete; assistant docs are Admin-written (bypass create rules)
+      }
+    }
+
+
+    //
     //  -----------  User Settings -------------
     //
 
