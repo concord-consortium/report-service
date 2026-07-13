@@ -1,0 +1,10 @@
+<div class="font-bold my-2">
+  <.breadcrumbs previous={[{"Reports", ~p"/reports"}]} current="All CLI Tokens" />
+</div>
+
+<div :if={length(@tokens) > 0}>
+  <.pager page={@page} total_pages={@total_pages} path_fun={&all_tokens_path/1} label="pagination top" />
+  <.token_table tokens={@tokens} caption="All active CLI access tokens" include_user={true} />
+  <.pager page={@page} total_pages={@total_pages} path_fun={&all_tokens_path/1} label="pagination bottom" />
+</div>
+<div :if={length(@tokens) == 0} class="my-4 text-sm">No active tokens.</div>
