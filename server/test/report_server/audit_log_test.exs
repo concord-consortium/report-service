@@ -163,6 +163,47 @@ defmodule ReportServer.AuditLogTest do
     end
   end
 
+  describe "list_entries_paginated/1" do
+    test "orders rows sharing an inserted_at deterministically so pages never overlap or drop rows" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+
+      # 30 rows (> one 25-row page) all stamped with the same second, so inserted_at
+      # alone cannot break the tie between them.
+      for _ <- 1..30 do
+        {:ok, _} =
+          AuditLog.create_entry(%{
+            event: "download_url_issued",
+            source: "api",
+            data_type: "run_csv",
+            user_id: user.id,
+            report_run_id: report_run.id
+          })
+      end
+
+      same_time = ~U[2026-07-13 12:00:00Z]
+      Repo.update_all(DataAccessLogEntry, set: [inserted_at: same_time])
+
+      page1 = AuditLog.list_entries_paginated(1)
+      page2 = AuditLog.list_entries_paginated(2)
+
+      ids1 = Enum.map(page1.items, & &1.id)
+      ids2 = Enum.map(page2.items, & &1.id)
+
+      assert length(ids1) == 25
+      assert length(ids2) == 5
+
+      # No id appears on both pages and every row is reachable exactly once.
+      assert MapSet.disjoint?(MapSet.new(ids1), MapSet.new(ids2))
+      assert Enum.sort(ids1 ++ ids2) == Enum.sort(Repo.all(from(e in DataAccessLogEntry, select: e.id)))
+
+      # Ordering is stable: newest id first, within and across pages.
+      assert ids1 == Enum.sort(ids1, :desc)
+      assert ids2 == Enum.sort(ids2, :desc)
+      assert List.last(ids1) > List.first(ids2)
+    end
+  end
+
   test "the context exposes no update or delete functions" do
     exported = ReportServer.AuditLog.__info__(:functions) |> Keyword.keys() |> Enum.uniq()
 

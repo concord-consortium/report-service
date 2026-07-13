@@ -13,23 +13,6 @@ defmodule ReportServer.Reports do
   def get_root_path(), do: "/#{@root_slug}"
 
   @doc """
-  Returns the list of all report_runs.
-
-  ## Examples
-
-      iex> list_all_report_runs()
-      [%ReportRun{}, ...]
-
-  """
-  def list_all_report_runs do
-    query = from r in ReportRun,
-      order_by: [desc: r.inserted_at],
-      preload: [:user]
-
-    Repo.all(query)
-  end
-
-  @doc """
   Returns the list of all report_runs for a user.
 
   ## Examples
@@ -71,12 +54,12 @@ defmodule ReportServer.Reports do
 
   """
   def list_user_report_runs_paginated(user = %User{}, page) do
-    from(r in ReportRun, where: r.user_id == ^user.id, order_by: [desc: r.inserted_at], preload: [:user])
+    from(r in ReportRun, where: r.user_id == ^user.id, order_by: [desc: r.inserted_at, desc: r.id], preload: [:user])
     |> Pagination.paginate(page)
   end
 
   def list_all_report_runs_paginated(page) do
-    from(r in ReportRun, order_by: [desc: r.inserted_at], preload: [:user])
+    from(r in ReportRun, order_by: [desc: r.inserted_at, desc: r.id], preload: [:user])
     |> Pagination.paginate(page)
   end
 

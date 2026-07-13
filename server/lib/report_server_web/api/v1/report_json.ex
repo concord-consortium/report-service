@@ -1,4 +1,5 @@
 defmodule ReportServerWeb.Api.V1.ReportJSON do
+  alias ReportServer.AthenaDB
   alias ReportServer.Reports.{ReportFilter, ReportRun}
   alias ReportServerWeb.Api.V1.Params
 
@@ -14,7 +15,7 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
   def show(report_run), do: run_json(report_run)
 
   def download(download_url, filename) do
-    %{download_url: download_url, filename: filename, expires_in_seconds: 600}
+    %{download_url: download_url, filename: filename, expires_in_seconds: AthenaDB.download_url_ttl_seconds()}
   end
 
   defp next_page_token(report_runs, limit) when length(report_runs) < limit, do: nil

@@ -49,7 +49,7 @@ defmodule ReportServer.AuditLog do
   end
 
   def list_entries_paginated(page) do
-    from(e in DataAccessLogEntry, order_by: [desc: e.inserted_at], preload: [:user])
+    from(e in DataAccessLogEntry, order_by: [desc: e.inserted_at, desc: e.id], preload: [:user])
     |> Pagination.paginate(page)
   end
 
