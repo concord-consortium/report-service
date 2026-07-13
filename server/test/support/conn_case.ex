@@ -31,7 +31,21 @@ defmodule ReportServerWeb.ConnCase do
     end
   end
 
-  setup _tags do
+  setup tags do
+    ReportServer.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
+  end
+
+  @doc """
+  Setup helper that registers a user with an API token and puts the raw token in the
+  request's Authorization header.
+
+      setup :register_and_put_bearer_token
+  """
+  def register_and_put_bearer_token(%{conn: conn}) do
+    user = ReportServer.AccountsFixtures.user_fixture()
+    {raw_token, api_token} = ReportServer.AccountsFixtures.api_token_fixture(user)
+    conn = Plug.Conn.put_req_header(conn, "authorization", "Bearer #{raw_token}")
+    %{conn: conn, user: user, raw_token: raw_token, api_token: api_token}
   end
 end

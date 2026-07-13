@@ -22,7 +22,12 @@ defmodule ReportServerWeb.Router do
   end
 
   pipeline :api do
-    plug :accepts, ["json"]
+    plug :force_json
+  end
+
+  pipeline :api_authenticated do
+    plug :force_json
+    plug ReportServerWeb.Api.AuthPlug
   end
 
   scope "/", ReportServerWeb do
@@ -43,6 +48,20 @@ defmodule ReportServerWeb.Router do
     live_session :codap_plugin, layout: false, root_layout: {ReportServerWeb.Layouts, :codap_plugin} do
       live "/codap-plugin", CodapPluginLive.Index, :index
     end
+  end
+
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api_authenticated
+
+    get "/ping", PingController, :ping
+  end
+
+  # must stay below every real /api/v1 route: unknown API paths render the contract 404 rather
+  # than raising NoRouteError, which Phoenix renders as HTML for clients that send no Accept header
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api
+
+    match :*, "/*path", FallbackController, :not_found
   end
 
   scope "/old-reports", ReportServerWeb do
@@ -85,6 +104,11 @@ defmodule ReportServerWeb.Router do
       live_dashboard "/dashboard", metrics: ReportServerWeb.Telemetry
     end
   end
+
+  # the API ignores Accept and always speaks JSON: `plug :accepts, ["json"]` would raise
+  # Phoenix.NotAcceptableError on an explicit non-JSON Accept header before the auth plug or
+  # catch-all could render the contract error shape
+  defp force_json(conn, _opts), do: put_format(conn, "json")
 
   # add a CSP allowing embedding only from concord.org domains
   defp allow_iframe(conn, _opts) do
