@@ -361,8 +361,8 @@ defmodule ReportServerWeb.CustomComponents do
 
     ~H"""
     <nav :if={@total_pages > 1} aria-label="pagination" class="flex items-center gap-1 my-4 text-sm">
-      <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border rounded hover:bg-zinc-200">Previous</.link>
-      <span :if={@page == 1} class="px-2 py-1 border rounded text-zinc-400">Previous</span>
+      <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Previous</.link>
+      <span :if={@page == 1} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Previous</span>
       <%= for item <- @items do %>
         <span :if={item == :ellipsis} aria-hidden="true" class="px-1">&#8230;</span>
         <.link
@@ -370,13 +370,13 @@ defmodule ReportServerWeb.CustomComponents do
           patch={@path_fun.(item)}
           aria-label={"Page #{item}"}
           aria-current={if item == @page, do: "page"}
-          class={["px-2 py-1 border rounded", item == @page && "bg-dark-orange text-white border-dark-orange", item != @page && "hover:bg-zinc-200"]}
+          class={["px-2 py-1 border rounded", item == @page && "bg-dark-orange text-white border-dark-orange", item != @page && "border-zinc-500 bg-white text-zinc-800 hover:bg-zinc-200"]}
         >
           <%= item %>
         </.link>
       <% end %>
-      <.link :if={@page < @total_pages} patch={@path_fun.(@page + 1)} aria-label="Next page" class="px-2 py-1 border rounded hover:bg-zinc-200">Next</.link>
-      <span :if={@page == @total_pages} class="px-2 py-1 border rounded text-zinc-400">Next</span>
+      <.link :if={@page < @total_pages} patch={@path_fun.(@page + 1)} aria-label="Next page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Next</.link>
+      <span :if={@page == @total_pages} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Next</span>
     </nav>
     """
   end

@@ -2287,12 +2287,14 @@ def pager(assigns) do
   ~H"""
   <%!-- disabled endpoints are plain spans WITHOUT aria-disabled (not a global ARIA state; a
        generic-role span doesn't permit it and screen readers ignore it there — the inactive
-       text-zinc-400 styling is exempt from contrast as an inactive component). Active page
-       uses dark-orange: white on orange #ea6d2f is 3.12:1 (fails AA); on #c14d10 it is
-       4.84:1. aria-labels give SR users page semantics beyond bare numbers. --%>
+       text-zinc-500 styling is exempt from contrast as an inactive component). Unselected
+       buttons are white with a border-zinc-500 boundary (>= 3:1 vs white per WCAG 1.4.11) and
+       text-zinc-800; the disabled endpoints use a lighter border-zinc-300. Active page uses
+       dark-orange: white on orange #ea6d2f is 3.12:1 (fails AA); on #c14d10 it is 4.84:1.
+       aria-labels give SR users page semantics beyond bare numbers. --%>
   <nav :if={@total_pages > 1} aria-label="pagination" class="flex items-center gap-1 my-4 text-sm">
-    <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border rounded hover:bg-zinc-200">Previous</.link>
-    <span :if={@page == 1} class="px-2 py-1 border rounded text-zinc-400">Previous</span>
+    <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Previous</.link>
+    <span :if={@page == 1} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Previous</span>
     <%= for item <- @items do %>
       <span :if={item == :ellipsis} aria-hidden="true" class="px-1">&#8230;</span>
       <.link
@@ -2300,13 +2302,13 @@ def pager(assigns) do
         patch={@path_fun.(item)}
         aria-label={"Page #{item}"}
         aria-current={if item == @page, do: "page"}
-        class={["px-2 py-1 border rounded", item == @page && "bg-dark-orange text-white border-dark-orange", item != @page && "hover:bg-zinc-200"]}
+        class={["px-2 py-1 border rounded", item == @page && "bg-dark-orange text-white border-dark-orange", item != @page && "border-zinc-500 bg-white text-zinc-800 hover:bg-zinc-200"]}
       >
         <%= item %>
       </.link>
     <% end %>
-    <.link :if={@page < @total_pages} patch={@path_fun.(@page + 1)} aria-label="Next page" class="px-2 py-1 border rounded hover:bg-zinc-200">Next</.link>
-    <span :if={@page == @total_pages} class="px-2 py-1 border rounded text-zinc-400">Next</span>
+    <.link :if={@page < @total_pages} patch={@path_fun.(@page + 1)} aria-label="Next page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Next</.link>
+    <span :if={@page == @total_pages} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Next</span>
   </nav>
   """
 end
