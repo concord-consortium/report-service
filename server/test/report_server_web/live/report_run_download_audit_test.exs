@@ -8,8 +8,9 @@ defmodule ReportServerWeb.ReportRunDownloadAuditTest do
   alias ReportServer.PostProcessing.Job
   alias ReportServer.Repo
   alias ReportServer.Reports
-  alias ReportServer.Reports.ReportFilter
+  alias ReportServer.Reports.{Report, ReportFilter}
   alias ReportServerWeb.ReportLive.PostProcessingComponent
+  alias ReportServerWeb.ReportRunLive.Show
 
   setup do
     on_exit(fn -> Application.delete_env(:report_server, :athena_db) end)
@@ -89,21 +90,21 @@ defmodule ReportServerWeb.ReportRunDownloadAuditTest do
       assert entry.report_run_id == run.id
     end
 
-    test "a portal (MySQL) report download writes no audit row", %{conn: conn} do
+    test "a portal (MySQL) report download does not touch the audit log", %{conn: _conn} do
+      # the portal download path (download_report with a filetype) runs the report query and
+      # streams the file itself — it never calls AuditLog. Drive the handler directly with a
+      # stubbed portal report so the test does not depend on a reachable portal DB.
       user = user_fixture()
+      {:ok, run} = Reports.create_report_run(%{user_id: user.id, report_slug: "teacher-status"})
+      run = %{run | user: user}
 
-      {:ok, run} =
-        Reports.create_report_run(%{
-          user_id: user.id,
-          report_slug: "teacher-status",
-          report_filter: %ReportFilter{filters: [:cohort], cohort: [1]},
-          report_filter_values: %{"cohort" => %{"1" => "Cohort One"}}
-        })
+      report = %Report{type: :portal, slug: "teacher-status", get_query: fn _filter, _user -> {:error, "stubbed"} end}
 
-      {:ok, view, _html} = live(log_in_conn(conn, user), ~p"/reports/runs/#{run.id}")
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{report: report, report_run: run, sort: [], downloading: nil, download_task_ref: nil, __changed__: %{}}
+      }
 
-      render_hook(view, "download_report", %{"filetype" => "csv"})
-
+      assert {:noreply, _socket} = Show.handle_event("download_report", %{"filetype" => "csv"}, socket)
       assert entry_count() == 0
     end
   end
