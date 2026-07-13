@@ -7,7 +7,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.PortalDbs
   alias ReportServer.AthenaDB
   alias ReportServer.Reports
-  alias ReportServer.Reports.{Report, ReportQuery, ReportRun, Tree}
+  alias ReportServer.Reports.{AthenaRunOps, Report, ReportQuery, ReportRun, Tree}
   alias ReportServerWeb.ReportLive.PostProcessingComponent
 
   @row_limit 100
@@ -165,26 +165,15 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:error, error}
   end
 
-  defp run_report(report = %Report{type: :athena}, report_run = %ReportRun{id: report_run_id, athena_query_id: nil}, _sort_columns, _row_limit, live_view_pid) do
-    with {:ok, query} <- report.get_query.(report_run.report_filter, report_run.user),
-         {:ok, sql} <- ReportQuery.get_sql(query),
-         {:ok, athena_query_id, athena_query_state} <- AthenaDB.query(sql, report_run_id, report_run.user),
-         {:ok, _report_run} <- Reports.update_report_run(report_run, %{athena_query_id: athena_query_id, athena_query_state: athena_query_state}) do
+  defp run_report(%Report{type: :athena}, report_run = %ReportRun{athena_query_id: nil}, _sort_columns, _row_limit, live_view_pid) do
+    case AthenaRunOps.start_query(report_run) do
+      {:ok, _report_run} ->
+        send(live_view_pid, :poll_query_state)
+        {:ok, %{report_results: nil}}
 
-      send(live_view_pid, :poll_query_state)
-
-      # return nil - the template will use the report_run to provide status updates
-      {:ok, %{report_results: nil}}
-
-    else
       {:error, error} ->
         Logger.error(error)
         {:error, error}
-
-      error ->
-        # note: this is a catch-all for any errors that may occur
-        Logger.error("Failed to run Athena report: #{inspect(error)}")
-        {:error, "Unknown error: failed to run Athena report"}
     end
   end
 
@@ -227,31 +216,22 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:error, "Unknown file type or malformed data: #{filetype}"}
   end
 
-  defp check_query_state(report_run = %ReportRun{athena_query_id: athena_query_id}, live_view_pid) do
-    if poll_query_state?(report_run) do
-      with {:ok, athena_query_state, athena_result_url} <- AthenaDB.get_query_info(athena_query_id),
-           {:ok, report_run} <- Reports.update_report_run(report_run, %{athena_query_state: athena_query_state, athena_result_url: athena_result_url}) do
+  defp check_query_state(report_run = %ReportRun{}, live_view_pid) do
+    case AthenaRunOps.refresh_query_state(report_run) do
+      {:ok, report_run} ->
         maybe_poll_query_state(report_run, live_view_pid)
         report_run
-      else
-        _ ->
-          report_run
-      end
-    else
-      report_run
+
+      {:error, _} ->
+        report_run
     end
   end
 
   defp maybe_poll_query_state(report_run = %ReportRun{}, live_view_pid) do
-    if poll_query_state?(report_run) do
+    if AthenaRunOps.non_terminal?(report_run) do
       Process.send_after(live_view_pid, :poll_query_state, 1000)
     end
   end
-
-  defp poll_query_state?(%ReportRun{athena_query_state: nil}), do: true
-  defp poll_query_state?(%ReportRun{athena_query_state: "queued"}), do: true
-  defp poll_query_state?(%ReportRun{athena_query_state: "running"}), do: true
-  defp poll_query_state?(_), do: false
 
   defp get_download_filename(filetype, report_run = %ReportRun{}), do: "#{report_run.report_slug}-run-#{report_run.id}.#{filetype}"
 

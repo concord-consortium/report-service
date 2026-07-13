@@ -48,4 +48,17 @@ defmodule ReportServerWeb.ConnCase do
     conn = Plug.Conn.put_req_header(conn, "authorization", "Bearer #{raw_token}")
     %{conn: conn, user: user, raw_token: raw_token, api_token: api_token}
   end
+
+  @doc """
+  Puts a logged-in portal session (as the given user) onto the conn so LiveView tests can
+  mount the authenticated report views.
+  """
+  def log_in_conn(conn, user) do
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> Plug.Conn.put_session("access_token", "test-access-token")
+    |> Plug.Conn.put_session("expires", System.os_time(:second) + 24 * 60 * 60)
+    |> Plug.Conn.put_session("portal_url", "https://#{user.portal_server}")
+    |> Plug.Conn.put_session("user", user)
+  end
 end
