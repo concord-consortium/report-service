@@ -12,6 +12,7 @@ defmodule ReportServer.Accounts.ApiToken do
     field :revoked_at, :utc_datetime
 
     belongs_to :user, User, foreign_key: :user_id
+    belongs_to :revoked_by, User, foreign_key: :revoked_by_user_id
 
     timestamps(type: :utc_datetime)
   end
@@ -19,7 +20,7 @@ defmodule ReportServer.Accounts.ApiToken do
   @doc false
   def changeset(api_token, attrs) do
     api_token
-    |> cast(attrs, [:user_id, :token_hash, :label, :last_used_at, :revoked_at])
+    |> cast(attrs, [:user_id, :token_hash, :label, :last_used_at, :revoked_at, :revoked_by_user_id])
     |> validate_required([:user_id, :token_hash])
     |> unique_constraint(:token_hash)
   end
