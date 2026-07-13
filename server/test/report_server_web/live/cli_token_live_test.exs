@@ -159,8 +159,8 @@ defmodule ReportServerWeb.CliTokenLiveTest do
     assert html =~ "You have no active tokens yet."
   end
 
-  test "an unauthenticated visit redirects instead of crashing", %{conn: conn} do
+  test "an unauthenticated visit redirects to login preserving the return path", %{conn: conn} do
     assert {:error, {:redirect, %{to: to}}} = live(conn, ~p"/reports/cli-token")
-    assert to in ["/reports", "/auth/login?return_to=/reports/cli-token"]
+    assert to == "/auth/login?return_to=/reports/cli-token"
   end
 end

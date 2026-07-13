@@ -104,7 +104,7 @@ defmodule ReportServer.Accounts do
   end
   def verify_api_token(_), do: :error
 
-  def revoke_api_token(api_token = %ApiToken{}, revoked_by_user_id) do
+  def revoke_api_token(api_token = %ApiToken{}, revoked_by_user_id) when is_integer(revoked_by_user_id) do
     now = DateTime.utc_now(:second)
 
     revoke_query =
@@ -121,7 +121,7 @@ defmodule ReportServer.Accounts do
     Repo.all(
       from t in ApiToken,
         where: t.user_id == ^user_id and is_nil(t.revoked_at),
-        order_by: [desc: t.inserted_at]
+        order_by: [desc: t.inserted_at, desc: t.id]
     )
   end
 

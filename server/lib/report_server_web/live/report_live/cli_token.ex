@@ -16,9 +16,13 @@ defmodule ReportServerWeb.ReportLive.CliToken do
     {:ok, socket}
   end
 
+  # Only reached when not logged in (this page is open to all report users, so there is no
+  # logged-in-but-unauthorized case to reject here). ReportLive.Auth has already attached a
+  # handle_params hook that redirects to /auth/login?return_to=<path>; return without
+  # redirecting so that hook runs and the original deep link is preserved as return_to.
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, redirect(socket, to: "/reports")}
+    {:ok, socket}
   end
 
   @impl true

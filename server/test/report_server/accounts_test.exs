@@ -87,6 +87,16 @@ defmodule ReportServer.AccountsTest do
 
       assert :error == Accounts.verify_api_token(raw_token)
     end
+
+    test "requires an integer actor id, refusing to write an unattributed revoke" do
+      user = user_fixture()
+      {_raw, api_token} = api_token_fixture(user)
+
+      assert_raise FunctionClauseError, fn -> Accounts.revoke_api_token(api_token, nil) end
+
+      # the guard fires before any write, so the token is untouched
+      assert is_nil(Repo.get!(ApiToken, api_token.id).revoked_at)
+    end
   end
 
   describe "list_active_api_tokens/1" do
@@ -103,6 +113,19 @@ defmodule ReportServer.AccountsTest do
 
       ids = Accounts.list_active_api_tokens(user.id) |> Enum.map(& &1.id)
       assert ids == [newer.id, older.id]
+    end
+
+    test "breaks inserted_at ties on id for a stable newest-first order" do
+      user = user_fixture()
+      {_r1, a} = api_token_fixture(user, "a")
+      {_r2, b} = api_token_fixture(user, "b")
+      {_r3, c} = api_token_fixture(user, "c")
+      # collapse all three to the same second so inserted_at alone cannot order them
+      same = ~U[2026-07-13 12:00:00Z]
+      Repo.update_all(from(t in ApiToken, where: t.user_id == ^user.id), set: [inserted_at: same])
+
+      ids = Accounts.list_active_api_tokens(user.id) |> Enum.map(& &1.id)
+      assert ids == Enum.sort([a.id, b.id, c.id], :desc)
     end
   end
 
