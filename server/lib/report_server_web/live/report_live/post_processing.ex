@@ -4,7 +4,7 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
   require Logger
 
   alias Phoenix.PubSub
-  alias ReportServer.AthenaDB
+  alias ReportServer.AuditLog
   alias ReportServer.PostProcessing.{JobServer, JobSupervisor}
   alias ReportServer.Reports.{Report, ReportRun}
 
@@ -167,15 +167,29 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
   end
 
   @impl true
-  def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{report_run: report_run, jobs: jobs}}) do
+  def handle_event("download", params = %{"type" => type}, socket = %{assigns: %{report_run: report_run, jobs: jobs, user: user}}) do
     presigned_url = case type do
       "job" ->
         job = Enum.find(jobs, fn %{id: id} -> "#{id}" == params["jobId"] end)
-        filename = "#{report_run.report_slug}-run-#{report_run.id}-job-#{job.id}.csv"
 
-        case AthenaDB.get_download_url(job.result, filename) do
-          {:ok, download_url} -> download_url
-          _ -> nil
+        if job && job.result do
+          filename = "#{report_run.report_slug}-run-#{report_run.id}-job-#{job.id}.csv"
+
+          case AuditLog.issue_download_url("web", "job_result", report_run, user.id, fn ->
+                 athena_db().get_download_url(job.result, filename)
+               end, job_id: job.id) do
+            {:ok, download_url} ->
+              download_url
+
+            {:error, :audit, _reason} ->
+              send(self(), {:put_flash, :error, "Unable to record this download in the access log, so the download was not started. Please try again."})
+              nil
+
+            _ ->
+              nil
+          end
+        else
+          nil
         end
 
       _ -> nil
@@ -197,5 +211,7 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
       false
     end
   end
+
+  defp athena_db(), do: Application.get_env(:report_server, :athena_db, ReportServer.AthenaDB)
 
 end

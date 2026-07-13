@@ -4,8 +4,8 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   require Logger
 
   alias ReportServer.Accounts.User
+  alias ReportServer.AuditLog
   alias ReportServer.PortalDbs
-  alias ReportServer.AthenaDB
   alias ReportServer.Reports
   alias ReportServer.Reports.{AthenaRunOps, Report, ReportQuery, ReportRun, Tree}
   alias ReportServerWeb.ReportLive.PostProcessingComponent
@@ -140,6 +140,13 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:noreply, socket}
   end
 
+  # the post-processing component flashes via its parent: a LiveComponent's own flash never
+  # renders in the parent layout
+  @impl true
+  def handle_info({:put_flash, kind, msg}, socket) do
+    {:noreply, put_flash(socket, kind, msg)}
+  end
+
   defp get_row_count(_report = %Report{type: :athena}, _report_run, _user) do
     {:ok, %{row_count: 0}}
   end
@@ -255,21 +262,30 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:noreply, socket}
   end
 
-  defp download_athena_report(%{assigns: %{report_run: report_run}} = socket) do
+  defp download_athena_report(%{assigns: %{report_run: report_run, user: user}} = socket) do
     filename = get_download_filename("csv", report_run)
 
     with {:ok, athena_result_url} <- get_athena_result_url(report_run),
-         {:ok, download_url} = AthenaDB.get_download_url(athena_result_url, filename) do
+         {:ok, download_url} <- AuditLog.issue_download_url("web", "run_csv", report_run, user.id, fn ->
+           athena_db().get_download_url(athena_result_url, filename)
+         end) do
       socket = socket |> push_event("download_report", %{download_url: download_url, filename: filename})
       {:noreply, socket}
     else
+      {:error, :presign, error} ->
+        {:noreply, put_flash(socket, :error, error)}
+
+      {:error, :audit, _reason} ->
+        {:noreply, put_flash(socket, :error, "Unable to record this download in the access log, so the download was not started. Please try again.")}
+
       {:error, error} ->
-        socket = put_flash(socket, :error, error)
-        {:noreply, socket}
+        {:noreply, put_flash(socket, :error, error)}
     end
   end
 
   defp get_athena_result_url(%ReportRun{athena_result_url: nil}), do: {:error, "Athena report result url not found!"}
   defp get_athena_result_url(%ReportRun{athena_result_url: athena_result_url}), do: {:ok, athena_result_url}
+
+  defp athena_db(), do: Application.get_env(:report_server, :athena_db, ReportServer.AthenaDB)
 
 end
