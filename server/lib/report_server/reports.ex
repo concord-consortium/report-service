@@ -1,6 +1,7 @@
 defmodule ReportServer.Reports do
   import Ecto.Query, warn: false
 
+  alias ReportServer.Pagination
   alias ReportServer.Repo
   alias ReportServer.Accounts.User
   alias ReportServer.Reports.ReportRun
@@ -69,6 +70,16 @@ defmodule ReportServer.Reports do
       ** (Ecto.NoResultsError)
 
   """
+  def list_user_report_runs_paginated(user = %User{}, page) do
+    from(r in ReportRun, where: r.user_id == ^user.id, order_by: [desc: r.inserted_at], preload: [:user])
+    |> Pagination.paginate(page)
+  end
+
+  def list_all_report_runs_paginated(page) do
+    from(r in ReportRun, order_by: [desc: r.inserted_at], preload: [:user])
+    |> Pagination.paginate(page)
+  end
+
   def get_report_run!(id), do: Repo.get!(ReportRun, id)
 
   @doc """

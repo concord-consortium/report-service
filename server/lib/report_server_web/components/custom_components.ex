@@ -352,4 +352,44 @@ defmodule ReportServerWeb.CustomComponents do
     if count == 1, do: word, else: word <> "s"
   end
 
+  attr :page, :integer, required: true
+  attr :total_pages, :integer, required: true
+  attr :path_fun, :any, required: true, doc: "fn page -> patch path; must return the no-param path for page 1"
+
+  def pager(assigns) do
+    assigns = assign(assigns, :items, pager_items(assigns.page, assigns.total_pages))
+
+    ~H"""
+    <nav :if={@total_pages > 1} aria-label="pagination" class="flex items-center gap-1 my-4 text-sm">
+      <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border rounded hover:bg-zinc-200">Previous</.link>
+      <span :if={@page == 1} class="px-2 py-1 border rounded text-zinc-400">Previous</span>
+      <%= for item <- @items do %>
+        <span :if={item == :ellipsis} aria-hidden="true" class="px-1">&#8230;</span>
+        <.link
+          :if={is_integer(item)}
+          patch={@path_fun.(item)}
+          aria-label={"Page #{item}"}
+          aria-current={if item == @page, do: "page"}
+          class={["px-2 py-1 border rounded", item == @page && "bg-dark-orange text-white border-dark-orange", item != @page && "hover:bg-zinc-200"]}
+        >
+          <%= item %>
+        </.link>
+      <% end %>
+      <.link :if={@page < @total_pages} patch={@path_fun.(@page + 1)} aria-label="Next page" class="px-2 py-1 border rounded hover:bg-zinc-200">Next</.link>
+      <span :if={@page == @total_pages} class="px-2 py-1 border rounded text-zinc-400">Next</span>
+    </nav>
+    """
+  end
+
+  defp pager_items(page, total_pages) do
+    [1, page - 1, page, page + 1, total_pages]
+    |> Enum.filter(&(&1 >= 1 and &1 <= total_pages))
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.reduce([1], fn [a, b], acc ->
+      acc ++ if b - a > 1, do: [:ellipsis, b], else: [b]
+    end)
+  end
+
 end
