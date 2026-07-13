@@ -56,6 +56,8 @@ defmodule ReportServerWeb.Router do
     get "/reports", ReportController, :index
     get "/reports/:id", ReportController, :show
     get "/reports/:id/download", ReportController, :download
+    get "/reports/:id/jobs", ReportJobController, :index
+    get "/reports/:id/jobs/:job_id/download", ReportJobController, :download
   end
 
   # must stay below every real /api/v1 route: unknown API paths render the contract 404 rather
