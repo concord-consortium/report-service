@@ -88,6 +88,13 @@ defmodule ReportServer.PortalDbs do
     end
   end
 
+  def has_db_connection?(server) do
+    case get_connection_string(server) do
+      {:ok, _connection_string} -> true
+      _ -> false
+    end
+  end
+
   def get_user_info(server, access_token) do
     sql = """
       SELECT

@@ -40,6 +40,8 @@ defmodule ReportServerWeb.Router do
     get "/auth/logout", AuthController, :logout
     live "/auth/callback", AuthLive.Callback, :callback
     get "/auth/save_token", AuthController, :save_token
+    get "/auth/cli", AuthCliController, :cli
+    get "/auth/cli/resume", AuthCliController, :resume
   end
 
   scope "/", ReportServerWeb do
