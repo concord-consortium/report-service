@@ -72,6 +72,54 @@ defmodule ReportServerWeb.ReportRunDownloadAuditTest do
       assert html =~ "presign failed"
       assert entry_count() == 0
     end
+
+    test "records the requesting admin when downloading another user's run", %{conn: conn} do
+      owner = user_fixture()
+      admin = user_fixture(%{portal_is_admin: true})
+      run = succeeded_run(owner, "teacher-actions")
+      start_athena_stub(%{get_download_url: fn _url, _filename -> {:ok, "https://presigned"} end})
+
+      {:ok, view, _html} = live(log_in_conn(conn, admin), ~p"/reports/runs/#{run.id}")
+      render_async(view)
+
+      render_hook(view, "download_report", %{})
+
+      entry = Repo.one!(DataAccessLogEntry)
+      assert entry.user_id == admin.id
+      assert entry.report_run_id == run.id
+    end
+
+    test "a portal (MySQL) report download writes no audit row", %{conn: conn} do
+      user = user_fixture()
+
+      {:ok, run} =
+        Reports.create_report_run(%{
+          user_id: user.id,
+          report_slug: "teacher-status",
+          report_filter: %ReportFilter{filters: [:cohort], cohort: [1]},
+          report_filter_values: %{"cohort" => %{"1" => "Cohort One"}}
+        })
+
+      {:ok, view, _html} = live(log_in_conn(conn, user), ~p"/reports/runs/#{run.id}")
+
+      render_hook(view, "download_report", %{"filetype" => "csv"})
+
+      assert entry_count() == 0
+    end
+  end
+
+  describe "flash plumbing" do
+    test "the Show LiveView renders a flash message sent by the post-processing component", %{conn: conn} do
+      user = user_fixture()
+      run = succeeded_run(user, "teacher-actions")
+
+      {:ok, view, _html} = live(log_in_conn(conn, user), ~p"/reports/runs/#{run.id}")
+      render_async(view)
+
+      send(view.pid, {:put_flash, :error, "Unable to record this download in the access log"})
+
+      assert render(view) =~ "Unable to record this download in the access log"
+    end
   end
 
   describe "post-processing job download" do
