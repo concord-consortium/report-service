@@ -3,6 +3,8 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
   import ReportServer.AccountsFixtures
 
+  alias ReportServer.AuditLog.DataAccessLogEntry
+  alias ReportServer.Repo
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportFilter, ReportQuery}
 
@@ -41,6 +43,8 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
     run
   end
+
+  defp entry_count(), do: Repo.aggregate(DataAccessLogEntry, :count)
 
   describe "GET /api/v1/reports (index)" do
     setup :register_and_put_bearer_token
@@ -267,6 +271,180 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
       reloaded = Reports.get_report_run!(run.id)
       assert reloaded.athena_query_id == "new-qid"
+    end
+  end
+
+  describe "GET /api/v1/reports/:id/download" do
+    setup :register_and_put_bearer_token
+
+    test "mints a fresh presigned url and writes exactly one audit row", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          report_slug: "student-answers",
+          report_filter: %ReportFilter{filters: [:cohort], cohort: [1]},
+          athena_query_id: "qid",
+          athena_query_state: "succeeded",
+          athena_result_url: "s3://bucket/result.csv"
+        })
+
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      start_athena_stub(%{get_download_url: fn _url, _filename -> {:ok, "https://presigned"} end})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+      body = json_response(conn, 200)
+
+      assert body == %{
+               "download_url" => "https://presigned",
+               "filename" => "student-answers-run-#{run.id}.csv",
+               "expires_in_seconds" => 600
+             }
+
+      assert entry_count() == 1
+      entry = Repo.one!(DataAccessLogEntry)
+      assert entry.source == "api"
+      assert entry.data_type == "run_csv"
+      assert entry.job_id == nil
+      assert entry.user_id == user.id
+      assert entry.report_run_id == run.id
+      assert entry.report_filter["cohort"] == [1]
+    end
+
+    test "returns 409 with the state for every non-succeeded state and writes no audit row",
+         %{raw_token: raw_token, user: user} do
+      echo = %{
+        "qid-queued" => {:ok, "queued", nil},
+        "qid-running" => {:ok, "running", nil},
+        "qid-null" => {:ok, nil, nil}
+      }
+
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      start_athena_stub(%{get_query_info: fn qid -> Map.fetch!(echo, qid) end})
+
+      cases = [
+        {%{athena_query_id: "qid-queued", athena_query_state: "queued"}, "queued"},
+        {%{athena_query_id: "qid-running", athena_query_state: "running"}, "running"},
+        {%{athena_query_id: "qid-null", athena_query_state: nil}, nil},
+        {%{athena_query_id: "qid-failed", athena_query_state: "failed"}, "failed"},
+        {%{athena_query_id: "qid-cancelled", athena_query_state: "cancelled"}, "cancelled"}
+      ]
+
+      for {attrs, expected_state} <- cases do
+        run = run_fixture(user, attrs)
+        conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+        body = json_response(conn, 409)
+        assert body["error"] == "NOT_READY"
+        assert body["athena_query_state"] == expected_state
+      end
+
+      assert entry_count() == 0
+    end
+
+    test "refreshes a running run to succeeded during download", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{athena_query_id: "qid-run", athena_query_state: "running"})
+
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      start_athena_stub(%{
+        get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv"} end,
+        get_download_url: fn _url, _filename -> {:ok, "https://presigned"} end
+      })
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+      assert json_response(conn, 200)["download_url"] == "https://presigned"
+      assert entry_count() == 1
+    end
+
+    test "self-starts a never-started run and returns 409 with the new state", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{report_slug: "student-answers"})
+
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      Application.put_env(:report_server, :report_tree, TreeStub)
+
+      Application.put_env(
+        :report_server,
+        :test_tree_report,
+        %Report{
+          type: :athena,
+          slug: "student-answers",
+          get_query: fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end
+        }
+      )
+
+      start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, "new-qid", "queued"} end})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+      body = json_response(conn, 409)
+      assert body["athena_query_state"] == "queued"
+
+      reloaded = Reports.get_report_run!(run.id)
+      assert reloaded.athena_query_id == "new-qid"
+      assert entry_count() == 0
+    end
+
+    test "releases the claim and returns 409 with a null state when self-start fails", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{report_slug: "student-answers"})
+
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      Application.put_env(:report_server, :report_tree, TreeStub)
+
+      Application.put_env(
+        :report_server,
+        :test_tree_report,
+        %Report{
+          type: :athena,
+          slug: "student-answers",
+          get_query: fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end
+        }
+      )
+
+      start_athena_stub(%{query: fn _sql, _id, _user -> {:error, "boom"} end})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+      assert json_response(conn, 409)["athena_query_state"] == nil
+
+      reloaded = Reports.get_report_run!(run.id)
+      assert reloaded.athena_query_state == nil
+      assert entry_count() == 0
+    end
+
+    test "returns 500 with no audit row when a succeeded run has no result url", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{athena_query_id: "qid", athena_query_state: "succeeded", athena_result_url: nil})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+      assert json_response(conn, 500)["error"] == "SERVER_ERROR"
+      assert entry_count() == 0
+    end
+
+    test "returns 500 with no audit row when the presign fails", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{athena_query_id: "qid", athena_query_state: "succeeded", athena_result_url: "s3://x"})
+
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      start_athena_stub(%{get_download_url: fn _url, _filename -> {:error, "presign boom"} end})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+      assert json_response(conn, 500)["error"] == "SERVER_ERROR"
+      assert entry_count() == 0
+    end
+
+    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token, user: user} do
+      other = user_fixture()
+      others_run = run_fixture(other, %{report_slug: "student-answers"})
+      portal_run = run_fixture(user, %{report_slug: "teacher-status"})
+      not_found = %{"error" => "NOT_FOUND", "message" => "Not found."}
+
+      ids = [
+        "999999999",
+        to_string(others_run.id),
+        to_string(portal_run.id),
+        "abc",
+        "123abc",
+        "-1",
+        "99999999999999999999"
+      ]
+
+      for id <- ids do
+        conn = get(authed_conn(raw_token), "/api/v1/reports/#{id}/download")
+        assert json_response(conn, 404) == not_found
+      end
     end
   end
 end
