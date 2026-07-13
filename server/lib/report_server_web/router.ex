@@ -100,6 +100,7 @@ defmodule ReportServerWeb.Router do
       live "/all-runs", ReportRunLive.Index, :all_runs
       live "/runs/:id", ReportRunLive.Show, :show
       live "/cli-token", ReportLive.CliToken, :cli_token
+      live "/audit-log", AuditLogLive.Index, :index
       live "/*path", ReportLive.Index, :index
     end
   end

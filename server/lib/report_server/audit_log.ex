@@ -3,6 +3,7 @@ defmodule ReportServer.AuditLog do
 
   require Logger
 
+  alias ReportServer.Pagination
   alias ReportServer.Repo
   alias ReportServer.AuditLog.DataAccessLogEntry
   alias ReportServer.Reports.ReportRun
@@ -45,6 +46,11 @@ defmodule ReportServer.AuditLog do
     %DataAccessLogEntry{}
     |> DataAccessLogEntry.changeset(attrs)
     |> Repo.insert()
+  end
+
+  def list_entries_paginated(page) do
+    from(e in DataAccessLogEntry, order_by: [desc: e.inserted_at], preload: [:user])
+    |> Pagination.paginate(page)
   end
 
   defp dump_filter(nil), do: nil
