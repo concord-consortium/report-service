@@ -39,4 +39,9 @@ defmodule ReportServerWeb.PagerTest do
     html = render_component(&pager/1, page: 2, total_pages: 3, path_fun: path_fun())
     refute html =~ ~s(aria-hidden="true")
   end
+
+  test "uses a custom accessible label when given one" do
+    html = render_component(&pager/1, page: 2, total_pages: 3, path_fun: path_fun(), label: "pagination top")
+    assert html =~ ~s(aria-label="pagination top")
+  end
 end

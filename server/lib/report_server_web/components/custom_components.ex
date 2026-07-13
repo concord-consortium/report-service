@@ -355,12 +355,13 @@ defmodule ReportServerWeb.CustomComponents do
   attr :page, :integer, required: true
   attr :total_pages, :integer, required: true
   attr :path_fun, :any, required: true, doc: "fn page -> patch path; must return the no-param path for page 1"
+  attr :label, :string, default: "pagination", doc: "accessible name; make it unique when more than one pager is on a page"
 
   def pager(assigns) do
     assigns = assign(assigns, :items, pager_items(assigns.page, assigns.total_pages))
 
     ~H"""
-    <nav :if={@total_pages > 1} aria-label="pagination" class="flex items-center gap-1 my-4 text-sm">
+    <nav :if={@total_pages > 1} aria-label={@label} class="flex items-center gap-1 my-4 text-sm">
       <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Previous</.link>
       <span :if={@page == 1} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Previous</span>
       <%= for item <- @items do %>

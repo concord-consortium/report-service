@@ -3,6 +3,7 @@
 </div>
 
 <div :if={length(@entries) > 0}>
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} label="pagination top" />
   <table class="w-full border-collapse bg-white text-sm">
     <thead class="bg-gray-100 text-left leading-6 text-zinc-600">
       <tr>
@@ -31,6 +32,6 @@
       </tr>
     </tbody>
   </table>
-  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} />
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} label="pagination bottom" />
 </div>
 <div :if={length(@entries) == 0} class="my-4 text-sm">No data access events have been recorded yet.</div>

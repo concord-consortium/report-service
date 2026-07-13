@@ -60,13 +60,14 @@ defmodule ReportServerWeb.AuditLogLiveTest do
     assert newer_pos < older_pos
   end
 
-  test "paginates 26 entries with the shared pager", %{conn: conn} do
+  test "paginates 26 entries with a pager above and below the table", %{conn: conn} do
     admin = user_fixture(%{portal_is_admin: true})
     run = setup_run(admin)
     for _ <- 1..26, do: create_entry(admin, run)
 
     {:ok, view, html} = live(log_in_conn(conn, admin), ~p"/reports/audit-log")
-    assert html =~ ~s(aria-label="pagination")
+    assert html =~ ~s(aria-label="pagination top")
+    assert html =~ ~s(aria-label="pagination bottom")
 
     html2 = render_patch(view, "/reports/audit-log?page=2")
     assert html2 =~ ~s(aria-current="page")
@@ -77,6 +78,6 @@ defmodule ReportServerWeb.AuditLogLiveTest do
     {:ok, _view, html} = live(log_in_conn(conn, admin), ~p"/reports/audit-log")
 
     assert html =~ "No data access events have been recorded yet."
-    refute html =~ ~s(aria-label="pagination")
+    refute html =~ ~s(aria-label="pagination)
   end
 end

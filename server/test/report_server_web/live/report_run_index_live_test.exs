@@ -27,15 +27,16 @@ defmodule ReportServerWeb.ReportRunIndexLiveTest do
       {:ok, _view, html} = live(log_in_conn(conn, user), ~p"/reports/runs")
 
       assert html =~ "No report runs found."
-      refute html =~ ~s(aria-label="pagination")
+      refute html =~ ~s(aria-label="pagination)
     end
 
-    test "paginates and navigates to page 2 via patch", %{conn: conn} do
+    test "renders a pager above and below the table and navigates to page 2 via patch", %{conn: conn} do
       user = user_fixture()
       make_runs(user, 26)
 
       {:ok, view, html} = live(log_in_conn(conn, user), ~p"/reports/runs")
-      assert html =~ ~s(aria-label="pagination")
+      assert html =~ ~s(aria-label="pagination top")
+      assert html =~ ~s(aria-label="pagination bottom")
 
       html2 = render_patch(view, "/reports/runs?page=2")
       assert html2 =~ ~s(aria-current="page")
@@ -46,7 +47,7 @@ defmodule ReportServerWeb.ReportRunIndexLiveTest do
       make_runs(user, 26)
 
       {:ok, _view, html} = live(log_in_conn(conn, user), ~p"/reports/runs?page=99")
-      assert html =~ ~s(aria-label="pagination")
+      assert html =~ ~s(aria-label="pagination top")
       assert html =~ ~s(aria-current="page")
     end
 
@@ -55,7 +56,7 @@ defmodule ReportServerWeb.ReportRunIndexLiveTest do
       make_runs(user, 3)
 
       {:ok, _view, html} = live(log_in_conn(conn, user), ~p"/reports/runs?page=abc")
-      refute html =~ ~s(aria-label="pagination")
+      refute html =~ ~s(aria-label="pagination)
       refute html =~ "No report runs found."
     end
   end

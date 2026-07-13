@@ -2280,6 +2280,7 @@ windowing per OQ-5: `1 … p-1 p p+1 … N`):
 attr :page, :integer, required: true
 attr :total_pages, :integer, required: true
 attr :path_fun, :any, required: true, doc: "fn page -> patch path; must return the no-param path for page 1"
+attr :label, :string, default: "pagination", doc: "accessible name; make it unique when more than one pager is on a page"
 
 def pager(assigns) do
   assigns = assign(assigns, :items, pager_items(assigns.page, assigns.total_pages))
@@ -2292,7 +2293,7 @@ def pager(assigns) do
        text-zinc-800; the disabled endpoints use a lighter border-zinc-300. Active page uses
        dark-orange: white on orange #ea6d2f is 3.12:1 (fails AA); on #c14d10 it is 4.84:1.
        aria-labels give SR users page semantics beyond bare numbers. --%>
-  <nav :if={@total_pages > 1} aria-label="pagination" class="flex items-center gap-1 my-4 text-sm">
+  <nav :if={@total_pages > 1} aria-label={@label} class="flex items-center gap-1 my-4 text-sm">
     <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Previous</.link>
     <span :if={@page == 1} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Previous</span>
     <%= for item <- @items do %>
@@ -2402,8 +2403,9 @@ Template after — pager below the table, plus the empty state the pager contrac
 </div>
 
 <div :if={length(@report_runs) > 0}>
+  <.pager page={@page} total_pages={@total_pages} path_fun={run_list_path(@live_action)} label="pagination top" />
   <.report_runs report_runs={@report_runs} include_report_titles={true} include_user={@user.portal_is_admin} />
-  <.pager page={@page} total_pages={@total_pages} path_fun={run_list_path(@live_action)} />
+  <.pager page={@page} total_pages={@total_pages} path_fun={run_list_path(@live_action)} label="pagination bottom" />
 </div>
 <div :if={length(@report_runs) == 0} class="my-4 text-sm">No report runs found.</div>
 ```
@@ -2504,6 +2506,7 @@ Template — proper `<th>` markup (same table classes as `report_runs/1` in
 </div>
 
 <div :if={length(@entries) > 0}>
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} label="pagination top" />
   <%!-- text-zinc-600, not the run lists' zinc-500: zinc-500 on the gray-100 header is 4.39:1
        and on hovered zinc-200 rows 3.81:1 (both fail AA); zinc-600 is >= 6:1 on both.
        Optionally retrofit report_runs/1 in custom_components.ex to match. --%>
@@ -2535,7 +2538,7 @@ Template — proper `<th>` markup (same table classes as `report_runs/1` in
       </tr>
     </tbody>
   </table>
-  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} />
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} label="pagination bottom" />
 </div>
 <div :if={length(@entries) == 0} class="my-4 text-sm">No data access events have been recorded yet.</div>
 ```
