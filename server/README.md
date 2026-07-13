@@ -110,7 +110,10 @@ The report server is deployed using Docker on CloudFormation.  Here are the step
 
 1. Run `docker build . -t concordconsortium/report-server:VERSION` where `VERSION` is a semver version.  For staging deployments use `-pre.N` suffixes like `1.1.0-pre.0`.
 2. Once the build is complete run `docker push concordconsortium/report-server:VERSION` to push to the container registry.
-3. In AWS CloudFormation select the `report-server` stack in the QA account or `report-server-prod` in the production account and run an update using the newly uploaded tagged container as the value for the "ImageUrl" parameter in the update process.
+3. Before updating the stack to the new image, apply any new migrations by running `bin/report_server eval "ReportServer.Release.migrate"` in a one-off task/container built from the new image.  (A workstation with DB access can run `MIX_ENV=prod mix ecto.migrate` instead, but `config/runtime.exs` raises unless `SERVER_ACCESS_KEY_ID`, `SERVER_SECRET_ACCESS_KEY`, `REPORT_SERVICE_TOKEN` and `HIDE_USERNAME_HASH_SALT` are also set — migrations do not use them, so any non-empty placeholder works.)
+4. In AWS CloudFormation select the `report-server` stack in the QA account or `report-server-prod` in the production account and run an update using the newly uploaded tagged container as the value for the "ImageUrl" parameter in the update process.
+
+**For the REPORT-74 release specifically**: the `data_access_log` migration must be applied before the new image serves traffic — the web download paths fail closed against that table.
 
 ## Server Setup
 
