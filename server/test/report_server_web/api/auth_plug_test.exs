@@ -14,7 +14,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
 
   describe "bearer authentication" do
     test "rejects a request with no authorization header", %{conn: conn} do
-      conn = get(conn, ~p"/api/v1/ping")
+      conn = get(conn, ~p"/api/v1/reports")
 
       assert json_response(conn, 401) == @not_authenticated
     end
@@ -23,7 +23,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer ccd_nonsense")
-        |> get(~p"/api/v1/ping")
+        |> get(~p"/api/v1/reports")
 
       assert json_response(conn, 401) == @not_authenticated
     end
@@ -36,7 +36,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer #{raw_token}")
-        |> get(~p"/api/v1/ping")
+        |> get(~p"/api/v1/reports")
 
       assert json_response(conn, 401) == @not_authenticated
     end
@@ -54,7 +54,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer #{raw_token}")
-        |> get(~p"/api/v1/ping")
+        |> get(~p"/api/v1/reports")
 
       # indistinguishable from a bad token: no role leak
       assert json_response(conn, 401) == @not_authenticated
@@ -64,7 +64,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
       conn =
         conn
         |> put_req_header("authorization", "Basic xyz")
-        |> get(~p"/api/v1/ping")
+        |> get(~p"/api/v1/reports")
 
       assert json_response(conn, 401) == @not_authenticated
     end
@@ -75,9 +75,9 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
 
       assert Repo.get!(ApiToken, api_token.id).last_used_at == nil
 
-      conn = get(conn, ~p"/api/v1/ping")
+      conn = get(conn, ~p"/api/v1/reports")
 
-      assert json_response(conn, 200) == %{"ok" => true}
+      assert json_response(conn, 200) == %{"items" => [], "next_page_token" => nil}
       assert conn.assigns.current_user.id == user.id
       assert Repo.get!(ApiToken, api_token.id).last_used_at != nil
     end
@@ -112,7 +112,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
       conn =
         conn
         |> put_req_header("accept", "text/html")
-        |> get(~p"/api/v1/ping")
+        |> get(~p"/api/v1/reports")
 
       assert json_response(conn, 401) == @not_authenticated
     end

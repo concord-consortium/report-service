@@ -53,7 +53,8 @@ defmodule ReportServerWeb.Router do
   scope "/api/v1", ReportServerWeb.Api.V1 do
     pipe_through :api_authenticated
 
-    get "/ping", PingController, :ping
+    get "/reports", ReportController, :index
+    get "/reports/:id", ReportController, :show
   end
 
   # must stay below every real /api/v1 route: unknown API paths render the contract 404 rather
