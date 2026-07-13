@@ -68,6 +68,12 @@ defmodule ReportServerWeb.Router do
     match :*, "/*path", FallbackController, :not_found
   end
 
+  scope "/auth", ReportServerWeb do
+    pipe_through :api
+
+    post "/cli/token", AuthCliController, :token
+  end
+
   scope "/old-reports", ReportServerWeb do
     pipe_through :browser
 

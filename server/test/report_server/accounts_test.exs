@@ -5,6 +5,13 @@ defmodule ReportServer.AccountsTest do
 
   alias ReportServer.Accounts
   alias ReportServer.Accounts.ApiToken
+  alias ReportServer.Accounts.AuthGrant
+
+  defp pkce_pair() do
+    verifier = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+    {verifier, challenge}
+  end
 
   describe "create_api_token/2" do
     test "returns a ccd_-prefixed raw token and stores only its hash" do
@@ -115,6 +122,78 @@ defmodule ReportServer.AccountsTest do
 
       assert DateTime.compare(stale.last_used_at, stale_time) == :gt
       assert DateTime.compare(Repo.get!(ApiToken, api_token.id).last_used_at, stale_time) == :gt
+    end
+  end
+
+  describe "create_auth_grant/3" do
+    test "stores only the code hash, bound to the challenge/portal/user, expiring in ~5 minutes" do
+      user = user_fixture()
+      {_verifier, challenge} = pkce_pair()
+
+      {:ok, raw_code, auth_grant} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+
+      stored = Repo.get!(AuthGrant, auth_grant.id)
+      assert stored.code_hash != raw_code
+      assert String.length(stored.code_hash) == 64
+      assert stored.code_hash == :crypto.hash(:sha256, raw_code) |> Base.encode16(case: :lower)
+      assert stored.code_challenge == challenge
+      assert stored.portal_url == "https://learn.concord.org"
+      assert stored.user_id == user.id
+
+      expected = DateTime.utc_now(:second) |> DateTime.add(300)
+      assert abs(DateTime.diff(stored.expires_at, expected)) <= 5
+    end
+  end
+
+  describe "exchange_auth_grant/2" do
+    test "mints a verifiable API token for a valid code/verifier pair and marks the grant used" do
+      user = user_fixture()
+      {verifier, challenge} = pkce_pair()
+      {:ok, raw_code, auth_grant} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+
+      assert {:ok, raw_token, _api_token} = Accounts.exchange_auth_grant(raw_code, verifier)
+      assert String.starts_with?(raw_token, "ccd_")
+      assert {:ok, verified_user, _token} = Accounts.verify_api_token(raw_token)
+      assert verified_user.id == user.id
+
+      assert Repo.get!(AuthGrant, auth_grant.id).used_at != nil
+    end
+
+    test "returns :error for unknown, expired, used and verifier-mismatch codes" do
+      user = user_fixture()
+      {verifier, challenge} = pkce_pair()
+
+      assert :error == Accounts.exchange_auth_grant("unknown-code", verifier)
+
+      {:ok, expired_code, expired_grant} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+      past = DateTime.utc_now(:second) |> DateTime.add(-60)
+      Repo.update_all(from(g in AuthGrant, where: g.id == ^expired_grant.id), set: [expires_at: past])
+      assert :error == Accounts.exchange_auth_grant(expired_code, verifier)
+
+      {:ok, used_code, _} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+      assert {:ok, _token, _} = Accounts.exchange_auth_grant(used_code, verifier)
+      assert :error == Accounts.exchange_auth_grant(used_code, verifier)
+
+      {:ok, mismatch_code, _} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+      assert :error == Accounts.exchange_auth_grant(mismatch_code, "wrong-verifier")
+    end
+
+    test "is single-use: a second sequential exchange of the same code returns :error" do
+      user = user_fixture()
+      {verifier, challenge} = pkce_pair()
+      {:ok, raw_code, _} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+
+      assert {:ok, _token, _} = Accounts.exchange_auth_grant(raw_code, verifier)
+      assert :error == Accounts.exchange_auth_grant(raw_code, verifier)
+    end
+
+    test "a verifier mismatch consumes the code, so a later correct-verifier exchange also fails" do
+      user = user_fixture()
+      {verifier, challenge} = pkce_pair()
+      {:ok, raw_code, _} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+
+      assert :error == Accounts.exchange_auth_grant(raw_code, "wrong-verifier")
+      assert :error == Accounts.exchange_auth_grant(raw_code, verifier)
     end
   end
 end
