@@ -9,9 +9,19 @@
     <span :if={report.tbd}>🚧🛠️</span>
   </.described_link>
 
+  <.described_link navigate={~p"/reports/cli-token"} description={"Create and manage your cc-data CLI access tokens"} :if={@is_root}>
+    CLI Access Tokens
+  </.described_link>
+
   <%= if @user.portal_is_admin do %>
     <.described_link navigate={~p"/reports/all-runs"} description={"Lists all the report runs (because you are an admin)"} :if={@is_root}>
       All Runs
+    </.described_link>
+    <.described_link navigate={~p"/reports/all-tokens"} description={"View and revoke any user's CLI access tokens (admin)"} :if={@is_root}>
+      All CLI Tokens
+    </.described_link>
+    <.described_link navigate={~p"/reports/audit-log"} description={"Data access audit log (admin)"} :if={@is_root}>
+      Data Access Log
     </.described_link>
   <% end %>
 
