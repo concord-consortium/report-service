@@ -76,10 +76,12 @@ defmodule ReportServerWeb.Router do
     post "/cli/token", AuthCliController, :token
   end
 
+  # the legacy /old-reports export surface (the last unaudited student-data export) is retired;
+  # redirect old bookmarks to /reports, matching the /new-reports backwards-compat pattern below
   scope "/old-reports", ReportServerWeb do
     pipe_through :browser
 
-    live "/", OldReportLive.Index, :index
+    get "/*path", RedirectToReports, []
   end
 
   # this directs all requests to /new-reports to /reports for backwards compatibility
