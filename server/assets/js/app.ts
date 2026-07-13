@@ -31,6 +31,22 @@ let lastDownloadAt = 0;
 
 const Hooks = {
   ...live_select,
+  CopyToClipboard: {
+    mounted() {
+      this.el.addEventListener("click", () => {
+        const target = document.getElementById(this.el.dataset.target)
+        navigator.clipboard.writeText(target.textContent).then(() => {
+          const announce = document.getElementById(this.el.dataset.announce)
+          if (announce) {
+            // clear-then-set: several screen reader/browser pairs deduplicate identical
+            // live-region content, so a repeat click would otherwise announce nothing
+            announce.textContent = ""
+            setTimeout(() => { announce.textContent = "Copied to clipboard" }, 50)
+          }
+        })
+      })
+    }
+  },
   AuthCallback: {
     mounted() {
       // this sends the auth params in the url hash to the callback liveview on mount
