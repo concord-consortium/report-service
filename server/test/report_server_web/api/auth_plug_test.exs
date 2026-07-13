@@ -31,7 +31,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
     test "rejects a revoked token", %{conn: conn} do
       user = user_fixture()
       {raw_token, api_token} = api_token_fixture(user)
-      {:ok, _revoked} = Accounts.revoke_api_token(api_token)
+      {:ok, _revoked} = Accounts.revoke_api_token(api_token, user.id)
 
       conn =
         conn

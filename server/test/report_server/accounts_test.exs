@@ -76,16 +76,91 @@ defmodule ReportServer.AccountsTest do
     end
   end
 
-  describe "revoke_api_token/1" do
+  describe "revoke_api_token/2" do
     test "a revoked token stops authenticating immediately" do
       user = user_fixture()
       {raw_token, api_token} = api_token_fixture(user)
 
       assert {:ok, _user, _token} = Accounts.verify_api_token(raw_token)
 
-      {:ok, _revoked} = Accounts.revoke_api_token(api_token)
+      {:ok, _revoked} = Accounts.revoke_api_token(api_token, user.id)
 
       assert :error == Accounts.verify_api_token(raw_token)
+    end
+  end
+
+  describe "list_active_api_tokens/1" do
+    test "returns only the user's active tokens, newest-first, excluding revoked and other users'" do
+      user = user_fixture()
+      other = user_fixture()
+      {_r1, older} = api_token_fixture(user, "old")
+      {_r2, newer} = api_token_fixture(user, "new")
+      {_r3, revoked} = api_token_fixture(user, "revoked")
+      {_r4, _foreign} = api_token_fixture(other, "theirs")
+      {:ok, _} = Accounts.revoke_api_token(revoked, user.id)
+      Repo.update_all(from(t in ApiToken, where: t.id == ^older.id), set: [inserted_at: ~U[2020-01-01 00:00:00Z]])
+      Repo.update_all(from(t in ApiToken, where: t.id == ^newer.id), set: [inserted_at: ~U[2021-01-01 00:00:00Z]])
+
+      ids = Accounts.list_active_api_tokens(user.id) |> Enum.map(& &1.id)
+      assert ids == [newer.id, older.id]
+    end
+  end
+
+  describe "get_user_api_token/2" do
+    test "returns the owner's active token, nil for another user, nil once revoked" do
+      user = user_fixture()
+      other = user_fixture()
+      {_raw, token} = api_token_fixture(user)
+
+      assert %ApiToken{} = Accounts.get_user_api_token(token.id, user.id)
+      assert nil == Accounts.get_user_api_token(token.id, other.id)
+
+      {:ok, _} = Accounts.revoke_api_token(token, user.id)
+      assert nil == Accounts.get_user_api_token(token.id, user.id)
+    end
+  end
+
+  describe "revoke_api_token/2 attribution" do
+    test "stamps revoked_by_user_id with the actor's id" do
+      owner = user_fixture()
+      admin = user_fixture(%{portal_is_admin: true})
+      {_r1, self_tok} = api_token_fixture(owner)
+      {_r2, admin_tok} = api_token_fixture(owner)
+
+      {:ok, self_revoked} = Accounts.revoke_api_token(self_tok, owner.id)
+      {:ok, admin_revoked} = Accounts.revoke_api_token(admin_tok, admin.id)
+
+      assert self_revoked.revoked_by_user_id == owner.id
+      assert admin_revoked.revoked_by_user_id == admin.id
+    end
+
+    test "is an atomic first-writer-wins write — a second (lost-race) revoke cannot overwrite the actor" do
+      owner = user_fixture()
+      admin = user_fixture(%{portal_is_admin: true})
+      {_raw, token} = api_token_fixture(owner)
+
+      {:ok, first} = Accounts.revoke_api_token(token, owner.id)
+      assert first.revoked_by_user_id == owner.id
+
+      assert {:error, :already_revoked} = Accounts.revoke_api_token(token, admin.id)
+      assert Repo.get!(ApiToken, token.id).revoked_by_user_id == owner.id
+    end
+  end
+
+  describe "list_all_active_api_tokens/1 stable order" do
+    test "every token appears exactly once across pages when many share one inserted_at" do
+      user = user_fixture()
+      tokens = for _ <- 1..30, do: (api_token_fixture(user) |> elem(1))
+      ids = Enum.map(tokens, & &1.id)
+      Repo.update_all(from(t in ApiToken, where: t.id in ^ids), set: [inserted_at: ~U[2020-01-01 00:00:00Z]])
+
+      p1 = Accounts.list_all_active_api_tokens(1)
+      p2 = Accounts.list_all_active_api_tokens(2)
+      seen = Enum.map(p1.items ++ p2.items, & &1.id)
+
+      assert p1.total_count == 30
+      assert length(seen) == 30
+      assert Enum.sort(seen) == Enum.sort(ids)
     end
   end
 
