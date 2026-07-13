@@ -115,6 +115,13 @@ defmodule ReportServerWeb.AuthCliControllerTest do
       conn = post_json(conn, "/auth/cli/token", Jason.encode!(%{"code" => code, "code_verifier" => verifier}))
       assert json_response(conn, 200)["token"]
     end
+
+    test "returns 400 for a body missing the code or code_verifier", %{conn: _conn} do
+      for body <- [%{}, %{"code" => "x"}, %{"code_verifier" => "y"}] do
+        conn = post_json(build_conn(), "/auth/cli/token", Jason.encode!(body))
+        assert json_response(conn, 400) == @bad_request
+      end
+    end
   end
 
   describe "log hygiene" do
