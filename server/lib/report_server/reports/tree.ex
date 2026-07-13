@@ -65,6 +65,16 @@ defmodule ReportServer.Reports.Tree do
     end
   end
 
+  def athena_report_slugs() do
+    root()
+    |> collect_reports()
+    |> Enum.filter(&(&1.type == :athena))
+    |> Enum.map(&(&1.slug))
+  end
+
+  defp collect_reports(report = %Report{}), do: [report]
+  defp collect_reports(%ReportGroup{children: children}), do: Enum.flat_map(children, &collect_reports/1)
+
   defp decorate_tree(root) do
     decorate_tree(root, [])
   end

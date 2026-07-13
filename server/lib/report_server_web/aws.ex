@@ -62,6 +62,21 @@ defmodule ReportServerWeb.Aws do
     end
   end
 
+  @doc """
+  Like get_file_contents/1 but distinguishes a missing object from other failures.
+  Returns {:ok, contents} | {:error, :not_found} | {:error, {:s3_error, reason}}.
+  """
+  def fetch_file_contents(s3_url) do
+    client = get_exaws_client(get_server_credentials())
+    {bucket, path} = get_bucket_and_path(s3_url)
+
+    case ExAws.S3.get_object(bucket, path) |> ExAws.request(client) do
+      {:ok, %{body: body}} -> {:ok, body}
+      {:error, {:http_error, 404, _}} -> {:error, :not_found}
+      {:error, reason} -> {:error, {:s3_error, reason}}
+    end
+  end
+
   def put_file_contents(s3_url, contents) do
     client = get_aws_client(get_server_credentials())
     {bucket, path} = get_bucket_and_path(s3_url)

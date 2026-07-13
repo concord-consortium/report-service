@@ -11,12 +11,6 @@ defmodule ReportServer.ReportsTest do
     @invalid_attrs %{report_slug: nil, report_filter: nil, report_filter_values: nil}
 
     @tag :skip
-    test "list_report_runs/0 returns all report_runs" do
-      report_run = report_run_fixture()
-      assert Reports.list_all_report_runs() == [report_run]
-    end
-
-    @tag :skip
     test "get_report_run!/1 returns the report_run with given id" do
       report_run = report_run_fixture()
       assert Reports.get_report_run!(report_run.id) == report_run
