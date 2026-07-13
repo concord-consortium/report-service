@@ -21,9 +21,16 @@ defmodule ReportServer.Reports.AthenaRunOps do
          {:ok, report_run} <- Reports.update_report_run(report_run, %{athena_query_id: athena_query_id, athena_query_state: athena_query_state}) do
       {:ok, report_run}
     else
-      nil -> {:error, "Unable to find report: #{report_run.report_slug}"}
-      {:error, error} -> {:error, error}
-      error -> {:error, "Unknown error: failed to run Athena report: #{inspect(error)}"}
+      nil ->
+        {:error, "Unable to find report: #{report_run.report_slug}"}
+
+      {:error, error} ->
+        {:error, error}
+
+      error ->
+        # generic user-facing message; the inspected detail is logged, not surfaced to the UI
+        Logger.error("Unknown error running Athena report #{report_run.id}: #{inspect(error)}")
+        {:error, "An unexpected error occurred while running the report."}
     end
   end
 

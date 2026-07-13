@@ -151,5 +151,15 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
       assert ReportServerWeb.ErrorJSON.render("500.json", %{}) ==
                %{errors: %{detail: "Internal Server Error"}}
     end
+
+    test "handles request paths shorter than the API prefix without crashing" do
+      assert ReportServerWeb.ErrorJSON.render("404.json", %{
+               conn: %Plug.Conn{request_path: "/"}
+             }) == %{errors: %{detail: "Not Found"}}
+
+      assert ReportServerWeb.ErrorJSON.render("500.json", %{
+               conn: %Plug.Conn{request_path: ""}
+             }) == %{errors: %{detail: "Internal Server Error"}}
+    end
   end
 end

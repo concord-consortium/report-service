@@ -170,6 +170,15 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
       assert filter.filters == ["cohort"]
       assert filter.cohort == [1, 2]
     end
+
+    test "returns a generic message (not the inspected detail) when a step returns an unexpected value" do
+      user = user_fixture()
+      run = run_fixture(user, %{}) |> with_user(user)
+      put_tree_report(athena_report(fn _filter, _user -> :unexpected end))
+
+      assert {:error, "An unexpected error occurred while running the report."} =
+               AthenaRunOps.start_query(run)
+    end
   end
 
   describe "Tree.athena_report_slugs/0" do
