@@ -46,7 +46,7 @@ defmodule ReportServerWeb.ReportLive.CliToken do
   end
 
   @impl true
-  def handle_event("revoke", %{"id" => id}, %{assigns: %{user: user}} = socket) do
+  def handle_event("revoke", %{"id" => id}, %{assigns: %{user: user}} = socket) when is_binary(id) do
     token = with {token_id, ""} <- Integer.parse(id), do: Accounts.get_user_api_token(token_id, user.id)
 
     socket =
@@ -65,6 +65,14 @@ defmodule ReportServerWeb.ReportLive.CliToken do
       end
 
     {:noreply, assign(socket, :tokens, Accounts.list_active_api_tokens(user.id))}
+  end
+
+  # Absorb any non-string (or otherwise unexpected) "revoke" payload — e.g. a crafted client
+  # sending {"id": 41} as a JSON number rather than a string — as a benign no-op instead of
+  # crashing the LiveView on Integer.parse/1's is_binary guard.
+  @impl true
+  def handle_event("revoke", _params, socket) do
+    {:noreply, socket}
   end
 
   defp clear_shown_once_if(socket, revoked_id) do

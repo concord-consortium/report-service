@@ -20,7 +20,7 @@ defmodule ReportServer.Accounts.ApiToken do
   @doc false
   def changeset(api_token, attrs) do
     api_token
-    |> cast(attrs, [:user_id, :token_hash, :label, :last_used_at, :revoked_at, :revoked_by_user_id])
+    |> cast(attrs, [:user_id, :token_hash, :label, :last_used_at, :revoked_at])
     |> validate_required([:user_id, :token_hash])
     |> unique_constraint(:token_hash)
   end

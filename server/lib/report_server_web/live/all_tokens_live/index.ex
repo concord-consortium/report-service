@@ -10,9 +10,18 @@ defmodule ReportServerWeb.AllTokensLive.Index do
     {:ok, assign(socket, :page_title, "All CLI Tokens")}
   end
 
+  # Logged in but not an admin: this is a genuine authorization failure, so reject it.
+  @impl true
+  def mount(_params, _session, %{assigns: %{user: _user}} = socket) do
+    {:ok, socket |> put_flash(:error, "Sorry, you don't have access to that page.") |> redirect(to: "/reports")}
+  end
+
+  # Not logged in (no :user assign): return without redirecting so ReportLive.Auth's handle_params
+  # hook redirects to /auth/login?return_to=<path> and preserves the deep link, rather than
+  # bouncing an anonymous visitor to /reports with a misleading authorization error (see CliToken).
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> put_flash(:error, "Sorry, you don't have access to that page.") |> redirect(to: "/reports")}
+    {:ok, socket}
   end
 
   @impl true
@@ -24,7 +33,7 @@ defmodule ReportServerWeb.AllTokensLive.Index do
   def handle_params(_params, _url, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("revoke", %{"id" => id}, %{assigns: %{user: %{portal_is_admin: true} = user}} = socket) do
+  def handle_event("revoke", %{"id" => id}, %{assigns: %{user: %{portal_is_admin: true} = user}} = socket) when is_binary(id) do
     token = with {token_id, ""} <- Integer.parse(id), do: Accounts.get_active_api_token(token_id)
 
     socket =

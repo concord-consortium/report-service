@@ -153,6 +153,14 @@ defmodule ReportServerWeb.CliTokenLiveTest do
     assert reloaded.revoked_by_user_id == revoked.revoked_by_user_id
   end
 
+  test "a non-string revoke id is a benign no-op and does not crash the LiveView" do
+    user = user_fixture()
+
+    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, user: user}}
+    assert {:noreply, ^socket} =
+             ReportServerWeb.ReportLive.CliToken.handle_event("revoke", %{"id" => 41}, socket)
+  end
+
   test "empty state shows the 'none yet' copy", %{conn: conn} do
     user = user_fixture()
     {:ok, _view, html} = live(log_in_conn(conn, user), ~p"/reports/cli-token")

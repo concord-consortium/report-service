@@ -396,7 +396,6 @@ defmodule ReportServerWeb.CustomComponents do
   attr :tokens, :list, required: true
   attr :caption, :string, required: true, doc: "accessible table name (rendered sr-only)"
   attr :include_user, :boolean, default: false, doc: "admin view prepends a User column"
-  attr :revoke_event, :string, default: "revoke"
 
   def token_table(assigns) do
     ~H"""
@@ -407,6 +406,9 @@ defmodule ReportServerWeb.CustomComponents do
           <th :if={@include_user} scope="col" class="p-2 font-normal border-b">User</th>
           <th scope="col" class="p-2 font-normal border-b">Label</th>
           <th scope="col" class="p-2 font-normal border-b">Created</th>
+          <%!-- "Last used" is a freshness marker, not an exact last-request time: touch_api_token/1
+                is thresholded at 60s to avoid a row UPDATE per request, so this can lag the true
+                last use by up to a minute. Keep the display minute-granular; don't add seconds. --%>
           <th scope="col" class="p-2 font-normal border-b">Last used</th>
           <th scope="col" class="p-2 font-normal border-b"><span class="sr-only">Revoke</span></th>
         </tr>
@@ -434,7 +436,7 @@ defmodule ReportServerWeb.CustomComponents do
           <td class="p-2 font-normal border-b align-top">
             <button
               type="button"
-              phx-click={@revoke_event}
+              phx-click="revoke"
               phx-value-id={token.id}
               data-confirm={"Revoke #{token_descriptor(token)}? The machine using it will need a new token."}
               aria-label={"Revoke #{token_descriptor(token)}"}

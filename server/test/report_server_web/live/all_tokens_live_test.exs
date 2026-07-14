@@ -60,6 +60,19 @@ defmodule ReportServerWeb.AllTokensLiveTest do
     assert {:ok, _u, _t} = ReportServer.Accounts.verify_api_token(raw)
   end
 
+  test "a non-string revoke id is a benign no-op and does not crash the LiveView" do
+    admin = user_fixture(%{portal_is_admin: true})
+
+    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, user: admin}}
+    assert {:noreply, ^socket} =
+             ReportServerWeb.AllTokensLive.Index.handle_event("revoke", %{"id" => 41}, socket)
+  end
+
+  test "an unauthenticated visit redirects to login preserving the return path", %{conn: conn} do
+    assert {:error, {:redirect, %{to: to}}} = live(conn, ~p"/reports/all-tokens")
+    assert to == "/auth/login?return_to=/reports/all-tokens"
+  end
+
   test "the pager appears only past 25 tokens", %{conn: conn} do
     admin = user_fixture(%{portal_is_admin: true})
     owner = user_fixture()
