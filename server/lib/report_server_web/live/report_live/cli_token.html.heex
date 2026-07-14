@@ -1,5 +1,5 @@
 <div class="font-bold my-2">
-  <.breadcrumbs previous={[{"Reports", ~p"/reports"}]} current="CLI Access Token" />
+  <.breadcrumbs previous={[{"Reports", ~p"/reports"}]} current="CLI Access Tokens" />
 </div>
 
 <div class="max-w-xl">
@@ -43,4 +43,14 @@
       This token will not be shown again. If you lose it, generate a new one.
     </p>
   </div>
+</div>
+
+<div class="mt-8">
+  <h2 class="font-bold text-sm mb-2">Your active tokens</h2>
+  <.token_table
+    :if={length(@tokens) > 0}
+    tokens={@tokens}
+    caption="Your active CLI access tokens"
+  />
+  <p :if={length(@tokens) == 0} class="text-sm text-slate-600">You have no active tokens yet.</p>
 </div>

@@ -2,6 +2,7 @@ defmodule ReportServer.Accounts do
   import Ecto.Query, warn: false
 
   alias ReportServer.Repo
+  alias ReportServer.Pagination
   alias ReportServer.Accounts.ApiToken
   alias ReportServer.Accounts.AuthGrant
   alias ReportServer.Accounts.User
@@ -103,10 +104,45 @@ defmodule ReportServer.Accounts do
   end
   def verify_api_token(_), do: :error
 
-  def revoke_api_token(api_token = %ApiToken{}) do
-    api_token
-    |> ApiToken.changeset(%{revoked_at: DateTime.utc_now(:second)})
-    |> Repo.update()
+  def revoke_api_token(api_token = %ApiToken{}, revoked_by_user_id) when is_integer(revoked_by_user_id) do
+    now = DateTime.utc_now(:second)
+
+    revoke_query =
+      from t in ApiToken, where: t.id == ^api_token.id and is_nil(t.revoked_at)
+
+    case Repo.update_all(revoke_query,
+           set: [revoked_at: now, revoked_by_user_id: revoked_by_user_id, updated_at: now]) do
+      {1, _} -> {:ok, Repo.get!(ApiToken, api_token.id)}
+      {0, _} -> {:error, :already_revoked}
+    end
+  end
+
+  def list_active_api_tokens(user_id) do
+    Repo.all(
+      from t in ApiToken,
+        where: t.user_id == ^user_id and is_nil(t.revoked_at),
+        order_by: [desc: t.inserted_at, desc: t.id]
+    )
+  end
+
+  def get_user_api_token(id, user_id) do
+    Repo.one(
+      from t in ApiToken,
+        where: t.id == ^id and t.user_id == ^user_id and is_nil(t.revoked_at)
+    )
+  end
+
+  def get_active_api_token(id) do
+    Repo.one(from t in ApiToken, where: t.id == ^id and is_nil(t.revoked_at))
+  end
+
+  def list_all_active_api_tokens(page) do
+    from(t in ApiToken,
+      where: is_nil(t.revoked_at),
+      order_by: [desc: t.inserted_at, desc: t.id],
+      preload: [:user]
+    )
+    |> Pagination.paginate(page)
   end
 
   @doc """

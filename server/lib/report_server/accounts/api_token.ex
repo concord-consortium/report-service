@@ -12,6 +12,7 @@ defmodule ReportServer.Accounts.ApiToken do
     field :revoked_at, :utc_datetime
 
     belongs_to :user, User, foreign_key: :user_id
+    belongs_to :revoked_by, User, foreign_key: :revoked_by_user_id
 
     timestamps(type: :utc_datetime)
   end

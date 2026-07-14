@@ -393,4 +393,76 @@ defmodule ReportServerWeb.CustomComponents do
     end)
   end
 
+  attr :tokens, :list, required: true
+  attr :caption, :string, required: true, doc: "accessible table name (rendered sr-only)"
+  attr :include_user, :boolean, default: false, doc: "admin view prepends a User column"
+
+  def token_table(assigns) do
+    ~H"""
+    <table class="w-full border-collapse bg-white text-sm">
+      <caption class="sr-only"><%= @caption %></caption>
+      <thead class="bg-gray-100 text-left leading-6 text-zinc-600">
+        <tr>
+          <th :if={@include_user} scope="col" class="p-2 font-normal border-b">User</th>
+          <th scope="col" class="p-2 font-normal border-b">Label</th>
+          <th scope="col" class="p-2 font-normal border-b">Created</th>
+          <%!-- "Last used" is a freshness marker, not an exact last-request time: touch_api_token/1
+                is thresholded at 60s to avoid a row UPDATE per request, so this can lag the true
+                last use by up to a minute. Keep the display minute-granular; don't add seconds. --%>
+          <th scope="col" class="p-2 font-normal border-b">Last used</th>
+          <th scope="col" class="p-2 font-normal border-b"><span class="sr-only">Revoke</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={token <- @tokens} class="group hover:bg-zinc-200 even:bg-gray-50">
+          <td :if={@include_user} class="p-2 font-normal border-b align-top">
+            <%= token.user.portal_first_name %> <%= token.user.portal_last_name %> (<%= token.user.portal_email %>)
+          </td>
+          <td class="p-2 font-normal border-b align-top"><%= token.label || "—" %></td>
+          <td class="p-2 font-normal border-b align-top">
+            <time datetime={DateTime.to_iso8601(token.inserted_at)}>
+              <%= Calendar.strftime(token.inserted_at, "%Y-%m-%d %H:%M UTC") %>
+            </time>
+          </td>
+          <td class="p-2 font-normal border-b align-top">
+            <%= if token.last_used_at do %>
+              <time datetime={DateTime.to_iso8601(token.last_used_at)}>
+                <%= Calendar.strftime(token.last_used_at, "%Y-%m-%d %H:%M UTC") %>
+              </time>
+            <% else %>
+              Never used
+            <% end %>
+          </td>
+          <td class="p-2 font-normal border-b align-top">
+            <button
+              type="button"
+              phx-click="revoke"
+              phx-value-id={token.id}
+              data-confirm={"Revoke #{token_descriptor(token)}? The machine using it will need a new token."}
+              aria-label={"Revoke #{token_descriptor(token)}"}
+              class="rounded px-2 py-1 border border-rose-600 text-rose-700 text-sm hover:bg-rose-600 hover:text-white"
+            >
+              Revoke
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+  end
+
+  defp token_descriptor(token) do
+    label_part = if token.label, do: "the token labeled '#{token.label}'", else: "the unlabeled token"
+    created = Calendar.strftime(token.inserted_at, "%Y-%m-%d %H:%M UTC")
+
+    used =
+      if token.last_used_at do
+        "last used " <> Calendar.strftime(token.last_used_at, "%Y-%m-%d %H:%M UTC")
+      else
+        "never used"
+      end
+
+    "#{label_part} (created #{created}, #{used}, ##{token.id})"
+  end
+
 end
