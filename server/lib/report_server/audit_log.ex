@@ -14,7 +14,14 @@ defmodule ReportServer.AuditLog do
   2. write the audit row — on failure discard the URL and return {:error, :audit, reason}
   3. only then return {:ok, url}
   """
-  def issue_download_url(source, data_type, report_run = %ReportRun{}, user_id, presign_fun, opts \\ []) do
+  def issue_download_url(
+        source,
+        data_type,
+        report_run = %ReportRun{},
+        user_id,
+        presign_fun,
+        opts \\ []
+      ) do
     case presign_fun.() do
       {:ok, url} ->
         attrs = %{
@@ -53,6 +60,6 @@ defmodule ReportServer.AuditLog do
     |> Pagination.paginate(page)
   end
 
-  defp dump_filter(nil), do: nil
-  defp dump_filter(report_filter), do: Map.from_struct(report_filter)
+  def dump_filter(nil), do: nil
+  def dump_filter(report_filter), do: Map.from_struct(report_filter)
 end
