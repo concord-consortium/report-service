@@ -596,7 +596,10 @@ Tests (`source_key_test.exs`): hostname-only URL → host; `?answersSourceKey=fo
 // NOTE the trailing `--testPathIgnorePatterns "/node_modules/"`: it OVERRIDES the config ignore below so
 // the emulator suites are re-included here. Without it, jest ANDs the config's ignore (which now excludes
 // `\.emulator\.test\.`) with `--testPathPattern`, and this script finds ZERO tests (verified).
-"test:emulator": "npx firebase emulators:exec --only firestore --project report-service-dev 'jest --testPathPattern emulator --testPathIgnorePatterns \"/node_modules/\"'",
+"test:emulator": "npx firebase emulators:exec --only firestore --project report-service-dev 'jest --runInBand --testPathPattern emulator --testPathIgnorePatterns \"/node_modules/\"'",
+// `--runInBand` is REQUIRED: multiple *.emulator.test.ts files share the single emulator, and each suite's
+// beforeEach `clearFirestore()` wipes all `sources/*` docs — jest's default parallel workers would race and
+// clobber each other's seeded data. Running the emulator suites serially in one worker avoids the race.
 // add the emulator pattern to the EXISTING jest.testPathIgnorePatterns so plain `npm test` skips it:
 // "jest": { ..., "testPathIgnorePatterns": ["/node_modules/", "\\.emulator\\.test\\."] }
 ```

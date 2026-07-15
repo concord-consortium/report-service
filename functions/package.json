@@ -20,7 +20,7 @@
     "firebase:tools:install": "npm install -g firebase-tools",
     "emulator:info": "echo Run 'npm run firebase:tools:install' to install the firebase tools required by the emulator",
     "emulator": "firebase emulators:start --import=./emulator-data --export-on-exit",
-    "test:emulator": "npx firebase emulators:exec --only firestore --project report-service-dev 'jest --testPathPattern emulator --testPathIgnorePatterns \"/node_modules/\"'"
+    "test:emulator": "npx firebase emulators:exec --only firestore --project report-service-dev 'jest --runInBand --testPathPattern emulator --testPathIgnorePatterns \"/node_modules/\"'"
   },
   "jest": {
     "testURL": "https://starter-projects.unexisting.url.com",
