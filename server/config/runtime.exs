@@ -58,6 +58,10 @@ config :report_server, :portal_report,
 config :report_server, :stats_server,
   disable: System.get_env("DISABLE_STATS_SERVER") == "true" || false
 
+# Disabled in :test so the supervised sweeper does no Repo work under the :manual SQL sandbox.
+config :report_server, :exports_sweep,
+  disable: System.get_env("DISABLE_EXPORTS_SWEEP") == "true" || config_env() == :test
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
