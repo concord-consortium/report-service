@@ -49,6 +49,25 @@ defmodule ReportServer.AuditLog do
     end
   end
 
+  @doc """
+  One fail-closed row per attachment-presign call. `endpoints` are the distinct remote_endpoints actually
+  signed. Returns create_entry/1's {:ok, _} | {:error, _} so the controller can gate the response on it.
+  """
+  def log_attachment_urls(_user = %{id: user_id}, report_run = %ReportRun{}, endpoints) do
+    create_entry(%{
+      event: "attachment_urls_issued",
+      source: "api",
+      data_type: "attachment",
+      user_id: user_id,
+      report_run_id: report_run.id,
+      report_slug: report_run.report_slug,
+      report_filter: dump_filter(report_run.report_filter),
+      cursor: nil,
+      export_id: nil,
+      endpoint_set: endpoints
+    })
+  end
+
   def create_entry(attrs) do
     %DataAccessLogEntry{}
     |> DataAccessLogEntry.changeset(attrs)

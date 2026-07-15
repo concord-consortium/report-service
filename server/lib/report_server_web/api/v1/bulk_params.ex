@@ -73,4 +73,37 @@ defmodule ReportServerWeb.Api.V1.BulkParams do
   end
 
   defp check_doc_id(_), do: {:error, "inner_cursor docId must be a non-empty plain document id"}
+
+  # {:ok, "attachment"|"inline"} | {:error, :bad_request, msg}. Absent key / JSON null -> "attachment".
+  def parse_disposition(nil), do: {:ok, "attachment"}
+  def parse_disposition("attachment"), do: {:ok, "attachment"}
+  def parse_disposition("inline"), do: {:ok, "inline"}
+  def parse_disposition(_), do: {:error, :bad_request, "disposition must be \"attachment\" or \"inline\""}
+
+  # {:ok, [%{"collection","source","doc_id","name"}, ...]} | {:error, :bad_request, msg}. <=500; each item a map
+  # with non-empty string coordinates and collection in {"answers","history"}.
+  def parse_attachment_items(items) when is_list(items) and items != [] and length(items) <= 500 do
+    if Enum.all?(items, &valid_attachment_item?/1),
+      do: {:ok, items},
+      else:
+        {:error, :bad_request,
+         "each attachment needs string collection (answers|history)/source/doc_id/name; source and doc_id must not contain '/'"}
+  end
+
+  def parse_attachment_items(items) when is_list(items) and length(items) > 500,
+    do: {:error, :bad_request, "too many attachments (max 500)"}
+
+  def parse_attachment_items(_), do: {:error, :bad_request, "attachments must be a non-empty array"}
+
+  # source and doc_id are Firestore path segments (a "/" breaks the path arity in Node); name is only an
+  # object-key lookup, so a "/" there is harmless.
+  defp valid_attachment_item?(%{"collection" => c, "source" => s, "doc_id" => d, "name" => n}) do
+    c in ["answers", "history"] and plain_segment?(s) and plain_segment?(d) and non_empty_string?(n)
+  end
+
+  defp valid_attachment_item?(_), do: false
+
+  defp plain_segment?(v), do: non_empty_string?(v) and not String.contains?(v, "/")
+
+  defp non_empty_string?(v), do: is_binary(v) and v != ""
 end

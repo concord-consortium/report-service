@@ -15,6 +15,7 @@ import getAnswer from "./api/get-answer"
 import getPluginStates from "./api/get-plugin-states"
 import getStudentFeedbackMetadata from "./api/get-student-feedback-metadata"
 import bulkRead from "./api/bulk-read"
+import fetchAttachmentMeta from "./api/attachment-meta"
 import requireHeaderBearer from "./middleware/require-header-bearer"
 
 import {
@@ -49,6 +50,7 @@ api.get("/", (req, res) => {
       "GET plugin_states?source=<SOURCE>&remote_endpoint=<REMOTE_ENDPOINT>": "Returns all the plugin states for a learner's resource",
       "GET student_feedback_metadata?source=<SOURCE>&platform_id=<PLATFORM_ID>&platform_student_id=<PLATFORM_STUDENT_ID>": "Returns a map, keyed by offering id, of the student's activity and question feedback metadata",
       "POST bulk_read": "STORY 3: bulk answers/history read for a report run's authorized endpoints (Elixir-only, header bearer required)",
+      "POST fetch_attachment_meta": "STORY 3: authoritative attachment metadata (publicPath/owner/contentType) for a batch of docs (Elixir-only, header bearer required)",
     }
   })
 })
@@ -60,6 +62,7 @@ api.get("/answer", getAnswer)
 api.get("/plugin_states", getPluginStates)
 api.get("/student_feedback_metadata", getStudentFeedbackMetadata)
 api.post("/bulk_read", requireHeaderBearer, bulkRead)
+api.post("/fetch_attachment_meta", requireHeaderBearer, fetchAttachmentMeta)
 // TODO: comment out for final PR
 api.get("/fakeAnswer", fakeAnswer)
 

@@ -60,6 +60,7 @@ defmodule ReportServerWeb.Router do
     get "/reports/:id/download", ReportController, :download
     get "/reports/:id/answers", BulkExportController, :answers
     get "/reports/:id/history", BulkExportController, :history
+    post "/reports/:id/attachments", AttachmentController, :create
     get "/reports/:id/jobs", ReportJobController, :index
     get "/reports/:id/jobs/:job_id/download", ReportJobController, :download
   end

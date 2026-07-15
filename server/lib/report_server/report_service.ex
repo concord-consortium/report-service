@@ -38,6 +38,37 @@ defmodule ReportServer.ReportService do
     end
   end
 
+  @doc """
+  Batch attachment metadata (STORY 3). `req` is %{items: [%{collection, source, doc_id, name}, ...]}.
+  Returns {:ok, %{"results" => [...]}} | {:error, reason}. Mirrors bulk_read/1's wire contract.
+  """
+  def fetch_attachment_meta(req) do
+    {url, token} = get_endpoint("fetch_attachment_meta")
+
+    result =
+      get_request()
+      |> Req.post(
+        url: url,
+        auth: {:bearer, token},
+        json: req,
+        debug: false
+      )
+
+    case result do
+      {:ok, %{status: 200, body: %{"success" => true} = body}} ->
+        {:ok, Map.delete(body, "success")}
+
+      {:ok, %{body: %{"error" => error}}} ->
+        {:error, error}
+
+      {:ok, %{status: status}} ->
+        {:error, "unexpected fetch_attachment_meta status #{status}"}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
   def get_answer(source, remote_endpoint, question_id) do
     with {:ok, resp} <- request_answer(source, remote_endpoint, question_id),
          {:ok, answer} <- get_answer_from_response(resp.body) do
