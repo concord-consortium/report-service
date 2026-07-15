@@ -36,6 +36,8 @@ defmodule ReportServerWeb.Api.V1.AttachmentController do
     else
       {:error, :bad_request, msg} -> ErrorHelpers.bad_request(conn, msg)
       {:error, :not_found} -> ErrorHelpers.not_found(conn)
+      # a Node success with an unexpected body shape (missing "results") -> fail closed, don't crash (WithClauseError)
+      {:ok, _unexpected} -> ErrorHelpers.server_error(conn)
       {:error, _} -> ErrorHelpers.server_error(conn)
     end
   end

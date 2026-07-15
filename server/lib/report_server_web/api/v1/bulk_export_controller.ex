@@ -141,6 +141,11 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
           {:error, _reason} -> ErrorHelpers.server_error(conn)
         end
 
+      {:ok, unexpected} ->
+        # Node returned success with an unexpected body shape (contract violation) -> fail closed, don't crash.
+        Logger.error("bulk_read returned an unexpected body shape: #{inspect(unexpected)}")
+        ErrorHelpers.server_error(conn)
+
       {:error, _reason} ->
         # Node read failure (or a collapsed Node 4xx from a hand-crafted cursor Elixir already pre-validates):
         # no audit row, no cursor advance; the CLI retries the same token idempotently.

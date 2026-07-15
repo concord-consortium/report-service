@@ -271,6 +271,12 @@ defmodule ReportServerWeb.Api.V1.AttachmentControllerTest do
     assert json_response(post_attachments(conn, run.id, %{attachments: [item()]}), 500)
   end
 
+  test "a Node success with an unexpected body shape -> 500 (fail closed, no crash)", %{conn: conn, user: user} do
+    stub(meta: fn _r -> {:ok, %{"unexpected" => true}} end)
+    run = run_fixture(user)
+    assert json_response(post_attachments(conn, run.id, %{attachments: [item()]}), 500)
+  end
+
   test "duplicate identical items both sign and the audit lists the learner once", %{conn: conn, user: user} do
     stub(
       meta: fn _r ->

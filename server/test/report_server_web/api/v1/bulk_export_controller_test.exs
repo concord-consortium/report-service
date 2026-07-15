@@ -258,6 +258,12 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 500)
     end
 
+    test "a Node success with an unexpected body shape -> 500 (fail closed, no crash)", %{conn: conn, user: user} do
+      stub(bulk_read: fn _req -> {:ok, %{"unexpected" => true}} end)
+      run = run_fixture(user)
+      assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 500)
+    end
+
     test "a revoked API token halts a mid-export request with 401", %{conn: conn, user: user, api_token: api_token} do
       stub([])
       run = run_fixture(user)
