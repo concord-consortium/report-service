@@ -284,6 +284,13 @@ defmodule ReportServerWeb.Api.V1.AttachmentControllerTest do
     assert Repo.one!(DataAccessLogEntry).endpoint_set == ["re-1"]
   end
 
+  test "a malformed non-null meta (missing keys) resolves to not_found rather than crashing", %{conn: conn, user: user} do
+    stub(meta: fn _r -> {:ok, %{"results" => [result_row("d1", "file.json", %{"publicPath" => "k"})]}} end)
+    run = run_fixture(user)
+    body = json_response(post_attachments(conn, run.id, %{attachments: [item()]}), 200)
+    assert [%{"error" => "not_found"}] = body["results"]
+  end
+
   test "writes exactly one attachment_urls_issued audit row", %{conn: conn, user: user} do
     stub([])
     run = run_fixture(user)

@@ -62,6 +62,10 @@ defmodule ReportServerWeb.Api.V1.AttachmentController do
     end
   end
 
+  # a non-null meta missing an expected key is a Node-contract violation; treat it as not_found rather than crash
+  defp sign_one({item, _result}, _allowed, _disposition),
+    do: {%{doc_id: item["doc_id"], name: item["name"], error: "not_found"}, nil}
+
   defp report_service_client,
     do: Application.get_env(:report_server, :report_service_client, ReportServer.ReportService)
 end
