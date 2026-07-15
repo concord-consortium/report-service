@@ -7,6 +7,7 @@ defmodule ReportServerWeb.Api.ErrorHelpers do
     "NOT_AUTHENTICATED" => 401,
     "NOT_FOUND" => 404,
     "NOT_READY" => 409,
+    "EXPIRED_CURSOR" => 410,
     "SERVER_ERROR" => 500
   }
 
