@@ -1,6 +1,43 @@
 defmodule ReportServer.ReportService do
   require Logger
 
+  # must exceed the ~300s Node/Cloud-Function ceiling (Req default is 15_000)
+  @bulk_receive_timeout 310_000
+
+  @doc """
+  Bulk Firestore read (STORY 3). `req` is the internal wire request:
+    %{collection: "answers"|"history", source_endpoints: [...], inner_cursor: nil|map,
+      limit: int, endpoint_limit: int, read_limit: int}
+  Returns {:ok, body_without_success_key} | {:error, reason}. Node stays stateless; Elixir owns cursor assembly.
+  """
+  def bulk_read(req) do
+    {url, token} = get_endpoint("bulk_read")
+
+    result =
+      get_request()
+      |> Req.post(
+        url: url,
+        auth: {:bearer, token},
+        json: req,
+        receive_timeout: @bulk_receive_timeout,
+        debug: false
+      )
+
+    case result do
+      {:ok, %{status: 200, body: %{"success" => true} = body}} ->
+        {:ok, Map.delete(body, "success")}
+
+      {:ok, %{body: %{"error" => error}}} ->
+        {:error, error}
+
+      {:ok, %{status: status}} ->
+        {:error, "unexpected bulk_read status #{status}"}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
   def get_answer(source, remote_endpoint, question_id) do
     with {:ok, resp} <- request_answer(source, remote_endpoint, question_id),
          {:ok, answer} <- get_answer_from_response(resp.body) do
