@@ -32,6 +32,9 @@
       "/node_modules/",
       "\\.emulator\\.test\\."
     ],
+    "moduleNameMapper": {
+      "^firebase-functions/params$": "<rootDir>/node_modules/firebase-functions/lib/params/index.js"
+    },
     "coveragePathIgnorePatterns": [
       "/node_modules/",
       "src/utilities/test-utils.ts"

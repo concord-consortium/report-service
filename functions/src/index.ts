@@ -14,6 +14,8 @@ import fakeAnswer from "./api/fake-answer"
 import getAnswer from "./api/get-answer"
 import getPluginStates from "./api/get-plugin-states"
 import getStudentFeedbackMetadata from "./api/get-student-feedback-metadata"
+import bulkRead from "./api/bulk-read"
+import requireHeaderBearer from "./middleware/require-header-bearer"
 
 import {
   createSyncDocAfterAnswerWritten,
@@ -46,6 +48,7 @@ api.get("/", (req, res) => {
       "GET answer?source=<SOURCE>&remote_endpoint=<REMOTE_ENDPOINT>&question_id=<QUESTION_ID>": "Returns the full answer document for a question by a learner",
       "GET plugin_states?source=<SOURCE>&remote_endpoint=<REMOTE_ENDPOINT>": "Returns all the plugin states for a learner's resource",
       "GET student_feedback_metadata?source=<SOURCE>&platform_id=<PLATFORM_ID>&platform_student_id=<PLATFORM_STUDENT_ID>": "Returns a map, keyed by offering id, of the student's activity and question feedback metadata",
+      "POST bulk_read": "STORY 3: bulk answers/history read for a report run's authorized endpoints (Elixir-only, header bearer required)",
     }
   })
 })
@@ -56,13 +59,14 @@ api.get("/resource", getResource)
 api.get("/answer", getAnswer)
 api.get("/plugin_states", getPluginStates)
 api.get("/student_feedback_metadata", getStudentFeedbackMetadata)
+api.post("/bulk_read", requireHeaderBearer, bulkRead)
 // TODO: comment out for final PR
 api.get("/fakeAnswer", fakeAnswer)
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.
 const wrappedApi = functions
-  .runWith({ secrets: [bearerToken] })
+  .runWith({ secrets: [bearerToken], timeoutSeconds: 300 })   // STORY 3: headroom for a slow bulk page; ceiling, not a cost floor
   .https.onRequest( (req: express.Request, res: express.Response) =>  {
     if (!req.path) {
       req.url = `/${req.url}` // prepend '/' to keep query params if any
