@@ -2,15 +2,36 @@
   <.breadcrumbs previous={[{"Reports", ~p"/reports"}]} current="Data Access Log" />
 </div>
 
+<form phx-submit="filter" class="my-4 flex flex-wrap gap-3 items-end">
+  <.input id="export_id" name="export_id" type="text" label="Export id" value={@filters.export_id} />
+  <.input id="remote_endpoint" name="remote_endpoint" type="text" label="Student" value={@filters.remote_endpoint} />
+  <button type="submit" class="px-3 py-2 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Filter</button>
+</form>
+
+<div
+  id="audit-results"
+  role="status"
+  aria-live="polite"
+  tabindex="-1"
+  phx-hook="FocusResults"
+  data-refocus={refocus_token(@filters)}
+  class="my-2 text-sm"
+>
+  Showing <%= @total_count %> event(s)<%= filter_suffix(@filters) %>
+  <div :if={length(@entries) == 0 and not @filtered?} class="my-2">No data access events have been recorded yet.</div>
+  <div :if={length(@entries) == 0 and @filtered?} class="my-2">No events match the current filter.</div>
+</div>
+
 <div :if={length(@entries) > 0}>
-  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} label="pagination top" />
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path(&1, @filters)} label="pagination top" />
   <table class="w-full border-collapse bg-white text-sm">
+    <caption class="sr-only">Data access events<%= filter_suffix(@filters) %></caption>
     <thead class="bg-gray-100 text-left leading-6 text-zinc-600">
       <tr>
-        <th class="p-2 font-normal border-b">When</th>
-        <th class="p-2 font-normal border-b">User</th>
-        <th class="p-2 font-normal border-b">Run</th>
-        <th class="p-2 font-normal border-b">Access</th>
+        <th scope="col" class="p-2 font-normal border-b">When</th>
+        <th scope="col" class="p-2 font-normal border-b">User</th>
+        <th scope="col" class="p-2 font-normal border-b">Run</th>
+        <th scope="col" class="p-2 font-normal border-b">Access</th>
       </tr>
     </thead>
     <tbody>
@@ -32,6 +53,5 @@
       </tr>
     </tbody>
   </table>
-  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path/1} label="pagination bottom" />
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path(&1, @filters)} label="pagination bottom" />
 </div>
-<div :if={length(@entries) == 0} class="my-4 text-sm">No data access events have been recorded yet.</div>

@@ -228,6 +228,62 @@ defmodule ReportServer.AuditLogTest do
     end
   end
 
+  describe "list_entries_paginated/2 filters" do
+    defp bulk_entry(user, report_run, attrs) do
+      base = %{
+        event: "bulk_read",
+        source: "api",
+        data_type: "answers_bulk",
+        user_id: user.id,
+        report_run_id: report_run.id
+      }
+
+      {:ok, entry} = AuditLog.create_entry(Map.merge(base, attrs))
+      entry
+    end
+
+    test "export_id filters to exact matches" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+      bulk_entry(user, report_run, %{export_id: "exp-1", endpoint_set: ["re-1"]})
+      bulk_entry(user, report_run, %{export_id: "exp-2", endpoint_set: ["re-2"]})
+
+      result = AuditLog.list_entries_paginated(1, %{export_id: "exp-1"})
+      assert Enum.map(result.items, & &1.export_id) == ["exp-1"]
+    end
+
+    test "remote_endpoint matches the top-level array (case-sensitive) and skips NULL rows" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+      bulk_entry(user, report_run, %{export_id: "e", endpoint_set: ["re-abc", "re-def"]})
+      bulk_entry(user, report_run, %{export_id: "e", endpoint_set: ["re-xyz"]})
+      # a STORY-1 style row with a null endpoint_set is never matched
+      {:ok, _} =
+        AuditLog.create_entry(%{
+          event: "download_url_issued",
+          source: "api",
+          data_type: "run_csv",
+          user_id: user.id,
+          report_run_id: report_run.id
+        })
+
+      result = AuditLog.list_entries_paginated(1, %{remote_endpoint: "re-abc"})
+      assert length(result.items) == 1
+      assert result.total_count == 1
+
+      # case-sensitive: a different case matches nothing
+      assert AuditLog.list_entries_paginated(1, %{remote_endpoint: "RE-ABC"}).total_count == 0
+    end
+
+    test "an injection-shaped remote_endpoint matches nothing (bound param)" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+      bulk_entry(user, report_run, %{export_id: "e", endpoint_set: ["re-1"]})
+
+      assert AuditLog.list_entries_paginated(1, %{remote_endpoint: ~s{") OR 1=1 --}}).total_count == 0
+    end
+  end
+
   test "the context exposes no update or delete functions" do
     exported = ReportServer.AuditLog.__info__(:functions) |> Keyword.keys() |> Enum.uniq()
 

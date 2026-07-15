@@ -19,19 +19,63 @@ defmodule ReportServerWeb.AuditLogLive.Index do
 
   @impl true
   def handle_params(params, _url, %{assigns: %{user: %{portal_is_admin: true}}} = socket) do
-    result = AuditLog.list_entries_paginated(Pagination.normalize_page(params["page"]))
+    filters = %{
+      export_id: params["export_id"] || "",
+      remote_endpoint: params["remote_endpoint"] || ""
+    }
 
-    socket = socket
+    result = AuditLog.list_entries_paginated(Pagination.normalize_page(params["page"]), filters)
+    filtered? = filters.export_id != "" or filters.remote_endpoint != ""
+
+    socket =
+      socket
       |> assign(:entries, result.items)
       |> assign(:page, result.page)
       |> assign(:total_pages, result.total_pages)
+      |> assign(:total_count, result.total_count)
+      |> assign(:filters, filters)
+      |> assign(:filtered?, filtered?)
 
+    # No unconditional focus push here: handle_params fires on both filter submit AND paging. Focus is driven
+    # by the template's data-refocus token (filter-derived), so it moves on a filter change but NOT on paging.
     {:noreply, socket}
   end
 
   @impl true
   def handle_params(_params, _url, socket), do: {:noreply, socket}
 
-  defp audit_log_path(1), do: ~p"/reports/audit-log"
-  defp audit_log_path(page), do: ~p"/reports/audit-log?page=#{page}"
+  @impl true
+  def handle_event("filter", %{"export_id" => export_id, "remote_endpoint" => remote_endpoint}, socket) do
+    {:noreply, push_patch(socket, to: filter_path(export_id, remote_endpoint))}
+  end
+
+  # results-container refocus token: changes iff the FILTER values change (paging preserves them)
+  defp refocus_token(%{export_id: e, remote_endpoint: r}), do: "#{e}|#{r}"
+
+  # human-readable active-filter suffix for the aria-live summary and the table caption
+  defp filter_suffix(%{export_id: e, remote_endpoint: r}) do
+    parts =
+      [{"export id", e}, {"student", r}]
+      |> Enum.filter(fn {_label, v} -> v not in [nil, ""] end)
+      |> Enum.map(fn {label, v} -> "#{label} \"#{v}\"" end)
+
+    if parts == [], do: "", else: " (filtered by " <> Enum.join(parts, " and ") <> ")"
+  end
+
+  defp filter_path(export_id, remote_endpoint) do
+    query =
+      %{"export_id" => export_id, "remote_endpoint" => remote_endpoint}
+      |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
+
+    if query == [], do: ~p"/reports/audit-log", else: ~p"/reports/audit-log?#{query}"
+  end
+
+  defp audit_log_path(page, filters) do
+    query =
+      %{"export_id" => filters.export_id, "remote_endpoint" => filters.remote_endpoint}
+      |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
+      |> then(fn q -> if page > 1, do: [{"page", page} | q], else: q end)
+
+    if query == [], do: ~p"/reports/audit-log", else: ~p"/reports/audit-log?#{query}"
+  end
 end
