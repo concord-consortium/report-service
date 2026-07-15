@@ -271,4 +271,116 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       assert json_response(resp, 401)["error"] == "NOT_AUTHENTICATED"
     end
   end
+
+  # ---- history + audit build-out ----
+
+  defp sid_from(body), do: elem(BulkParams.parse_page_token(%{"page_token" => body["next_page_token"]}), 1).scratch_id
+
+  describe "/history" do
+    test "serves a page and mints a history_bulk scratch", %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user)
+
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history"), 200)
+      assert length(body["items"]) == 1
+      assert Repo.one!(ExportScratch).data_type == "history_bulk"
+    end
+
+    test "an out-of-range history cursor seconds -> 400, not 500", %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user)
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history"), 200)
+      sid = sid_from(body)
+
+      for bad_seconds <- [253_402_300_800, -62_135_596_801] do
+        token = BulkParams.encode_page_token(sid, 0, %{"seconds" => bad_seconds, "nanoseconds" => 0, "docId" => "x"})
+        assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history?page_token=#{token}"), 400)
+      end
+
+      ok = BulkParams.encode_page_token(sid, 0, %{"seconds" => 253_402_300_799, "nanoseconds" => 0, "docId" => "x"})
+      assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history?page_token=#{ok}"), 200)
+    end
+
+    test "a non-plain cursor docId -> 400, not 500", %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user)
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history"), 200)
+      sid = sid_from(body)
+
+      for bad_doc <- ["a/b", ""] do
+        token = BulkParams.encode_page_token(sid, 0, %{"seconds" => 1, "nanoseconds" => 0, "docId" => bad_doc})
+        assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history?page_token=#{token}"), 400)
+      end
+    end
+  end
+
+  describe "audit rows" do
+    test "page 1 writes an export_scoped intent row and a bulk_read access row, both export_id = scratch_id",
+         %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user)
+
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
+      sid = sid_from(body)
+
+      rows = Repo.all(DataAccessLogEntry)
+      assert length(rows) == 2
+      assert Enum.sort(Enum.map(rows, & &1.event)) == ["bulk_read", "export_scoped"]
+      assert Enum.all?(rows, &(&1.export_id == sid))
+
+      access = Enum.find(rows, &(&1.event == "bulk_read"))
+      assert access.data_type == "answers_bulk"
+      assert access.endpoint_set == ["re-1"]
+    end
+
+    test "a subsequent page writes only a bulk_read access row", %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user)
+
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
+      token = body["next_page_token"]
+
+      before = Repo.aggregate(DataAccessLogEntry, :count)
+      json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers?page_token=#{token}"), 200)
+
+      new_rows = Repo.aggregate(DataAccessLogEntry, :count) - before
+      assert new_rows == 1
+    end
+  end
+
+  describe "empty mid-export page" do
+    test "items [] with a non-null next token when an endpoint cap lands mid-export", %{conn: conn, user: user} do
+      empty_page = %{
+        "items" => [],
+        "stop_endpoint_offset" => 0,
+        "inner_cursor" => nil,
+        "endpoint_exhausted" => true,
+        "touched_endpoints" => []
+      }
+
+      stub(
+        fetch: fn _f, _u, _o ->
+          {:ok, [learner_group("re-1", "https://example.com/a"), learner_group("re-2", "https://example.com/b")]}
+        end,
+        bulk_read: fn _req -> {:ok, empty_page} end
+      )
+
+      run = run_fixture(user)
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
+      assert body["items"] == []
+      assert is_binary(body["next_page_token"])
+    end
+  end
+
+  describe "cross-route replay" do
+    test "a /history-minted token replayed on /answers -> 404 via the data_type guard", %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user)
+
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history"), 200)
+      token = body["next_page_token"]
+
+      assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers?page_token=#{token}"), 404)
+    end
+  end
 end

@@ -12,9 +12,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
   @read_limit 5000
 
   def answers(conn, params), do: serve(conn, params, "answers_bulk", "answers")
-
-  # /history lands in the next step; until then it 404s (never a 500)
-  def history(conn, _params), do: ErrorHelpers.not_found(conn)
+  def history(conn, params), do: serve(conn, params, "history_bulk", "history")
 
   defp serve(conn, %{"id" => id_param} = params, data_type, collection) do
     user = conn.assigns.current_user
@@ -106,8 +104,8 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
     end
   end
 
-  # ---- shared: slice from index, call Node, reassemble cursor, return envelope (per-page audit in next step) ----
-  defp serve_page(conn, _user, _report_run, scratch, collection, _data_type, index, inner, limit, _raw_token) do
+  # ---- shared: slice from index, call Node, reassemble cursor, write the fail-closed access row, return envelope ----
+  defp serve_page(conn, user, report_run, scratch, collection, data_type, index, inner, limit, raw_token) do
     endpoints = scratch.endpoint_set
     slice = Enum.drop(endpoints, index)
 
@@ -133,8 +131,15 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
             do: nil,
             else: BulkParams.encode_page_token(scratch.scratch_id, next_index, next_cursor)
 
-        # NOTE: per-page audit access row is added in the next step (fail-closed, before returning)
-        json(conn, %{items: items, next_page_token: next_token})
+        served = items |> Enum.map(& &1["remote_endpoint"]) |> Enum.uniq()
+
+        access_attrs =
+          audit_attrs(user, report_run, "bulk_read", data_type, scratch.scratch_id, raw_token, served)
+
+        case AuditLog.create_entry(access_attrs) do
+          {:ok, _entry} -> json(conn, %{items: items, next_page_token: next_token})
+          {:error, _reason} -> ErrorHelpers.server_error(conn)
+        end
 
       {:error, _reason} ->
         # Node read failure (or a collapsed Node 4xx from a hand-crafted cursor Elixir already pre-validates):
