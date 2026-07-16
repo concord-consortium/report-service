@@ -10,7 +10,6 @@ import importRun from "./api/import-run"
 import importStructure from "./api/import-structure"
 import moveStudentWork from "./api/move-student-work"
 import getResource from "./api/get-resource"
-import fakeAnswer from "./api/fake-answer"
 import getAnswer from "./api/get-answer"
 import getPluginStates from "./api/get-plugin-states"
 import getStudentFeedbackMetadata from "./api/get-student-feedback-metadata"
@@ -63,8 +62,6 @@ api.get("/plugin_states", getPluginStates)
 api.get("/student_feedback_metadata", getStudentFeedbackMetadata)
 api.post("/bulk_read", requireHeaderBearer, bulkRead)
 api.post("/fetch_attachment_meta", requireHeaderBearer, fetchAttachmentMeta)
-// TODO: comment out for final PR
-api.get("/fakeAnswer", fakeAnswer)
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.

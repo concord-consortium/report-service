@@ -43,7 +43,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
         # empty export: terminal empty page, no scratch to resume — but still record the intent row for audit
         # completeness, fail-closed like every other audit write. export_id is minted so the row is correlatable.
         export_id = Exports.mint_scratch_id()
-        intent_attrs = audit_attrs(user, report_run, "export_scoped", "export_scoped", export_id, nil, [])
+        intent_attrs = audit_attrs(user, report_run, "export_scoped", data_type, export_id, nil, [])
 
         case AuditLog.create_entry(intent_attrs) do
           {:ok, _entry} -> json(conn, %{items: [], next_page_token: nil})
@@ -63,7 +63,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
         }
 
         intent_attrs =
-          audit_attrs(user, report_run, "export_scoped", "export_scoped", scratch_id, nil,
+          audit_attrs(user, report_run, "export_scoped", data_type, scratch_id, nil,
             Enum.map(endpoints, & &1["remote_endpoint"]))
 
         case Exports.create_scratch_with_intent(scratch_attrs, intent_attrs) do
@@ -118,9 +118,15 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
       read_limit: @read_limit
     }
 
+    slice_length = length(slice)
+
     case report_service().bulk_read(req) do
+      # Semantics guard on top of the shape match: an out-of-range offset or non-boolean exhausted would
+      # silently mis-advance (or truncate) the cursor; such a response falls through to {:ok, unexpected}.
       {:ok, %{"items" => items, "stop_endpoint_offset" => off, "inner_cursor" => next_inner,
-              "endpoint_exhausted" => exhausted, "touched_endpoints" => touched}} ->
+              "endpoint_exhausted" => exhausted, "touched_endpoints" => touched}}
+      when is_list(items) and is_boolean(exhausted) and is_integer(off) and off >= 0 and
+             off < slice_length ->
         Exports.merge_touched_endpoints(scratch, touched)
 
         {next_index, next_cursor} =

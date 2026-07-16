@@ -127,6 +127,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
 
       entry = Repo.one!(DataAccessLogEntry)
       assert entry.event == "export_scoped"
+      assert entry.data_type == "answers_bulk"
       assert entry.endpoint_set == []
     end
 
@@ -264,6 +265,25 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 500)
     end
 
+    test "a Node success with broken semantics (bad offset / non-boolean exhausted) -> 500, no cursor advance", %{conn: conn, user: user} do
+      bad_pages = [
+        %{@page | "stop_endpoint_offset" => -1},
+        %{@page | "stop_endpoint_offset" => 1},        # only 1 endpoint in the slice
+        %{@page | "stop_endpoint_offset" => "0"},
+        %{@page | "endpoint_exhausted" => "yes"},
+        %{@page | "items" => "not-a-list"}
+      ]
+
+      {:ok, holder} = Agent.start_link(fn -> nil end)
+      stub(bulk_read: fn _req -> {:ok, Agent.get(holder, & &1)} end)
+      run = run_fixture(user)
+
+      for bad_page <- bad_pages do
+        Agent.update(holder, fn _ -> bad_page end)
+        assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 500)
+      end
+    end
+
     test "a revoked API token halts a mid-export request with 401", %{conn: conn, user: user, api_token: api_token} do
       stub([])
       run = run_fixture(user)
@@ -337,6 +357,19 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       access = Enum.find(rows, &(&1.event == "bulk_read"))
       assert access.data_type == "answers_bulk"
       assert access.endpoint_set == ["re-1"]
+
+      intent = Enum.find(rows, &(&1.event == "export_scoped"))
+      assert intent.data_type == "answers_bulk"
+    end
+
+    test "the intent row's data_type matches the route (history)", %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user)
+
+      json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history"), 200)
+
+      intent = DataAccessLogEntry |> Repo.all() |> Enum.find(&(&1.event == "export_scoped"))
+      assert intent.data_type == "history_bulk"
     end
 
     test "a subsequent page writes only a bulk_read access row", %{conn: conn, user: user} do

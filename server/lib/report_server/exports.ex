@@ -34,7 +34,7 @@ defmodule ReportServer.Exports do
   Two-step read-time lookup for a page load. Ownership+route identity match with NO expiry predicate:
     * no row                       -> :not_found  (forged / cross-user / cross-run / cross-route / swept)
     * matched but expires_at <= now -> delete (scoped) and return :expired (-> 410 EXPIRED_CURSOR)
-    * matched and active            -> bump TTL absolutely and return {:ok, scratch}
+    * matched and active            -> bump TTL atomically and return {:ok, scratch}
   """
   def fetch_for_page(scratch_id, user_id, report_run_id, data_type) do
     now = DateTime.utc_now(:second)
@@ -49,25 +49,32 @@ defmodule ReportServer.Exports do
       nil ->
         :not_found
 
-      %ExportScratch{expires_at: expires_at} = scratch ->
-        if DateTime.compare(expires_at, now) == :gt do
-          {:ok, bump_ttl(scratch)}
-        else
-          delete_scoped(scratch_id, user_id, report_run_id, data_type)
-          :expired
+      %ExportScratch{} = scratch ->
+        case bump_ttl(scratch, now) do
+          {:ok, renewed} ->
+            {:ok, renewed}
+
+          :expired ->
+            delete_scoped(scratch_id, user_id, report_run_id, data_type)
+            :expired
         end
     end
   end
 
-  # absolute SET (never expires_at + delta) so concurrent same-token retries converge and stay idempotent
-  defp bump_ttl(%ExportScratch{} = scratch) do
+  # absolute SET (never expires_at + delta) so concurrent same-token retries converge and stay idempotent.
+  # The renew is predicated on the row still being unexpired: a row that expired (or was swept/deleted)
+  # between the read and this update matches zero rows -> :expired, so a stale struct can never be
+  # resurrected or served past its TTL.
+  defp bump_ttl(%ExportScratch{} = scratch, now) do
     new_expires_at = ttl_expires_at()
 
-    {_n, _} =
-      from(s in ExportScratch, where: s.scratch_id == ^scratch.scratch_id)
-      |> Repo.update_all(set: [expires_at: new_expires_at])
-
-    %ExportScratch{scratch | expires_at: new_expires_at}
+    case from(s in ExportScratch,
+           where: s.scratch_id == ^scratch.scratch_id and s.expires_at > ^now
+         )
+         |> Repo.update_all(set: [expires_at: new_expires_at]) do
+      {1, _} -> {:ok, %ExportScratch{scratch | expires_at: new_expires_at}}
+      {0, _} -> :expired
+    end
   end
 
   defp delete_scoped(scratch_id, user_id, report_run_id, data_type) do

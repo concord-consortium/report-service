@@ -253,6 +253,7 @@ export default async function bulkRead(req: Request, res: Response) {
       stopCursor = r.innerCursor;
       stopExhausted = r.exhausted;
 
+      if (bytesUsed >= RESPONSE_BYTE_BUDGET) { break; } // byte budget spent -> stop before admitting another endpoint's first item
       if (!r.exhausted) { break; }                     // hit a cap mid-endpoint -> resume same endpoint
       if (items.length >= limit) { break; }            // item cap, endpoint exhausted -> advance +1
       if (reads >= read_limit) { break; }              // read cap

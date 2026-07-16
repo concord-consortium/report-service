@@ -164,4 +164,58 @@ describe("bulkRead handler", () => {
     expect(res._payload.endpoint_exhausted).toBe(true);
     expect(res._payload.stop_endpoint_offset).toBe(0);
   });
+
+  it("stops walking endpoints once the response-byte budget is spent (aggregate across exhausted endpoints)", async () => {
+    // Each endpoint holds ONE large answer (~1 MB serialized) and is therefore exhausted after its first
+    // item — the per-endpoint byte trim never fires (an endpoint's first item is always admitted), so only
+    // the walk-loop bytesUsed check can stop the chain before it blows past the ~8 MB budget.
+    const endpointCount = 10;
+    const bigState = "x".repeat(1_000_000);
+    const endpoints = [];
+    for (let i = 0; i < endpointCount; i++) {
+      const remote_endpoint = `re-big-${i}`;
+      await seedAnswer({
+        ...LTI, source: SOURCE, remote_endpoint, question_id: "q1", answer_id: `big-${i}`,
+        interactiveState: bigState,
+      });
+      endpoints.push(answersEp(remote_endpoint));
+    }
+
+    const res = mockRes();
+    await bulkRead({
+      body: {
+        collection: "answers",
+        source_endpoints: endpoints,
+        inner_cursor: null,
+        limit: 500,
+        endpoint_limit: 250,
+        read_limit: 5000,
+      },
+    } as any, res);
+
+    // ~1 MB/item crosses the 8 MB budget on the 9th item -> the walk must stop early, not serve all 10
+    const p1 = res._payload;
+    expect(p1.items.length).toBeLessThan(endpointCount);
+    expect(p1.items.length).toBeGreaterThanOrEqual(1);
+    const stop = p1.stop_endpoint_offset;
+    expect(stop).toBe(p1.items.length - 1);           // one item per endpoint, all walked endpoints exhausted
+    expect(p1.endpoint_exhausted).toBe(true);
+    expect(p1.inner_cursor).toBeNull();
+
+    // resume from the next endpoint (as Elixir does: index + off + 1) -> the remainder arrives with no gap/dup
+    const res2 = mockRes();
+    await bulkRead({
+      body: {
+        collection: "answers",
+        source_endpoints: endpoints.slice(stop + 1),
+        inner_cursor: null,
+        limit: 500,
+        endpoint_limit: 250,
+        read_limit: 5000,
+      },
+    } as any, res2);
+
+    const gotIds = [...p1.items, ...res2._payload.items].map((i: any) => i.id).sort();
+    expect(gotIds).toEqual(Array.from({ length: endpointCount }, (_, i) => `big-${i}`).sort());
+  });
 });

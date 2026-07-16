@@ -173,6 +173,26 @@ defmodule ReportServerWeb.Api.V1.AttachmentControllerTest do
     assert q["response-content-type"] == "application/octet-stream"
   end
 
+  test "inline with a script-capable contentType (text/html, image/svg+xml) degrades to application/octet-stream", %{conn: conn, user: user} do
+    {:ok, holder} = Agent.start_link(fn -> nil end)
+
+    stub(
+      meta: fn _r ->
+        ct = Agent.get(holder, & &1)
+        {:ok, %{"results" => [result_row("d1", "f", meta("re-1", ct: ct))]}}
+      end
+    )
+
+    run = run_fixture(user)
+
+    for unsafe <- ["text/html", "image/svg+xml", "application/xhtml+xml", "text/html; charset=utf-8"] do
+      Agent.update(holder, fn _ -> unsafe end)
+      body = json_response(post_attachments(conn, run.id, %{attachments: [item(%{"name" => "f"})], disposition: "inline"}), 200)
+      q = body["results"] |> hd() |> Map.fetch!("url") |> URI.parse() |> Map.get(:query) |> URI.decode_query()
+      assert q["response-content-type"] == "application/octet-stream"
+    end
+  end
+
   test "a name with a quote/CR-LF/control char is sanitized in the Content-Disposition", %{conn: conn, user: user} do
     stub(meta: fn _r -> {:ok, %{"results" => [result_row("d1", "a\"b\r\nc", meta("re-1"))]}} end)
     run = run_fixture(user)
