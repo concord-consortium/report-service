@@ -31,6 +31,15 @@ let lastDownloadAt = 0;
 
 const Hooks = {
   ...live_select,
+  FocusResults: {
+    mounted() { this._refocus = this.el.dataset.refocus },
+    updated() {
+      if (this.el.dataset.refocus !== this._refocus) {
+        this._refocus = this.el.dataset.refocus
+        this.el.focus()   // container is tabindex="-1", so it is programmatically focusable
+      }
+    }
+  },
   CopyToClipboard: {
     mounted() {
       this.el.addEventListener("click", () => {

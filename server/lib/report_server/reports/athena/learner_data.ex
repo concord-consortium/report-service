@@ -22,7 +22,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   end
 
   def fetch(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form,
-        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
+        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}, opts \\ []) do
     portal_query = %ReportQuery{
       cols: [
         {"DISTINCT rl.learner_id", "learner_id"},
@@ -124,7 +124,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     with {:ok, portal_query} <- ReportQuery.update_query(portal_query, join: join, where: where),
          {:ok, sql} <- ReportQuery.get_sql(portal_query),
          {:ok, result} <- PortalDbs.query(user.portal_server, sql),
-         {:ok, learner_data} <- map_learner_data(result, user) do
+         {:ok, learner_data} <- map_learner_data(result, user, opts) do
       {:ok, learner_data}
     else
       error -> error
@@ -145,13 +145,13 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     {:ok, learner_data}
   end
 
-  defp map_learner_data(result = %MyXQL.Result{}, user = %User{}) do
+  defp map_learner_data(result = %MyXQL.Result{}, user = %User{}, opts) do
     rows = PortalDbs.map_columns_on_rows(result)
 
     teacher_ids = get_unique_ids(rows, :teachers_id)
     permission_form_ids = get_unique_ids(rows, :permission_forms_id)
 
-    with {:ok, rows} <- ensure_not_empty(rows, "No learners were found matching the filters you selected."),
+    with {:ok, rows} <- maybe_ensure_not_empty(rows, Keyword.get(opts, :allow_empty, false)),
          {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
          {:ok, permission_form_map } <- get_permission_form_map(permission_form_ids, user) do
 
@@ -190,6 +190,10 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       error -> error
     end
   end
+
+  defp maybe_ensure_not_empty(rows, true), do: {:ok, rows}
+  defp maybe_ensure_not_empty(rows, false),
+    do: ensure_not_empty(rows, "No learners were found matching the filters you selected.")
 
   defp get_unique_ids(rows, key) do
     rows

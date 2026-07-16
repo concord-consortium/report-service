@@ -38,6 +38,69 @@ defmodule ReportServerWeb.Aws do
     |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
   end
 
+  @presign_ttl_seconds 60 * 10
+  def presign_ttl_seconds, do: @presign_ttl_seconds
+
+  # Presign a private-bucket GET with SERVER creds (NOT the workgroup creds get_presigned_url/3 uses — those
+  # can't read the attachments bucket). Mirrors how transcribe_audio.ex reaches the private bucket.
+  def presign_server_get(s3_url, opts) do
+    {bucket, key} = get_bucket_and_path(s3_url)
+    client = get_exaws_client(get_server_credentials())
+
+    :s3
+    |> ExAws.Config.new(client)
+    |> ExAws.S3.presigned_url(:get, bucket, key,
+      expires_in: @presign_ttl_seconds,
+      query_params: disposition_params(opts)
+    )
+  end
+
+  # "attachment" (default) forces download; "inline" renders/plays in a browser (the opt-in --inline path)
+  defp disposition_params(opts) do
+    case Keyword.get(opts, :disposition, "attachment") do
+      "inline" ->
+        [
+          {"response-content-disposition", "inline"},
+          {"response-content-type", safe_inline_content_type(Keyword.get(opts, :content_type))}
+        ]
+
+      _ ->
+        [{"response-content-disposition", ~s(attachment; filename="#{safe_filename(Keyword.fetch!(opts, :name))}")}]
+    end
+  end
+
+  # The doc's contentType is student-supplied metadata: served inline it must not be able to execute
+  # script in the presigned-URL origin (e.g. text/html, image/svg+xml). Allow media/PDF/plain types
+  # only; everything else degrades to application/octet-stream (the browser downloads instead).
+  @safe_inline_exact ~w(application/pdf application/json text/plain text/csv)
+  @safe_inline_prefixes ~w(image/ audio/ video/)
+
+  defp safe_inline_content_type(content_type) when is_binary(content_type) do
+    ct = content_type |> String.split(";") |> hd() |> String.trim() |> String.downcase()
+
+    cond do
+      ct == "image/svg+xml" ->
+        "application/octet-stream"
+
+      ct in @safe_inline_exact ->
+        ct
+
+      Enum.any?(@safe_inline_prefixes, &String.starts_with?(ct, &1)) ->
+        ct
+
+      true ->
+        "application/octet-stream"
+    end
+  end
+
+  defp safe_inline_content_type(_), do: "application/octet-stream"
+
+  # `name` is a writer-constrained key in the doc's attachments map, but it still flows into a
+  # Content-Disposition, so strip CR/LF/quotes/backslashes/control chars and cap the length.
+  defp safe_filename(name) do
+    name |> String.replace(~r/[\x00-\x1f"\\]/u, "") |> String.slice(0, 255)
+  end
+
   def get_file_stream(s3_url) do
     try do
       client = get_exaws_client(get_server_credentials())

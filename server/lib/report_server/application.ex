@@ -19,6 +19,7 @@ defmodule ReportServer.Application do
       {Task.Supervisor, name: ReportServer.PostProcessingTaskSupervisor},
       ReportServer.PostProcessing.JobSupervisor,
       {ReportServer.Dashboard.StatsServer, get_dashboard_servers()},
+      ReportServer.Exports.SweepServer,
       # Start a worker by calling: ReportServer.Worker.start_link(arg)
       # {ReportServer.Worker, arg},
       # Start to serve requests, typically the last entry

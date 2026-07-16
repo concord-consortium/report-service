@@ -85,7 +85,9 @@ defmodule ReportServer.AuditLogTest do
 
     test "a run with no stored filter writes a null filter snapshot" do
       user = user_fixture()
-      {:ok, report_run} = Reports.create_report_run(%{user_id: user.id, report_slug: "student-answers"})
+
+      {:ok, report_run} =
+        Reports.create_report_run(%{user_id: user.id, report_slug: "student-answers"})
 
       assert {:ok, _url} =
                AuditLog.issue_download_url("api", "run_csv", report_run, user.id, fn ->
@@ -161,6 +163,26 @@ defmodule ReportServer.AuditLogTest do
       assert "does not exist" in errors_on(changeset).report_run_id
       assert entry_count() == 0
     end
+
+    test "round-trips a top-level JSON array endpoint_set (EctoJsonArray)" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+
+      endpoint_set = ["re-1", "re-2", "re-3"]
+
+      assert {:ok, entry} =
+               AuditLog.create_entry(%{
+                 event: "bulk_read",
+                 source: "api",
+                 data_type: "answers_bulk",
+                 user_id: user.id,
+                 report_run_id: report_run.id,
+                 export_id: "export-abc",
+                 endpoint_set: endpoint_set
+               })
+
+      assert Repo.get!(DataAccessLogEntry, entry.id).endpoint_set == endpoint_set
+    end
   end
 
   describe "list_entries_paginated/1" do
@@ -195,12 +217,70 @@ defmodule ReportServer.AuditLogTest do
 
       # No id appears on both pages and every row is reachable exactly once.
       assert MapSet.disjoint?(MapSet.new(ids1), MapSet.new(ids2))
-      assert Enum.sort(ids1 ++ ids2) == Enum.sort(Repo.all(from(e in DataAccessLogEntry, select: e.id)))
+
+      assert Enum.sort(ids1 ++ ids2) ==
+               Enum.sort(Repo.all(from(e in DataAccessLogEntry, select: e.id)))
 
       # Ordering is stable: newest id first, within and across pages.
       assert ids1 == Enum.sort(ids1, :desc)
       assert ids2 == Enum.sort(ids2, :desc)
       assert List.last(ids1) > List.first(ids2)
+    end
+  end
+
+  describe "list_entries_paginated/2 filters" do
+    defp bulk_entry(user, report_run, attrs) do
+      base = %{
+        event: "bulk_read",
+        source: "api",
+        data_type: "answers_bulk",
+        user_id: user.id,
+        report_run_id: report_run.id
+      }
+
+      {:ok, entry} = AuditLog.create_entry(Map.merge(base, attrs))
+      entry
+    end
+
+    test "export_id filters to exact matches" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+      bulk_entry(user, report_run, %{export_id: "exp-1", endpoint_set: ["re-1"]})
+      bulk_entry(user, report_run, %{export_id: "exp-2", endpoint_set: ["re-2"]})
+
+      result = AuditLog.list_entries_paginated(1, %{export_id: "exp-1"})
+      assert Enum.map(result.items, & &1.export_id) == ["exp-1"]
+    end
+
+    test "remote_endpoint matches the top-level array (case-sensitive) and skips NULL rows" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+      bulk_entry(user, report_run, %{export_id: "e", endpoint_set: ["re-abc", "re-def"]})
+      bulk_entry(user, report_run, %{export_id: "e", endpoint_set: ["re-xyz"]})
+      # a STORY-1 style row with a null endpoint_set is never matched
+      {:ok, _} =
+        AuditLog.create_entry(%{
+          event: "download_url_issued",
+          source: "api",
+          data_type: "run_csv",
+          user_id: user.id,
+          report_run_id: report_run.id
+        })
+
+      result = AuditLog.list_entries_paginated(1, %{remote_endpoint: "re-abc"})
+      assert length(result.items) == 1
+      assert result.total_count == 1
+
+      # case-sensitive: a different case matches nothing
+      assert AuditLog.list_entries_paginated(1, %{remote_endpoint: "RE-ABC"}).total_count == 0
+    end
+
+    test "an injection-shaped remote_endpoint matches nothing (bound param)" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+      bulk_entry(user, report_run, %{export_id: "e", endpoint_set: ["re-1"]})
+
+      assert AuditLog.list_entries_paginated(1, %{remote_endpoint: ~s{") OR 1=1 --}}).total_count == 0
     end
   end
 
