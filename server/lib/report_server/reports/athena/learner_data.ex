@@ -131,19 +131,27 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     end
   end
 
+  # fail closed: a lost upload means the Athena query joins zero learners and the report
+  # succeeds with silently empty results, so any put failure must fail the whole run
   def upload(learner_data) do
     learner_data
-      |> Enum.each(fn %{query_id: query_id, learners: learners} ->
+      |> Enum.reduce_while({:ok, learner_data}, fn %{query_id: query_id, learners: learners}, acc ->
         path = "learners/#{query_id}/#{UUID.uuid4()}.json"
         contents = learners
           |> Enum.map(&(Jason.encode!/1))
           |> Enum.join("\n")
         Logger.info("Uploading learners to #{path}")
-        AthenaDB.put_file_contents(path, contents)
+        case athena_db().put_file_contents(path, contents) do
+          {:ok, _, _} ->
+            {:cont, acc}
+          error ->
+            Logger.error("Failed to upload learners to #{path}: #{inspect(error)}")
+            {:halt, {:error, "Unable to upload the learner data for the report."}}
+        end
       end)
-
-    {:ok, learner_data}
   end
+
+  defp athena_db(), do: Application.get_env(:report_server, :athena_db, AthenaDB)
 
   defp map_learner_data(result = %MyXQL.Result{}, user = %User{}, opts) do
     rows = PortalDbs.map_columns_on_rows(result)
