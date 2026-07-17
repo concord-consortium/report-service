@@ -46,7 +46,7 @@ The CLI degrades gracefully when any piece is missing (logout falls back to loca
 
 ## Out of Scope
 
-- Generation-readiness items (`report_type` in run metadata, a `NOT_APPLICABLE` error code, widening the Athena-slug gate, any create-run endpoint): follow-on work, not this story. The REPORT-77 ticket description says to add `report_type` "now", but the deferral was settled during CLI spec work — the CLI treats all runs as Athena runs until the field appears, so deferring stays additive.
+- Generation-readiness items (a `NOT_APPLICABLE` error code, widening the Athena-slug gate, any create-run endpoint): follow-on work, not this story. *(`report_type` in run metadata was originally deferred here too; that deferral was reversed post-closure — see Amendments.)*
 - Any CLI-side behavior (owned by the client spec in cc-data-cli).
 - Token-management UI changes (STORY 2 shipped them; revoked tokens drop out of the token UIs automatically — they list active tokens only).
 
@@ -134,3 +134,21 @@ The CLI degrades gracefully when any piece is missing (logout falls back to loca
 ### Test-coverage decisions from implementation review
 **Context**: Two QA findings during the implementation spec's self-review.
 **Decision**: (1) The non-nil `last_used_at` rendering path (the introspection body's only conditional) gets a dedicated test that touches the token first, then asserts the ISO 8601 rendering and that introspection leaves the value unchanged. (2) The introspection metadata test mints a second, differently-labeled token for the same user so "returns the calling token's own row" is actually discriminated from "returns the user's most recent token".
+
+## Amendments
+
+### 2026-07-17: `report_type` on run metadata (added post-closure)
+
+The cc-data-cli spec review added a fourth owed server dependency beyond the three deliverables above, reversing the Out of Scope deferral of `report_type` (the other generation-readiness items stay deferred).
+
+**Requirement**: the v1 run JSON — both the `GET /api/v1/reports` list items and `GET /api/v1/reports/:id`, rendered in `report_json.ex` — gains an additive string field `report_type` with a server-owned vocabulary of `answers` | `usage` | `log`, derived from the run's report definition:
+
+- `student-answers` → `answers`
+- `student-assignment-usage` → `usage`
+- `student-actions`, `student-actions-with-metadata`, `teacher-actions` → `log`
+
+The distinguishing facts behind the vocabulary: only the shared_queries `:answers` SQL appends the two pseudo-header rows ("Prompt" and "Correct answer" in `student_id`) to its CSV; usage shares the learner-column shape without those rows; the three log-based reports carry log columns, and student-actions (minimal learner cols) and teacher-actions (log cols only) have no `student_id` column at all. Any future report type must ship with a value in this vocabulary or a new value; the vocabulary is part of the API contract and additions are contract changes.
+
+**Why the CLI needs it**: cc-data keys its pseudo-header row filter and a report-shape allowlist on this field. It filters the two rows only for `report_type: answers` CSVs (an unconditional filter is a binder error on the log reports and a conversion error on usage), and it quarantines runs whose type it does not recognize (excluded from aggregate views with an upgrade warning, per-run views still available) instead of silently misinterpreting them. Against servers without the field the CLI derives the type from the known slugs, so the field is purely additive and backward-compatible.
+
+**Implementation**: the value derives from the report definitions themselves — an `api_report_type` attribute on the Athena report modules (via `use ReportServer.Reports.Report` opts), read from the report tree by the JSON view — rather than a slug map inside the view. Every run the API lists (all Athena-slug runs) carries the field in both list and show payloads; tests assert presence and exact value per report slug, and fail if a future Athena report ships without a vocabulary value.

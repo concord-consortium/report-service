@@ -1,5 +1,5 @@
 defmodule ReportServer.Reports.Athena.StudentActionsReport do
-  use ReportServer.Reports.Report, type: :athena
+  use ReportServer.Reports.Report, type: :athena, api_report_type: :log
 
   alias ReportServer.Reports.Athena.LearnerData
 

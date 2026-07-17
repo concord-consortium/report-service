@@ -1,5 +1,5 @@
 defmodule ReportServer.Reports.Athena.StudentAssignmentUsageReport do
-  use ReportServer.Reports.Report, type: :athena
+  use ReportServer.Reports.Report, type: :athena, api_report_type: :usage
 
   alias ReportServer.Reports.Athena.{LearnerData, ResourceData, SharedQueries}
 

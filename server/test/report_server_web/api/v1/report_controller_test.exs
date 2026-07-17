@@ -6,7 +6,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   alias ReportServer.AuditLog.DataAccessLogEntry
   alias ReportServer.Repo
   alias ReportServer.Reports
-  alias ReportServer.Reports.{Report, ReportFilter, ReportQuery}
+  alias ReportServer.Reports.{Report, ReportFilter, ReportQuery, Tree}
 
   @filter_keys ~w(filters state start_date end_date hide_names exclude_internal cohort school
                   teacher assignment class student permission_form country subject_area)
@@ -60,6 +60,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       body = json_response(conn, 200)
 
       assert Enum.map(body["items"], & &1["id"]) == [run2.id, run1.id]
+      assert Enum.map(body["items"], & &1["report_type"]) == ["log", "answers"]
       assert body["next_page_token"] == nil
     end
 
@@ -74,6 +75,42 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       conn = get(authed_conn(raw_token), ~p"/api/v1/reports")
       assert %{"items" => [item]} = json_response(conn, 200)
       assert item["athena_query_state"] == "running"
+    end
+  end
+
+  describe "report_type" do
+    setup :register_and_put_bearer_token
+
+    @report_types %{
+      "student-answers" => "answers",
+      "student-assignment-usage" => "usage",
+      "student-actions" => "log",
+      "student-actions-with-metadata" => "log",
+      "teacher-actions" => "log"
+    }
+
+    test "every Athena report slug carries its exact report_type in show and index payloads",
+         %{raw_token: raw_token, user: user} do
+      # a new Athena report shipping without a vocabulary value fails here
+      slugs = Tree.athena_report_slugs()
+      assert Enum.sort(slugs) == Enum.sort(Map.keys(@report_types))
+
+      runs =
+        Map.new(slugs, fn slug ->
+          run = run_fixture(user, %{report_slug: slug, athena_query_id: "qid", athena_query_state: "succeeded"})
+          {run.id, Map.fetch!(@report_types, slug)}
+        end)
+
+      for {id, expected} <- runs do
+        assert json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{id}"), 200)["report_type"] == expected
+      end
+
+      items = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports"), 200)["items"]
+      assert length(items) == map_size(runs)
+
+      for item <- items do
+        assert item["report_type"] == Map.fetch!(runs, item["id"])
+      end
     end
   end
 
@@ -156,6 +193,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
       assert body["id"] == run.id
       assert body["report_slug"] == "student-answers"
+      assert body["report_type"] == "answers"
       assert body["athena_query_state"] == "succeeded"
       assert body["report_filter_values"] == %{"cohort" => %{"1" => "Cohort One"}}
       refute Map.has_key?(body, "athena_result_url")
