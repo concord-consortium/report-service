@@ -192,8 +192,11 @@ defmodule ReportServer.Accounts do
   UPDATE — exactly one exchange of a given code can get `{1, _}` back — so concurrent
   duplicates cannot both mint. Unknown, expired, used, and verifier-mismatch all return
   `:error`. A verifier mismatch still consumes the code (burning an exposed code).
+  An optional `label` overrides the default `"CLI login"` token label.
   """
-  def exchange_auth_grant(raw_code, code_verifier) when is_binary(raw_code) and is_binary(code_verifier) do
+  def exchange_auth_grant(raw_code, code_verifier, label \\ nil)
+
+  def exchange_auth_grant(raw_code, code_verifier, label) when is_binary(raw_code) and is_binary(code_verifier) do
     now = DateTime.utc_now(:second)
     code_hash = hash_secret(raw_code)
 
@@ -207,7 +210,7 @@ defmodule ReportServer.Accounts do
         auth_grant = Repo.one!(from g in AuthGrant, where: g.code_hash == ^code_hash, preload: [:user])
 
         if pkce_verifier_matches?(auth_grant.code_challenge, code_verifier) do
-          create_api_token(auth_grant.user, "CLI login")
+          create_api_token(auth_grant.user, label || "CLI login")
         else
           :error
         end
@@ -216,7 +219,7 @@ defmodule ReportServer.Accounts do
         :error
     end
   end
-  def exchange_auth_grant(_, _), do: :error
+  def exchange_auth_grant(_, _, _), do: :error
 
   defp pkce_verifier_matches?(code_challenge, code_verifier) do
     computed = :crypto.hash(:sha256, code_verifier) |> Base.url_encode64(padding: false)

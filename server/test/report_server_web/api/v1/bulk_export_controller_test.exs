@@ -122,7 +122,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       run = run_fixture(user)
 
       body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
-      assert body == %{"items" => [], "next_page_token" => nil}
+      assert body == %{"items" => [], "next_page_token" => nil, "total_endpoints" => 0}
       assert scratch_count() == 0
 
       entry = Repo.one!(DataAccessLogEntry)
@@ -136,7 +136,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       run = run_fixture(user)
 
       body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
-      assert body == %{"items" => [], "next_page_token" => nil}
+      assert body == %{"items" => [], "next_page_token" => nil, "total_endpoints" => 0}
       assert scratch_count() == 0
       assert Repo.one!(DataAccessLogEntry).endpoint_set == []
     end
@@ -209,6 +209,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
       token = body["next_page_token"]
       assert is_binary(token)
+      assert body["total_endpoints"] == 1
 
       assert {:ok, %{scratch_id: sid, endpoint_index: 0, inner_cursor: %{"docId" => "a1"}}} =
                BulkParams.parse_page_token(%{"page_token" => token})
@@ -218,6 +219,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       # replay the same token -> same page served (idempotent)
       body2 = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers?page_token=#{token}"), 200)
       assert body2["items"] == body["items"]
+      assert body2["total_endpoints"] == 1
     end
 
     test "a terminal page returns a null next_page_token and can be replayed", %{conn: conn, user: user} do
@@ -309,6 +311,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
 
       body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history"), 200)
       assert length(body["items"]) == 1
+      assert body["total_endpoints"] == 1
       assert Repo.one!(ExportScratch).data_type == "history_bulk"
     end
 
@@ -408,6 +411,11 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
       body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
       assert body["items"] == []
       assert is_binary(body["next_page_token"])
+      assert body["total_endpoints"] == 2
+
+      # constant across pages: the later page reports the same whole-export denominator
+      body2 = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers?page_token=#{body["next_page_token"]}"), 200)
+      assert body2["total_endpoints"] == 2
     end
   end
 

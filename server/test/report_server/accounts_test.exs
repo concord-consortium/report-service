@@ -243,7 +243,7 @@ defmodule ReportServer.AccountsTest do
     end
   end
 
-  describe "exchange_auth_grant/2" do
+  describe "exchange_auth_grant" do
     test "mints a verifiable API token for a valid code/verifier pair and marks the grant used" do
       user = user_fixture()
       {verifier, challenge} = pkce_pair()
@@ -292,6 +292,15 @@ defmodule ReportServer.AccountsTest do
 
       assert :error == Accounts.exchange_auth_grant(raw_code, "wrong-verifier")
       assert :error == Accounts.exchange_auth_grant(raw_code, verifier)
+    end
+
+    test "an explicit label overrides the default token label" do
+      user = user_fixture()
+      {verifier, challenge} = pkce_pair()
+      {:ok, raw_code, _} = Accounts.create_auth_grant(user, challenge, "https://learn.concord.org")
+
+      assert {:ok, _raw_token, api_token} = Accounts.exchange_auth_grant(raw_code, verifier, "custom")
+      assert api_token.label == "custom"
     end
   end
 end

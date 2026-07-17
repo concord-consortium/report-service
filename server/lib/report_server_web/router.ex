@@ -30,6 +30,11 @@ defmodule ReportServerWeb.Router do
     plug ReportServerWeb.Api.AuthPlug
   end
 
+  pipeline :api_token_only do
+    plug :force_json
+    plug ReportServerWeb.Api.AuthPlug, token_only: true
+  end
+
   scope "/", ReportServerWeb do
     pipe_through :browser
 
@@ -63,6 +68,16 @@ defmodule ReportServerWeb.Router do
     post "/reports/:id/attachments", AttachmentController, :create
     get "/reports/:id/jobs", ReportJobController, :index
     get "/reports/:id/jobs/:job_id/download", ReportJobController, :download
+  end
+
+  # token self-management: authenticated by token validity alone (no role gate, no
+  # last_used_at touch) so a de-provisioned user can still inspect and revoke their own
+  # credential. Must stay above the /api/v1 catch-all scope below.
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api_token_only
+
+    get "/tokens/current", TokenController, :show_current
+    delete "/tokens/current", TokenController, :delete_current
   end
 
   # must stay below every real /api/v1 route: unknown API paths render the contract 404 rather
