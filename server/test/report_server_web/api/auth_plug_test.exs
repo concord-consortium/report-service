@@ -6,6 +6,7 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
   alias ReportServer.Accounts
   alias ReportServer.Accounts.ApiToken
   alias ReportServer.Repo
+  alias ReportServerWeb.Api.AuthPlug
 
   @not_authenticated %{
     "error" => "NOT_AUTHENTICATED",
@@ -79,7 +80,45 @@ defmodule ReportServerWeb.Api.AuthPlugTest do
 
       assert json_response(conn, 200) == %{"items" => [], "next_page_token" => nil}
       assert conn.assigns.current_user.id == user.id
+      assert conn.assigns.api_token.id == api_token.id
       assert Repo.get!(ApiToken, api_token.id).last_used_at != nil
+    end
+  end
+
+  describe "token-only mode" do
+    test "accepts a valid token whose user fails the role gate, assigns both, skips the touch" do
+      user =
+        user_fixture(%{
+          portal_is_admin: false,
+          portal_is_project_admin: false,
+          portal_is_project_researcher: false
+        })
+
+      {raw_token, api_token} = api_token_fixture(user)
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer #{raw_token}")
+        |> AuthPlug.call(token_only: true)
+
+      refute conn.halted
+      assert conn.assigns.current_user.id == user.id
+      assert conn.assigns.api_token.id == api_token.id
+      assert Repo.get!(ApiToken, api_token.id).last_used_at == nil
+    end
+
+    test "still rejects a revoked token" do
+      user = user_fixture()
+      {raw_token, api_token} = api_token_fixture(user)
+      {:ok, _revoked} = Accounts.revoke_api_token(api_token, user.id)
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer #{raw_token}")
+        |> AuthPlug.call(token_only: true)
+
+      assert conn.halted
+      assert conn.status == 401
     end
   end
 

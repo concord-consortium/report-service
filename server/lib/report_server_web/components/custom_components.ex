@@ -3,6 +3,8 @@ defmodule ReportServerWeb.CustomComponents do
 
   import ReportServerWeb.CoreComponents
 
+  alias ReportServer.Reports.ReportFilter
+
   def portal_stats(assigns) do
     ~H"""
     <div>
@@ -246,26 +248,29 @@ defmodule ReportServerWeb.CustomComponents do
   end
 
   attr :report_run, :any, required: true
+  # a programmatically created run (API/console) can have a nil report_filter;
+  # render it as the empty filter instead of crashing the runs tables
   def report_filter_values(assigns) do
+    assigns = assign(assigns, :report_filter, assigns.report_run.report_filter || %ReportFilter{})
     ~H"""
     <div class="table">
-      <div class="table-row" :for={filter <- Enum.reverse(@report_run.report_filter.filters)}>
+      <div class="table-row" :for={filter <- Enum.reverse(@report_filter.filters)}>
         <div class="table-cell capitalize font-bold"><.report_filter_label filter={filter} /></div>
         <div class="table-cell pl-3"><%= Enum.join(Map.values(@report_run.report_filter_values[filter] || %{}), ", ") %></div>
       </div>
-      <div class="table-row" :if={String.length(@report_run.report_filter.start_date || "") > 0}>
+      <div class="table-row" :if={String.length(@report_filter.start_date || "") > 0}>
         <div class="table-cell capitalize font-bold">Start Date</div>
-        <div class="table-cell pl-3"><%= @report_run.report_filter.start_date %></div>
+        <div class="table-cell pl-3"><%= @report_filter.start_date %></div>
       </div>
-      <div class="table-row" :if={String.length(@report_run.report_filter.end_date || "") > 0}>
+      <div class="table-row" :if={String.length(@report_filter.end_date || "") > 0}>
         <div class="table-cell capitalize font-bold">End Date</div>
-        <div class="table-cell pl-3"><%= @report_run.report_filter.end_date %></div>
+        <div class="table-cell pl-3"><%= @report_filter.end_date %></div>
       </div>
-      <div class="table-row" :if={@report_run.report_filter.exclude_internal}>
+      <div class="table-row" :if={@report_filter.exclude_internal}>
         <div class="table-cell capitalize font-bold">Exclude CC users</div>
         <div class="table-cell pl-3">True</div>
       </div>
-      <div class="table-row" :if={@report_run.report_filter.hide_names}>
+      <div class="table-row" :if={@report_filter.hide_names}>
         <div class="table-cell capitalize font-bold">Hide Names</div>
         <div class="table-cell pl-3">True</div>
       </div>

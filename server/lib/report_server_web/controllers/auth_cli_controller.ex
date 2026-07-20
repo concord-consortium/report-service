@@ -52,9 +52,9 @@ defmodule ReportServerWeb.AuthCliController do
       Map.has_key?(conn.query_params, "code") or Map.has_key?(conn.query_params, "code_verifier")
 
     case {query_secrets?, conn.body_params} do
-      {false, %{"code" => code, "code_verifier" => code_verifier}}
+      {false, %{"code" => code, "code_verifier" => code_verifier} = body}
       when is_binary(code) and is_binary(code_verifier) ->
-        case Accounts.exchange_auth_grant(code, code_verifier) do
+        case Accounts.exchange_auth_grant(code, code_verifier, sanitize_label(body["label"])) do
           {:ok, raw_token, _api_token} ->
             json(conn, %{token: raw_token})
 
@@ -66,6 +66,16 @@ defmodule ReportServerWeb.AuthCliController do
         ErrorHelpers.bad_request(conn, "Invalid code or verifier.")
     end
   end
+
+  # sanitize rather than reject: the exchange burns the one-time code, so failing it over
+  # a cosmetic field would cost the user a whole login round-trip
+  defp sanitize_label(label) when is_binary(label) do
+    case label |> String.trim() |> String.slice(0, 100) |> String.trim() do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+  defp sanitize_label(_), do: nil
 
   defp authorize_or_reject(conn, user, request) do
     if Auth.can_access_reports?(%{"user" => user}) do

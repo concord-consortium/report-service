@@ -42,19 +42,29 @@ defmodule ReportServer.Reports.Athena.ResourceData do
     {:ok, resource_data}
   end
 
+  # fail closed like LearnerData.upload/1: a lost activity-structure upload breaks the
+  # query's activities table, so any put failure must fail the whole run
   def upload(resource_data) do
     resource_data
-      |> Enum.each(fn %{query_id: query_id, denormalized: denormalized} ->
+      |> Enum.reduce_while({:ok, resource_data}, fn %{query_id: query_id, denormalized: denormalized}, acc ->
         if denormalized do
           path = "activity-structure/#{query_id}/#{query_id}-structure.json"
           contents = Jason.encode!(denormalized)
           Logger.info("Uploading resource to #{path}")
-          AthenaDB.put_file_contents(path, contents)
+          case athena_db().put_file_contents(path, contents) do
+            {:ok, _, _} ->
+              {:cont, acc}
+            error ->
+              Logger.error("Failed to upload resource to #{path}: #{inspect(error)}")
+              {:halt, {:error, "Unable to upload the resource data for the report."}}
+          end
+        else
+          {:cont, acc}
         end
       end)
-
-    {:ok, resource_data}
   end
+
+  defp athena_db(), do: Application.get_env(:report_server, :athena_db, AthenaDB)
 
   defp map_learner_data_to_runnable_data(learner_data) do
     learner_data

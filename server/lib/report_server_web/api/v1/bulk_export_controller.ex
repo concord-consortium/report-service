@@ -46,7 +46,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
         intent_attrs = audit_attrs(user, report_run, "export_scoped", data_type, export_id, nil, [])
 
         case AuditLog.create_entry(intent_attrs) do
-          {:ok, _entry} -> json(conn, %{items: [], next_page_token: nil})
+          {:ok, _entry} -> json(conn, %{items: [], next_page_token: nil, total_endpoints: 0})
           {:error, _reason} -> ErrorHelpers.server_error(conn)
         end
 
@@ -143,7 +143,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
           audit_attrs(user, report_run, "bulk_read", data_type, scratch.scratch_id, raw_token, served)
 
         case AuditLog.create_entry(access_attrs) do
-          {:ok, _entry} -> json(conn, %{items: items, next_page_token: next_token})
+          {:ok, _entry} -> json(conn, %{items: items, next_page_token: next_token, total_endpoints: length(endpoints)})
           {:error, _reason} -> ErrorHelpers.server_error(conn)
         end
 

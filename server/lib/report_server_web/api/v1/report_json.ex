@@ -1,6 +1,6 @@
 defmodule ReportServerWeb.Api.V1.ReportJSON do
   alias ReportServer.AthenaDB
-  alias ReportServer.Reports.{ReportFilter, ReportRun}
+  alias ReportServer.Reports.{Report, ReportFilter, ReportRun, Tree}
   alias ReportServerWeb.Api.V1.Params
 
   @id_dimensions [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form, :country, :subject_area]
@@ -25,6 +25,7 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
     %{
       id: report_run.id,
       report_slug: report_run.report_slug,
+      report_type: report_type(report_run.report_slug),
       report_filter: report_filter_json(report_run.report_filter),
       report_filter_values: report_run.report_filter_values || %{},
       athena_query_state: report_run.athena_query_state,
@@ -51,4 +52,13 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
 
   defp presence(""), do: nil
   defp presence(value), do: value
+
+  # answers | usage | log — declared on the report modules; the API only serves
+  # Athena-slug runs, which all declare one, so the nil fallback is unreachable
+  defp report_type(report_slug) do
+    case Tree.find_report(report_slug) do
+      %Report{api_report_type: api_report_type} when api_report_type != nil -> to_string(api_report_type)
+      _ -> nil
+    end
+  end
 end

@@ -2,13 +2,13 @@
   <.breadcrumbs previous={[{"Reports", ~p"/reports"}]} current="CLI Access Tokens" />
 </div>
 
-<div class="max-w-xl">
-  <p class="my-2 text-sm">
-    Generate a personal access token for the <code>cc-data</code> CLI. The token is shown
-    <b>once</b> — copy it now; you will not be able to see it again. Use it with
-    <code>cc-data login --token &lt;paste&gt;</code>.
-  </p>
+<p class="my-2 text-sm">
+  Generate a personal access token for the <code>cc-data</code> CLI. The token is shown
+  <b>once</b> — copy it now; you will not be able to see it again. Use it with
+  <code>cc-data login --token &lt;paste&gt;</code>.
+</p>
 
+<div class="max-w-xl">
   <.form :if={@raw_token == nil} for={@form} phx-submit="generate" class="my-4">
     <label for="token-label" class="block text-sm font-semibold">
       Label (optional, e.g. “Doug’s MacBook”)

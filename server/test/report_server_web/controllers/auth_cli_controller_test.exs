@@ -122,6 +122,63 @@ defmodule ReportServerWeb.AuthCliControllerTest do
         assert json_response(conn, 400) == @bad_request
       end
     end
+
+    test "an optional label becomes the minted token's label", %{conn: conn} do
+      {code, verifier} = grant_fixture()
+
+      conn =
+        post_json(conn, "/auth/cli/token",
+          Jason.encode!(%{"code" => code, "code_verifier" => verifier, "label" => "CLI login (myhost)"}))
+
+      {:ok, _user, api_token} = Accounts.verify_api_token(json_response(conn, 200)["token"])
+      assert api_token.label == "CLI login (myhost)"
+    end
+
+    test "no label keeps the default", %{conn: conn} do
+      {code, verifier} = grant_fixture()
+
+      conn = post_json(conn, "/auth/cli/token", Jason.encode!(%{"code" => code, "code_verifier" => verifier}))
+
+      {:ok, _user, api_token} = Accounts.verify_api_token(json_response(conn, 200)["token"])
+      assert api_token.label == "CLI login"
+    end
+
+    test "an over-long label is truncated to 100 chars, never a 400", %{conn: conn} do
+      {code, verifier} = grant_fixture()
+      long_label = String.duplicate("x", 150)
+
+      conn =
+        post_json(conn, "/auth/cli/token",
+          Jason.encode!(%{"code" => code, "code_verifier" => verifier, "label" => long_label}))
+
+      {:ok, _user, api_token} = Accounts.verify_api_token(json_response(conn, 200)["token"])
+      assert api_token.label == String.duplicate("x", 100)
+    end
+
+    test "truncation that cuts at a space leaves no trailing whitespace", %{conn: conn} do
+      {code, verifier} = grant_fixture()
+      label = String.duplicate("x", 99) <> " " <> String.duplicate("y", 50)
+
+      conn =
+        post_json(conn, "/auth/cli/token",
+          Jason.encode!(%{"code" => code, "code_verifier" => verifier, "label" => label}))
+
+      {:ok, _user, api_token} = Accounts.verify_api_token(json_response(conn, 200)["token"])
+      assert api_token.label == String.duplicate("x", 99)
+    end
+
+    test "whitespace-only and non-string labels fall back to the default" do
+      for label <- ["   ", 123, %{"nested" => true}] do
+        {code, verifier} = grant_fixture()
+
+        conn =
+          post_json(build_conn(), "/auth/cli/token",
+            Jason.encode!(%{"code" => code, "code_verifier" => verifier, "label" => label}))
+
+        {:ok, _user, api_token} = Accounts.verify_api_token(json_response(conn, 200)["token"])
+        assert api_token.label == "CLI login"
+      end
+    end
   end
 
   describe "log hygiene" do
