@@ -2,6 +2,9 @@
 **/*.js
 **/*.js.map
 
+# Build output (tsc outDir; also holds non-JS assets copied into the build, e.g. *.json fixtures)
+lib/
+
 # Typescript v1 declaration files
 typings/
 
@@ -14,6 +17,7 @@ node_modules/
 # runtime config (holds environment variables for emulator)
 .runtimeconfig.json
 .env
+.env.local
 .secret.local
 
 build-info.json

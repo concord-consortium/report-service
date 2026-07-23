@@ -1,0 +1,173 @@
+{
+  "description": "",
+  "editor_mode": 0,
+  "layout": 0,
+  "name": "Linked Interactives Test",
+  "notes": "",
+  "project": {
+    "about": "",
+    "collaborators": "",
+    "collaborators_image_url": "",
+    "contact_email": "",
+    "copyright": "",
+    "copyright_image_url": "",
+    "footer": "<p>Copyright &copy; 2018 The Concord Consortium. This open educational resource is free for use under the Creative Commons Attribution International license (<a href=\"https://creativecommons.org/licenses/by/4.0/\" target=\"_blank\" rel=\"noopener\">CC BY 4.0</a>) and powered by open source software packages. When sharing this resource, please include attribution to the Concord Consortium and the URL <a href=\"http://concord.org\" target=\"_blank\" rel=\"noopener\">http://concord.org</a> and the CC-BY-4.0 license.</p>",
+    "funders_image_url": "",
+    "logo_ap": "https://static.concord.org/projects/logos/ap/geni-logo.png",
+    "logo_lara": "https://static.concord.org/projects/logos/lara/geni-logo.png",
+    "project_key": "geniventure",
+    "title": "Geniventure",
+    "url": ""
+  },
+  "related": "",
+  "show_submit_button": true,
+  "student_report_enabled": true,
+  "thumbnail_url": "",
+  "time_to_complete": null,
+  "version": 1,
+  "theme_name": "WATERS 2",
+  "background_image": null,
+  "fixed_width_layout": "1100px",
+  "pages": [
+    {
+      "additional_sections": {},
+      "embeddable_display_mode": "stacked",
+      "is_completion": false,
+      "is_hidden": false,
+      "layout": "l-6040",
+      "name": null,
+      "position": 1,
+      "show_header": true,
+      "show_info_assessment": true,
+      "show_interactive": true,
+      "show_sidebar": false,
+      "sidebar": null,
+      "sidebar_title": "Did you know?",
+      "toggle_info_assessment": false,
+      "embeddables": [
+        {
+          "embeddable": {
+            "content": "<p>A demo of interactive linking.</p>",
+            "is_full_width": true,
+            "is_hidden": false,
+            "name": "",
+            "type": "Embeddable::Xhtml",
+            "ref_id": "226525-Embeddable::Xhtml"
+          },
+          "section": "header_block"
+        },
+        {
+          "embeddable": {
+            "name": "",
+            "url_fragment": null,
+            "authored_state": "",
+            "is_hidden": false,
+            "is_full_width": true,
+            "show_in_featured_question_report": true,
+            "inherit_aspect_ratio_method": true,
+            "custom_aspect_ratio_method": null,
+            "inherit_native_width": true,
+            "custom_native_width": 576,
+            "inherit_native_height": true,
+            "custom_native_height": 435,
+            "inherit_click_to_play": true,
+            "custom_click_to_play": false,
+            "inherit_full_window": true,
+            "custom_full_window": false,
+            "inherit_click_to_play_prompt": true,
+            "custom_click_to_play_prompt": null,
+            "inherit_image_url": true,
+            "custom_image_url": null,
+            "library_interactive": {
+              "hash": "944a5003181ebb8d8a5b9084aa8dd4bc88ce9d3f",
+              "data": {
+                "aspect_ratio_method": "DEFAULT",
+                "authoring_guidance": "",
+                "base_url": "https://lara-master.concordqa.org/example-interactive/index.html",
+                "click_to_play": false,
+                "click_to_play_prompt": null,
+                "description": "",
+                "enable_learner_state": true,
+                "full_window": false,
+                "has_report_url": false,
+                "image_url": null,
+                "name": "Example Interactive",
+                "native_height": 435,
+                "native_width": 576,
+                "no_snapshots": false,
+                "show_delete_data_button": true,
+                "thumbnail_url": "",
+                "customizable": false,
+                "authorable": true
+              }
+            },
+            "type": "ManagedInteractive",
+            "ref_id": "133-ManagedInteractive",
+            "linked_interactives": [
+              {
+                "ref_id": "134-ManagedInteractive",
+                "label": "video"
+              }
+            ]
+          },
+          "section": null
+        },
+        {
+          "embeddable": {
+            "name": "",
+            "url_fragment": null,
+            "authored_state": "{\"version\":1,\"questionType\":\"iframe_interactive\",\"videoUrl\":\"https://models-resources.s3.amazonaws.com/geniblocks/resources/fablevision/video/charcoal.mp4\"}",
+            "is_hidden": false,
+            "is_full_width": true,
+            "show_in_featured_question_report": true,
+            "inherit_aspect_ratio_method": true,
+            "custom_aspect_ratio_method": "DEFAULT",
+            "inherit_native_width": true,
+            "custom_native_width": 576,
+            "inherit_native_height": true,
+            "custom_native_height": 435,
+            "inherit_click_to_play": true,
+            "custom_click_to_play": false,
+            "inherit_full_window": true,
+            "custom_full_window": false,
+            "inherit_click_to_play_prompt": true,
+            "custom_click_to_play_prompt": null,
+            "inherit_image_url": true,
+            "custom_image_url": null,
+            "library_interactive": {
+              "hash": "198d7d24388db87023133901b5a8fcab1ebb6446",
+              "data": {
+                "aspect_ratio_method": "DEFAULT",
+                "authoring_guidance": "",
+                "base_url": "https://models-resources.concord.org/question-interactives/branch/master/video-player/",
+                "click_to_play": false,
+                "click_to_play_prompt": null,
+                "description": "",
+                "enable_learner_state": true,
+                "full_window": false,
+                "has_report_url": false,
+                "image_url": null,
+                "name": "Video Player (master)",
+                "native_height": 435,
+                "native_width": 576,
+                "no_snapshots": false,
+                "show_delete_data_button": true,
+                "thumbnail_url": "",
+                "customizable": true,
+                "authorable": true
+              }
+            },
+            "type": "ManagedInteractive",
+            "ref_id": "134-ManagedInteractive",
+            "linked_interactives": []
+          },
+          "section": "interactive_box"
+        }
+      ],
+      "id": 1000
+    }
+  ],
+  "plugins": [],
+  "type": "LightweightActivity",
+  "export_site": "Lightweight Activities Runtime and Authoring"
+}
