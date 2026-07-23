@@ -63,6 +63,17 @@ describe("chat rules: create whitelisting", () => {
     await firebase.assertSucceeds(learner.firestore().collection(messages).add(wellFormedUserMsg(learnerOwner)));
   });
 
+  it("DENIES a learner message that also carries run_key (anonymousRead would make it world-readable)", async () => {
+    const { messages } = chatPaths();
+    await firebase.assertFails(learner.firestore().collection(messages).add(
+      wellFormedUserMsg({ ...learnerOwner, run_key: RUN_KEY })));
+  });
+
+  it("DENIES a learner parent create that also carries run_key", async () => {
+    const { parent } = chatPaths();
+    await firebase.assertFails(learner.firestore().doc(parent).set({ ...learnerOwner, run_key: RUN_KEY }));
+  });
+
   it("ALLOWS a well-formed anonymous kind:'log' message", async () => {
     const { messages } = chatPaths();
     await firebase.assertSucceeds(anon.firestore().collection(messages).add({

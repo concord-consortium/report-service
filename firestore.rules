@@ -161,10 +161,21 @@ service cloud.firestore {
     // server-owned lock fields or forge a kind:'assistant' tutor reply. So the chat block adds
     // field-whitelisting create helpers.
 
+    // run_key marks an anonymous, world-readable doc (see anonymousRead). platform_id marks a
+    // learner-private doc. The two ownership models are mutually exclusive: anonymousCreate() already
+    // forbids platform_id on anonymous docs; this forbids the reverse so an authenticated learner can't
+    // silently make their chat world-readable via anonymousRead (or make pickOwnerFields drop their
+    // platform identity) by also sending a run_key.
+    function ownerFieldsNotMixed() {
+      return !('run_key' in request.resource.data)
+        || !('platform_id' in request.resource.data);
+    }
+
     function chatParentCreate() {
       // owner fields ONLY — rejects status / lockedAt / lastProcessedCreatedAt / lastProcessedMessageId /
       // conversationId / promptInstalled (all Admin-written). hasOnly() permits a subset of the listed keys.
       return studentWorkCreate()
+        && ownerFieldsNotMixed()
         && request.resource.data.keys().hasOnly(
              ['run_key', 'platform_user_id', 'platform_id', 'context_id']);
     }
@@ -173,6 +184,7 @@ service cloud.firestore {
       // kind:'user' (typed message) or kind:'log' (forwarded interactive telemetry) +
       // whitelisted payload keys only. Rejects kind:'assistant' (Admin-only) and any server-owned field.
       return studentWorkCreate()
+        && ownerFieldsNotMixed()
         && (request.resource.data.kind == 'user' || request.resource.data.kind == 'log')
         // require createdAt AND constrain it to an orderable type: the function's drain orders by it, so a
         // doc that omits createdAt (excluded from that orderBy) or carries a non-orderable type (string/map/
