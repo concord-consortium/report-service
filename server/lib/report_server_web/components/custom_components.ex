@@ -3,6 +3,8 @@ defmodule ReportServerWeb.CustomComponents do
 
   import ReportServerWeb.CoreComponents
 
+  alias ReportServer.Reports.ReportFilter
+
   def portal_stats(assigns) do
     ~H"""
     <div>
@@ -246,26 +248,29 @@ defmodule ReportServerWeb.CustomComponents do
   end
 
   attr :report_run, :any, required: true
+  # a programmatically created run (API/console) can have a nil report_filter;
+  # render it as the empty filter instead of crashing the runs tables
   def report_filter_values(assigns) do
+    assigns = assign(assigns, :report_filter, assigns.report_run.report_filter || %ReportFilter{})
     ~H"""
     <div class="table">
-      <div class="table-row" :for={filter <- Enum.reverse(@report_run.report_filter.filters)}>
+      <div class="table-row" :for={filter <- Enum.reverse(@report_filter.filters)}>
         <div class="table-cell capitalize font-bold"><.report_filter_label filter={filter} /></div>
         <div class="table-cell pl-3"><%= Enum.join(Map.values(@report_run.report_filter_values[filter] || %{}), ", ") %></div>
       </div>
-      <div class="table-row" :if={String.length(@report_run.report_filter.start_date || "") > 0}>
+      <div class="table-row" :if={String.length(@report_filter.start_date || "") > 0}>
         <div class="table-cell capitalize font-bold">Start Date</div>
-        <div class="table-cell pl-3"><%= @report_run.report_filter.start_date %></div>
+        <div class="table-cell pl-3"><%= @report_filter.start_date %></div>
       </div>
-      <div class="table-row" :if={String.length(@report_run.report_filter.end_date || "") > 0}>
+      <div class="table-row" :if={String.length(@report_filter.end_date || "") > 0}>
         <div class="table-cell capitalize font-bold">End Date</div>
-        <div class="table-cell pl-3"><%= @report_run.report_filter.end_date %></div>
+        <div class="table-cell pl-3"><%= @report_filter.end_date %></div>
       </div>
-      <div class="table-row" :if={@report_run.report_filter.exclude_internal}>
+      <div class="table-row" :if={@report_filter.exclude_internal}>
         <div class="table-cell capitalize font-bold">Exclude CC users</div>
         <div class="table-cell pl-3">True</div>
       </div>
-      <div class="table-row" :if={@report_run.report_filter.hide_names}>
+      <div class="table-row" :if={@report_filter.hide_names}>
         <div class="table-cell capitalize font-bold">Hide Names</div>
         <div class="table-cell pl-3">True</div>
       </div>
@@ -350,6 +355,119 @@ defmodule ReportServerWeb.CustomComponents do
 
   defp pluralize(count, word) do
     if count == 1, do: word, else: word <> "s"
+  end
+
+  attr :page, :integer, required: true
+  attr :total_pages, :integer, required: true
+  attr :path_fun, :any, required: true, doc: "fn page -> patch path; must return the no-param path for page 1"
+  attr :label, :string, default: "pagination", doc: "accessible name; make it unique when more than one pager is on a page"
+
+  def pager(assigns) do
+    assigns = assign(assigns, :items, pager_items(assigns.page, assigns.total_pages))
+
+    ~H"""
+    <nav :if={@total_pages > 1} aria-label={@label} class="flex items-center gap-1 my-4 text-sm">
+      <.link :if={@page > 1} patch={@path_fun.(@page - 1)} aria-label="Previous page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Previous</.link>
+      <span :if={@page == 1} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Previous</span>
+      <%= for item <- @items do %>
+        <span :if={item == :ellipsis} aria-hidden="true" class="px-1">&#8230;</span>
+        <.link
+          :if={is_integer(item)}
+          patch={@path_fun.(item)}
+          aria-label={"Page #{item}"}
+          aria-current={if item == @page, do: "page"}
+          class={["px-2 py-1 border rounded", item == @page && "bg-dark-orange text-white border-dark-orange", item != @page && "border-zinc-500 bg-white text-zinc-800 hover:bg-zinc-200"]}
+        >
+          <%= item %>
+        </.link>
+      <% end %>
+      <.link :if={@page < @total_pages} patch={@path_fun.(@page + 1)} aria-label="Next page" class="px-2 py-1 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Next</.link>
+      <span :if={@page == @total_pages} class="px-2 py-1 border border-zinc-300 rounded bg-white text-zinc-500">Next</span>
+    </nav>
+    """
+  end
+
+  defp pager_items(page, total_pages) do
+    [1, page - 1, page, page + 1, total_pages]
+    |> Enum.filter(&(&1 >= 1 and &1 <= total_pages))
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.reduce([1], fn [a, b], acc ->
+      acc ++ if b - a > 1, do: [:ellipsis, b], else: [b]
+    end)
+  end
+
+  attr :tokens, :list, required: true
+  attr :caption, :string, required: true, doc: "accessible table name (rendered sr-only)"
+  attr :include_user, :boolean, default: false, doc: "admin view prepends a User column"
+
+  def token_table(assigns) do
+    ~H"""
+    <table class="w-full border-collapse bg-white text-sm">
+      <caption class="sr-only"><%= @caption %></caption>
+      <thead class="bg-gray-100 text-left leading-6 text-zinc-600">
+        <tr>
+          <th :if={@include_user} scope="col" class="p-2 font-normal border-b">User</th>
+          <th scope="col" class="p-2 font-normal border-b">Label</th>
+          <th scope="col" class="p-2 font-normal border-b">Created</th>
+          <%!-- "Last used" is a freshness marker, not an exact last-request time: touch_api_token/1
+                is thresholded at 60s to avoid a row UPDATE per request, so this can lag the true
+                last use by up to a minute. Keep the display minute-granular; don't add seconds. --%>
+          <th scope="col" class="p-2 font-normal border-b">Last used</th>
+          <th scope="col" class="p-2 font-normal border-b"><span class="sr-only">Revoke</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={token <- @tokens} class="group hover:bg-zinc-200 even:bg-gray-50">
+          <td :if={@include_user} class="p-2 font-normal border-b align-top">
+            <%= token.user.portal_first_name %> <%= token.user.portal_last_name %> (<%= token.user.portal_email %>)
+          </td>
+          <td class="p-2 font-normal border-b align-top"><%= token.label || "—" %></td>
+          <td class="p-2 font-normal border-b align-top">
+            <time datetime={DateTime.to_iso8601(token.inserted_at)}>
+              <%= Calendar.strftime(token.inserted_at, "%Y-%m-%d %H:%M UTC") %>
+            </time>
+          </td>
+          <td class="p-2 font-normal border-b align-top">
+            <%= if token.last_used_at do %>
+              <time datetime={DateTime.to_iso8601(token.last_used_at)}>
+                <%= Calendar.strftime(token.last_used_at, "%Y-%m-%d %H:%M UTC") %>
+              </time>
+            <% else %>
+              Never used
+            <% end %>
+          </td>
+          <td class="p-2 font-normal border-b align-top">
+            <button
+              type="button"
+              phx-click="revoke"
+              phx-value-id={token.id}
+              data-confirm={"Revoke #{token_descriptor(token)}? The machine using it will need a new token."}
+              aria-label={"Revoke #{token_descriptor(token)}"}
+              class="rounded px-2 py-1 border border-rose-600 text-rose-700 text-sm hover:bg-rose-600 hover:text-white"
+            >
+              Revoke
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+  end
+
+  defp token_descriptor(token) do
+    label_part = if token.label, do: "the token labeled '#{token.label}'", else: "the unlabeled token"
+    created = Calendar.strftime(token.inserted_at, "%Y-%m-%d %H:%M UTC")
+
+    used =
+      if token.last_used_at do
+        "last used " <> Calendar.strftime(token.last_used_at, "%Y-%m-%d %H:%M UTC")
+      else
+        "never used"
+      end
+
+    "#{label_part} (created #{created}, #{used}, ##{token.id})"
   end
 
 end

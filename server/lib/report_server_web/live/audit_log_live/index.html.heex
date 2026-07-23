@@ -1,0 +1,57 @@
+<div class="font-bold my-2">
+  <.breadcrumbs previous={[{"Reports", ~p"/reports"}]} current="Data Access Log" />
+</div>
+
+<form phx-submit="filter" class="my-4 flex flex-wrap gap-3 items-end">
+  <.input id="export_id" name="export_id" type="text" label="Export id" value={@filters.export_id} />
+  <.input id="remote_endpoint" name="remote_endpoint" type="text" label="Student" value={@filters.remote_endpoint} />
+  <button type="submit" class="px-3 py-2 border border-zinc-500 rounded bg-white text-zinc-800 hover:bg-zinc-200">Filter</button>
+</form>
+
+<div
+  id="audit-results"
+  role="status"
+  aria-live="polite"
+  tabindex="-1"
+  phx-hook="FocusResults"
+  data-refocus={refocus_token(@filters)}
+  class="my-2 text-sm"
+>
+  Showing <%= @total_count %> event(s)<%= filter_suffix(@filters) %>
+  <div :if={length(@entries) == 0 and not @filtered?} class="my-2">No data access events have been recorded yet.</div>
+  <div :if={length(@entries) == 0 and @filtered?} class="my-2">No events match the current filter.</div>
+</div>
+
+<div :if={length(@entries) > 0}>
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path(&1, @filters)} label="pagination top" />
+  <table class="w-full border-collapse bg-white text-sm">
+    <caption class="sr-only">Data access events<%= filter_suffix(@filters) %></caption>
+    <thead class="bg-gray-100 text-left leading-6 text-zinc-600">
+      <tr>
+        <th scope="col" class="p-2 font-normal border-b">When</th>
+        <th scope="col" class="p-2 font-normal border-b">User</th>
+        <th scope="col" class="p-2 font-normal border-b">Run</th>
+        <th scope="col" class="p-2 font-normal border-b">Access</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr :for={entry <- @entries} class="group hover:bg-zinc-200 even:bg-gray-50">
+        <td class="p-2 font-normal border-b align-top">
+          <time datetime={DateTime.to_iso8601(entry.inserted_at)}>
+            <%= Calendar.strftime(entry.inserted_at, "%Y-%m-%d %H:%M UTC") %>
+          </time>
+        </td>
+        <td class="p-2 font-normal border-b align-top"><%= entry.user.portal_first_name %> <%= entry.user.portal_last_name %> (<%= entry.user.portal_email %>)</td>
+        <td class="p-2 font-normal border-b align-top">
+          <.link class="underline" href={"/reports/runs/#{entry.report_run_id}"}><%= entry.report_run_id %></.link>
+          <span class="text-zinc-600"><%= entry.report_slug %></span>
+        </td>
+        <td class="p-2 font-normal border-b align-top">
+          <%= entry.data_type %> / <%= entry.event %> (<%= entry.source %>)
+          <span :if={entry.job_id}>— job <%= entry.job_id %></span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <.pager page={@page} total_pages={@total_pages} path_fun={&audit_log_path(&1, @filters)} label="pagination bottom" />
+</div>

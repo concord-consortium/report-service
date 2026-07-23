@@ -34,3 +34,12 @@ config :phoenix_live_view,
 config :report_server, :portal,
   client_id: "research-report-server",
   url: "https://learn.portal.staging.concord.org"
+
+config :report_server, :output,
+  bucket: "report-server-output-test",
+  jobs_folder: "jobs",
+  transcripts_folder: "transcripts"
+
+config :report_server, :token_service,
+  url: "https://token-service-test.example/api/v1/resources",
+  private_bucket: "token-service-files-private-test"

@@ -22,7 +22,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   end
 
   def fetch(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form,
-        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
+        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}, opts \\ []) do
     portal_query = %ReportQuery{
       cols: [
         {"DISTINCT rl.learner_id", "learner_id"},
@@ -124,34 +124,42 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     with {:ok, portal_query} <- ReportQuery.update_query(portal_query, join: join, where: where),
          {:ok, sql} <- ReportQuery.get_sql(portal_query),
          {:ok, result} <- PortalDbs.query(user.portal_server, sql),
-         {:ok, learner_data} <- map_learner_data(result, user) do
+         {:ok, learner_data} <- map_learner_data(result, user, opts) do
       {:ok, learner_data}
     else
       error -> error
     end
   end
 
+  # fail closed: a lost upload means the Athena query joins zero learners and the report
+  # succeeds with silently empty results, so any put failure must fail the whole run
   def upload(learner_data) do
     learner_data
-      |> Enum.each(fn %{query_id: query_id, learners: learners} ->
+      |> Enum.reduce_while({:ok, learner_data}, fn %{query_id: query_id, learners: learners}, acc ->
         path = "learners/#{query_id}/#{UUID.uuid4()}.json"
         contents = learners
           |> Enum.map(&(Jason.encode!/1))
           |> Enum.join("\n")
         Logger.info("Uploading learners to #{path}")
-        AthenaDB.put_file_contents(path, contents)
+        case athena_db().put_file_contents(path, contents) do
+          {:ok, _, _} ->
+            {:cont, acc}
+          error ->
+            Logger.error("Failed to upload learners to #{path}: #{inspect(error)}")
+            {:halt, {:error, "Unable to upload the learner data for the report."}}
+        end
       end)
-
-    {:ok, learner_data}
   end
 
-  defp map_learner_data(result = %MyXQL.Result{}, user = %User{}) do
+  defp athena_db(), do: Application.get_env(:report_server, :athena_db, AthenaDB)
+
+  defp map_learner_data(result = %MyXQL.Result{}, user = %User{}, opts) do
     rows = PortalDbs.map_columns_on_rows(result)
 
     teacher_ids = get_unique_ids(rows, :teachers_id)
     permission_form_ids = get_unique_ids(rows, :permission_forms_id)
 
-    with {:ok, rows} <- ensure_not_empty(rows, "No learners were found matching the filters you selected."),
+    with {:ok, rows} <- maybe_ensure_not_empty(rows, Keyword.get(opts, :allow_empty, false)),
          {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
          {:ok, permission_form_map } <- get_permission_form_map(permission_form_ids, user) do
 
@@ -190,6 +198,10 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       error -> error
     end
   end
+
+  defp maybe_ensure_not_empty(rows, true), do: {:ok, rows}
+  defp maybe_ensure_not_empty(rows, false),
+    do: ensure_not_empty(rows, "No learners were found matching the filters you selected.")
 
   defp get_unique_ids(rows, key) do
     rows

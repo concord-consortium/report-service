@@ -17,6 +17,7 @@ module.exports = {
       colors: {
         teal: "#0592af",
         orange: "#ea6d2f",
+        "dark-orange": "#c14d10",
         "light-teal": "#b7e2ec",
         "light-orange": "#ffe6d0"
       }

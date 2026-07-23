@@ -4,6 +4,12 @@ defmodule ReportServer.AthenaDB do
   alias ReportServer.Accounts.User
   alias ReportServer.Reports.Athena.AthenaConfig
 
+  # How long the presigned download URLs returned by get_download_url/2 remain valid.
+  @download_url_ttl_seconds 60 * 10
+
+  @doc "The lifetime, in seconds, of the presigned URLs minted by get_download_url/2."
+  def download_url_ttl_seconds, do: @download_url_ttl_seconds
+
   def query(sql, report_run_id, user = %User{}) do
     with :ok <- check_query_size(sql),
          {:ok, workgroup_name} <- ensure_workgroup(user) do
@@ -30,7 +36,7 @@ defmodule ReportServer.AthenaDB do
     {bucket, path} = get_bucket_and_path(s3_url)
     :s3
     |> ExAws.Config.new(client)
-    |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: 60*10, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
+    |> ExAws.S3.presigned_url(:get, bucket, path, expires_in: @download_url_ttl_seconds, query_params: [{"response-content-disposition", "attachment; filename=#{filename}"}])
   end
 
   def put_file_contents(path, contents) do

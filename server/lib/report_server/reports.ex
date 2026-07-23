@@ -1,31 +1,16 @@
 defmodule ReportServer.Reports do
   import Ecto.Query, warn: false
 
+  alias ReportServer.Pagination
   alias ReportServer.Repo
   alias ReportServer.Accounts.User
   alias ReportServer.Reports.ReportRun
+  alias ReportServer.Reports.Tree
 
   @root_slug "new-reports"
 
   def get_root_slug(), do: @root_slug
   def get_root_path(), do: "/#{@root_slug}"
-
-  @doc """
-  Returns the list of all report_runs.
-
-  ## Examples
-
-      iex> list_all_report_runs()
-      [%ReportRun{}, ...]
-
-  """
-  def list_all_report_runs do
-    query = from r in ReportRun,
-      order_by: [desc: r.inserted_at],
-      preload: [:user]
-
-    Repo.all(query)
-  end
 
   @doc """
   Returns the list of all report_runs for a user.
@@ -68,7 +53,53 @@ defmodule ReportServer.Reports do
       ** (Ecto.NoResultsError)
 
   """
+  def list_user_report_runs_paginated(user = %User{}, page) do
+    from(r in ReportRun, where: r.user_id == ^user.id, order_by: [desc: r.inserted_at, desc: r.id], preload: [:user])
+    |> Pagination.paginate(page)
+  end
+
+  def list_all_report_runs_paginated(page) do
+    from(r in ReportRun, order_by: [desc: r.inserted_at, desc: r.id], preload: [:user])
+    |> Pagination.paginate(page)
+  end
+
   def get_report_run!(id), do: Repo.get!(ReportRun, id)
+
+  @doc """
+  Lists the caller's Athena-type report runs for the API, newest id first, keyset-paginated.
+  """
+  def list_api_report_runs(user = %User{}, limit, before_id \\ nil) do
+    query = from r in ReportRun,
+      where: r.user_id == ^user.id,
+      where: r.report_slug in ^Tree.athena_report_slugs(),
+      order_by: [desc: r.id],
+      limit: ^limit
+
+    query = if before_id do
+      from r in query, where: r.id < ^before_id
+    else
+      query
+    end
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Gets one of the caller's Athena-type report runs by id for the API, with the user preloaded.
+  Not-owned and non-Athena ids are indistinguishable from non-existent (`{:error, :not_found}`).
+  """
+  def get_api_report_run(user = %User{}, id) when is_integer(id) do
+    query = from r in ReportRun,
+      where: r.id == ^id,
+      where: r.user_id == ^user.id,
+      where: r.report_slug in ^Tree.athena_report_slugs(),
+      preload: [:user]
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      report_run -> {:ok, report_run}
+    end
+  end
 
   @doc """
   Gets a single report_run with the user pre-loaded.

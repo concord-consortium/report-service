@@ -108,6 +108,6 @@ config :report_server, :output,
 
 config :report_server, :athena,
   bucket: System.get_env("ATHENA_REPORT_BUCKET") || "concord-staging-report-data", # staging
-  log_db_name: System.get_env("ATHENA_LOG_DB_NAME") || "log_ingester_production", # staging
+  log_db_name: System.get_env("ATHENA_LOG_DB_NAME") || "log_ingester_qa", # staging
   hide_username_hash_salt: System.get_env("HIDE_USERNAME_HASH_SALT") || "not-the-real-salt", # development
   source_key: System.get_env("ATHENA_SOURCE_KEY") || "authoring.lara.staging.concord.org" # staging
