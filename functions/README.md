@@ -124,16 +124,42 @@ The deploy will fail with clear instructions if any required secrets are missing
 
 * set the current project to dev: `firebase use report-service-dev`
 * deploy the functions: `npm run deploy` (this generates the build info)
+* if `../firestore.rules` changed, also deploy the rules (see [Deploying rules](#deploying-rules))
 
 ### To deploy to the production server:
 
 * update the version number in functions/package.json
 * set the current project to production: `firebase use report-service-pro`
 * deploy the functions:`npm run deploy` (this generates the build info)
+* if `../firestore.rules` changed, also deploy the rules (see [Deploying rules](#deploying-rules))
+* if the release adds a new query shape, exercise it in production and create any index it asks for (see [Indexes](#indexes))
 * Return to the safety of development: `firebase use report-service-dev`
 
 Deploying will also run the firebase linter, and may also ask you to update or add new indexes to the database,
 depending on the queries it finds.
+
+**`npm run deploy` does not deploy the firestore rules.** It resolves to `firebase deploy --only functions`,
+so a release that changes `../firestore.rules` needs the separate rules deploy called out above. Missing it
+is easy to misdiagnose, because the symptom is a `permission-denied` in the *client* rather than any error
+from the functions deploy.
+
+### Indexes
+
+`../firestore.indexes.json` does not currently track any composite indexes, so a query needing one is not
+covered by a deploy. Firestore auto-creates single-field indexes, but a query combining an equality filter
+with an `orderBy` on a different field needs a composite index that has to be created explicitly.
+
+In development these usually get created ad hoc, by following the console link in the "requires an index"
+error the first time the query runs. That link only creates the index in the project you were testing
+against, so an index added while testing `report-service-dev` will **not** exist in `report-service-pro`.
+
+**For now**, after deploying a release that adds a new query shape, exercise the new feature against
+production and create any index it asks for by clicking the link shown in the console error. The index
+takes a few minutes to build, and the query keeps failing until it finishes.
+
+**FUTURE**: populate `../firestore.indexes.json` with the composite indexes we actually rely on, so
+`firebase deploy --only firestore:indexes` creates them per project and this stops being a manual
+post-deploy step.
 
 ## API functions
 
@@ -196,3 +222,7 @@ To run the emulator you need java installed.
 ### Deploying rules
 
 `cd .. && firebase deploy --only firestore:rules`
+
+This deploys to whichever project `firebase use` currently selects, so check that first. Nothing in CI
+deploys the rules, and `npm run deploy` in this folder only deploys functions, so a rules change reaches
+an environment only when someone runs this command against it.
