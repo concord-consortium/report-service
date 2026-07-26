@@ -130,7 +130,7 @@ The deploy will fail with clear instructions if any required secrets are missing
 
 * update the version number in functions/package.json
 * set the current project to production: `firebase use report-service-pro`
-* deploy the functions:`npm run deploy` (this generates the build info)
+* deploy the functions: `npm run deploy` (this generates the build info)
 * if `../firestore.rules` changed, also deploy the rules (see [Deploying rules](#deploying-rules))
 * if the release adds a new query shape, exercise it in production and create any index it asks for (see [Indexes](#indexes))
 * Return to the safety of development: `firebase use report-service-dev`
@@ -221,7 +221,7 @@ To run the emulator you need java installed.
 
 ### Deploying rules
 
-`cd .. && firebase deploy --only firestore:rules`
+    cd .. && firebase deploy --only firestore:rules
 
 This deploys to whichever project `firebase use` currently selects, so check that first. Nothing in CI
 deploys the rules, and `npm run deploy` in this folder only deploys functions, so a rules change reaches
