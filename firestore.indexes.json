@@ -19,46 +19,6 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "platform_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "resource_link_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "platform_user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "question_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "answers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "platform_user_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "question_id",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "answers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
           "fieldPath": "question_id",
           "order": "ASCENDING"
         },
@@ -160,38 +120,6 @@
       "fields": [
         {
           "fieldPath": "run_key",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "answers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "run_key",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "question_id",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "answers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "run_key",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "question_id",
           "order": "ASCENDING"
         },
         {
@@ -306,6 +234,36 @@
         },
         {
           "fieldPath": "resource_link_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "interactive_state_histories",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "context_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "platform_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "platform_user_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "resource_link_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "shared_with",
           "order": "ASCENDING"
         },
         {
