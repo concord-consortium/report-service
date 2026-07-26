@@ -65,6 +65,25 @@ describe("resolveActivityUrl", () => {
   it("defaultActivityUrl uses the first allowlisted host (log-first path, no client input)", () => {
     expect(defaultActivityUrl("9")).toBe(`https://${AUTHORING_HOSTS[0]}/api/v1/activities/9.json`);
   });
+
+  it("defaultActivityUrl honours a configured allowlisted host so staging fetches staging authoring", () => {
+    const staging = "authoring.lara.staging.concord.org";
+    expect(defaultActivityUrl("9", staging)).toBe(`https://${staging}/api/v1/activities/9.json`);
+  });
+
+  it("defaultActivityUrl ignores a non-allowlisted configured host (a bad .env can't widen the target)", () => {
+    expect(defaultActivityUrl("9", "evil.example.com"))
+      .toBe(`https://${AUTHORING_HOSTS[0]}/api/v1/activities/9.json`);
+  });
+
+  it("defaultActivityUrl falls back to the default host when the config value is empty", () => {
+    expect(defaultActivityUrl("9", "")).toBe(`https://${AUTHORING_HOSTS[0]}/api/v1/activities/9.json`);
+  });
+
+  it("defaultActivityUrl still encodes the path activityId", () => {
+    expect(defaultActivityUrl("9/../evil", "authoring.lara.staging.concord.org"))
+      .toBe("https://authoring.lara.staging.concord.org/api/v1/activities/9%2F..%2Fevil.json");
+  });
 });
 
 describe("parseActivityResource shape checks", () => {

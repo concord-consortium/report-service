@@ -135,6 +135,18 @@ service cloud.firestore {
       allow update: if studentWorkUpdate();
     }
 
+    match /sources/{source}/object_store_data/{document=**} {
+      allow create: if studentWorkCreate();
+      allow read: if studentWorkRead();
+      allow update: if studentWorkUpdate();
+    }
+
+    match /sources/{source}/object_store_metadata/{document=**} {
+      allow create: if studentWorkCreate();
+      allow read: if studentWorkRead();
+      allow update: if studentWorkUpdate();
+    }
+
     match /sources/{source}/plugin_states/{document=**} {
       allow create: if studentWorkCreate();
       allow read: if studentWorkRead();

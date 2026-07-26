@@ -27,6 +27,10 @@ import { DrainContext, acquireLock, processAndDrain, pickOwnerFields } from "./c
 // multi-line .env escaping. See the note in generic-prompt.ts.
 const openaiKey = defineSecret("OPENAI_API_KEY");
 const openaiModel = defineString("OPENAI_MODEL");
+// Per-project authoring host for the log-first path (no client activityUrl to validate). Set in
+// .env.report-service-dev / .env.report-service-pro; an unset or non-allowlisted value falls back to
+// the allowlist default inside defaultActivityUrl.
+const authoringHost = defineString("AUTHORING_HOST");
 
 const MESSAGES =
   "sources/{source}/chats/{key}/activities/{activityId}/pages/{pageId}/messages/{messageId}";
@@ -60,6 +64,7 @@ export const chatTutorOnWrite = functions
       openai: createOpenAIClient(openaiKey.value()),
       model: openaiModel.value(),
       genericText: CHAT_GENERIC_PROMPT,
+      defaultAuthoringHost: authoringHost.value() || undefined,
     };
 
     try {

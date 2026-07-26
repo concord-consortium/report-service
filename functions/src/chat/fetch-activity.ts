@@ -53,10 +53,16 @@ export function resolveActivityUrl(params: {
 }
 
 // The canonical fetch URL for the default authoring host, for the log-first path where no user
-// message (and so no client activityUrl) exists yet. The host is a trusted constant, so there is no
-// client-controlled input here and no SSRF surface.
-export function defaultActivityUrl(paramActivityId: string): string {
-  return `https://${AUTHORING_HOSTS[0]}/api/v1/activities/${encodeURIComponent(paramActivityId)}.json`;
+// message (and so no client activityUrl) exists yet. There is no client-controlled input here and no
+// SSRF surface: `host` comes from server-side config (the AUTHORING_HOST param, per-project), and is
+// still checked against the allowlist so a misconfigured .env can't widen the fetch target.
+//
+// The host MUST track the deployment environment. Hardcoding AUTHORING_HOSTS[0] made report-service-dev
+// fetch PRODUCTION authoring for every log-first turn, where the same activity id is an unrelated
+// activity — so findPage threw "no visible page matches pageId N" and the turn died with status:"error".
+export function defaultActivityUrl(paramActivityId: string, host?: string): string {
+  const trustedHost = host && AUTHORING_HOSTS.includes(host) ? host : AUTHORING_HOSTS[0];
+  return `https://${trustedHost}/api/v1/activities/${encodeURIComponent(paramActivityId)}.json`;
 }
 
 // Read a Response body enforcing a hard byte cap, streaming when a reader is available (real fetch) and
