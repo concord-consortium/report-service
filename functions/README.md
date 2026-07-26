@@ -124,16 +124,42 @@ The deploy will fail with clear instructions if any required secrets are missing
 
 * set the current project to dev: `firebase use report-service-dev`
 * deploy the functions: `npm run deploy` (this generates the build info)
+* if `../firestore.rules` changed, also deploy the rules (see [Deploying rules](#deploying-rules))
 
 ### To deploy to the production server:
 
 * update the version number in functions/package.json
 * set the current project to production: `firebase use report-service-pro`
-* deploy the functions:`npm run deploy` (this generates the build info)
+* deploy the functions: `npm run deploy` (this generates the build info)
+* if `../firestore.rules` changed, also deploy the rules (see [Deploying rules](#deploying-rules))
+* if the release adds a new query shape, deploy its index too: `firebase deploy --only firestore:indexes` (see [Indexes](#indexes))
 * Return to the safety of development: `firebase use report-service-dev`
 
 Deploying will also run the firebase linter, and may also ask you to update or add new indexes to the database,
 depending on the queries it finds.
+
+**`npm run deploy` does not deploy the firestore rules.** It resolves to `firebase deploy --only functions`,
+so a release that changes `../firestore.rules` needs the separate rules deploy called out above. Missing it
+is easy to misdiagnose, because the symptom is a `permission-denied` in the *client* rather than any error
+from the functions deploy.
+
+### Indexes
+
+Composite indexes are tracked in `../firestore.indexes.json` and deployed with
+`firebase deploy --only firestore:indexes`. Firestore auto-creates single-field indexes, but a query
+combining an equality filter with an `orderBy` on a different field needs a composite index, and those
+have to be declared.
+
+That file is the source of truth for a deploy: it CREATES indexes it lists that the project is missing,
+and it proposes DELETING indexes the project has that the file does not list. Read the plan before
+confirming, especially against production.
+
+A release that adds a new query shape needs its index added to the file. If one is missing the query fails
+at runtime with `failed-precondition`, and the error carries a console link that creates the index, but
+only in the project you were running against, which is how the two projects drift apart. Clicking the link
+is a fine way to unblock yourself; adding the same index to the file is what stops it recurring in the
+other project. A newly created index takes a few minutes to build, and the query keeps failing until it
+finishes.
 
 ## API functions
 
@@ -195,4 +221,8 @@ To run the emulator you need java installed.
 
 ### Deploying rules
 
-`cd .. && firebase deploy --only firestore:rules`
+    cd .. && firebase deploy --only firestore:rules
+
+This deploys to whichever project `firebase use` currently selects, so check that first. Nothing in CI
+deploys the rules, and `npm run deploy` in this folder only deploys functions, so a rules change reaches
+an environment only when someone runs this command against it.
