@@ -51,6 +51,9 @@ export interface DrainContext {
   openai: ReturnType<typeof createOpenAIClient>;
   model: string;
   genericText: string;
+  // authoring host used by the log-first path, which has no client activityUrl to validate. Must match
+  // the deployment environment (see defaultActivityUrl); falls back to the allowlist default when unset.
+  defaultAuthoringHost?: string;
 }
 
 // the owner fields the client's rules require on any doc it reads — copied off the
@@ -140,7 +143,7 @@ export function extractUnit(pending: MsgSnap[]): Unit {
 // fetch + assemble the page, then compose the developer-item page prompt. Only called on the first
 // turn (when the developer item is not yet installed), so later turns skip the fetch entirely.
 async function composePageSystemPrompt(ctx: DrainContext, unit: Unit): Promise<string> {
-  const { params, genericText } = ctx;
+  const { params, genericText, defaultAuthoringHost } = ctx;
   const userData = unit.kind === "user" ? unit.docs[0].data() : undefined;
   // a user message supplies + must justify its activityUrl (validated); a log-first turn has no
   // client URL, so fall back to the trusted default authoring host (no client input → no SSRF surface).
@@ -150,7 +153,7 @@ async function composePageSystemPrompt(ctx: DrainContext, unit: Unit): Promise<s
         messageActivityId: String(userData.activityId),
         paramActivityId: params.activityId,
       })
-    : defaultActivityUrl(params.activityId);
+    : defaultActivityUrl(params.activityId, defaultAuthoringHost);
   const activity = await getActivityResource(safeUrl);
   const page = findPage(activity, params.pageId);
   const pageCtx = assemblePageContext(activity, page, orientationHints(userData ?? {}));
