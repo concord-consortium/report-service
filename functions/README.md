@@ -132,7 +132,7 @@ The deploy will fail with clear instructions if any required secrets are missing
 * set the current project to production: `firebase use report-service-pro`
 * deploy the functions: `npm run deploy` (this generates the build info)
 * if `../firestore.rules` changed, also deploy the rules (see [Deploying rules](#deploying-rules))
-* if the release adds a new query shape, exercise it in production and create any index it asks for (see [Indexes](#indexes))
+* if the release adds a new query shape, deploy its index too: `firebase deploy --only firestore:indexes` (see [Indexes](#indexes))
 * Return to the safety of development: `firebase use report-service-dev`
 
 Deploying will also run the firebase linter, and may also ask you to update or add new indexes to the database,
@@ -145,21 +145,21 @@ from the functions deploy.
 
 ### Indexes
 
-`../firestore.indexes.json` does not currently track any composite indexes, so a query needing one is not
-covered by a deploy. Firestore auto-creates single-field indexes, but a query combining an equality filter
-with an `orderBy` on a different field needs a composite index that has to be created explicitly.
+Composite indexes are tracked in `../firestore.indexes.json` and deployed with
+`firebase deploy --only firestore:indexes`. Firestore auto-creates single-field indexes, but a query
+combining an equality filter with an `orderBy` on a different field needs a composite index, and those
+have to be declared.
 
-In development these usually get created ad hoc, by following the console link in the "requires an index"
-error the first time the query runs. That link only creates the index in the project you were testing
-against, so an index added while testing `report-service-dev` will **not** exist in `report-service-pro`.
+That file is the source of truth for a deploy: it CREATES indexes it lists that the project is missing,
+and it proposes DELETING indexes the project has that the file does not list. Read the plan before
+confirming, especially against production.
 
-**For now**, after deploying a release that adds a new query shape, exercise the new feature against
-production and create any index it asks for by clicking the link shown in the console error. The index
-takes a few minutes to build, and the query keeps failing until it finishes.
-
-**FUTURE**: populate `../firestore.indexes.json` with the composite indexes we actually rely on, so
-`firebase deploy --only firestore:indexes` creates them per project and this stops being a manual
-post-deploy step.
+A release that adds a new query shape needs its index added to the file. If one is missing the query fails
+at runtime with `failed-precondition`, and the error carries a console link that creates the index, but
+only in the project you were running against, which is how the two projects drift apart. Clicking the link
+is a fine way to unblock yourself; adding the same index to the file is what stops it recurring in the
+other project. A newly created index takes a few minutes to build, and the query keeps failing until it
+finishes.
 
 ## API functions
 
