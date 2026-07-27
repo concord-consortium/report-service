@@ -5,35 +5,41 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
   Shared by BulkExportController and AttachmentController.
   """
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{ReportFilter, SourceKey}
+  alias ReportServer.Reports.{Report, ReportFilter, SourceKey, Tree}
 
   @doc """
   Returns {:ok, [%{"remote_endpoint" => ..., "source" => ...}, ...]} | {:ok, []} | {:error, reason}.
   """
   def derive_endpoint_set(user, report_run) do
-    case allowed_project_ids_source().get_allowed_project_ids(user) do
-      # defensive/unreachable (all role flags false -> AuthPlug 401s before here)
-      :none ->
-        {:ok, []}
+    with :ok <- ensure_bulk_derivable(Tree.find_report(report_run.report_slug)) do
+      case allowed_project_ids_source().get_allowed_project_ids(user) do
+        # defensive/unreachable (all role flags false -> AuthPlug 401s before here)
+        :none ->
+          {:ok, []}
 
-      # empty-permission short-circuit BEFORE any SQL (list_to_in([]) -> "()", so "... IN ()" -> 500)
-      [] ->
-        {:ok, []}
+        # empty-permission short-circuit BEFORE any SQL (list_to_in([]) -> "()", so "... IN ()" -> 500)
+        [] ->
+          {:ok, []}
 
-      # portal permission query FAILED: return it so the caller maps it to a controlled SERVER_ERROR.
-      {:error, _reason} = err ->
-        err
+        # portal permission query FAILED: return it so the caller maps it to a controlled SERVER_ERROR.
+        {:error, _reason} = err ->
+          err
 
-      _allowed ->
-        # nil is a live state; fetch(nil, ...) would FunctionClauseError
-        filter = report_run.report_filter || %ReportFilter{}
+        _allowed ->
+          # nil is a live state; fetch(nil, ...) would FunctionClauseError
+          filter = report_run.report_filter || %ReportFilter{}
 
-        case learner_data().fetch(filter, user, allow_empty: true) do
-          {:ok, learner_groups} -> {:ok, to_endpoints(learner_groups)}
-          {:error, _msg} = err -> err
-        end
+          case learner_data().fetch(filter, user, allow_empty: true) do
+            {:ok, learner_groups} -> {:ok, to_endpoints(learner_groups)}
+            {:error, _msg} = err -> err
+          end
+      end
     end
   end
+
+  # aggregate reports (grouped counts, geography filters) cannot answer a per-learner request
+  defp ensure_bulk_derivable(%Report{derives_learner_data: false}), do: {:error, :not_learner_derivable}
+  defp ensure_bulk_derivable(_report), do: :ok
 
   # LearnerData.fetch returns groups (grouped by runnable_url); each group's learners carry
   # run_remote_endpoint + runnable_url. Ordered, stable snapshot; source per learner.
