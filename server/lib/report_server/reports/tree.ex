@@ -72,8 +72,26 @@ defmodule ReportServer.Reports.Tree do
     |> Enum.map(&(&1.slug))
   end
 
+  @doc """
+  Slugs of every report exposed through the v1 API: non-`tbd` reports whose module type is
+  :athena or :portal. Honors `tbd` at both the leaf (`Report.tbd`) and the group
+  (`ReportGroup.tbd`) level — a `tbd` group is pruned with all its descendants, because
+  group-level `tbd` is only a decorative web-UI badge and does not otherwise gate exposure.
+  """
+  def api_report_slugs() do
+    root()
+    |> collect_api_reports()
+    |> Enum.filter(&(&1.type in [:athena, :portal]))
+    |> Enum.map(& &1.slug)
+  end
+
   defp collect_reports(report = %Report{}), do: [report]
   defp collect_reports(%ReportGroup{children: children}), do: Enum.flat_map(children, &collect_reports/1)
+
+  defp collect_api_reports(%Report{tbd: true}), do: []
+  defp collect_api_reports(report = %Report{}), do: [report]
+  defp collect_api_reports(%ReportGroup{tbd: true}), do: []
+  defp collect_api_reports(%ReportGroup{children: children}), do: Enum.flat_map(children, &collect_api_reports/1)
 
   defp decorate_tree(root) do
     decorate_tree(root, [])
