@@ -5,7 +5,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
   alias ReportServer.AuditLog
   alias ReportServer.Reports
-  alias ReportServer.Reports.{AthenaRunOps, ReportRun}
+  alias ReportServer.Reports.{AthenaRunOps, Report, ReportRun, Tree}
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{Params, ReportJSON}
 
@@ -22,10 +22,17 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   def show(conn, %{"id" => id_param}) do
     with {:ok, id} <- Params.parse_id(id_param),
          {:ok, report_run} <- Reports.get_api_report_run(conn.assigns.current_user, id) do
-      report_run = AthenaRunOps.ensure_current(report_run)
+      report_run = ensure_current_if_athena(report_run)
       json(conn, ReportJSON.show(report_run))
     else
       {:error, :not_found} -> ErrorHelpers.not_found(conn)
+    end
+  end
+
+  defp ensure_current_if_athena(report_run) do
+    case Tree.find_report(report_run.report_slug) do
+      %Report{type: :portal} -> report_run
+      _ -> AthenaRunOps.ensure_current(report_run)
     end
   end
 
