@@ -104,27 +104,39 @@ defmodule ReportServer.Reports.ReportUtils do
   end
 
   def apply_allowed_project_ids_filter(user, join, where, assignment_id_ref, teacher_id_ref) do
-    allowed_project_ids = ReportServer.PortalDbs.get_allowed_project_ids(user)
-    if allowed_project_ids == :all do
-      {join, where}
-    else
-      ## Suffix all table aliases with "_a" ("allowed") to avoid conflicts with the main query table aliases
-      {
-        [
-          "join admin_cohort_items aci_teacher_a on (aci_teacher_a.item_type = 'Portal::Teacher' and aci_teacher_a.item_id = #{teacher_id_ref})",
-          "join admin_cohorts ac_teacher_a ON (ac_teacher_a.id = aci_teacher_a.admin_cohort_id)",
-          "left join admin_cohort_items aci_assignment_a on (aci_assignment_a.item_type = 'ExternalActivity' and aci_assignment_a.item_id = #{assignment_id_ref})",
-          "left join admin_cohorts ac_assignment_a ON (ac_assignment_a.id = aci_assignment_a.admin_cohort_id)",
-          "left join admin_project_materials apm_a ON (apm_a.material_type = 'ExternalActivity' AND apm_a.material_id = #{assignment_id_ref})"
-          | join
-        ],
-        [
-          "ac_teacher_a.project_id IN #{list_to_in(allowed_project_ids)}",
-          "(ac_assignment_a.project_id IN #{list_to_in(allowed_project_ids)}) or (apm_a.project_id IN #{list_to_in(allowed_project_ids)})"
-          | where
-        ]
-      }
-    end
+    ReportServer.PortalDbs.get_allowed_project_ids(user)
+    |> scope_by_allowed_projects(join, where, assignment_id_ref, teacher_id_ref)
+  end
+
+  # :all (super-admin) applies no scoping.
+  def scope_by_allowed_projects(:all, join, where, _assignment_id_ref, _teacher_id_ref), do: {join, where}
+
+  # A non-empty list scopes the report to those projects.
+  def scope_by_allowed_projects(allowed_project_ids, join, where, assignment_id_ref, teacher_id_ref)
+      when is_list(allowed_project_ids) and allowed_project_ids != [] do
+    ## Suffix all table aliases with "_a" ("allowed") to avoid conflicts with the main query table aliases
+    {
+      [
+        "join admin_cohort_items aci_teacher_a on (aci_teacher_a.item_type = 'Portal::Teacher' and aci_teacher_a.item_id = #{teacher_id_ref})",
+        "join admin_cohorts ac_teacher_a ON (ac_teacher_a.id = aci_teacher_a.admin_cohort_id)",
+        "left join admin_cohort_items aci_assignment_a on (aci_assignment_a.item_type = 'ExternalActivity' and aci_assignment_a.item_id = #{assignment_id_ref})",
+        "left join admin_cohorts ac_assignment_a ON (ac_assignment_a.id = aci_assignment_a.admin_cohort_id)",
+        "left join admin_project_materials apm_a ON (apm_a.material_type = 'ExternalActivity' AND apm_a.material_id = #{assignment_id_ref})"
+        | join
+      ],
+      [
+        "ac_teacher_a.project_id IN #{list_to_in(allowed_project_ids)}",
+        "(ac_assignment_a.project_id IN #{list_to_in(allowed_project_ids)}) or (apm_a.project_id IN #{list_to_in(allowed_project_ids)})"
+        | where
+      ]
+    }
+  end
+
+  # No allowed projects (empty list, :none, or a failed lookup): the user can see no project-scoped
+  # data, so constrain the report to zero rows. Scoping with an empty list would render
+  # `project_id IN ()`, a MySQL syntax error.
+  def scope_by_allowed_projects(_no_allowed_projects, join, where, _assignment_id_ref, _teacher_id_ref) do
+    {join, ["1 = 0" | where]}
   end
 
   # returns the portal_teacher ids for any teacher of a CC school

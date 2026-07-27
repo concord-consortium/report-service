@@ -586,6 +586,21 @@ Config additions (`runtime.exs`, with a `config.exs`/`test.exs` default):
 
 ---
 
+## Fix zero-allowed-projects scoping (shared report code)
+
+**Summary**: Found during live staging testing of the now-exposed Portal `/download`: a project-admin/researcher whose current role grants **zero** projects makes `get_allowed_project_ids` return `[]`, and the shared `apply_allowed_project_ids_filter` (`report_utils.ex`) then renders `project_id IN ()`, a MySQL syntax error (1064) that surfaces as a `500` (cleanly generic via the download's pre-first-byte handling, but still a failure). This is pre-existing and identical in the web LiveView download (shared `get_query`). Refactor the scoping build into a pattern-matched `scope_by_allowed_projects/5` so the no-projects case constrains to zero rows instead of emitting invalid SQL.
+
+**Files affected**:
+- `lib/report_server/reports/report_utils.ex` — `apply_allowed_project_ids_filter/5` delegates to a new public `scope_by_allowed_projects/5`; `:all` -> no scoping, non-empty list -> scope as before, empty list / `:none` / lookup error -> `{join, ["1 = 0" | where]}` (zero rows, valid SQL).
+- `test/report_server/reports/report_utils_test.exs` (new) — unit coverage for all four `scope_by_allowed_projects/5` cases (DB-free).
+- `test/report_server/reports/portal/teacher_status_report_test.exs` (new) — a role-less user's `get_query` builds SQL containing `1 = 0` and never `IN ()`; a super-admin applies no scoping.
+
+**Estimated diff size**: ~40 lines.
+
+The `:all` and non-empty-list branches emit byte-identical SQL to before, so super-admin and scoped researcher downloads are unchanged; only the empty/none/error case changes from `IN ()` (a `500`) to a clean header-only result (`200`), mirroring the bulk path's empty-permission short-circuit. Verified live: the previously-`500` no-projects download returns a header-only `200`. This also corrects the web UI for the same users.
+
+---
+
 ## Open the API gate to Portal runs (activation)
 
 **Summary**: The activation switch. Flip the two `reports.ex` gate `where` clauses from `athena_report_slugs()` to `api_report_slugs()` and rewrite their stale "Athena-type" docstrings (R4-6). This is deliberately the **last non-test step** (P3-1): every Portal-handling path (execution field, `ensure_current` guard, `derives_learner_data` 422, and the polymorphic `/download` branch) is already in place, so no intermediate commit ever exposes a half-handled Portal run. The job-endpoint regression lock and the acceptance tests follow, exercising the now-open gate.
