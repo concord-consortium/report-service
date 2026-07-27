@@ -8,6 +8,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.{AthenaRunOps, Report, ReportQuery, ReportRun, Tree}
+  alias ReportServer.Reports.Portal.Csv
   alias ReportServerWeb.ReportLive.PostProcessingComponent
 
   @row_limit 100
@@ -206,13 +207,7 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   end
 
   defp format_results(%MyXQL.Result{} = result, "csv") do
-    csv = result
-      |> PortalDbs.map_columns_on_rows()
-      |> Stream.map(&(&1))
-      |> CSV.encode(headers: result.columns |> Enum.map(&String.to_atom/1), delimiter: "\n")
-      |> Enum.to_list()
-      |> Enum.join("")
-    {:ok, csv}
+    {:ok, Csv.header_row(result.columns) <> Csv.encode_batch(result.rows)}
   end
   defp format_results(%MyXQL.Result{} = result, "json") do
     result
