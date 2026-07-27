@@ -46,7 +46,8 @@ defmodule ReportServer.AuditLog.DataAccessLogEntry do
       "download_url_issued",
       "export_scoped",
       "bulk_read",
-      "attachment_urls_issued"
+      "attachment_urls_issued",
+      "run_csv_streamed"
     ])
     |> validate_inclusion(:source, ["web", "api"])
     |> validate_inclusion(:data_type, [

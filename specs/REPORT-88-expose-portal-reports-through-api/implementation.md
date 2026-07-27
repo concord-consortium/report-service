@@ -369,7 +369,7 @@ Latent-bug note (R8-3): `holders` is keyed by pid, so if a *single* process call
 
 **Files affected**:
 - `lib/report_server/audit_log/data_access_log_entry.ex` — add `"run_csv_streamed"` to the `event` `validate_inclusion` list (no migration; `event` is a plain string column).
-- `lib/report_server/audit_log.ex` — new `log_run_csv_streamed/3`.
+- `lib/report_server/audit_log.ex` — new `log_run_csv_streamed/2`.
 
 **Estimated diff size**: ~15 lines.
 
