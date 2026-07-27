@@ -19,6 +19,7 @@ defmodule ReportServer.Application do
       {Task.Supervisor, name: ReportServer.PostProcessingTaskSupervisor},
       ReportServer.PostProcessing.JobSupervisor,
       {ReportServer.Dashboard.StatsServer, get_dashboard_servers()},
+      {ReportServer.PortalDownloadLimiter, cap: portal_download_max_concurrent()},
       ReportServer.Exports.SweepServer,
       # Start a worker by calling: ReportServer.Worker.start_link(arg)
       # {ReportServer.Worker, arg},
@@ -39,6 +40,9 @@ defmodule ReportServer.Application do
     ReportServerWeb.Endpoint.config_change(changed, removed)
     :ok
   end
+
+  defp portal_download_max_concurrent(),
+    do: Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:max_concurrent)
 
   defp get_dashboard_servers() do
     case Application.get_env(:report_server, :portal) |> Keyword.get(:url)  do

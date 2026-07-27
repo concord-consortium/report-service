@@ -52,6 +52,9 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :report_server, :portal_download,
+  max_concurrent: 2
+
 # redact secrets from request parameter logging (substring match on the key)
 config :phoenix, :filter_parameters, ["password", "token", "access_token", "code", "code_verifier"]
 
