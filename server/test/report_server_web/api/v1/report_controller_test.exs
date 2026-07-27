@@ -49,9 +49,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   describe "GET /api/v1/reports (index)" do
     setup :register_and_put_bearer_token
 
-    test "returns only the caller's Athena-type runs newest-id-first", %{raw_token: raw_token, user: user} do
+    test "returns the caller's Athena and Portal runs newest-id-first", %{raw_token: raw_token, user: user} do
       other = user_fixture()
-      _portal = run_fixture(user, %{report_slug: "teacher-status"})
+      portal = run_fixture(user, %{report_slug: "teacher-status"})
       run1 = run_fixture(user, %{report_slug: "student-answers"})
       run2 = run_fixture(user, %{report_slug: "teacher-actions", athena_query_state: "queued"})
       _other_run = run_fixture(other, %{report_slug: "student-answers"})
@@ -59,8 +59,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       conn = get(authed_conn(raw_token), ~p"/api/v1/reports")
       body = json_response(conn, 200)
 
-      assert Enum.map(body["items"], & &1["id"]) == [run2.id, run1.id]
-      assert Enum.map(body["items"], & &1["report_type"]) == ["log", "answers"]
+      assert Enum.map(body["items"], & &1["id"]) == [run2.id, run1.id, portal.id]
+      assert Enum.map(body["items"], & &1["report_type"]) == ["log", "answers", nil]
+      assert Enum.map(body["items"], & &1["execution"]) == ["async", "async", "sync"]
       assert body["next_page_token"] == nil
     end
 
@@ -230,16 +231,14 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert filter["exclude_internal"] == false
     end
 
-    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token, user: user} do
+    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token} do
       other = user_fixture()
       others_run = run_fixture(other, %{report_slug: "student-answers"})
-      portal_run = run_fixture(user, %{report_slug: "teacher-status"})
       not_found = %{"error" => "NOT_FOUND", "message" => "Not found."}
 
       ids = [
         "999999999",
         to_string(others_run.id),
-        to_string(portal_run.id),
         "abc",
         "123abc",
         "-1",
@@ -463,16 +462,14 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert entry_count() == 0
     end
 
-    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token, user: user} do
+    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token} do
       other = user_fixture()
       others_run = run_fixture(other, %{report_slug: "student-answers"})
-      portal_run = run_fixture(user, %{report_slug: "teacher-status"})
       not_found = %{"error" => "NOT_FOUND", "message" => "Not found."}
 
       ids = [
         "999999999",
         to_string(others_run.id),
-        to_string(portal_run.id),
         "abc",
         "123abc",
         "-1",
