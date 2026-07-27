@@ -213,6 +213,20 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   describe "GET /api/v1/reports/:id (show)" do
     setup :register_and_put_bearer_token
 
+    test "resolves a Portal run without starting an Athena query", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{report_slug: "teacher-status"})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}")
+      body = json_response(conn, 200)
+
+      assert body["id"] == run.id
+      assert body["execution"] == "sync"
+      assert body["report_type"] == nil
+      # ensure_current is skipped for Portal runs, so no query is queued/self-started
+      assert body["athena_query_state"] == nil
+      assert Reports.get_report_run!(run.id).athena_query_state == nil
+    end
+
     test "returns the full contract shape and never the result url", %{raw_token: raw_token, user: user} do
       run =
         run_fixture(user, %{
