@@ -631,6 +631,21 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       end
     end
 
+    test "a seam error after streaming has started aborts the framing, not a JSON error", %{} do
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+
+      # drive the reducer far enough to send_chunked (sets the sent flag), then fail the seam
+      start_portal_stub(fn _server, _sql, _params, opts ->
+        _acc = opts[:reducer].(myxql_result(cols, []), opts[:acc])
+        {:error, "commit failed after streaming"}
+      end)
+
+      assert_raise RuntimeError, ~r/seam failed after streaming started/, fn ->
+        get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      end
+    end
+
     test "a deadline in the past yields a clean pre-first-byte JSON error", %{} do
       original = Application.get_env(:report_server, :portal_download)
       on_exit(fn -> Application.put_env(:report_server, :portal_download, original) end)

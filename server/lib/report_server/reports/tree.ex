@@ -74,9 +74,11 @@ defmodule ReportServer.Reports.Tree do
 
   @doc """
   Slugs of every report exposed through the v1 API: non-`tbd` reports whose module type is
-  :athena or :portal. Honors `tbd` at both the leaf (`Report.tbd`) and the group
-  (`ReportGroup.tbd`) level — a `tbd` group is pruned with all its descendants, because
-  group-level `tbd` is only a decorative web-UI badge and does not otherwise gate exposure.
+  :athena or :portal. Prunes `tbd` at both the leaf (`Report.tbd`) and the group
+  (`ReportGroup.tbd`) level, so a `tbd` group and all its descendants are excluded. This is
+  stricter than `collect_reports/1`, which ignores group-level `tbd` (where it is only a
+  decorative web-UI badge); pruning it here keeps a future work-in-progress report group from
+  being silently exposed through the API.
   """
   def api_report_slugs() do
     root()

@@ -130,8 +130,18 @@ defmodule ReportServerWeb.Api.V1.ReportController do
           try do
             case portal_db().stream_query(server, sql, [],
                    acc: acc0, max_rows: 500, timeout: portal_download_timeout_ms(), reducer: &stream_reducer/2) do
-              {:ok, %{conn: streamed}} -> {:ok, streamed}
-              {:error, reason} -> {:pre_stream, reason}
+              {:ok, %{conn: streamed}} ->
+                {:ok, streamed}
+
+              # A seam error with no bytes sent (e.g. a pool-start failure) is pre-first-byte and gets
+              # a clean JSON error. If bytes were already sent, raise so the rescue below aborts the
+              # chunked framing rather than rendering JSON on an already-committed response.
+              {:error, reason} ->
+                if :atomics.get(sent, 1) == 1 do
+                  raise "Portal download seam failed after streaming started for run #{report_run.id}: #{inspect(reason)}"
+                else
+                  {:pre_stream, reason}
+                end
             end
           rescue
             e ->
@@ -165,8 +175,10 @@ defmodule ReportServerWeb.Api.V1.ReportController do
             |> put_resp_header("content-disposition", ~s(attachment; filename="#{acc.filename}"))
             |> send_chunked(200)
 
-          {:ok, conn} = chunk(conn, Csv.header_row(cols))
+          # send_chunked has committed the 200 and headers, so from here any failure (including a
+          # failed header chunk) is mid-stream and must abort the chunked framing, not render JSON.
           :atomics.put(acc.sent, 1, 1)
+          {:ok, conn} = chunk(conn, Csv.header_row(cols))
           %{acc | conn: conn, state: :streaming}
 
         :streaming ->

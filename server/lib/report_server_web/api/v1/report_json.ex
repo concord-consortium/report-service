@@ -54,7 +54,7 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
   defp presence(""), do: nil
   defp presence(value), do: value
 
-  # answers | usage | log — declared on Athena report modules. Portal reports declare none, so
+  # answers | usage | log, declared on Athena report modules. Portal reports declare none, so
   # report_type is null for Portal runs (a documented, expected value, not an error).
   defp report_type(report_slug) do
     case Tree.find_report(report_slug) do
