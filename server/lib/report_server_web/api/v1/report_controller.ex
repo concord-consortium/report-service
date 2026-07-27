@@ -3,9 +3,10 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
   require Logger
 
-  alias ReportServer.AuditLog
+  alias ReportServer.{AuditLog, PortalDownloadLimiter, PortalDownloadTimeout}
   alias ReportServer.Reports
-  alias ReportServer.Reports.{AthenaRunOps, Report, ReportRun, Tree}
+  alias ReportServer.Reports.{AthenaRunOps, Report, ReportFilter, ReportQuery, ReportRun, Tree}
+  alias ReportServer.Reports.Portal.Csv
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{Params, ReportJSON}
 
@@ -41,37 +42,151 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
     with {:ok, id} <- Params.parse_id(id_param),
          {:ok, report_run} <- Reports.get_api_report_run(user, id) do
-      report_run = AthenaRunOps.ensure_current(report_run)
-
-      case report_run do
-        %ReportRun{athena_query_state: "succeeded", athena_result_url: nil} ->
-          Logger.error("Report run #{report_run.id} is succeeded but has no athena_result_url")
-          ErrorHelpers.server_error(conn)
-
-        %ReportRun{athena_query_state: "succeeded", athena_result_url: athena_result_url} ->
-          filename = "#{report_run.report_slug}-run-#{report_run.id}.csv"
-
-          case AuditLog.issue_download_url("api", "run_csv", report_run, user.id, fn ->
-                 athena_db().get_download_url(athena_result_url, filename)
-               end) do
-            {:ok, download_url} ->
-              json(conn, ReportJSON.download(download_url, filename))
-
-            {:error, :presign, error} ->
-              Logger.error("Presign failed for report run #{report_run.id}: #{inspect(error)}")
-              ErrorHelpers.server_error(conn)
-
-            {:error, :audit, _reason} ->
-              ErrorHelpers.server_error(conn)
-          end
-
-        %ReportRun{athena_query_state: athena_query_state} ->
-          ErrorHelpers.render_error(conn, "NOT_READY", "The report is not ready to download.", %{athena_query_state: athena_query_state})
+      case Tree.find_report(report_run.report_slug) do
+        %Report{type: :portal} = report -> portal_download(conn, user, report, report_run)
+        _ -> athena_download(conn, user, report_run)
       end
     else
       {:error, :not_found} -> ErrorHelpers.not_found(conn)
     end
   end
 
+  defp athena_download(conn, user, report_run) do
+    report_run = AthenaRunOps.ensure_current(report_run)
+
+    case report_run do
+      %ReportRun{athena_query_state: "succeeded", athena_result_url: nil} ->
+        Logger.error("Report run #{report_run.id} is succeeded but has no athena_result_url")
+        ErrorHelpers.server_error(conn)
+
+      %ReportRun{athena_query_state: "succeeded", athena_result_url: athena_result_url} ->
+        filename = "#{report_run.report_slug}-run-#{report_run.id}.csv"
+
+        case AuditLog.issue_download_url("api", "run_csv", report_run, user.id, fn ->
+               athena_db().get_download_url(athena_result_url, filename)
+             end) do
+          {:ok, download_url} ->
+            json(conn, ReportJSON.download(download_url, filename))
+
+          {:error, :presign, error} ->
+            Logger.error("Presign failed for report run #{report_run.id}: #{inspect(error)}")
+            ErrorHelpers.server_error(conn)
+
+          {:error, :audit, _reason} ->
+            ErrorHelpers.server_error(conn)
+        end
+
+      %ReportRun{athena_query_state: athena_query_state} ->
+        ErrorHelpers.render_error(conn, "NOT_READY", "The report is not ready to download.", %{athena_query_state: athena_query_state})
+    end
+  end
+
+  defp portal_download(conn, user, report, report_run) do
+    filename = "#{report_run.report_slug}-run-#{report_run.id}.csv"
+
+    with {:ok, query} <- build_query(report, report_run),
+         {:ok, sql} <- ReportQuery.get_sql(query) do
+      case PortalDownloadLimiter.try_acquire() do
+        :full ->
+          ErrorHelpers.service_unavailable(conn, "Too many concurrent report downloads; retry shortly.")
+
+        :ok ->
+          try do
+            stream_portal_csv(conn, user, report_run, sql, filename)
+          after
+            PortalDownloadLimiter.release()
+          end
+      end
+    else
+      {:error, "Cannot run query with no filters"} ->
+        ErrorHelpers.unprocessable(conn, "This report run has no filters and cannot be downloaded.")
+
+      {:error, reason} ->
+        Logger.error("Portal query build failed for run #{report_run.id}: #{inspect(reason)}")
+        ErrorHelpers.server_error(conn)
+    end
+  end
+
+  defp build_query(%Report{get_query: get_query}, report_run) do
+    get_query.(report_run.report_filter || %ReportFilter{}, report_run.user)
+  rescue
+    e ->
+      Logger.error("Portal query build raised for run #{report_run.id}: #{Exception.message(e)}")
+      {:error, :build_raised}
+  end
+
+  defp stream_portal_csv(conn, user, report_run, sql, filename) do
+    case AuditLog.log_run_csv_streamed(user, report_run) do
+      {:error, _} ->
+        ErrorHelpers.server_error(conn)
+
+      {:ok, _} ->
+        deadline = System.monotonic_time(:millisecond) + portal_download_timeout_ms()
+        server = report_run.user.portal_server
+        sent = :atomics.new(1, signed: false)
+        acc0 = %{conn: conn, state: :header_pending, deadline: deadline, filename: filename, sent: sent}
+
+        result =
+          try do
+            case portal_db().stream_query(server, sql, [],
+                   acc: acc0, max_rows: 500, timeout: portal_download_timeout_ms(), reducer: &stream_reducer/2) do
+              {:ok, %{conn: streamed}} -> {:ok, streamed}
+              {:error, reason} -> {:pre_stream, reason}
+            end
+          rescue
+            e ->
+              if :atomics.get(sent, 1) == 1 do
+                reraise(e, __STACKTRACE__)
+              else
+                {:pre_stream, e}
+              end
+          end
+
+        case result do
+          {:ok, streamed} ->
+            streamed
+
+          {:pre_stream, reason} ->
+            Logger.error("Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}")
+            ErrorHelpers.server_error(conn)
+        end
+    end
+  end
+
+  defp stream_reducer(%MyXQL.Result{columns: cols, rows: rows}, acc) do
+    if System.monotonic_time(:millisecond) > acc.deadline, do: raise(PortalDownloadTimeout)
+
+    acc =
+      case acc.state do
+        :header_pending ->
+          conn =
+            acc.conn
+            |> put_resp_content_type("text/csv")
+            |> put_resp_header("content-disposition", ~s(attachment; filename="#{acc.filename}"))
+            |> send_chunked(200)
+
+          {:ok, conn} = chunk(conn, Csv.header_row(cols))
+          :atomics.put(acc.sent, 1, 1)
+          %{acc | conn: conn, state: :streaming}
+
+        :streaming ->
+          acc
+      end
+
+    case rows do
+      r when r in [nil, []] ->
+        acc
+
+      _ ->
+        {:ok, conn} = chunk(acc.conn, Csv.encode_batch(rows))
+        %{acc | conn: conn}
+    end
+  end
+
   defp athena_db(), do: Application.get_env(:report_server, :athena_db, ReportServer.AthenaDB)
+
+  defp portal_db(), do: Application.get_env(:report_server, :portal_db, ReportServer.PortalDbs)
+
+  defp portal_download_timeout_ms(),
+    do: Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:timeout_ms)
 end

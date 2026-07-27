@@ -59,6 +59,7 @@ config :report_server, :stats_server,
   disable: System.get_env("DISABLE_STATS_SERVER") == "true" || false
 
 config :report_server, :portal_download,
+  timeout_ms: String.to_integer(System.get_env("PORTAL_DOWNLOAD_TIMEOUT_MS") || "120000"),
   max_concurrent: String.to_integer(System.get_env("PORTAL_DOWNLOAD_MAX_CONCURRENT") || "2")
 
 # Disabled in :test so the supervised sweeper does no Repo work under the :manual SQL sandbox.
