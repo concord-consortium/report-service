@@ -8,7 +8,9 @@ defmodule ReportServerWeb.Api.ErrorHelpers do
     "NOT_FOUND" => 404,
     "NOT_READY" => 409,
     "EXPIRED_CURSOR" => 410,
-    "SERVER_ERROR" => 500
+    "UNPROCESSABLE" => 422,
+    "SERVER_ERROR" => 500,
+    "SERVICE_UNAVAILABLE" => 503
   }
 
   @codes_by_status Map.new(@statuses, fn {code, status} -> {status, code} end)
@@ -29,5 +31,7 @@ defmodule ReportServerWeb.Api.ErrorHelpers do
   def not_authenticated(conn), do: render_error(conn, "NOT_AUTHENTICATED", "You must supply a valid API token.")
   def not_found(conn), do: render_error(conn, "NOT_FOUND", "Not found.")
   def bad_request(conn, message), do: render_error(conn, "BAD_REQUEST", message)
+  def unprocessable(conn, message), do: render_error(conn, "UNPROCESSABLE", message)
+  def service_unavailable(conn, message), do: render_error(conn, "SERVICE_UNAVAILABLE", message)
   def server_error(conn), do: render_error(conn, "SERVER_ERROR", "An internal error occurred.")
 end
