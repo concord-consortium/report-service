@@ -38,6 +38,27 @@ defmodule ReportServer.PortalDbs do
     end
   end
 
+  @doc """
+  Streams a SELECT to a caller-supplied reducer in max_rows batches, inside a transaction.
+  reducer :: (%MyXQL.Result{}, acc -> acc). Returns {:ok, acc} | {:error, reason}.
+  Exceptions from the reducer propagate (the caller classifies them); only setup/DB errors
+  are converted to {:error, reason}. opts: :max_rows, :timeout (per-batch fetch timeout),
+  :acc (initial accumulator), :reducer.
+  """
+  def stream_query(server, statement, params, opts) do
+    max_rows = Keyword.get(opts, :max_rows, 500)
+    timeout = Keyword.get(opts, :timeout, @query_timeout)
+    acc = Keyword.fetch!(opts, :acc)
+    reducer = Keyword.fetch!(opts, :reducer)
+
+    with {:ok, pool_name} <- get_or_start_pool(server) do
+      MyXQL.transaction(pool_name, fn conn ->
+        MyXQL.stream(conn, statement, params, max_rows: max_rows, timeout: timeout)
+        |> Enum.reduce(acc, reducer)
+      end, timeout: timeout)
+    end
+  end
+
   defp get_or_start_pool(server) do
     pool_name = pool_name_for_server(server)
 

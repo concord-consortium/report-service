@@ -7,6 +7,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   alias ReportServer.Repo
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportFilter, ReportQuery, Tree}
+  alias ReportServer.Reports.Portal.Csv
 
   @filter_keys ~w(filters state start_date end_date hide_names exclude_internal cohort school
                   teacher assignment class student permission_form country subject_area)
@@ -22,6 +23,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       Application.delete_env(:report_server, :athena_db)
       Application.delete_env(:report_server, :report_tree)
       Application.delete_env(:report_server, :test_tree_report)
+      Application.delete_env(:report_server, :portal_db)
     end)
 
     :ok
@@ -46,12 +48,52 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
   defp entry_count(), do: Repo.aggregate(DataAccessLogEntry, :count)
 
+  # a super-admin owner (get_allowed_project_ids -> :all, no portal-DB call) with a non-empty
+  # learner-narrowing filter and exclude_internal false, so teacher-status get_query builds real
+  # SQL with zero PortalDbs calls and only the stubbed stream_query runs.
+  defp portal_admin_run(filter \\ %ReportFilter{filters: [:cohort], cohort: [1], exclude_internal: false}) do
+    user = user_fixture(%{portal_is_admin: true})
+    {raw_token, _} = api_token_fixture(user)
+    run = run_fixture(user, %{report_slug: "teacher-status", report_filter: filter})
+    {raw_token, run}
+  end
+
+  defp start_portal_stub(stream_query_fun) do
+    Application.put_env(:report_server, :portal_db, ReportServer.PortalDbsStub)
+    {:ok, pid} = ReportServer.PortalDbsStub.start(%{stream_query: stream_query_fun})
+    on_exit(fn -> if Process.alive?(pid), do: Agent.stop(pid) end)
+    pid
+  end
+
+  defp myxql_result(cols, rows), do: %MyXQL.Result{columns: cols, rows: rows, num_rows: length(rows)}
+
+  # drive the caller's reducer over the given envelopes and thread the acc back out as {:ok, acc}
+  defp drive(envelopes) do
+    fn _server, _sql, _params, opts ->
+      {:ok, Enum.reduce(envelopes, opts[:acc], opts[:reducer])}
+    end
+  end
+
+  defp spawn_limiter_holder() do
+    test = self()
+
+    pid =
+      spawn(fn ->
+        :ok = ReportServer.PortalDownloadLimiter.try_acquire()
+        send(test, :acquired)
+        receive do: (:stop -> :ok)
+      end)
+
+    receive do: (:acquired -> :ok)
+    pid
+  end
+
   describe "GET /api/v1/reports (index)" do
     setup :register_and_put_bearer_token
 
-    test "returns only the caller's Athena-type runs newest-id-first", %{raw_token: raw_token, user: user} do
+    test "returns the caller's Athena and Portal runs newest-id-first", %{raw_token: raw_token, user: user} do
       other = user_fixture()
-      _portal = run_fixture(user, %{report_slug: "teacher-status"})
+      portal = run_fixture(user, %{report_slug: "teacher-status"})
       run1 = run_fixture(user, %{report_slug: "student-answers"})
       run2 = run_fixture(user, %{report_slug: "teacher-actions", athena_query_state: "queued"})
       _other_run = run_fixture(other, %{report_slug: "student-answers"})
@@ -59,8 +101,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       conn = get(authed_conn(raw_token), ~p"/api/v1/reports")
       body = json_response(conn, 200)
 
-      assert Enum.map(body["items"], & &1["id"]) == [run2.id, run1.id]
-      assert Enum.map(body["items"], & &1["report_type"]) == ["log", "answers"]
+      assert Enum.map(body["items"], & &1["id"]) == [run2.id, run1.id, portal.id]
+      assert Enum.map(body["items"], & &1["report_type"]) == ["log", "answers", nil]
+      assert Enum.map(body["items"], & &1["execution"]) == ["async", "async", "sync"]
       assert body["next_page_token"] == nil
     end
 
@@ -170,6 +213,20 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   describe "GET /api/v1/reports/:id (show)" do
     setup :register_and_put_bearer_token
 
+    test "resolves a Portal run without starting an Athena query", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{report_slug: "teacher-status"})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}")
+      body = json_response(conn, 200)
+
+      assert body["id"] == run.id
+      assert body["execution"] == "sync"
+      assert body["report_type"] == nil
+      # ensure_current is skipped for Portal runs, so no query is queued/self-started
+      assert body["athena_query_state"] == nil
+      assert Reports.get_report_run!(run.id).athena_query_state == nil
+    end
+
     test "returns the full contract shape and never the result url", %{raw_token: raw_token, user: user} do
       run =
         run_fixture(user, %{
@@ -230,16 +287,14 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert filter["exclude_internal"] == false
     end
 
-    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token, user: user} do
+    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token} do
       other = user_fixture()
       others_run = run_fixture(other, %{report_slug: "student-answers"})
-      portal_run = run_fixture(user, %{report_slug: "teacher-status"})
       not_found = %{"error" => "NOT_FOUND", "message" => "Not found."}
 
       ids = [
         "999999999",
         to_string(others_run.id),
-        to_string(portal_run.id),
         "abc",
         "123abc",
         "-1",
@@ -463,16 +518,14 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert entry_count() == 0
     end
 
-    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token, user: user} do
+    test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token} do
       other = user_fixture()
       others_run = run_fixture(other, %{report_slug: "student-answers"})
-      portal_run = run_fixture(user, %{report_slug: "teacher-status"})
       not_found = %{"error" => "NOT_FOUND", "message" => "Not found."}
 
       ids = [
         "999999999",
         to_string(others_run.id),
-        to_string(portal_run.id),
         "abc",
         "123abc",
         "-1",
@@ -483,6 +536,148 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
         conn = get(authed_conn(raw_token), "/api/v1/reports/#{id}/download")
         assert json_response(conn, 404) == not_found
       end
+    end
+  end
+
+  describe "GET /api/v1/reports/:id/download (Portal)" do
+    test "streams a text/csv body byte-compatible with the shared encoder", %{} do
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+      rows1 = [["1", "x"], ["2", "y,z"]]
+      rows2 = [["3", "line\nbreak"]]
+
+      start_portal_stub(
+        drive([myxql_result(cols, []), myxql_result(cols, rows1), myxql_result(cols, rows2)])
+      )
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+
+      expected = Csv.header_row(cols) <> Csv.encode_batch(rows1) <> Csv.encode_batch(rows2)
+      assert response(conn, 200) == expected
+      assert hd(get_resp_header(conn, "content-type")) =~ "text/csv"
+
+      assert get_resp_header(conn, "content-disposition") ==
+               [~s(attachment; filename="teacher-status-run-#{run.id}.csv")]
+
+      assert entry_count() == 1
+      entry = Repo.one!(DataAccessLogEntry)
+      assert entry.event == "run_csv_streamed"
+      assert entry.source == "api"
+      assert entry.data_type == "run_csv"
+      assert entry.report_run_id == run.id
+    end
+
+    test "an empty result streams a header-only 200 body", %{} do
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+
+      start_portal_stub(drive([myxql_result(cols, []), myxql_result(cols, [])]))
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+
+      assert response(conn, 200) == Csv.header_row(cols)
+      assert hd(get_resp_header(conn, "content-type")) =~ "text/csv"
+      assert entry_count() == 1
+    end
+
+    test "a pre-first-byte execution error returns a generic 500 with the initiated audit row", %{} do
+      {token, run} = portal_admin_run()
+
+      start_portal_stub(fn _server, _sql, _params, _opts ->
+        raise %MyXQL.Error{message: "table secret_schema.x does not exist"}
+      end)
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+
+      body = json_response(conn, 500)
+      assert body["error"] == "SERVER_ERROR"
+      refute body["message"] =~ "secret_schema"
+      # the fail-closed row is written before the stream is attempted
+      assert entry_count() == 1
+      assert Repo.one!(DataAccessLogEntry).event == "run_csv_streamed"
+    end
+
+    test "a seam error returned without raising is classified pre-first-byte as a generic 500", %{} do
+      {token, run} = portal_admin_run()
+
+      start_portal_stub(fn _server, _sql, _params, _opts -> {:error, "portal pool failed to start"} end)
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      assert json_response(conn, 500)["error"] == "SERVER_ERROR"
+    end
+
+    test "a construction error (super-admin blank filter) returns a clean 422, not a raised 500", %{} do
+      {token, run} = portal_admin_run(%ReportFilter{})
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+
+      assert json_response(conn, 422)["error"] == "UNPROCESSABLE"
+      # nothing streamed, so no audit row was written
+      assert entry_count() == 0
+    end
+
+    test "a mid-stream failure raises after send_chunked", %{} do
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+
+      start_portal_stub(fn _server, _sql, _params, opts ->
+        acc = opts[:reducer].(myxql_result(cols, []), opts[:acc])
+        _acc = opts[:reducer].(myxql_result(cols, [["1", "x"]]), acc)
+        raise "mid-stream boom"
+      end)
+
+      assert_raise RuntimeError, "mid-stream boom", fn ->
+        get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      end
+    end
+
+    test "a seam error after streaming has started aborts the framing, not a JSON error", %{} do
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+
+      # drive the reducer far enough to send_chunked (sets the sent flag), then fail the seam
+      start_portal_stub(fn _server, _sql, _params, opts ->
+        _acc = opts[:reducer].(myxql_result(cols, []), opts[:acc])
+        {:error, "commit failed after streaming"}
+      end)
+
+      assert_raise RuntimeError, ~r/seam failed after streaming started/, fn ->
+        get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      end
+    end
+
+    test "a deadline in the past yields a clean pre-first-byte JSON error", %{} do
+      original = Application.get_env(:report_server, :portal_download)
+      on_exit(fn -> Application.put_env(:report_server, :portal_download, original) end)
+      Application.put_env(:report_server, :portal_download, Keyword.put(original, :timeout_ms, -1000))
+
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+      start_portal_stub(drive([myxql_result(cols, [])]))
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      assert json_response(conn, 500)["error"] == "SERVER_ERROR"
+    end
+
+    test "returns 503 once the concurrency cap is reached", %{} do
+      {token, run} = portal_admin_run()
+      cap = Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:max_concurrent)
+      holders = for _ <- 1..cap, do: spawn_limiter_holder()
+      # safety net if an assertion below fails before the synchronous drain runs
+      on_exit(fn -> Enum.each(holders, &send(&1, :stop)) end)
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      assert json_response(conn, 503)["error"] == "SERVICE_UNAVAILABLE"
+      assert entry_count() == 0
+
+      # The limiter is a globally-named process shared by every download test in this file, and
+      # release is asynchronous. Drain it fully before this test ends so a shuffled sibling test
+      # cannot find it still full: kill each holder, wait for the :DOWN, then flush the limiter's
+      # mailbox with a synchronous call so it has processed every monitor-based auto-release.
+      refs = Enum.map(holders, &Process.monitor/1)
+      Enum.each(holders, &send(&1, :stop))
+      Enum.each(refs, fn ref -> assert_receive {:DOWN, ^ref, :process, _pid, _reason} end)
+      :sys.get_state(ReportServer.PortalDownloadLimiter)
     end
   end
 end

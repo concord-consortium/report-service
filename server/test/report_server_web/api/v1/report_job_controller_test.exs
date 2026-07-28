@@ -189,4 +189,22 @@ defmodule ReportServerWeb.Api.V1.ReportJobControllerTest do
       assert json_response(conn, 404) == %{"error" => "NOT_FOUND", "message" => "Not found."}
     end
   end
+
+  describe "Portal runs under the widened gate (no post-processing jobs)" do
+    setup :register_and_put_bearer_token
+
+    test "a Portal run's /jobs returns 200 with an empty items list", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{report_slug: "teacher-status"})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/jobs")
+      assert json_response(conn, 200) == %{"items" => [], "next_page_token" => nil}
+    end
+
+    test "a Portal run's /jobs/:job_id/download returns 404", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{report_slug: "teacher-status"})
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/jobs/1/download")
+      assert json_response(conn, 404)["error"] == "NOT_FOUND"
+    end
+  end
 end

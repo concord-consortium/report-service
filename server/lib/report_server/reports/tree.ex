@@ -72,8 +72,28 @@ defmodule ReportServer.Reports.Tree do
     |> Enum.map(&(&1.slug))
   end
 
+  @doc """
+  Slugs of every report exposed through the v1 API: non-`tbd` reports whose module type is
+  :athena or :portal. Prunes `tbd` at both the leaf (`Report.tbd`) and the group
+  (`ReportGroup.tbd`) level, so a `tbd` group and all its descendants are excluded. This is
+  stricter than `collect_reports/1`, which ignores group-level `tbd` (where it is only a
+  decorative web-UI badge); pruning it here keeps a future work-in-progress report group from
+  being silently exposed through the API.
+  """
+  def api_report_slugs() do
+    root()
+    |> collect_api_reports()
+    |> Enum.filter(&(&1.type in [:athena, :portal]))
+    |> Enum.map(& &1.slug)
+  end
+
   defp collect_reports(report = %Report{}), do: [report]
   defp collect_reports(%ReportGroup{children: children}), do: Enum.flat_map(children, &collect_reports/1)
+
+  defp collect_api_reports(%Report{tbd: true}), do: []
+  defp collect_api_reports(report = %Report{}), do: [report]
+  defp collect_api_reports(%ReportGroup{tbd: true}), do: []
+  defp collect_api_reports(%ReportGroup{children: children}), do: Enum.flat_map(children, &collect_api_reports/1)
 
   defp decorate_tree(root) do
     decorate_tree(root, [])
@@ -188,7 +208,8 @@ defmodule ReportServer.Reports.Tree do
           slug: "school-metrics",
           title: "Detailed Metrics by School",
           subtitle: "Each row of this report will display the name of a school that had active teachers and students within the specified time period. Each school’s district, city, state, country, number of teachers, number of classes (including archived classes), number of students, class grade levels, and subject areas for the assignments associated with those teachers within the specified time period will also be included.",
-          include_filters: [:country, :state, :subject_area]
+          include_filters: [:country, :state, :subject_area],
+          derives_learner_data: false
         })
       ]},
       %ReportGroup{slug: "subject-area-reports", title: "Subject Area Reports", subtitle: "Reports about subject areas", children: [
@@ -196,7 +217,8 @@ defmodule ReportServer.Reports.Tree do
           slug: "summary-metrics-by-subject-area",
           title: "Summary Metrics by Subject Area",
           subtitle: "Each row of this report will include a subject area that had active assignments (assigned by teachers and/or run by students) within the specified time period. Additional columns include number of countries, number of states, number of schools, number of teachers, number of classes (including archived classes), number of students, and class grade levels.",
-          include_filters: [:country, :state, :subject_area]
+          include_filters: [:country, :state, :subject_area],
+          derives_learner_data: false
         })
       ]},
       # %ReportGroup{slug: "codap-reports", title: "CODAP Reports", subtitle: "Reports about CODAP (none yet defined)", tbd: true, children: [

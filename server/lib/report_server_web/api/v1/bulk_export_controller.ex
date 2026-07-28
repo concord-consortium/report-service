@@ -74,6 +74,9 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
             ErrorHelpers.server_error(conn)
         end
 
+      {:error, :not_learner_derivable} ->
+        ErrorHelpers.unprocessable(conn, "This report does not support per-learner endpoints.")
+
       {:error, _reason} ->
         ErrorHelpers.server_error(conn)
     end

@@ -68,6 +68,23 @@ defmodule ReportServer.AuditLog do
     })
   end
 
+  @doc """
+  One fail-closed row recording that a streamed Portal CSV download was authorized and initiated
+  (written before any bytes are sent, matching Athena's issue-time semantics). Returns
+  create_entry/1's {:ok, _} | {:error, _} so the controller can gate the stream on it.
+  """
+  def log_run_csv_streamed(_user = %{id: user_id}, report_run = %ReportRun{}) do
+    create_entry(%{
+      event: "run_csv_streamed",
+      source: "api",
+      data_type: "run_csv",
+      user_id: user_id,
+      report_run_id: report_run.id,
+      report_slug: report_run.report_slug,
+      report_filter: dump_filter(report_run.report_filter)
+    })
+  end
+
   def create_entry(attrs) do
     %DataAccessLogEntry{}
     |> DataAccessLogEntry.changeset(attrs)

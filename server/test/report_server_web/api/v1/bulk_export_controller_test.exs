@@ -199,6 +199,30 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
     end
   end
 
+  # ---- per-report derives_learner_data capability ----
+
+  describe "derives_learner_data capability" do
+    test "an aggregate report returns 422 on /answers before any derivation", %{conn: conn, user: user} do
+      run = run_fixture(user, %{report_slug: "school-metrics"})
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 422)
+      assert body["error"] == "UNPROCESSABLE"
+      assert entry_count() == 0
+    end
+
+    test "an aggregate report returns 422 on /history before any derivation", %{conn: conn, user: user} do
+      run = run_fixture(user, %{report_slug: "summary-metrics-by-subject-area"})
+      assert json_response(get(conn, ~p"/api/v1/reports/#{run.id}/history"), 422)["error"] == "UNPROCESSABLE"
+      assert entry_count() == 0
+    end
+
+    test "a learner-derivable Portal run derives normally", %{conn: conn, user: user} do
+      stub([])
+      run = run_fixture(user, %{report_slug: "teacher-status"})
+      body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)
+      assert length(body["items"]) == 1
+    end
+  end
+
   # ---- paging / cursor round-trip ----
 
   describe "cursor round-trip" do

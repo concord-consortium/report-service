@@ -72,6 +72,24 @@ defmodule ReportServerWeb.Api.V1.AttachmentControllerTest do
     |> post(~p"/api/v1/reports/#{run_id}/attachments", Jason.encode!(body))
   end
 
+  # ---- per-report derives_learner_data capability ----
+
+  test "an aggregate report returns 422 before any derivation", %{conn: conn, user: user} do
+    run = run_fixture(user, %{report_slug: "school-metrics"})
+
+    body = json_response(post_attachments(conn, run.id, %{attachments: [item()]}), 422)
+    assert body["error"] == "UNPROCESSABLE"
+    assert Repo.aggregate(DataAccessLogEntry, :count) == 0
+  end
+
+  test "a learner-derivable Portal run derives and signs normally", %{conn: conn, user: user} do
+    stub([])
+    run = run_fixture(user, %{report_slug: "teacher-status"})
+
+    body = json_response(post_attachments(conn, run.id, %{attachments: [item()]}), 200)
+    assert [%{"doc_id" => "d1", "name" => "file.json", "url" => _url}] = body["results"]
+  end
+
   # ---- happy path + authorization ----
 
   test "signs a url for an authorized learner", %{conn: conn, user: user} do
