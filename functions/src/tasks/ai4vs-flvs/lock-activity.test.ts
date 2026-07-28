@@ -1,10 +1,12 @@
 import { lockActivity } from "./lock-activity";
 import { StepContext } from "./types";
 import { IJobDocument } from "../types";
+import { createPortalTokenCache } from "../portal-api";
 
 // Mock portal-api
 const mockPortalOidcFetch = jest.fn();
 jest.mock("../portal-api", () => ({
+  ...jest.requireActual("../portal-api"),
   portalOidcFetch: (...args: any[]) => mockPortalOidcFetch(...args),
 }));
 
@@ -35,6 +37,7 @@ const makeContext = (overrides: Partial<IJobDocument> = {}): StepContext => ({
     ...overrides,
   } as IJobDocument,
   stepResults: {},
+  tokenCache: createPortalTokenCache(),
 });
 
 describe("lockActivity", () => {

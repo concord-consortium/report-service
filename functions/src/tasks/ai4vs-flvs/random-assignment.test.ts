@@ -1,5 +1,6 @@
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
+import { createPortalTokenCache } from "../portal-api";
 
 // Mock firebase-client
 const mockGetDocs = jest.fn();
@@ -22,6 +23,7 @@ jest.mock("firebase/firestore", () => ({
 // Mock portal-api
 const mockPortalOidcFetch = jest.fn();
 jest.mock("../portal-api", () => ({
+  ...jest.requireActual("../portal-api"),
   portalOidcFetch: (...args: any[]) => mockPortalOidcFetch(...args),
 }));
 
@@ -175,6 +177,7 @@ const makeContext = (
   } as IJobDocument,
   firebaseJwt: "mock-jwt-token",
   stepResults: {},
+  tokenCache: createPortalTokenCache(),
 });
 
 describe("randomAssignment", () => {

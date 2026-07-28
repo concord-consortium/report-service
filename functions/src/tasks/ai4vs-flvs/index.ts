@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import { IJobDocument } from "../types";
 import { markComplete, setProcessingMessage } from "../task-helpers";
 import { StepContext, StepHandler } from "./types";
+import { createPortalTokenCache } from "../portal-api";
 import { evaluateCompletion } from "./evaluate-completion";
 import { lockActivity } from "./lock-activity";
 import { randomAssignment } from "./random-assignment";
@@ -50,7 +51,7 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
   }
 
   // Execute pipeline steps in order
-  const stepContext: StepContext = { jobPath, jobDoc, firebaseJwt, stepResults: {} };
+  const stepContext: StepContext = { jobPath, jobDoc, firebaseJwt, stepResults: {}, tokenCache: createPortalTokenCache() };
   for (const step of pipeline) {
     await setProcessingMessage(jobPath, step.processingMessage);
 
