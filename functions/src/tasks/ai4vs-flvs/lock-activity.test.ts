@@ -3,11 +3,13 @@ import { StepContext } from "./types";
 import { IJobDocument } from "../types";
 import { createPortalTokenCache } from "../portal-api";
 
-// Mock portal-api
-const mockPortalOidcFetch = jest.fn();
+// Mock portal-api minted-token entry points; keep the real classifier/messages
+const mockGetScopedPortalToken = jest.fn();
+const mockPortalTokenFetch = jest.fn();
 jest.mock("../portal-api", () => ({
   ...jest.requireActual("../portal-api"),
-  portalOidcFetch: (...args: any[]) => mockPortalOidcFetch(...args),
+  getScopedPortalToken: (...args: any[]) => mockGetScopedPortalToken(...args),
+  portalTokenFetch: (...args: any[]) => mockPortalTokenFetch(...args),
 }));
 
 // Mock firebase-functions logger
@@ -36,6 +38,7 @@ const makeContext = (overrides: Partial<IJobDocument> = {}): StepContext => ({
     },
     ...overrides,
   } as IJobDocument,
+  firebaseJwt: "mock-jwt-token",
   stepResults: {},
   tokenCache: createPortalTokenCache(),
 });
@@ -43,19 +46,29 @@ const makeContext = (overrides: Partial<IJobDocument> = {}): StepContext => ({
 describe("lockActivity", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetScopedPortalToken.mockResolvedValue({ ok: true, token: "minted-teacher-token", status: 201 });
+    mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { locked: true, active: true } });
   });
 
   describe("success", () => {
-    it("calls Portal API and returns success on 200", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 200, data: { locked: true, active: true } });
-
+    it("mints the origin token and locks with it, preserving the form body", async () => {
       const result = await lockActivity(makeContext());
 
       expect(result).toEqual({ success: true });
-      expect(mockPortalOidcFetch).toHaveBeenCalledWith({
+      expect(mockGetScopedPortalToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          portalUrl: "https://learn.concord.org",
+          firebaseToken: "mock-jwt-token",
+          tokenType: "teacher",
+          pilot: "spring-2026",
+        })
+      );
+      expect(mockGetScopedPortalToken.mock.calls[0][0].classId).toBeUndefined();
+      expect(mockPortalTokenFetch).toHaveBeenCalledWith({
         portalUrl: "https://learn.concord.org",
         path: "/api/v1/offerings/1190/update_student_metadata",
         method: "PUT",
+        token: "minted-teacher-token",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "locked=true&user_id=27",
       });
@@ -68,7 +81,7 @@ describe("lockActivity", () => {
     });
 
     it("treats already-locked activity as success (idempotency)", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 200, data: { locked: true, active: true } });
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { locked: true, active: true } });
 
       const result = await lockActivity(makeContext());
 
@@ -82,7 +95,7 @@ describe("lockActivity", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("Unable to lock your pre-test");
-      expect(mockPortalOidcFetch).not.toHaveBeenCalled();
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("platform_id")
       );
@@ -93,7 +106,7 @@ describe("lockActivity", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("Unable to lock your pre-test");
-      expect(mockPortalOidcFetch).not.toHaveBeenCalled();
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
     });
 
     it("returns failure when resource_link_id is missing", async () => {
@@ -101,7 +114,7 @@ describe("lockActivity", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("Unable to lock your pre-test");
-      expect(mockPortalOidcFetch).not.toHaveBeenCalled();
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
     });
 
     it("reports all missing fields in the log", async () => {
@@ -118,13 +131,13 @@ describe("lockActivity", () => {
   });
 
   describe("Portal error responses", () => {
-    it("returns student-friendly message on 403", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 403, data: { error: "forbidden" } });
+    it("returns the tell-teacher message on 403", async () => {
+      mockPortalTokenFetch.mockResolvedValue({ status: 403, data: { error: "forbidden" } });
 
       const result = await lockActivity(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Unable to lock your pre-test");
+      expect(result.message).toContain("tell your teacher");
       expect(result.message).not.toContain("403");
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("Portal returned 403"),
@@ -132,8 +145,8 @@ describe("lockActivity", () => {
       );
     });
 
-    it("returns student-friendly message on 500", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 500, data: null });
+    it("returns the generic message on 500", async () => {
+      mockPortalTokenFetch.mockResolvedValue({ status: 500, data: null });
 
       const result = await lockActivity(makeContext());
 
@@ -142,9 +155,31 @@ describe("lockActivity", () => {
     });
   });
 
+  describe("mint failures", () => {
+    it("returns the reload message when the mint reports an expired token", async () => {
+      mockGetScopedPortalToken.mockResolvedValue({ ok: false, status: 422, reason: "expired" });
+
+      const result = await lockActivity(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("reload the activity");
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns the tell-teacher message on a mint auth failure", async () => {
+      mockGetScopedPortalToken.mockResolvedValue({ ok: false, status: 403 });
+
+      const result = await lockActivity(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("tell your teacher");
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("network errors", () => {
     it("returns student-friendly message when fetch throws", async () => {
-      mockPortalOidcFetch.mockRejectedValue(new Error("ECONNREFUSED"));
+      mockPortalTokenFetch.mockRejectedValue(new Error("ECONNREFUSED"));
 
       const result = await lockActivity(makeContext());
 
