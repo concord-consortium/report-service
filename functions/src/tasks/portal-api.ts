@@ -148,6 +148,54 @@ export const mintScopedPortalToken = async (params: MintTokenParams): Promise<Mi
   return { ok: false, status: response.status, reason };
 };
 
+export enum PortalFailureBucket {
+  Reload = "reload",
+  TellTeacher = "tell_teacher",
+  Generic = "generic",
+}
+
+export const RELOAD_MESSAGE =
+  "Your session may have expired. Please reload the activity and click “I’m Done” again.";
+export const TELL_TEACHER_MESSAGE =
+  "Something went wrong setting up your class. Please tell your teacher.";
+
+export interface PortalCallOutcome {
+  /** HTTP status, or 0 for a thrown/network error (no response). */
+  status: number;
+  /** details.reason if present (mint 422 forwarded-token failures only). */
+  reason?: string;
+}
+
+/**
+ * Classify a failed (or thrown) portal call. Buckets by HTTP status; only mint-422-expired is terminal.
+ * Any other 4xx is a client/config/authorization error retry cannot fix and maps to tell-your-teacher.
+ * Everything else (2xx-non-success, 5xx, network/throw with status 0) is generic-retryable.
+ */
+export const classifyPortalFailure = (outcome: PortalCallOutcome): PortalFailureBucket => {
+  const { status, reason } = outcome;
+  if (status === 422 && reason === "expired") {
+    return PortalFailureBucket.Reload;
+  }
+  if (status >= 400 && status < 500) {
+    return PortalFailureBucket.TellTeacher;
+  }
+  return PortalFailureBucket.Generic;
+};
+
+export const messageForBucket = (bucket: PortalFailureBucket, genericFallback: string): string => {
+  switch (bucket) {
+    case PortalFailureBucket.Reload: {
+      return RELOAD_MESSAGE;
+    }
+    case PortalFailureBucket.TellTeacher: {
+      return TELL_TEACHER_MESSAGE;
+    }
+    default: {
+      return genericFallback;
+    }
+  }
+};
+
 export interface GetTokenParams extends MintTokenParams {
   cache: PortalTokenCache;
 }

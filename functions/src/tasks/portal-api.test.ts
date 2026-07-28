@@ -24,6 +24,11 @@ import {
   mintScopedPortalToken,
   getScopedPortalToken,
   createPortalTokenCache,
+  classifyPortalFailure,
+  messageForBucket,
+  PortalFailureBucket,
+  RELOAD_MESSAGE,
+  TELL_TEACHER_MESSAGE,
 } from "./portal-api";
 
 // Mock global fetch
@@ -275,5 +280,37 @@ describe("getScopedPortalToken caching", () => {
     expect(first.ok).toBe(false);
     expect(second.ok).toBe(false);
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("classifyPortalFailure", () => {
+  it("buckets a mint 422 with reason expired to reload", () => {
+    expect(classifyPortalFailure({ status: 422, reason: "expired" })).toBe(PortalFailureBucket.Reload);
+  });
+
+  it("buckets non-expired 4xx failures to tell-teacher", () => {
+    expect(classifyPortalFailure({ status: 400 })).toBe(PortalFailureBucket.TellTeacher);
+    expect(classifyPortalFailure({ status: 401 })).toBe(PortalFailureBucket.TellTeacher);
+    expect(classifyPortalFailure({ status: 403 })).toBe(PortalFailureBucket.TellTeacher);
+    expect(classifyPortalFailure({ status: 404 })).toBe(PortalFailureBucket.TellTeacher);
+    expect(classifyPortalFailure({ status: 422, reason: "signature" })).toBe(PortalFailureBucket.TellTeacher);
+    expect(classifyPortalFailure({ status: 422 })).toBe(PortalFailureBucket.TellTeacher);
+  });
+
+  it("buckets 2xx-non-success, 5xx, and thrown (status 0) to generic", () => {
+    expect(classifyPortalFailure({ status: 200 })).toBe(PortalFailureBucket.Generic);
+    expect(classifyPortalFailure({ status: 500 })).toBe(PortalFailureBucket.Generic);
+    expect(classifyPortalFailure({ status: 0 })).toBe(PortalFailureBucket.Generic);
+  });
+});
+
+describe("messageForBucket", () => {
+  it("returns the shared reload and tell-teacher messages", () => {
+    expect(messageForBucket(PortalFailureBucket.Reload, "fallback")).toBe(RELOAD_MESSAGE);
+    expect(messageForBucket(PortalFailureBucket.TellTeacher, "fallback")).toBe(TELL_TEACHER_MESSAGE);
+  });
+
+  it("returns the caller's fallback for the generic bucket", () => {
+    expect(messageForBucket(PortalFailureBucket.Generic, "please try again")).toBe("please try again");
   });
 });
