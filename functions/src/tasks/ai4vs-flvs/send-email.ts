@@ -1,6 +1,6 @@
 import * as functions from "firebase-functions";
 import { StepContext, StepResult } from "./types";
-import { portalOidcFetch } from "../portal-api";
+import { getScopedPortalToken, portalTokenFetch, classifyPortalFailure, messageForBucket } from "../portal-api";
 
 const DEFAULT_SUBJECT = "AI4VS: Student completed pre-test";
 const MAX_SUBJECT_LENGTH = 200;
@@ -35,7 +35,7 @@ const buildEmailBody = (context: StepContext): string => {
 };
 
 export const sendEmail = async (context: StepContext): Promise<StepResult> => {
-  const { jobPath, jobDoc } = context;
+  const { jobPath, jobDoc, firebaseJwt, tokenCache } = context;
   const { platform_id, platform_user_id, resource_link_id } = jobDoc;
 
   // Validate required context fields
@@ -57,20 +57,55 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
 
   const message = buildEmailBody(context);
 
+  if (!firebaseJwt) {
+    functions.logger.error(`send-email: missing Firebase JWT for ${jobPath}`);
+    return { success: false, message: STUDENT_FAILURE_MESSAGE };
+  }
+
   functions.logger.info(
     `send-email: sending email for user ${platform_user_id} at ${platform_id} (${jobPath})`
   );
 
   try {
-    const response = await portalOidcFetch({
+    const tokenResult = await getScopedPortalToken({
+      cache: tokenCache,
       portalUrl: platform_id,
-      path: "/api/v1/emails/oidc_send",
+      firebaseToken: firebaseJwt,
+      tokenType: "teacher",
+      pilot: String(jobDoc.jobInfo.request.pilot),
+    });
+    if (!tokenResult.ok || !tokenResult.token) {
+      const mintBucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
+      return { success: false, message: messageForBucket(mintBucket, STUDENT_FAILURE_MESSAGE) };
+    }
+    const token = tokenResult.token;
+
+    // send_class_teachers needs the origin class_id, but this step holds only resource_link_id.
+    const offeringResp = await portalTokenFetch({
+      portalUrl: platform_id,
+      path: `/api/v1/offerings/${resource_link_id}`,
+      method: "GET",
+      token,
+    });
+    const classId = offeringResp.data?.clazz_id;
+    const offeringOk =
+      offeringResp.status >= 200 && offeringResp.status < 300 && classId !== undefined && classId !== null;
+    if (!offeringOk) {
+      functions.logger.error(`send-email: offering-read failed for ${jobPath}`, { status: offeringResp.status });
+      const offeringBucket = classifyPortalFailure({ status: offeringResp.status, reason: offeringResp.data?.details?.reason });
+      return { success: false, message: messageForBucket(offeringBucket, STUDENT_FAILURE_MESSAGE) };
+    }
+
+    const response = await portalTokenFetch({
+      portalUrl: platform_id,
+      path: "/api/v1/emails/send_class_teachers",
       method: "POST",
+      token,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subject, message }),
+      body: JSON.stringify({ class_id: String(classId), subject, message }),
     });
 
-    if (response.status >= 200 && response.status < 300) {
+    if (response.status >= 200 && response.status < 300 && response.data?.success === true) {
       functions.logger.info(`send-email: email sent successfully (${jobPath})`);
       return { success: true };
     }
@@ -79,7 +114,8 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
       `send-email: Portal returned ${response.status} for ${jobPath}`,
       { status: response.status, data: response.data }
     );
-    return { success: false, message: STUDENT_FAILURE_MESSAGE };
+    const bucket = classifyPortalFailure({ status: response.status, reason: response.data?.details?.reason });
+    return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
   } catch (error) {
     functions.logger.error(`send-email: request failed for ${jobPath}`, error);
     return { success: false, message: STUDENT_FAILURE_MESSAGE };
