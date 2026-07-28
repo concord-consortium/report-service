@@ -663,11 +663,21 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       {token, run} = portal_admin_run()
       cap = Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:max_concurrent)
       holders = for _ <- 1..cap, do: spawn_limiter_holder()
+      # safety net if an assertion below fails before the synchronous drain runs
       on_exit(fn -> Enum.each(holders, &send(&1, :stop)) end)
 
       conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
       assert json_response(conn, 503)["error"] == "SERVICE_UNAVAILABLE"
       assert entry_count() == 0
+
+      # The limiter is a globally-named process shared by every download test in this file, and
+      # release is asynchronous. Drain it fully before this test ends so a shuffled sibling test
+      # cannot find it still full: kill each holder, wait for the :DOWN, then flush the limiter's
+      # mailbox with a synchronous call so it has processed every monitor-based auto-release.
+      refs = Enum.map(holders, &Process.monitor/1)
+      Enum.each(holders, &send(&1, :stop))
+      Enum.each(refs, fn ref -> assert_receive {:DOWN, ^ref, :process, _pid, _reason} end)
+      :sys.get_state(ReportServer.PortalDownloadLimiter)
     end
   end
 end

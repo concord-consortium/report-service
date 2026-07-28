@@ -3,7 +3,11 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
   require Logger
 
-  alias ReportServer.{AuditLog, PortalDownloadLimiter, PortalDownloadTimeout}
+  alias ReportServer.{AuditLog, ClientClosedError, PortalDownloadLimiter, PortalDownloadTimeout}
+
+  # Caps a single batch fetch (and the transaction's checkout/BEGIN/COMMIT), so a stuck fetch can
+  # overshoot the overall wall-clock deadline by at most one batch rather than the full budget.
+  @portal_download_batch_timeout_ms 15_000
   alias ReportServer.Reports
   alias ReportServer.Reports.{AthenaRunOps, Report, ReportFilter, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.Csv
@@ -126,10 +130,16 @@ defmodule ReportServerWeb.Api.V1.ReportController do
         sent = :atomics.new(1, signed: false)
         acc0 = %{conn: conn, state: :header_pending, deadline: deadline, filename: filename, sent: sent}
 
+        # The overall wall-clock bound is `deadline`, checked between batches in the reducer. The
+        # per-batch fetch timeout is capped separately so a single stuck fetch cannot overshoot the
+        # deadline by the full budget (it is also stream_query's transaction/checkout timeout, which
+        # bounds BEGIN/COMMIT, not the transaction lifetime).
+        batch_timeout = min(portal_download_timeout_ms(), @portal_download_batch_timeout_ms)
+
         result =
           try do
             case portal_db().stream_query(server, sql, [],
-                   acc: acc0, max_rows: 500, timeout: portal_download_timeout_ms(), reducer: &stream_reducer/2) do
+                   acc: acc0, max_rows: 500, timeout: batch_timeout, reducer: &stream_reducer/2) do
               {:ok, %{conn: streamed}} ->
                 {:ok, streamed}
 
@@ -144,6 +154,11 @@ defmodule ReportServerWeb.Api.V1.ReportController do
                 end
             end
           rescue
+            # A normal client disconnect mid-stream: return the already-chunked conn quietly rather
+            # than re-raising a crash. The socket is gone, so the response framing no longer matters.
+            e in ClientClosedError ->
+              {:client_closed, e.conn}
+
             e ->
               if :atomics.get(sent, 1) == 1 do
                 reraise(e, __STACKTRACE__)
@@ -156,10 +171,21 @@ defmodule ReportServerWeb.Api.V1.ReportController do
           {:ok, streamed} ->
             streamed
 
+          {:client_closed, streamed} ->
+            Logger.info("Portal download for run #{report_run.id}: client closed the connection mid-stream")
+            streamed
+
           {:pre_stream, reason} ->
             Logger.error("Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}")
             ErrorHelpers.server_error(conn)
         end
+    end
+  end
+
+  defp chunk_or_raise_closed(conn, data) do
+    case chunk(conn, data) do
+      {:ok, conn} -> conn
+      {:error, :closed} -> raise ClientClosedError, conn: conn
     end
   end
 
@@ -178,7 +204,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
           # send_chunked has committed the 200 and headers, so from here any failure (including a
           # failed header chunk) is mid-stream and must abort the chunked framing, not render JSON.
           :atomics.put(acc.sent, 1, 1)
-          {:ok, conn} = chunk(conn, Csv.header_row(cols))
+          conn = chunk_or_raise_closed(conn, Csv.header_row(cols))
           %{acc | conn: conn, state: :streaming}
 
         :streaming ->
@@ -190,7 +216,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
         acc
 
       _ ->
-        {:ok, conn} = chunk(acc.conn, Csv.encode_batch(rows))
+        conn = chunk_or_raise_closed(acc.conn, Csv.encode_batch(rows))
         %{acc | conn: conn}
     end
   end

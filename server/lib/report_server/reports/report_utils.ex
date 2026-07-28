@@ -132,10 +132,18 @@ defmodule ReportServer.Reports.ReportUtils do
     }
   end
 
-  # No allowed projects (empty list, :none, or a failed lookup): the user can see no project-scoped
-  # data, so constrain the report to zero rows. Scoping with an empty list would render
-  # `project_id IN ()`, a MySQL syntax error.
-  def scope_by_allowed_projects(_no_allowed_projects, join, where, _assignment_id_ref, _teacher_id_ref) do
+  # A failed portal permission lookup is NOT "no projects": swallowing it into a zero-row report
+  # would return an authoritative-looking empty result for a transient DB error (and regress
+  # REPORT-76's controlled SERVER_ERROR on the bulk path). Raise so callers surface it visibly.
+  def scope_by_allowed_projects({:error, reason}, _join, _where, _assignment_id_ref, _teacher_id_ref) do
+    raise ReportServer.Reports.AllowedProjectsLookupError, message: "allowed-projects lookup failed: #{inspect(reason)}"
+  end
+
+  # Genuinely no allowed projects (empty list or :none): the user can see no project-scoped data,
+  # so constrain the report to zero rows. Scoping with an empty list would render `project_id IN ()`,
+  # a MySQL syntax error.
+  def scope_by_allowed_projects(no_allowed_projects, join, where, _assignment_id_ref, _teacher_id_ref)
+      when no_allowed_projects in [[], :none] do
     {join, ["1 = 0" | where]}
   end
 

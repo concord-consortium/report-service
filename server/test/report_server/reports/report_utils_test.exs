@@ -1,6 +1,7 @@
 defmodule ReportServer.Reports.ReportUtilsTest do
   use ExUnit.Case, async: true
 
+  alias ReportServer.Reports.AllowedProjectsLookupError
   alias ReportServer.Reports.ReportUtils
 
   describe "scope_by_allowed_projects/5" do
@@ -28,9 +29,10 @@ defmodule ReportServer.Reports.ReportUtilsTest do
       assert ReportUtils.scope_by_allowed_projects(:none, [], [], "ea.id", "pt.id") == {[], ["1 = 0"]}
     end
 
-    test "a lookup error constrains to zero rows rather than raising in list_to_in" do
-      assert ReportUtils.scope_by_allowed_projects({:error, "boom"}, [], [], "ea.id", "pt.id") ==
-               {[], ["1 = 0"]}
+    test "a failed permission lookup raises rather than silently returning zero rows" do
+      assert_raise AllowedProjectsLookupError, ~r/boom/, fn ->
+        ReportUtils.scope_by_allowed_projects({:error, "boom"}, [], [], "ea.id", "pt.id")
+      end
     end
   end
 end
