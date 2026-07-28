@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import admin from "firebase-admin";
 import { StepContext, StepResult } from "./types";
 import { getClientFirestore } from "../../firebase-client";
-import { portalOidcFetch } from "../portal-api";
+import { getScopedPortalToken, portalTokenFetch, classifyPortalFailure, messageForBucket } from "../portal-api";
 
 // --- Baked-in constants ---
 
@@ -284,6 +284,7 @@ export const randomAssignment = async ({
   jobPath,
   jobDoc,
   firebaseJwt,
+  tokenCache,
 }: StepContext): Promise<StepResult> => {
   // Validate request parameters first
   const { request } = jobDoc.jobInfo;
@@ -393,10 +394,26 @@ export const randomAssignment = async ({
       `random-assignment: enrolling user ${platform_user_id} in class ${className} (${classId}) at ${platform_id} (${jobPath})`
     );
 
-    const response = await portalOidcFetch({
+    // Enroll acts as a teacher shared between the origin and destination classes, so mint a
+    // cross-class teacher token scoped to the destination class.
+    const tokenResult = await getScopedPortalToken({
+      cache: tokenCache,
+      portalUrl: platform_id,
+      firebaseToken: firebaseJwt,
+      tokenType: "teacher",
+      classId: String(classId),
+      pilot: String(jobDoc.jobInfo.request.pilot),
+    });
+    if (!tokenResult.ok || !tokenResult.token) {
+      const mintBucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
+      return { success: false, message: messageForBucket(mintBucket, STUDENT_FAILURE_MESSAGE) };
+    }
+
+    const response = await portalTokenFetch({
       portalUrl: platform_id,
       path: "/api/v1/students/add_to_class",
       method: "POST",
+      token: tokenResult.token,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_id: String(platform_user_id),
@@ -411,12 +428,12 @@ export const randomAssignment = async ({
       return { success: true, summary: `Assigned to ${className}` };
     }
 
-    // Portal returned non-success
     functions.logger.error(
       `random-assignment: Portal enrollment failed for ${jobPath}`,
       { status: response.status, data: response.data }
     );
-    return { success: false, message: STUDENT_FAILURE_MESSAGE };
+    const bucket = classifyPortalFailure({ status: response.status, reason: response.data?.details?.reason });
+    return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
   } catch (error) {
     functions.logger.error(`random-assignment: unexpected error for ${jobPath}`, error);
     return { success: false, message: STUDENT_FAILURE_MESSAGE };
