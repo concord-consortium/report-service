@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import { IJobDocument } from "../types";
 import { markComplete, setProcessingMessage } from "../task-helpers";
 import { StepContext, StepHandler } from "./types";
-import { createPortalTokenCache } from "../portal-api";
+import { createPortalTokenCache, validatePortalHost, TELL_TEACHER_MESSAGE } from "../portal-api";
 import { evaluateCompletion } from "./evaluate-completion";
 import { lockActivity } from "./lock-activity";
 import { randomAssignment } from "./random-assignment";
@@ -47,6 +47,14 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
     await markComplete(jobPath, "failure", {
       message: `Unknown pilot: ${request.pilot}`,
     });
+    return;
+  }
+
+  // Reject an untrusted or non-https platform_id before forwarding any token or attempting a mint.
+  const hostCheck = validatePortalHost(jobDoc.platform_id);
+  if (!hostCheck.ok) {
+    functions.logger.error(`ai4vs-flvs: rejected untrusted platform_id for ${jobPath}`, { host: hostCheck.host });
+    await markComplete(jobPath, "failure", { message: TELL_TEACHER_MESSAGE });
     return;
   }
 

@@ -29,6 +29,7 @@ import {
   PortalFailureBucket,
   RELOAD_MESSAGE,
   TELL_TEACHER_MESSAGE,
+  validatePortalHost,
 } from "./portal-api";
 
 // Mock global fetch
@@ -312,5 +313,59 @@ describe("messageForBucket", () => {
 
   it("returns the caller's fallback for the generic bucket", () => {
     expect(messageForBucket(PortalFailureBucket.Generic, "please try again")).toBe("please try again");
+  });
+});
+
+describe("validatePortalHost", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.FUNCTIONS_EMULATOR;
+    process.env.TRUSTED_PORTAL_HOSTS = "learn.concord.org";
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  it("accepts a listed https host", () => {
+    expect(validatePortalHost("https://learn.concord.org")).toEqual({ ok: true, host: "learn.concord.org" });
+  });
+
+  it("rejects an unlisted host", () => {
+    expect(validatePortalHost("https://evil.com")).toEqual({ ok: false, host: "evil.com" });
+  });
+
+  it("rejects a credential-embedding lookalike by its real hostname", () => {
+    expect(validatePortalHost("https://learn.concord.org@evil.com")).toEqual({ ok: false, host: "evil.com" });
+  });
+
+  it("rejects a non-URL value", () => {
+    expect(validatePortalHost("not a url")).toEqual({ ok: false });
+    expect(validatePortalHost(undefined)).toEqual({ ok: false });
+    expect(validatePortalHost("")).toEqual({ ok: false });
+  });
+
+  it("rejects http on a non-loopback host", () => {
+    expect(validatePortalHost("http://learn.concord.org")).toEqual({ ok: false, host: "learn.concord.org" });
+  });
+
+  it("accepts http://localhost only when listed and running under the emulator", () => {
+    process.env.TRUSTED_PORTAL_HOSTS = "learn.concord.org,localhost";
+    process.env.FUNCTIONS_EMULATOR = "true";
+    expect(validatePortalHost("http://localhost:3000")).toEqual({ ok: true, host: "localhost" });
+  });
+
+  it("rejects http://localhost when not running under the emulator", () => {
+    process.env.TRUSTED_PORTAL_HOSTS = "learn.concord.org,localhost";
+    delete process.env.FUNCTIONS_EMULATOR;
+    expect(validatePortalHost("http://localhost:3000")).toEqual({ ok: false, host: "localhost:3000" });
+  });
+
+  it("rejects http://localhost when localhost is not listed even under the emulator", () => {
+    process.env.TRUSTED_PORTAL_HOSTS = "learn.concord.org";
+    process.env.FUNCTIONS_EMULATOR = "true";
+    expect(validatePortalHost("http://localhost:3000")).toEqual({ ok: false, host: "localhost" });
   });
 });

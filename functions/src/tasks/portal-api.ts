@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions";
+import { defineString } from "firebase-functions/params";
 import { GoogleAuth } from "google-auth-library";
 
 export interface PortalRequestOptions {
@@ -215,4 +216,42 @@ export const getScopedPortalToken = async (params: GetTokenParams): Promise<Mint
     cache.set(key, result.token);
   }
   return result;
+};
+
+const trustedPortalHosts = defineString("TRUSTED_PORTAL_HOSTS");
+const parseTrustedHosts = (): string[] =>
+  trustedPortalHosts.value().split(",").map(h => h.trim()).filter(Boolean);
+
+export interface PortalHostValidation {
+  ok: boolean;
+  /** The rejected hostname/host, for logging only. Never contains a token. */
+  host?: string;
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const isEmulator = (): boolean => process.env.FUNCTIONS_EMULATOR === "true";
+
+/**
+ * Validate a client-supplied platform_id as a trusted portal base URL: parse as URL, require https,
+ * allowlist the hostname. http is permitted only for a loopback host running under the emulator, and
+ * the hostname must still be listed in TRUSTED_PORTAL_HOSTS, so no deployed project can accept localhost.
+ */
+export const validatePortalHost = (platformId: unknown): PortalHostValidation => {
+  if (typeof platformId !== "string" || !platformId) {
+    return { ok: false };
+  }
+  let url: URL;
+  try {
+    url = new URL(platformId);
+  } catch {
+    return { ok: false };
+  }
+  const httpLoopbackOk = url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname) && isEmulator();
+  if (url.protocol !== "https:" && !httpLoopbackOk) {
+    return { ok: false, host: url.host };
+  }
+  if (!parseTrustedHosts().includes(url.hostname)) {
+    return { ok: false, host: url.hostname };
+  }
+  return { ok: true, host: url.hostname };
 };
