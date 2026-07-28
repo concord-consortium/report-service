@@ -384,8 +384,8 @@ const tokenResult = await getScopedPortalToken({
   pilot: String(jobDoc.jobInfo.request.pilot), // audit label derived by getScopedPortalToken as `${pilot}:class-${classId}`
 });
 if (!tokenResult.ok || !tokenResult.token) {
-  const bucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
-  return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
+  const mintBucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
+  return { success: false, message: messageForBucket(mintBucket, STUDENT_FAILURE_MESSAGE) };
 }
 
 const response = await portalTokenFetch({
@@ -434,8 +434,8 @@ const tokenResult = await getScopedPortalToken({
   pilot: String(jobDoc.jobInfo.request.pilot), // origin mint (no classId) => audit label `${pilot}:origin`
 });
 if (!tokenResult.ok || !tokenResult.token) {
-  const bucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
-  return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
+  const mintBucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
+  return { success: false, message: messageForBucket(mintBucket, STUDENT_FAILURE_MESSAGE) };
 }
 
 const response = await portalTokenFetch({
@@ -484,8 +484,8 @@ const tokenResult = await getScopedPortalToken({
   pilot: String(jobDoc.jobInfo.request.pilot), // origin mint => `${pilot}:origin`; cache HIT reuses lock's token (no 3rd mint)
 });
 if (!tokenResult.ok || !tokenResult.token) {
-  const bucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
-  return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
+  const mintBucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
+  return { success: false, message: messageForBucket(mintBucket, STUDENT_FAILURE_MESSAGE) };
 }
 const token = tokenResult.token;
 
@@ -500,8 +500,8 @@ const classId = offeringResp.data?.clazz_id;
 const offeringOk = offeringResp.status >= 200 && offeringResp.status < 300 && classId !== undefined && classId !== null;
 if (!offeringOk) {
   functions.logger.error(`send-email: offering-read failed for ${jobPath}`, { status: offeringResp.status });
-  const bucket = classifyPortalFailure({ status: offeringResp.status, reason: offeringResp.data?.details?.reason });
-  return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
+  const offeringBucket = classifyPortalFailure({ status: offeringResp.status, reason: offeringResp.data?.details?.reason });
+  return { success: false, message: messageForBucket(offeringBucket, STUDENT_FAILURE_MESSAGE) };
 }
 
 const response = await portalTokenFetch({

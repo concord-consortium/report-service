@@ -80,8 +80,8 @@ describe("lockActivity", () => {
       );
     });
 
-    it("treats already-locked activity as success (idempotency)", async () => {
-      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { locked: true, active: true } });
+    it("succeeds on any 2xx regardless of the response body", async () => {
+      mockPortalTokenFetch.mockResolvedValue({ status: 204, data: null });
 
       const result = await lockActivity(makeContext());
 

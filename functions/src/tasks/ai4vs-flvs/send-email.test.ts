@@ -303,12 +303,23 @@ describe("sendEmail", () => {
       expect(sendCall()).toBeUndefined();
     });
 
-    it("returns failure when the offering has no clazz_id", async () => {
+    it("returns the generic message when a 2xx offering has no clazz_id", async () => {
       setPortalResponses({ status: 200, data: {} });
 
       const result = await sendEmail(makeContext());
 
       expect(result.success).toBe(false);
+      expect(result.message).toContain("Unable to send notification email");
+      expect(sendCall()).toBeUndefined();
+    });
+
+    it("returns the generic message and does not send on a 5xx", async () => {
+      setPortalResponses({ status: 502, data: null });
+
+      const result = await sendEmail(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("Unable to send notification email");
       expect(sendCall()).toBeUndefined();
     });
   });

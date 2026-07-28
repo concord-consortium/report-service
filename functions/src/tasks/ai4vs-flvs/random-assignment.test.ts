@@ -301,6 +301,8 @@ describe("randomAssignment", () => {
       const body = JSON.parse(callArgs.body);
       expect(body.user_id).toBe("12345");
       expect(body.clazz_id).toMatch(/^portal-class-/);
+      // The minted scope must match the class actually enrolled into.
+      expect(mockGetScopedPortalToken.mock.calls[0][0].classId).toBe(body.clazz_id);
     });
   });
 
