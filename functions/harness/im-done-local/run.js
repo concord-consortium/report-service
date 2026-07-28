@@ -4,6 +4,7 @@
 // seed.js run.
 
 const fs = require("fs");
+const { createHash } = require("crypto");
 const {
   CONTEXT, REQUEST, EXPECTED_CLASS, EMULATOR_HOSTS, PROJECT_ID,
   SUBMIT_URL, RUN_CONTEXT_FILE, SCENARIO_FILE,
@@ -13,6 +14,8 @@ const { SCENARIOS } = require("./scenarios");
 Object.assign(process.env, EMULATOR_HOSTS);
 const admin = require("firebase-admin");
 admin.initializeApp({ projectId: PROJECT_ID });
+
+const CLASS_BY_ASSIGNMENT = { treatment: "FL-spring-2026-GATOR", control: "FL-spring-2026-SHARK" };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -28,6 +31,27 @@ const pollJob = async (jobPath, timeoutMs = 30000) => {
     await sleep(400);
   }
   throw new Error(`Timed out waiting for ${jobPath} to complete`);
+};
+
+// Read the class this student was actually assigned to from the persisted
+// assignment doc (the same sha256 key random-assignment writes), so the happy
+// path verifies the end-to-end enrollment rather than just the completion text.
+const readAssignedClass = async () => {
+  const docId = createHash("sha256")
+    .update(`ai4vs-flvs-assignments|${CONTEXT.interactiveId}|${CONTEXT.platform_id}|${CONTEXT.resource_link_id}|${CONTEXT.context_id}`)
+    .digest("hex");
+  const snap = await admin.firestore().doc(`sources/${CONTEXT.source_key}/jobs-task-data/${docId}`).get();
+  if (!snap.exists) {
+    return undefined;
+  }
+  const strata = snap.data().strata || {};
+  for (const stratum of Object.values(strata)) {
+    const assignment = stratum.users && stratum.users[CONTEXT.platform_user_id];
+    if (assignment) {
+      return CLASS_BY_ASSIGNMENT[assignment];
+    }
+  }
+  return undefined;
 };
 
 const main = async () => {
@@ -71,15 +95,18 @@ const main = async () => {
   const expect = scenario.expect;
   const statusOk = final.status === expect.status;
   const messageOk = typeof message === "string" && message.includes(expect.messageIncludes);
-  const classOk = expect.status !== "success" || (typeof message === "string");
+
+  let classOk = true;
+  if (expect.status === "success") {
+    const assignedClass = await readAssignedClass();
+    classOk = assignedClass === EXPECTED_CLASS;
+    console.log(`assigned class: ${assignedClass} (expected ${EXPECTED_CLASS})`);
+  }
 
   const pass = statusOk && messageOk && classOk;
   console.log(`\nexpected status=${expect.status}, message includes "${expect.messageIncludes}"`);
   if (expect.failsAt) {
     console.log(`(expected to stop at the ${expect.failsAt} step)`);
-  }
-  if (expect.status === "success") {
-    console.log(`(expected assignment: ${EXPECTED_CLASS})`);
   }
   console.log(pass ? "\nPASS ✓" : "\nFAIL ✗");
   process.exit(pass ? 0 : 1);

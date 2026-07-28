@@ -54,7 +54,8 @@ const mask = (auth) => {
     return "(none)";
   }
   const token = auth.replace(/^Bearer\s+/i, "");
-  return `Bearer ${token.slice(0, 6)}…(${token.length})`;
+  // Log presence and length only, never any of the token's content.
+  return `Bearer <len=${token.length}>`;
 };
 
 // { status, body } for a mint request under the given behavior.
