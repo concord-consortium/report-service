@@ -341,6 +341,10 @@ export const validatePortalHost = (platformId: unknown): PortalHostValidation =>
   if (url.port && !httpLoopbackOk) {
     return { ok: false, host: url.host };
   }
+  // Reject embedded userinfo: not a bare origin, and never a real LTI platform_id.
+  if (url.username || url.password) {
+    return { ok: false, host: url.host };
+  }
   // Require a bare origin: reject any path, query, or fragment (a lone trailing slash parses to pathname "/").
   if (url.pathname !== "/" || url.search || url.hash) {
     return { ok: false, host: url.host };

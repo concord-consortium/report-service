@@ -362,6 +362,13 @@ describe("validatePortalHost", () => {
     expect(validatePortalHost("https://learn.concord.org?x=1")).toEqual({ ok: false, host: "learn.concord.org" });
   });
 
+  it("rejects a bare origin carrying embedded userinfo", () => {
+    expect(validatePortalHost("https://user:pass@learn.concord.org")).toEqual({
+      ok: false,
+      host: "learn.concord.org",
+    });
+  });
+
   it("rejects an https host carrying an explicit port", () => {
     expect(validatePortalHost("https://learn.concord.org:8443")).toEqual({
       ok: false,

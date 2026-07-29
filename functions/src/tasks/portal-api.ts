@@ -239,9 +239,9 @@ const isEmulator = (): boolean => process.env.FUNCTIONS_EMULATOR === "true";
  * Validate a client-supplied platform_id as a trusted portal base URL and normalize it to a bare origin.
  *
  * Requirements: parses as a URL; is https (or http on a loopback host under the emulator); carries no
- * path, query, or fragment beyond a bare origin (a lone trailing slash is allowed); carries no explicit
- * port under https (a port is permitted only for the emulator loopback case); and its hostname is listed
- * in TRUSTED_PORTAL_HOSTS.
+ * userinfo, path, query, or fragment beyond a bare origin (a lone trailing slash is allowed); carries no
+ * explicit port under https (a port is permitted only for the emulator loopback case); and its hostname is
+ * listed in TRUSTED_PORTAL_HOSTS.
  *
  * Returns `url.origin` (scheme + host [+ port], no trailing slash) so callers use a clean base URL rather
  * than joining a raw platform_id onto an API path. That guards against a trailing-slash platform_id
@@ -266,6 +266,11 @@ export const validatePortalHost = (platformId: unknown): PortalHostValidation =>
   }
   // A port is allowed only for the emulator loopback case; a deployed https portal must use the default port.
   if (url.port && !httpLoopbackOk) {
+    return { ok: false, host: url.host };
+  }
+  // Reject embedded userinfo: a bare origin has no username/password, and while url.origin already strips it,
+  // "https://user:pass@learn.concord.org" is not a bare origin and never a real LTI platform_id.
+  if (url.username || url.password) {
     return { ok: false, host: url.host };
   }
   // Require a bare origin: reject any path, query, or fragment (a lone trailing slash parses to pathname "/").
