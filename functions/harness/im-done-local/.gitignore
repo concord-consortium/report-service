@@ -1,0 +1,7 @@
+# Runtime artifacts written by seed.js / run.js
+.run-context.json
+.scenario
+
+# These harness scripts are hand-written source, not tsc output, so re-include
+# them against the functions-wide **/*.js ignore.
+!*.js

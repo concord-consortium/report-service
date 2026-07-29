@@ -53,6 +53,7 @@ jest.mock("./send-email", () => ({
 }));
 
 import { ai4vsFlvs } from "./index";
+import { TELL_TEACHER_MESSAGE } from "../portal-api";
 
 describe("orchestrator stepResults accumulation", () => {
   const makeJobDoc = (): IJobDocument => ({
@@ -71,6 +72,7 @@ describe("orchestrator stepResults accumulation", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.TRUSTED_PORTAL_HOSTS = "learn.concord.org";
     mockMarkComplete.mockResolvedValue(undefined);
     mockSetProcessingMessage.mockResolvedValue(undefined);
     // Clear snapshots
@@ -182,6 +184,7 @@ describe("configurable completion message", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.TRUSTED_PORTAL_HOSTS = "learn.concord.org";
     mockMarkComplete.mockResolvedValue(undefined);
     mockSetProcessingMessage.mockResolvedValue(undefined);
     for (const key of Object.keys(stepResultsSnapshots)) {
@@ -243,6 +246,77 @@ describe("configurable completion message", () => {
   it("falls back to default when completion_message is a boolean", async () => {
     await ai4vsFlvs("jobs/test", makeJobDocWithMessage(true), "jwt-token");
 
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "success",
+      expect.objectContaining({ message: "Done! Your teacher has been notified." })
+    );
+  });
+});
+
+describe("platform_id host gate", () => {
+  const makeJobDoc = (platform_id: any): IJobDocument => ({
+    platform_id,
+    platform_user_id: 12345,
+    resource_link_id: "678",
+    source_key: "test-source",
+    jobInfo: {
+      version: 1,
+      id: "test-job-123",
+      status: "running",
+      request: { task: "ai4vs-flvs", pilot: "spring-2026" },
+      createdAt: Date.now(),
+    },
+  } as IJobDocument);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.TRUSTED_PORTAL_HOSTS = "learn.concord.org";
+    mockMarkComplete.mockResolvedValue(undefined);
+    mockSetProcessingMessage.mockResolvedValue(undefined);
+    mockEvaluateCompletion.mockResolvedValue({ success: true });
+    mockRandomAssignment.mockResolvedValue({ success: true });
+    mockLockActivity.mockResolvedValue({ success: true });
+    mockSendEmail.mockResolvedValue({ success: true });
+  });
+
+  it("fails at setup for an untrusted platform_id without running any step", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDoc("https://evil.com"), "jwt-token");
+
+    expect(mockEvaluateCompletion).not.toHaveBeenCalled();
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "failure",
+      { message: TELL_TEACHER_MESSAGE }
+    );
+  });
+
+  it("fails at setup for a non-https platform_id on a trusted host", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDoc("http://learn.concord.org"), "jwt-token");
+
+    expect(mockEvaluateCompletion).not.toHaveBeenCalled();
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "failure",
+      { message: TELL_TEACHER_MESSAGE }
+    );
+  });
+
+  it("logs the rejected host only, never a token", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDoc("https://evil.com"), "jwt-token");
+
+    const rejectionLog = mockLoggerError.mock.calls.find(
+      ([msg]: any[]) => typeof msg === "string" && msg.includes("rejected untrusted platform_id")
+    );
+    expect(rejectionLog).toBeDefined();
+    expect(rejectionLog[1]).toEqual({ host: "evil.com" });
+    expect(JSON.stringify(mockLoggerError.mock.calls)).not.toContain("jwt-token");
+  });
+
+  it("proceeds into the pipeline for a trusted https platform_id", async () => {
+    await ai4vsFlvs("jobs/test", makeJobDoc("https://learn.concord.org"), "jwt-token");
+
+    expect(mockEvaluateCompletion).toHaveBeenCalled();
     expect(mockMarkComplete).toHaveBeenCalledWith(
       "jobs/test",
       "success",

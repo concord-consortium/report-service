@@ -1,5 +1,6 @@
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
+import { createPortalTokenCache } from "../portal-api";
 
 // Mock firebase-client
 const mockGetDocs = jest.fn();
@@ -19,10 +20,13 @@ jest.mock("firebase/firestore", () => ({
   getDocs: (...args: any[]) => mockGetDocs(...args),
 }));
 
-// Mock portal-api
-const mockPortalOidcFetch = jest.fn();
+// Mock portal-api minted-token entry points; keep the real classifier/messages
+const mockGetScopedPortalToken = jest.fn();
+const mockPortalTokenFetch = jest.fn();
 jest.mock("../portal-api", () => ({
-  portalOidcFetch: (...args: any[]) => mockPortalOidcFetch(...args),
+  ...jest.requireActual("../portal-api"),
+  getScopedPortalToken: (...args: any[]) => mockGetScopedPortalToken(...args),
+  portalTokenFetch: (...args: any[]) => mockPortalTokenFetch(...args),
 }));
 
 // Mock firebase-functions logger
@@ -175,12 +179,15 @@ const makeContext = (
   } as IJobDocument,
   firebaseJwt: "mock-jwt-token",
   stepResults: {},
+  tokenCache: createPortalTokenCache(),
+  portalOrigin: "https://learn.concord.org",
 });
 
 describe("randomAssignment", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPortalOidcFetch.mockResolvedValue({ status: 200, data: { success: true } });
+    mockGetScopedPortalToken.mockResolvedValue({ ok: true, token: "minted-teacher-token", status: 201 });
+    mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { success: true } });
     mockGetDocs.mockResolvedValue(makeStandardAnswerDocs());
     // Default: empty assignment document (first student scenario)
     mockTransactionGet.mockResolvedValue({ exists: false, data: () => undefined });
@@ -265,21 +272,38 @@ describe("randomAssignment", () => {
       expect(result.summary).toMatch(/^Assigned to FL-spring-2026-(GATOR|SHARK)$/);
     });
 
-    it("calls portalOidcFetch with correct JSON body", async () => {
+    it("mints a cross-class teacher token for the destination class", async () => {
       await randomAssignment(makeContext());
 
-      expect(mockPortalOidcFetch).toHaveBeenCalledWith({
+      expect(mockGetScopedPortalToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          portalUrl: "https://learn.concord.org",
+          firebaseToken: "mock-jwt-token",
+          tokenType: "teacher",
+          classId: expect.stringMatching(/^portal-class-/),
+          pilot: "spring-2026",
+        })
+      );
+    });
+
+    it("enrolls with the minted token and the unchanged JSON body", async () => {
+      await randomAssignment(makeContext());
+
+      expect(mockPortalTokenFetch).toHaveBeenCalledWith({
         portalUrl: "https://learn.concord.org",
         path: "/api/v1/students/add_to_class",
         method: "POST",
+        token: "minted-teacher-token",
         headers: { "Content-Type": "application/json" },
         body: expect.any(String),
       });
 
-      const callArgs = mockPortalOidcFetch.mock.calls[0][0];
+      const callArgs = mockPortalTokenFetch.mock.calls[0][0];
       const body = JSON.parse(callArgs.body);
       expect(body.user_id).toBe("12345");
       expect(body.clazz_id).toMatch(/^portal-class-/);
+      // The minted scope must match the class actually enrolled into.
+      expect(mockGetScopedPortalToken.mock.calls[0][0].classId).toBe(body.clazz_id);
     });
   });
 
@@ -620,7 +644,7 @@ describe("randomAssignment", () => {
 
   describe("Portal enrollment", () => {
     it("succeeds on 2xx with {success: true}", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 200, data: { success: true } });
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { success: true } });
 
       const result = await randomAssignment(makeContext());
 
@@ -628,21 +652,21 @@ describe("randomAssignment", () => {
       expect(result.summary).toMatch(/^Assigned to /);
     });
 
-    it("fails on HTTP error (e.g., 403)", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 403, data: { error: "forbidden" } });
+    it("fails on HTTP error (e.g., 403) with the tell-teacher message", async () => {
+      mockPortalTokenFetch.mockResolvedValue({ status: 403, data: { error: "forbidden" } });
 
       const result = await randomAssignment(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Unable to complete your assignment");
+      expect(result.message).toContain("tell your teacher");
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("Portal enrollment failed"),
         expect.objectContaining({ status: 403 })
       );
     });
 
-    it("fails on {success: false}", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 200, data: { success: false } });
+    it("fails on {success: false} with the generic message", async () => {
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { success: false } });
 
       const result = await randomAssignment(makeContext());
 
@@ -651,7 +675,7 @@ describe("randomAssignment", () => {
     });
 
     it("fails on network error (fetch throws)", async () => {
-      mockPortalOidcFetch.mockRejectedValue(new Error("ECONNREFUSED"));
+      mockPortalTokenFetch.mockRejectedValue(new Error("ECONNREFUSED"));
 
       const result = await randomAssignment(makeContext());
 
@@ -664,7 +688,7 @@ describe("randomAssignment", () => {
     });
 
     it("fails on non-JSON response (data is null)", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 200, data: null });
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: null });
 
       const result = await randomAssignment(makeContext());
 
@@ -673,7 +697,7 @@ describe("randomAssignment", () => {
     });
 
     it("fails on 2xx with JSON missing success field", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 200, data: {} });
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: {} });
 
       const result = await randomAssignment(makeContext());
 
@@ -681,8 +705,28 @@ describe("randomAssignment", () => {
       expect(result.message).toContain("Unable to complete your assignment");
     });
 
+    it("returns the reload message when the mint reports an expired token", async () => {
+      mockGetScopedPortalToken.mockResolvedValue({ ok: false, status: 422, reason: "expired" });
+
+      const result = await randomAssignment(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("reload the activity");
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
+    });
+
+    it("returns the tell-teacher message when the mint fails without a shared teacher", async () => {
+      mockGetScopedPortalToken.mockResolvedValue({ ok: false, status: 422 });
+
+      const result = await randomAssignment(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("tell your teacher");
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
+    });
+
     it("logs enrollment attempt and outcome", async () => {
-      mockPortalOidcFetch.mockResolvedValue({ status: 200, data: { success: true } });
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { success: true } });
 
       await randomAssignment(makeContext());
 

@@ -1,6 +1,6 @@
 import * as functions from "firebase-functions";
 import { StepContext, StepResult } from "./types";
-import { portalOidcFetch } from "../portal-api";
+import { getScopedPortalToken, portalTokenFetch, classifyPortalFailure, messageForBucket } from "../portal-api";
 
 const STUDENT_FAILURE_MESSAGE =
   "Unable to lock your pre-test. Please try again or contact your teacher.";
@@ -8,6 +8,9 @@ const STUDENT_FAILURE_MESSAGE =
 export const lockActivity = async ({
   jobPath,
   jobDoc,
+  firebaseJwt,
+  tokenCache,
+  portalOrigin,
 }: StepContext): Promise<StepResult> => {
   const { platform_id, platform_user_id, resource_link_id } = jobDoc;
 
@@ -22,15 +25,33 @@ export const lockActivity = async ({
     return { success: false, message: STUDENT_FAILURE_MESSAGE };
   }
 
+  if (!firebaseJwt) {
+    functions.logger.error(`lock-activity: missing Firebase JWT for ${jobPath}`);
+    return { success: false, message: STUDENT_FAILURE_MESSAGE };
+  }
+
   functions.logger.info(
     `lock-activity: locking offering ${resource_link_id} for user ${platform_user_id} at ${platform_id} (${jobPath})`
   );
 
   try {
-    const response = await portalOidcFetch({
-      portalUrl: platform_id,
+    const tokenResult = await getScopedPortalToken({
+      cache: tokenCache,
+      portalUrl: portalOrigin,
+      firebaseToken: firebaseJwt,
+      tokenType: "teacher",
+      pilot: String(jobDoc.jobInfo.request.pilot),
+    });
+    if (!tokenResult.ok || !tokenResult.token) {
+      const mintBucket = classifyPortalFailure({ status: tokenResult.status, reason: tokenResult.reason });
+      return { success: false, message: messageForBucket(mintBucket, STUDENT_FAILURE_MESSAGE) };
+    }
+
+    const response = await portalTokenFetch({
+      portalUrl: portalOrigin,
       path: `/api/v1/offerings/${resource_link_id}/update_student_metadata`,
       method: "PUT",
+      token: tokenResult.token,
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         locked: "true",
@@ -49,7 +70,8 @@ export const lockActivity = async ({
       `lock-activity: Portal returned ${response.status} for ${jobPath}`,
       { status: response.status, data: response.data }
     );
-    return { success: false, message: STUDENT_FAILURE_MESSAGE };
+    const bucket = classifyPortalFailure({ status: response.status, reason: response.data?.details?.reason });
+    return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
   } catch (error) {
     functions.logger.error(`lock-activity: request failed for ${jobPath}`, error);
     return { success: false, message: STUDENT_FAILURE_MESSAGE };
