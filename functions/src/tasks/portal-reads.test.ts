@@ -119,6 +119,40 @@ describe("lookupClassByWord", () => {
     expect(result).toEqual({ status: 200 });
   });
 
+  // A 2xx is not by itself a resolved class. These values flow into side effects: `id` is minted
+  // against and posted as clazz_id (a null one would enroll into class "null"), and `name` is
+  // rendered into the teacher-notification email (a missing one would read "Enrolled in
+  // undefined"). rigse answers an unknown word with a 400, so these are type-boundary cases.
+  describe("rejects a malformed 2xx body rather than resolving it", () => {
+    const malformed: Array<[string, Record<string, unknown>]> = [
+      ["a null id", { ...getInfoBody, id: null }],
+      ["a non-finite id", { ...getInfoBody, id: Number.NaN }],
+      ["a blank string id", { ...getInfoBody, id: "   " }],
+      ["a missing name", { ...getInfoBody, name: undefined }],
+      ["a blank name", { ...getInfoBody, name: "  " }],
+      ["a non-string name", { ...getInfoBody, name: 42 }],
+      ["a missing class_word", { ...getInfoBody, class_word: undefined }],
+      ["a blank class_word", { ...getInfoBody, class_word: "" }],
+    ];
+
+    it.each(malformed)("returns status only for %s", async (_label, data) => {
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data });
+
+      const result = await lookupClassByWord(PORTAL_URL, TOKEN, "FT-fall-2026-A");
+
+      expect(result).toEqual({ status: 200 });
+      expect(result.class).toBeUndefined();
+    });
+
+    it("still accepts a numeric-string id, matching OriginOffering.clazzId", async () => {
+      mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { ...getInfoBody, id: "30001" } });
+
+      const result = await lookupClassByWord(PORTAL_URL, TOKEN, "FT-fall-2026-A");
+
+      expect(result.class!.id).toBe("30001");
+    });
+  });
+
   it("never places the token in its return value", async () => {
     const success = await lookupClassByWord(PORTAL_URL, TOKEN, "FT-fall-2026-A");
     mockPortalTokenFetch.mockResolvedValue({ status: 403, data: { token: TOKEN } });

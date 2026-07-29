@@ -29,7 +29,8 @@ export interface PortalTeacher {
 
 /** The subset of classes#info the pipeline steps consume. */
 export interface PortalClass {
-  id: number;
+  /** Validated non-null; `number | string` mirrors OriginOffering.clazzId. */
+  id: number | string;
   name: string;
   classWord: string;
   teachers: PortalTeacher[];
@@ -41,6 +42,18 @@ export interface ClassLookupResult {
   class?: PortalClass;
 }
 
+/** A JSON string field is usable when it is present and not just whitespace. */
+const isNonBlankString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim() !== "";
+
+/**
+ * A JSON id is usable when it is a finite number or a nonblank string. Mirrors the shape
+ * `OriginOffering.clazzId` already accepts, so the two reads in this file agree on what a
+ * valid identifier is.
+ */
+const isUsableId = (value: unknown): value is number | string =>
+  (typeof value === "number" && Number.isFinite(value)) || isNonBlankString(value);
+
 /**
  * Resolve a class by its environment-stable class word via
  * GET /api/v1/classes/info?class_word=<word>.
@@ -51,6 +64,15 @@ export interface ClassLookupResult {
  * synthetic on all environments, so the body carries no real student PII.
  *
  * The token is passed straight to portalTokenFetch and never inspected here.
+ *
+ * A 2xx is not by itself a resolved class: the fields the callers consume are validated before
+ * one is returned, and a malformed success body is reported as `{ status }` so the caller takes
+ * the same classified-failure path as any other unusable response. This matters because the
+ * values flow straight into side effects: `id` is minted against and posted as `clazz_id`, so a
+ * null one would enroll into class "null", and `name` is rendered into the teacher-notification
+ * email. rigse answers an unknown word with a 400 rather than a null-id 200, so this is
+ * type-boundary hardening rather than a live defect; it exists so the two reads in this file
+ * agree, since resolveOriginOffering already rejects a null clazz_id.
  */
 export const lookupClassByWord = async (
   portalUrl: string,
@@ -60,12 +82,18 @@ export const lookupClassByWord = async (
   const path = `/api/v1/classes/info?class_word=${encodeURIComponent(classWord)}`;
   const response = await portalTokenFetch({ portalUrl, path, method: "GET", token });
 
-  const ok = response.status >= 200 && response.status < 300 && response.data?.id !== undefined;
+  const data = response.data;
+  // teachers/offerings need no guard here: the mapper below coerces a non-array to [] for both.
+  const ok =
+    response.status >= 200 &&
+    response.status < 300 &&
+    isUsableId(data?.id) &&
+    isNonBlankString(data?.name) &&
+    isNonBlankString(data?.class_word);
   if (!ok) {
     return { status: response.status };
   }
 
-  const data = response.data;
   const resolved: PortalClass = {
     id: data.id,
     name: data.name,

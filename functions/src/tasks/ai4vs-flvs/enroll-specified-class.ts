@@ -21,6 +21,20 @@ const STUDENT_FAILURE_MESSAGE =
  * study. There is no intended "authored overrides randomization" use case, so an authored word
  * that DIFFERS from a present handoff is a hard configuration error, not a silent preference.
  * An authored word EQUAL to the handoff is not a conflict.
+ *
+ * Why TWO disagreeing handoffs are deliberately NOT treated the same way (reviewed and kept,
+ * REPORT-79 PR): the two cases look symmetric but differ in who can cause them. An authored
+ * `target_class_word` is typed by a human into a taskParams blob, which is exactly the surface
+ * where a typo lands a student in a valid-but-unintended class with the lookup, mint and enroll
+ * all succeeding, so it is worth hard-failing on. A second step publishing a different
+ * `destinationClassWord` requires a developer to wire a second producer into a pipeline, which
+ * is our own code and fails on the first harness run. The standing principle is that our own
+ * pipeline wiring is assumed correct rather than checked with defensive run-time code; the same
+ * principle is why the consuming steps in REPORT-81 read `originClassWord` from `stepResults`
+ * with no ordering guard. Revisit if a second producer of THIS field is ever intended.
+ *
+ * Note the invariant is one producer per FIELD, not one field on `StepOutput`: REPORT-81 adds
+ * `originClassWord`, published by a different step, without affecting the scan below.
  */
 type DestinationWordResolution =
   | { ok: true; word: string }
