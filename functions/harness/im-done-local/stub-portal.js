@@ -9,7 +9,7 @@
 
 const http = require("http");
 const fs = require("fs");
-const { PORTS, SCENARIO_FILE } = require("./config");
+const { PORTS, SCENARIO_FILE, ORIGIN_CLASS, DESTINATION_CLASS } = require("./config");
 const { SCENARIOS, OK } = require("./scenarios");
 
 let mintCounter = 0;
@@ -24,15 +24,34 @@ const errorEnvelope = (message, details) => {
 
 const punditForbidden = { success: false, message: "Not authorized" };
 
-const classInfo = {
-  id: 90210,
-  uri: "http://localhost/api/v1/classes/90210",
-  name: "FL-spring-2026-origin",
-  class_hash: "stub-origin-hash",
-  class_word: "FL-spring-2026-origin",
+// A get_info body. As in the real controller, each offering carries both `url` (the
+// offering's own API url) and `external_url` (the activity url), which resolve to
+// different fields for a consumer that matches offerings by activity.
+const classInfoFor = ({ id, word, name }, offering) => ({
+  id,
+  uri: `http://localhost/api/v1/classes/${id}`,
+  name,
+  class_hash: `stub-${word}-hash`,
+  class_word: word,
   teachers: [{ id: "http://localhost/users/7", user_id: 7, first_name: "Stub", last_name: "Teacher" }],
   students: [],
-  offerings: [{ id: 555, name: "Origin Offering", active: true, locked: false, metadata: [] }],
+  offerings: [{
+    id: offering.id,
+    name: offering.name,
+    active: true,
+    locked: false,
+    metadata: [],
+    url: `http://localhost/api/v1/offerings/${offering.id}`,
+    external_url: `http://localhost/activities/${offering.id}`,
+  }],
+});
+
+const classInfo = classInfoFor(ORIGIN_CLASS, { id: 555, name: "Origin Offering" });
+const destinationClassInfo = classInfoFor(DESTINATION_CLASS, { id: 556, name: "Destination Offering" });
+
+const CLASSES_BY_WORD = {
+  [ORIGIN_CLASS.word]: classInfo,
+  [DESTINATION_CLASS.word]: destinationClassInfo,
 };
 
 const activeBehavior = () => {
@@ -90,6 +109,18 @@ const enrollResponse = (behavior) => {
     default:
       return { status: 200, body: { success: true } };
   }
+};
+
+// classes#info keys its response on the requested class_word; an unknown word gets the
+// real controller's error('The requested class was not found'), which defaults to 400.
+const classesInfoResponse = (behavior, classWord) => {
+  if (behavior === "forbidden") {
+    return { status: 403, body: punditForbidden };
+  }
+  const found = CLASSES_BY_WORD[classWord];
+  return found
+    ? { status: 200, body: found }
+    : { status: 400, body: errorEnvelope("The requested class was not found") };
 };
 
 const lockResponse = (behavior) => {
@@ -156,10 +187,12 @@ const parseBody = (raw, contentType) => {
 };
 
 // Non-secret fields worth showing per endpoint.
-const logFields = (route, body) => {
+const logFields = (route, body, url) => {
   switch (route) {
     case "mint":
       return { token_type: body.token_type, class_id: body.class_id, description: body.description };
+    case "classes-info":
+      return { class_word: url.searchParams.get("class_word") };
     case "enroll":
       return { user_id: body.user_id, clazz_id: body.clazz_id };
     case "lock":
@@ -213,16 +246,15 @@ const server = http.createServer((req, res) => {
       route = "send";
       result = sendResponse(behavior.send);
     } else if (req.method === "GET" && path === "/api/v1/classes/info") {
-      // Fall-ready (REPORT-79): class-word resolution for the fall pipelines.
+      // Class-word resolution for the fall pipelines.
       route = "classes-info";
-      result = { status: 200, body: classInfo };
+      result = classesInfoResponse(behavior.classes, url.searchParams.get("class_word"));
     } else if (req.method === "GET" && /^\/api\/v1\/classes\/[^/]+$/.test(path)) {
-      // Fall-ready (REPORT-79): origin-class-word fallback read.
       route = "classes-show";
       result = { status: 200, body: classInfo };
     }
 
-    const fields = logFields(route, body);
+    const fields = logFields(route, body, url);
     const fieldStr = Object.keys(fields).length ? ` ${JSON.stringify(fields)}` : "";
     console.log(`[stub] ${req.method} ${path} -> ${result.status} [${route}] auth=${mask(req.headers.authorization)}${fieldStr}`);
 

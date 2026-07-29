@@ -1,14 +1,16 @@
 // Run every scenario in sequence against a running emulator + stub portal and
-// print a pass/fail summary. Seed once (node seed.js) first.
+// print a pass/fail summary. Seed once (node seed.js) first. Direct-step scenarios
+// go through run-step.js, which needs only the stub but does need a prior build.
 
 const { execFileSync } = require("child_process");
 const { SCENARIOS } = require("./scenarios");
 
 const results = [];
-for (const name of Object.keys(SCENARIOS)) {
+for (const [name, scenario] of Object.entries(SCENARIOS)) {
+  const driver = scenario.driver === "run-step" ? "run-step.js" : "run.js";
   let passed = true;
   try {
-    execFileSync("node", [`${__dirname}/run.js`, name], { stdio: "inherit" });
+    execFileSync("node", [`${__dirname}/${driver}`, name], { stdio: "inherit" });
   } catch {
     passed = false;
   }
