@@ -113,11 +113,15 @@ describe("enrollSpecifiedClass", () => {
       expect(enrollBody()).toEqual({ user_id: "12345", clazz_id: "30001" });
     });
 
-    it("takes no database id from the authored request", async () => {
+    it("takes the destination id from the lookup, so the authored config carries none", async () => {
+      mockLookupClassByWord.mockResolvedValue({ status: 200, class: { ...destinationClass, id: 40002 } });
       const context = makeContext();
+
       await enrollSpecifiedClass(context);
 
-      expect(JSON.stringify(context.jobDoc.jobInfo.request)).not.toContain("30001");
+      expect(enrollBody().clazz_id).toBe("40002");
+      expect(mintCallFor("40002")).toBeDefined();
+      expect(JSON.stringify(context.jobDoc.jobInfo.request)).not.toContain("40002");
     });
 
     it("trims surrounding whitespace from the authored word", async () => {
