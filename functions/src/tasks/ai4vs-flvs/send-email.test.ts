@@ -213,6 +213,20 @@ describe("sendEmail", () => {
       expect(sendBody().message).toContain("- lock-activity: completed");
     });
 
+    it("never renders a prior step's structured output into the body", async () => {
+      const stepResults: Record<string, StepResult> = {
+        "random-assignment": {
+          success: true,
+          summary: "Assigned to FT-fall-2026-A",
+          output: { destinationClassWord: "FT-fall-2026-A-secret-handoff" },
+        },
+      };
+
+      await sendEmail(makeContext({}, stepResults));
+
+      expect(sendBody().message).not.toContain("FT-fall-2026-A-secret-handoff");
+    });
+
     it("handles empty stepResults (no prior steps)", async () => {
       await sendEmail(makeContext({}, {}));
 

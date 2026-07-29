@@ -1,7 +1,23 @@
 import { IJobDocument } from "../types";
 import { PortalTokenCache } from "../portal-api";
 
-export type StepResult = { success: boolean; message?: string; summary?: string };
+/**
+ * Machine-readable handoff between pipeline steps. Unlike `summary`/`message`, which
+ * send-email renders into the teacher-notification email body, `output` is never rendered
+ * into any human-facing sink, so it is the only safe carrier for values a later step
+ * consumes (e.g. a resolved destination class word).
+ */
+export interface StepOutput {
+  /** Class word the enroll step should resolve and enroll into. */
+  destinationClassWord?: string;
+}
+
+export type StepResult = {
+  success: boolean;
+  message?: string;
+  summary?: string;
+  output?: StepOutput;
+};
 
 export interface StepContext {
   jobPath: string;
