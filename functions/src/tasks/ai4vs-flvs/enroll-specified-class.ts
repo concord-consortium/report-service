@@ -144,8 +144,8 @@ export const enrollSpecifiedClass = async (context: StepContext): Promise<StepRe
       `enroll-specified-class: Portal enrollment failed for ${jobPath}`,
       { status: response.status, data: response.data },
     );
-    const bucket = classifyPortalFailure({ status: response.status, reason: response.data?.details?.reason });
-    return { success: false, message: messageForBucket(bucket, STUDENT_FAILURE_MESSAGE) };
+    const enrollBucket = classifyPortalFailure({ status: response.status, reason: response.data?.details?.reason });
+    return { success: false, message: messageForBucket(enrollBucket, STUDENT_FAILURE_MESSAGE) };
   } catch (error) {
     functions.logger.error(`enroll-specified-class: unexpected error for ${jobPath}`, error);
     return { success: false, message: STUDENT_FAILURE_MESSAGE };

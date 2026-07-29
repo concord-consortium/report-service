@@ -214,7 +214,7 @@ Both helpers take a token and return a plain result; they perform no minting and
 
 **Files affected**:
 - `functions/src/tasks/ai4vs-flvs/send-email.ts` — call `resolveOriginOffering` instead of the inline fetch.
-- `functions/src/tasks/ai4vs-flvs/send-email.test.ts` — retarget the offering-read mocks/assertions at the helper (behavior unchanged).
+- `functions/src/tasks/ai4vs-flvs/send-email.test.ts`: no retarget was needed (see the eighth-pass confirmation); the existing transport-level mocks intercept the call the helper makes, so they now also prove the helper is wired. The file gains one new test instead: a prior step carrying `output.destinationClassWord` must not have that word rendered into the email body (the regression test the handoff commit's safety claim rests on).
 
 **Estimated diff size**: ~70 lines.
 
@@ -444,7 +444,9 @@ export const enrollSpecifiedClass = async (context: StepContext): Promise<StepRe
 
 **Files affected**:
 - `functions/harness/im-done-local/stub-portal.js` — key `classes/info` on the `class_word` query param; serve distinct origin vs destination classes with distinct ids; and give the offering fixtures the `url` / `external_url` fields real `get_info` always returns (a pre-existing stub-fidelity gap, see below).
+- `functions/harness/im-done-local/config.js`: the origin and destination class fixtures (id / word / name) both the stub and the scenarios read.
 - `functions/harness/im-done-local/scenarios.js` — add enroll-specified-class scenarios.
+- `functions/harness/im-done-local/run-all.js`: send each scenario to the driver its entry names.
 - `functions/harness/im-done-local/run-step.js` — **new**: the verified Option-A direct step driver (imports the compiled `enrollSpecifiedClass` from `lib/`, builds a `StepContext` with `target_class_word` set to the **destination** word and `portalOrigin` set to the stub base URL — since the step reads `context.portalOrigin`, not `jobDoc.platform_id`, for its portal calls — runs it twice for the re-run assertion). Asserts the returned `StepResult.summary` contains the **destination class's distinctive name** on **both** runs. The driver runs the step in-process while the stub is a separate process, so it cannot observe the POST body `{ user_id, clazz_id }`; the reachable signal is the returned `summary` (`Enrolled in ${lookup.class.name}`), whose name flows from resolving the destination word against the class-word-keyed stub. Asserting the destination name (distinct from the origin class name) therefore proves "enrolls into the correct class" and stable re-resolution, whereas asserting `success` alone would not (the stateless stub returns `{ success: true }` even for a wrong-class resolution). Sets `FUNCTIONS_EMULATOR=true` + `PORTAL_OIDC_TOKEN` for the mint auth path. **Needs only the stub, not the emulator** — the enroll step reads no Firestore (verified by POC). **Build prerequisite**: unlike `run.js` (which drives everything through the emulator and imports no compiled step code), `run-step.js` `require`s compiled step code from `lib/`, so it requires a prior `npm run build`; the driver checks that `lib/tasks/ai4vs-flvs/enroll-specified-class.js` exists at startup and exits with a clear "run `npm run build` first" message when it is missing, so a stale/absent `lib/` fails loudly instead of throwing a confusing module-not-found error.
 - `functions/harness/im-done-local/README.md` — document the new driver and scenario(s), noting `run-step.js` runs stub-only (no `npm run emulator` / `seed.js` needed) but **does** require a prior `npm run build` because it imports compiled `lib/` (call this out so a reviewer running against a stale/absent `lib/` is not surprised).
 
@@ -603,6 +605,29 @@ Verified: `stub-portal.js:35` serves `offerings: [{ id, name, active, locked, me
 
 #### RESOLVED (documented decision, no code change): The enroll mint + `add_to_class` + classify sequence is duplicated with `random-assignment`, asymmetric with the offering-read consolidation (Architecture / DRY)
 Verified: the new step's steps 3-4 are near-identical to `random-assignment.ts:398-437` (cross-class mint → `add_to_class` with `{ user_id, clazz_id }` → 2xx-`success` check → classify), yet this story *does* extract the analogous offering-read into a shared helper and refactors shipped `send-email` onto it. The asymmetry is real but the right call is **not** to extract here, and the fix is to make that deliberate rather than silent: (a) the only other enroll caller is the shipped spring `random-assignment`, whose enroll is embedded in Firestore assignment logic and is explicitly out of scope to modify in this story (unlike the offering-read, a self-contained call that consolidates cleanly); (b) REPORT-80 does **not** enroll (it is offering-state + `update_student_metadata`), so there is no third caller — extracting a helper used by only the new step would add indirection without reducing the copy count; (c) the reusable seam already exists one level down (`getScopedPortalToken` / `portalTokenFetch` / `classifyPortalFailure` / `messageForBucket`), so the "duplication" is ~15 lines of orchestration that reads more clearly inline. **Resolution**: Documented as a deliberate decision here (and as the rationale for why the offering-read is consolidated but the enroll is not); if a third enroll caller ever appears, extracting a shared `enrollStudentInClass` helper that `random-assignment` also adopts becomes worthwhile and is a backward-compatible follow-up.
+
+---
+
+### Tenth pass (deltas applied while implementing, recorded here so the plan matches the shipped code)
+
+The plan was implemented as written except for the items below, each forced by a compile/lint check or by a gap the plan's own harness design left open. Everything else (the `StepResult.output` shape, `portal-reads.ts`, the send-email consolidation, the enroll step's control flow and messages, the class-word-keyed stub, and the `run-step.js` driver) shipped as speced.
+
+#### `tslint`'s no-shadowed-variable forced four local renames in the enroll step
+The plan's `enroll-specified-class.ts` declares `const bucket` inside three early-return blocks plus one at the end of the `try`, and a loop-local `const word` inside `resolveDestinationWord` alongside the later `const word = authored ?? handoff`. `tslint --project tsconfig.json` (`no-shadowed-variable`, error severity) rejects both patterns. **Applied**: the loop-local is `handedOff`, and the buckets are `originMintBucket` / `lookupBucket` / `enrollMintBucket` / `enrollBucket`. Behavior is unchanged.
+
+#### `portal-reads.test.ts` mocks `./portal-api` wholesale rather than spreading `requireActual`
+The plan's test sketch mocks `portalTokenFetch`. Spreading `jest.requireActual("./portal-api")` (the pattern the step tests use) loads the real module, which pulls in `firebase-functions` and fails to resolve `firebase-admin/auth` in this jest setup unless the test also mocks the logger. Since `portal-reads` consumes only the transport, the test mocks the module with just `portalTokenFetch`. **Applied**; the step tests keep the `requireActual` spread, because they need the real classifier.
+
+#### Harness scenarios needed a driver field, and `run-all.js` needed to dispatch on it
+The plan adds enroll scenarios to `scenarios.js` and a second driver, but `run-all.js` runs **every** scenario through `run.js`, which submits a `spring-2026` pipeline; the enroll scenarios would have failed there. **Applied**: each direct-step scenario carries `driver: "run-step"`, `run-all.js` picks `run-step.js` for those and `run.js` for the rest, and `run-step.js` refuses (exit 2) a scenario that is not a `run-step` one. `run-all.js` joins the files-affected list, and the README records that a full run now needs the emulator, the seed, **and** a build.
+
+#### The stub's class fixtures moved to `config.js`, and `classes/info` gained a behavior key
+`scenarios.js` needs the destination class word (to author `target_class_word`) and its name (to assert the summary), and `stub-portal.js` needs both classes' ids/names, so `ORIGIN_CLASS` / `DESTINATION_CLASS` (`90210` / `"FL-spring-2026-origin"` and `30001` / `"FT-fall-2026-A"`) live in `config.js` and the stub builds its `get_info` bodies from them. The plan's parenthetical "a `class_word=` behavior key drives the failure scenario (unknown-word `400` / forbidden)" is implemented as a `classes: "ok" | "forbidden"` behavior: under `ok` an unknown word still 400s (the rigse-faithful miss), and `forbidden` returns the Pundit 403. That adds a third scenario, `enroll-lookup-forbidden`, which keeps the README's "every endpoint behavior the stub implements has a scenario that reaches it" invariant true. The stub also logs the requested `class_word` per `classes/info` call, matching the step's own failure log.
+
+#### `run-step.js` checks the student message on failure scenarios, not only the summary on success
+The plan pins the success assertion (the summary names the destination class on both runs). The two failure scenarios need the symmetric check, so the driver asserts `success` plus a substring of `summary` on success or of `message` on failure, on **both** runs.
+
+**Verified locally**: `npm run build`, `tsc --noEmit`, `tslint --project tsconfig.json`, `jest src` (18 suites, 301 tests), and the full harness (`run-all.js`: 24/24 scenarios, including the spring pipeline end to end against the refactored `send-email`). The stub log confirms the second enroll run issues **zero** mints (both scoped tokens served from the run's cache) and posts `clazz_id: 30001`, the destination class.
 
 ---
 
