@@ -10,6 +10,7 @@ export const lockActivity = async ({
   jobDoc,
   firebaseJwt,
   tokenCache,
+  portalOrigin,
 }: StepContext): Promise<StepResult> => {
   const { platform_id, platform_user_id, resource_link_id } = jobDoc;
 
@@ -36,7 +37,7 @@ export const lockActivity = async ({
   try {
     const tokenResult = await getScopedPortalToken({
       cache: tokenCache,
-      portalUrl: platform_id,
+      portalUrl: portalOrigin,
       firebaseToken: firebaseJwt,
       tokenType: "teacher",
       pilot: String(jobDoc.jobInfo.request.pilot),
@@ -47,7 +48,7 @@ export const lockActivity = async ({
     }
 
     const response = await portalTokenFetch({
-      portalUrl: platform_id,
+      portalUrl: portalOrigin,
       path: `/api/v1/offerings/${resource_link_id}/update_student_metadata`,
       method: "PUT",
       token: tokenResult.token,

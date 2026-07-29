@@ -27,6 +27,19 @@ const EMULATOR_HOSTS = {
   GCLOUD_PROJECT: PROJECT_ID,
 };
 
+// Point the Admin SDK at the emulator and refuse to run if either emulator host
+// is not loopback, so a bad edit to the hosts above can never write to real
+// Firestore. Both scripts that initialize the Admin SDK (seed.js, run.js) call this.
+const assertLoopbackEmulator = () => {
+  Object.assign(process.env, EMULATOR_HOSTS);
+  for (const host of [process.env.FIRESTORE_EMULATOR_HOST, process.env.FIREBASE_AUTH_EMULATOR_HOST]) {
+    if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(host)) {
+      console.error(`Refusing to run: ${host} is not a loopback emulator host.`);
+      process.exit(1);
+    }
+  }
+};
+
 // One participating student and its launch context.
 const CONTEXT = {
   source_key: "im-done-local",
@@ -107,6 +120,7 @@ module.exports = {
   PLATFORM_ID,
   SUBMIT_URL,
   EMULATOR_HOSTS,
+  assertLoopbackEmulator,
   CONTEXT,
   REQUEST,
   ANSWERS,

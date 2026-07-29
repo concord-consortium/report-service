@@ -35,7 +35,7 @@ const buildEmailBody = (context: StepContext): string => {
 };
 
 export const sendEmail = async (context: StepContext): Promise<StepResult> => {
-  const { jobPath, jobDoc, firebaseJwt, tokenCache } = context;
+  const { jobPath, jobDoc, firebaseJwt, tokenCache, portalOrigin } = context;
   const { platform_id, platform_user_id, resource_link_id } = jobDoc;
 
   // Validate required context fields
@@ -69,7 +69,7 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
   try {
     const tokenResult = await getScopedPortalToken({
       cache: tokenCache,
-      portalUrl: platform_id,
+      portalUrl: portalOrigin,
       firebaseToken: firebaseJwt,
       tokenType: "teacher",
       pilot: String(jobDoc.jobInfo.request.pilot),
@@ -82,7 +82,7 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
 
     // send_class_teachers needs the origin class_id, but this step holds only resource_link_id.
     const offeringResp = await portalTokenFetch({
-      portalUrl: platform_id,
+      portalUrl: portalOrigin,
       path: `/api/v1/offerings/${resource_link_id}`,
       method: "GET",
       token,
@@ -97,7 +97,7 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
     }
 
     const response = await portalTokenFetch({
-      portalUrl: platform_id,
+      portalUrl: portalOrigin,
       path: "/api/v1/emails/send_class_teachers",
       method: "POST",
       token,

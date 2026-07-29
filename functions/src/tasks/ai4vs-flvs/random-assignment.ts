@@ -285,6 +285,7 @@ export const randomAssignment = async ({
   jobDoc,
   firebaseJwt,
   tokenCache,
+  portalOrigin,
 }: StepContext): Promise<StepResult> => {
   // Validate request parameters first
   const { request } = jobDoc.jobInfo;
@@ -398,7 +399,7 @@ export const randomAssignment = async ({
     // cross-class teacher token scoped to the destination class.
     const tokenResult = await getScopedPortalToken({
       cache: tokenCache,
-      portalUrl: platform_id,
+      portalUrl: portalOrigin,
       firebaseToken: firebaseJwt,
       tokenType: "teacher",
       classId: String(classId),
@@ -410,7 +411,7 @@ export const randomAssignment = async ({
     }
 
     const response = await portalTokenFetch({
-      portalUrl: platform_id,
+      portalUrl: portalOrigin,
       path: "/api/v1/students/add_to_class",
       method: "POST",
       token: tokenResult.token,

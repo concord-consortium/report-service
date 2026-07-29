@@ -58,8 +58,15 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
     return;
   }
 
-  // Execute pipeline steps in order
-  const stepContext: StepContext = { jobPath, jobDoc, firebaseJwt, stepResults: {}, tokenCache: createPortalTokenCache() };
+  // Execute pipeline steps in order. hostCheck.origin is set whenever hostCheck.ok is true.
+  const stepContext: StepContext = {
+    jobPath,
+    jobDoc,
+    firebaseJwt,
+    stepResults: {},
+    tokenCache: createPortalTokenCache(),
+    portalOrigin: hostCheck.origin!,
+  };
   for (const step of pipeline) {
     await setProcessingMessage(jobPath, step.processingMessage);
 

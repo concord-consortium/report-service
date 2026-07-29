@@ -145,7 +145,8 @@ export const mintScopedPortalToken = async (params: MintTokenParams): Promise<Mi
   }
 
   const reason = typeof response.data?.details?.reason === "string" ? response.data.details.reason : undefined;
-  functions.logger.error("portal mint failed", { status: response.status, reason });
+  // `description` identifies which mint (origin vs class-scoped) failed without threading jobPath through.
+  functions.logger.error("portal mint failed", { status: response.status, reason, description });
   return { ok: false, status: response.status, reason };
 };
 
@@ -219,22 +220,35 @@ export const getScopedPortalToken = async (params: GetTokenParams): Promise<Mint
 };
 
 const trustedPortalHosts = defineString("TRUSTED_PORTAL_HOSTS");
+// Hostnames arrive lowercase from url.hostname, so lowercase the configured allowlist too.
 const parseTrustedHosts = (): string[] =>
-  trustedPortalHosts.value().split(",").map(h => h.trim()).filter(Boolean);
+  trustedPortalHosts.value().split(",").map(h => h.trim().toLowerCase()).filter(Boolean);
 
 export interface PortalHostValidation {
   ok: boolean;
-  /** The rejected hostname/host, for logging only. Never contains a token. */
+  /** The host (with port when present), for logging only. Never contains a token. */
   host?: string;
+  /** The normalized origin to use verbatim as the portal base URL. Set only when ok. */
+  origin?: string;
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const isEmulator = (): boolean => process.env.FUNCTIONS_EMULATOR === "true";
 
 /**
- * Validate a client-supplied platform_id as a trusted portal base URL: parse as URL, require https,
- * allowlist the hostname. http is permitted only for a loopback host running under the emulator, and
- * the hostname must still be listed in TRUSTED_PORTAL_HOSTS, so no deployed project can accept localhost.
+ * Validate a client-supplied platform_id as a trusted portal base URL and normalize it to a bare origin.
+ *
+ * Requirements: parses as a URL; is https (or http on a loopback host under the emulator); carries no
+ * path, query, or fragment beyond a bare origin (a lone trailing slash is allowed); carries no explicit
+ * port under https (a port is permitted only for the emulator loopback case); and its hostname is listed
+ * in TRUSTED_PORTAL_HOSTS.
+ *
+ * Returns `url.origin` (scheme + host [+ port], no trailing slash) so callers use a clean base URL rather
+ * than joining a raw platform_id onto an API path. That guards against a trailing-slash platform_id
+ * ("https://host/" -> "https://host//api/...") or a query-carrying one ("https://host?x=1") producing a
+ * broken URL. `platform_id` is still used verbatim as an identity value elsewhere (assignment doc IDs,
+ * answer queries), so this rejects rather than silently normalizes, keeping the HTTP and identity views
+ * of platform_id from diverging.
  */
 export const validatePortalHost = (platformId: unknown): PortalHostValidation => {
   if (typeof platformId !== "string" || !platformId) {
@@ -250,8 +264,16 @@ export const validatePortalHost = (platformId: unknown): PortalHostValidation =>
   if (url.protocol !== "https:" && !httpLoopbackOk) {
     return { ok: false, host: url.host };
   }
-  if (!parseTrustedHosts().includes(url.hostname)) {
-    return { ok: false, host: url.hostname };
+  // A port is allowed only for the emulator loopback case; a deployed https portal must use the default port.
+  if (url.port && !httpLoopbackOk) {
+    return { ok: false, host: url.host };
   }
-  return { ok: true, host: url.hostname };
+  // Require a bare origin: reject any path, query, or fragment (a lone trailing slash parses to pathname "/").
+  if (url.pathname !== "/" || url.search || url.hash) {
+    return { ok: false, host: url.host };
+  }
+  if (!parseTrustedHosts().includes(url.hostname)) {
+    return { ok: false, host: url.host };
+  }
+  return { ok: true, host: url.host, origin: url.origin };
 };

@@ -6,12 +6,13 @@
 const fs = require("fs");
 const { createHash } = require("crypto");
 const {
-  CONTEXT, REQUEST, EXPECTED_CLASS, EMULATOR_HOSTS, PROJECT_ID,
+  CONTEXT, REQUEST, EXPECTED_CLASS, assertLoopbackEmulator, PROJECT_ID,
   SUBMIT_URL, RUN_CONTEXT_FILE, SCENARIO_FILE,
 } = require("./config");
 const { SCENARIOS } = require("./scenarios");
 
-Object.assign(process.env, EMULATOR_HOSTS);
+// Refuse to run if either emulator host is not loopback (guards against touching real Firestore).
+assertLoopbackEmulator();
 const admin = require("firebase-admin");
 admin.initializeApp({ projectId: PROJECT_ID });
 

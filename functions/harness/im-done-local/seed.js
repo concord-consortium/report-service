@@ -3,18 +3,11 @@
 // answers) before run.js. Requires the emulator suite to be running.
 
 const fs = require("fs");
-const { CONTEXT, ANSWERS, EMULATOR_HOSTS, PROJECT_ID, RUN_CONTEXT_FILE } = require("./config");
+const { CONTEXT, ANSWERS, assertLoopbackEmulator, PROJECT_ID, RUN_CONTEXT_FILE } = require("./config");
 
 // Point the Admin SDK at the emulator BEFORE it initializes, and refuse to run
-// if anything points at a non-loopback host (guards against writing to real
-// Firestore).
-Object.assign(process.env, EMULATOR_HOSTS);
-for (const host of [process.env.FIRESTORE_EMULATOR_HOST, process.env.FIREBASE_AUTH_EMULATOR_HOST]) {
-  if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(host)) {
-    console.error(`Refusing to run: ${host} is not a loopback emulator host.`);
-    process.exit(1);
-  }
-}
+// if anything points at a non-loopback host (guards against writing to real Firestore).
+assertLoopbackEmulator();
 
 const admin = require("firebase-admin");
 admin.initializeApp({ projectId: PROJECT_ID });

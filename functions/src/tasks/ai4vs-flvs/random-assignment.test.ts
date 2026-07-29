@@ -180,6 +180,7 @@ const makeContext = (
   firebaseJwt: "mock-jwt-token",
   stepResults: {},
   tokenCache: createPortalTokenCache(),
+  portalOrigin: "https://learn.concord.org",
 });
 
 describe("randomAssignment", () => {

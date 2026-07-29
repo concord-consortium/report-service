@@ -16,14 +16,31 @@ message.
 
 ## What it does and does not prove
 
-- **Does**: report-service's request construction (endpoints, bodies,
-  encodings, `Authorization: Bearer <minted>`), the mint/cache dedup, the
-  `platform_id` gate, the classifier buckets end to end, and that no token value
-  is ever logged.
-- **Does not**: validate the real portal contract (a stub cannot mint a real
-  signed JWT or enforce real authorization). For that, deploy to staging and run
-  a real LTI launch; the deployed functions run as the Compute SA and mint a
-  matching-`sub` OIDC token natively.
+`run.js` **asserts** three things per scenario and fails the run if any diverge:
+
+- the final job status (`success` / `failure`),
+- the student message bucket (a substring of the classifier's message), and
+- on the happy path, the class the student landed in, read back from the
+  persisted assignment doc. Note this doc is written by `random-assignment`
+  *before* the `add_to_class` call, so it proves the strata-to-class mapping and
+  that some enroll succeeded, not that that exact `clazz_id` reached the portal.
+
+Everything else the harness exercises is **shown in the logs for manual
+inspection**, not asserted, and is covered at the unit level instead: the
+request construction (endpoints, bodies, encodings) and the masked
+`Authorization: Bearer <len=N>` per call in terminal 2; the mint/cache dedup
+(the stub's `mintCounter` decorates each minted token, so two distinct scopes
+mean two mints) also in terminal 2; the `platform_id` gate's reject path (no
+scenario points at an untrusted host — that path is covered by
+`ai4vs-flvs/index.test.ts`); and the never-log-a-token guarantee (about
+report-service's own logging, covered by `portal-api.test.ts`; the stub masks
+its own logs but captures nothing from terminal 1). When a scenario expects a
+`failsAt` step, that too is printed, not asserted.
+
+What none of it proves: the real portal contract (a stub cannot mint a real
+signed JWT or enforce real authorization). For that, deploy to staging and run a
+real LTI launch; the deployed functions run as the Compute SA and mint a
+matching-`sub` OIDC token natively.
 
 ## Setup
 
@@ -59,12 +76,19 @@ it against the scenario's expectation. Watch terminal 2 to see each portal call
 
 ## Scenarios
 
-`happy` plus a failure per bucket: `mint-expired` (reload), `mint-no-shared-teacher`
-/ `mint-unauthorized` / `mint-unauthenticated` / `enroll-forbidden` /
-`lock-forbidden` / `offering-forbidden` / `offering-notfound` / `send-forbidden`
-(tell-your-teacher), and `mint-network` / `enroll-nonsuccess` / `lock-server-error`
-/ `offering-no-clazz` / `send-delivery` (generic). See `scenarios.js` for the
-full table and the exact response each maps to.
+`happy` plus a failure per bucket:
+
+- **reload**: `mint-expired`.
+- **tell-your-teacher**: `mint-no-shared-teacher` / `mint-unauthorized` /
+  `mint-unauthenticated` / `mint-signature` / `mint-bad-token-type` /
+  `enroll-forbidden` / `lock-forbidden` / `offering-forbidden` /
+  `offering-notfound` / `send-forbidden` / `send-no-teacher-email`.
+- **generic**: `mint-network` / `enroll-nonsuccess` / `lock-server-error` /
+  `lock-network` / `offering-no-clazz` / `offering-server-error` /
+  `send-delivery` / `send-nonsuccess`.
+
+See `scenarios.js` for the full table and the exact response each maps to; every
+endpoint behavior the stub implements has a scenario that reaches it.
 
 ## Extending it for the fall stories (REPORT-79/80/82)
 

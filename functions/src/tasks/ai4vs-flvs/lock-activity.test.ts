@@ -41,6 +41,7 @@ const makeContext = (overrides: Partial<IJobDocument> = {}): StepContext => ({
   firebaseJwt: "mock-jwt-token",
   stepResults: {},
   tokenCache: createPortalTokenCache(),
+  portalOrigin: "https://learn.concord.org",
 });
 
 describe("lockActivity", () => {

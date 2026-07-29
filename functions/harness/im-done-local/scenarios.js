@@ -45,6 +45,16 @@ const SCENARIOS = {
     behavior: { ...OK, mint: "network" },
     expect: { status: "failure", failsAt: "random-assignment", messageIncludes: "Unable to complete your assignment" },
   },
+  "mint-signature": {
+    describe: "The cross-class mint rejects the forwarded token's signature (422, non-terminal reason).",
+    behavior: { ...OK, mint: "signature" },
+    expect: { status: "failure", failsAt: "random-assignment", messageIncludes: "tell your teacher" },
+  },
+  "mint-bad-token-type": {
+    describe: "The mint rejects an unknown token_type (422, no reason).",
+    behavior: { ...OK, mint: "bad_token_type" },
+    expect: { status: "failure", failsAt: "random-assignment", messageIncludes: "tell your teacher" },
+  },
 
   "enroll-forbidden": {
     describe: "add_to_class denies the minted teacher (Pundit 403).",
@@ -67,6 +77,11 @@ const SCENARIOS = {
     behavior: { ...OK, lock: "server_error" },
     expect: { status: "failure", failsAt: "lock-activity", messageIncludes: "Unable to lock your pre-test" },
   },
+  "lock-network": {
+    describe: "The lock connection is dropped (thrown fetch, no response) — the only thrown-fetch path outside mint.",
+    behavior: { ...OK, lock: "network" },
+    expect: { status: "failure", failsAt: "lock-activity", messageIncludes: "Unable to lock your pre-test" },
+  },
 
   "offering-forbidden": {
     describe: "The offering-read (class_id resolution) is denied (api_show? 403).",
@@ -83,6 +98,11 @@ const SCENARIOS = {
     behavior: { ...OK, offering: "no_clazz" },
     expect: { status: "failure", failsAt: "send-email", messageIncludes: "Unable to send notification email" },
   },
+  "offering-server-error": {
+    describe: "The offering-read fails with a 500.",
+    behavior: { ...OK, offering: "server_error" },
+    expect: { status: "failure", failsAt: "send-email", messageIncludes: "Unable to send notification email" },
+  },
 
   "send-forbidden": {
     describe: "send_class_teachers denies the acting teacher (class_teacher? 403).",
@@ -92,6 +112,16 @@ const SCENARIOS = {
   "send-delivery": {
     describe: "send_class_teachers fails delivery (502).",
     behavior: { ...OK, send: "delivery" },
+    expect: { status: "failure", failsAt: "send-email", messageIncludes: "Unable to send notification email" },
+  },
+  "send-no-teacher-email": {
+    describe: "send_class_teachers reports no teacher has an email configured (422, no reason).",
+    behavior: { ...OK, send: "no_teacher_email" },
+    expect: { status: "failure", failsAt: "send-email", messageIncludes: "tell your teacher" },
+  },
+  "send-nonsuccess": {
+    describe: "send_class_teachers returns 200 without success:true.",
+    behavior: { ...OK, send: "nonsuccess" },
     expect: { status: "failure", failsAt: "send-email", messageIncludes: "Unable to send notification email" },
   },
 };

@@ -178,13 +178,18 @@ export interface StepContext {
   firebaseJwt?: string;
   stepResults: Record<string, StepResult>;
   tokenCache: PortalTokenCache;
+  // Populated at the setup gate (Step 3) from validatePortalHost; the steps use it as the portal base URL.
+  portalOrigin: string;
 }
 ```
 
-`ai4vs-flvs/index.ts` — initialize once per run (line 53):
+`ai4vs-flvs/index.ts` — initialize once per run, after the setup gate (Step 3) has produced `hostCheck.origin`:
 
 ```ts
-const stepContext: StepContext = { jobPath, jobDoc, firebaseJwt, stepResults: {}, tokenCache: createPortalTokenCache() };
+const stepContext: StepContext = {
+  jobPath, jobDoc, firebaseJwt, stepResults: {}, tokenCache: createPortalTokenCache(),
+  portalOrigin: hostCheck.origin!, // set whenever hostCheck.ok is true
+};
 ```
 
 **Tests** (`portal-api.test.ts`, `fetch` mocked): mint sends `firebase_token`/`token_type`/`class_id` (only when supplied) OIDC-authed and returns `{ ok, token }` on `201 { token }`; the **derived** `description` is asserted (`"spring-2026:origin"` for an origin mint, `"spring-2026:class-<id>"` for a cross-class mint), confirming it is a function of the token's identity, not the caller; a second `getScopedPortalToken` with the same key does not re-`fetch` (cache hit); a different `classId` mints a second token (distinct key); a `422 { details: { reason } }` yields `{ ok: false, reason }`; and a spy on `functions.logger` asserts the raw token string appears in **no** log call on the success path (never-log).
@@ -289,12 +294,16 @@ import { defineString } from "firebase-functions/params";
 // Comma-separated trusted portal hostnames, per-environment (e.g. "learn.concord.org" in prod,
 // "learn.portal.staging.concord.org" in staging). Read at runtime via .value().
 const trustedPortalHosts = defineString("TRUSTED_PORTAL_HOSTS");
-const parseTrustedHosts = (): string[] => trustedPortalHosts.value().split(",").map(h => h.trim()).filter(Boolean);
+// Hostnames arrive lowercase from url.hostname, so lowercase the configured allowlist too.
+const parseTrustedHosts = (): string[] =>
+  trustedPortalHosts.value().split(",").map(h => h.trim().toLowerCase()).filter(Boolean);
 
 export interface PortalHostValidation {
   ok: boolean;
-  /** The rejected hostname/host, for logging only. Never contains a token. */
+  /** The host (with port when present), for logging only. Never contains a token. */
   host?: string;
+  /** The normalized origin to use verbatim as the portal base URL. Set only when ok. */
+  origin?: string;
 }
 
 // Loopback hosts that may use http, for local full-stack dev (a locally-run portal on http://localhost).
@@ -302,8 +311,13 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const isEmulator = (): boolean => process.env.FUNCTIONS_EMULATOR === "true";
 
 /**
- * Validate a client-supplied platform_id as a trusted portal base URL.
- * Mirrors chat/fetch-activity.ts resolveActivityUrl: parse as URL, require https, allowlist the hostname.
+ * Validate a client-supplied platform_id as a trusted portal base URL and normalize it to a bare origin.
+ * Mirrors chat/fetch-activity.ts resolveActivityUrl: parse as URL, require https, allowlist the hostname,
+ * and (like that precedent) hand callers a clean base URL rather than the raw client string.
+ *
+ * Requirements: https (or http on a loopback host under the emulator); a bare origin with no path, query,
+ * or fragment (a lone trailing slash is allowed); no explicit port under https (a port is permitted only
+ * for the emulator loopback case); and an allowlisted hostname. Returns url.origin for callers to use verbatim.
  *
  * Dev carve-out: http is permitted ONLY for a loopback host AND only in the emulator. The hostname must
  * still be present in TRUSTED_PORTAL_HOSTS (only the emulator .env.local lists localhost), so no deployed
@@ -323,14 +337,22 @@ export const validatePortalHost = (platformId: unknown): PortalHostValidation =>
   if (url.protocol !== "https:" && !httpLoopbackOk) {
     return { ok: false, host: url.host };
   }
-  if (!parseTrustedHosts().includes(url.hostname)) {
-    return { ok: false, host: url.hostname };
+  // A port is allowed only for the emulator loopback case; a deployed https portal must use the default port.
+  if (url.port && !httpLoopbackOk) {
+    return { ok: false, host: url.host };
   }
-  return { ok: true, host: url.hostname };
+  // Require a bare origin: reject any path, query, or fragment (a lone trailing slash parses to pathname "/").
+  if (url.pathname !== "/" || url.search || url.hash) {
+    return { ok: false, host: url.host };
+  }
+  if (!parseTrustedHosts().includes(url.hostname)) {
+    return { ok: false, host: url.host };
+  }
+  return { ok: true, host: url.host, origin: url.origin };
 };
 ```
 
-**Validate-only, not URL-rebuild (intentional; where this deviates from the precedent).** The cited precedent `resolveActivityUrl` (`chat/fetch-activity.ts`) not only allowlists `u.hostname` but then *rebuilds* the fetch URL from the trusted host + a fixed path ("never the raw client string"). `validatePortalHost` deliberately does less: it validates and returns `{ ok, host }`, and the call sites keep using the raw `platform_id` as `portalUrl` (`portalUrl: platform_id`). This is safe because the allowlist is an **exact** `hostname` match (`parseTrustedHosts().includes(url.hostname)`), and `fetch` parses the same string with the same WHATWG URL semantics, so the host the token is sent to is exactly the validated, allowlisted host: a `platform_id` like `https://learn.concord.org@evil.com` resolves to `hostname = "evil.com"` and is rejected, and `https://learn.concord.org.evil.com` is rejected as an inexact match. The one residual difference from the rebuild approach is that a `platform_id` carrying a **port, path, or query** (`https://learn.concord.org:8443`, `.../foo`, `...?x=1`) passes the gate and survives into the concatenated `${platform_id}${path}` URL rather than being stripped, but the blast radius is bounded to the trusted host (a wrong port/path on that host → a failed request, not a token sent elsewhere). Real LTI `platform_id`s are always a clean origin (`https://learn.concord.org`, as in the fixtures). If a future requirement needs the port/path/query stripped too, canonicalize to `https://${url.hostname}` in `validatePortalHost` and thread that base to the call sites; it is not needed for the token-exfiltration property this gate exists to guarantee.
+**Validate and normalize, like the precedent.** The precedent `resolveActivityUrl` (`chat/fetch-activity.ts`) allowlists `u.hostname` and then *rebuilds* the fetch URL from the trusted host + a fixed path ("never the raw client string"). `validatePortalHost` follows the same shape: it validates and returns the normalized `url.origin`, and `index.ts` threads that origin through `StepContext.portalOrigin` so every step builds its portal URL from the clean origin (`portalUrl: portalOrigin`) rather than concatenating the raw `platform_id`. The exact `hostname` allowlist (`parseTrustedHosts().includes(url.hostname)`) already guaranteed the token-exfiltration property (`https://learn.concord.org@evil.com` resolves to `hostname = "evil.com"` and is rejected; `https://learn.concord.org.evil.com` is rejected as an inexact match). Returning the origin closes a **correctness** gap the raw-concat approach left open: a `platform_id` with a trailing slash (`https://learn.concord.org/`, which LTI launches carry routinely) would otherwise have produced `https://learn.concord.org//api/...`, and one with a query (`https://learn.concord.org?x=1`) would have pushed the API path into the query string. Because `platform_id` is **also** an identity value (hashed into the assignment doc ID and used as an answers-query key), the gate **rejects** a non-bare-origin rather than silently normalizing it: normalizing only the HTTP side would let `https://learn.concord.org` and `https://learn.concord.org/` reach the same portal but resolve to different assignment documents. The explicit no-port-under-https rule is a deliberate choice (rather than relying on `url.origin` alone, which keeps the port) so a stray `:8443` on the trusted host fails fast at setup with a logged host instead of a confusing downstream 404.
 
 `index.ts` — insert after the `firebaseJwt` guard and pilot/pipeline lookup, immediately before constructing `stepContext` / the loop (so it precedes `evaluate-completion`, which is harmless since that step only reads Firestore, and every outbound portal call is downstream of here):
 
@@ -369,7 +391,7 @@ Run-level tests (`index.test.ts`): with `process.env.TRUSTED_PORTAL_HOSTS` set t
 
 **Estimated diff size**: ~110 lines.
 
-`random-assignment` already destructures and validates `firebaseJwt`; add `tokenCache`. Replace the enroll block (currently `random-assignment.ts:396-419`) with:
+`random-assignment` already destructures and validates `firebaseJwt`; add `tokenCache` and `portalOrigin`. Replace the enroll block (currently `random-assignment.ts:396-419`) with:
 
 ```ts
 // Cross-class mint: enroll must act as a teacher SHARED between the origin and destination classes
@@ -377,7 +399,7 @@ Run-level tests (`index.test.ts`): with `process.env.TRUSTED_PORTAL_HOSTS` set t
 // shared teacher yields a mint 422 -> tell-your-teacher.
 const tokenResult = await getScopedPortalToken({
   cache: tokenCache,
-  portalUrl: platform_id,
+  portalUrl: portalOrigin,
   firebaseToken: firebaseJwt,
   tokenType: "teacher",
   classId: String(classId),
@@ -389,7 +411,7 @@ if (!tokenResult.ok || !tokenResult.token) {
 }
 
 const response = await portalTokenFetch({
-  portalUrl: platform_id,
+  portalUrl: portalOrigin,
   path: "/api/v1/students/add_to_class",
   method: "POST",
   token: tokenResult.token,
@@ -418,17 +440,17 @@ The outer `try/catch` (thrown → `STUDENT_FAILURE_MESSAGE`) and the `finally` F
 **Summary**: Add the `firebaseJwt` (and `tokenCache`) destructure to `lockActivity`, mint the origin-class token (default mint, no `class_id`), and `portalTokenFetch` the `update_student_metadata` PUT with the body still `application/x-www-form-urlencoded` via `URLSearchParams` (byte-compatible with today). Classify failures.
 
 **Files affected**:
-- `functions/src/tasks/ai4vs-flvs/lock-activity.ts` — destructure `firebaseJwt`/`tokenCache`; mint + swap auth.
+- `functions/src/tasks/ai4vs-flvs/lock-activity.ts` — destructure `firebaseJwt`/`tokenCache`/`portalOrigin`; mint + swap auth.
 - `functions/src/tasks/ai4vs-flvs/lock-activity.test.ts` — origin mint + form-urlencoded preserved + buckets.
 
 **Estimated diff size**: ~90 lines.
 
-`lockActivity` signature becomes `({ jobPath, jobDoc, firebaseJwt, tokenCache }: StepContext)`. After the existing required-field validation, add a `firebaseJwt` guard (defensive; `index.ts` already guarantees it), then:
+`lockActivity` signature becomes `({ jobPath, jobDoc, firebaseJwt, tokenCache, portalOrigin }: StepContext)`. After the existing required-field validation, add a `firebaseJwt` guard (defensive; `index.ts` already guarantees it), then:
 
 ```ts
 const tokenResult = await getScopedPortalToken({
   cache: tokenCache,
-  portalUrl: platform_id,
+  portalUrl: portalOrigin,
   firebaseToken: firebaseJwt,
   tokenType: "teacher",
   pilot: String(jobDoc.jobInfo.request.pilot), // origin mint (no classId) => audit label `${pilot}:origin`
@@ -439,7 +461,7 @@ if (!tokenResult.ok || !tokenResult.token) {
 }
 
 const response = await portalTokenFetch({
-  portalUrl: platform_id,
+  portalUrl: portalOrigin,
   path: `/api/v1/offerings/${resource_link_id}/update_student_metadata`,
   method: "PUT",
   token: tokenResult.token,
@@ -456,12 +478,12 @@ Success stays `status 2xx`; on non-2xx, `classifyPortalFailure({ status: respons
 
 ### Cut the notify step over to `send_class_teachers` with an offering-read
 
-**Summary**: Add the `firebaseJwt`/`tokenCache` destructure (with a defensive `firebaseJwt` guard after the existing required-field validation, matching lock, since `MintTokenParams.firebaseToken` is `string` while `StepContext.firebaseJwt` is `string | undefined`), mint the origin-class token, resolve the origin `class_id` via `GET /api/v1/offerings/:resource_link_id` (`clazz_id`) with that token, then `send_class_teachers` `{ class_id, subject, message }` as JSON with the same token. The origin mint here shares the `"origin"` cache key with lock. Classify the mint, the offering-read, and the send.
+**Summary**: Add the `firebaseJwt`/`tokenCache`/`portalOrigin` destructure (with a defensive `firebaseJwt` guard after the existing required-field validation, matching lock, since `MintTokenParams.firebaseToken` is `string` while `StepContext.firebaseJwt` is `string | undefined`), mint the origin-class token, resolve the origin `class_id` via `GET /api/v1/offerings/:resource_link_id` (`clazz_id`) with that token, then `send_class_teachers` `{ class_id, subject, message }` as JSON with the same token. The origin mint here shares the `"origin"` cache key with lock. Classify the mint, the offering-read, and the send.
 
 **Every mint-calling step must narrow `firebaseJwt` first.** `getScopedPortalToken` takes `firebaseToken: string`, but each step receives `StepContext.firebaseJwt: string | undefined`, so a step that passes it through without a guard fails to compile (`TS2345`, verified under this repo's ts-jest). Enroll already has this guard (`random-assignment.ts:302-305`); lock adds it (Step 5); send-email adds it here (below). `index.ts` guarantees a non-empty `firebaseJwt` at run setup, so the per-step guard is defensive/type-narrowing, not a new runtime gate.
 
 **Files affected**:
-- `functions/src/tasks/ai4vs-flvs/send-email.ts` — destructure `firebaseJwt`/`tokenCache`; mint + offering-read + endpoint/body switch.
+- `functions/src/tasks/ai4vs-flvs/send-email.ts` — destructure `firebaseJwt`/`tokenCache`/`portalOrigin`; mint + offering-read + endpoint/body switch.
 - `functions/src/tasks/ai4vs-flvs/send-email.test.ts` — endpoint switch + class_id resolution + minted-token auth + buckets.
 
 **Estimated diff size**: ~140 lines.
@@ -478,7 +500,7 @@ if (!firebaseJwt) {
 
 const tokenResult = await getScopedPortalToken({
   cache: tokenCache,
-  portalUrl: platform_id,
+  portalUrl: portalOrigin,
   firebaseToken: firebaseJwt,
   tokenType: "teacher",
   pilot: String(jobDoc.jobInfo.request.pilot), // origin mint => `${pilot}:origin`; cache HIT reuses lock's token (no 3rd mint)
@@ -491,7 +513,7 @@ const token = tokenResult.token;
 
 // Resolve the origin class_id from the offering (send_class_teachers needs class_id; we hold resource_link_id).
 const offeringResp = await portalTokenFetch({
-  portalUrl: platform_id,
+  portalUrl: portalOrigin,
   path: `/api/v1/offerings/${resource_link_id}`,
   method: "GET",
   token,
@@ -505,7 +527,7 @@ if (!offeringOk) {
 }
 
 const response = await portalTokenFetch({
-  portalUrl: platform_id,
+  portalUrl: portalOrigin,
   path: "/api/v1/emails/send_class_teachers",
   method: "POST",
   token,
@@ -632,6 +654,8 @@ A fresh multi-role pass over the implementation spec, verifying every candidate 
 
 #### RESOLVED (documented, not changed): `validatePortalHost` validates the host but call sites reuse the raw `platform_id` as the base URL, unlike the cited precedent (Security / Senior Engineer)
 **Resolution**: Documented. Verified the precedent `resolveActivityUrl` (`chat/fetch-activity.ts:43-52`) rebuilds the URL from the trusted host + fixed path ("never the raw client string"), whereas `validatePortalHost` validates-only and the call sites keep `portalUrl: platform_id`. Confirmed this is **not** a token-exfiltration hole: the allowlist is an exact `hostname` match and `fetch` parses the same string with the same WHATWG URL semantics, so the token can only reach the allowlisted host (`...@evil.com` → `hostname evil.com` rejected; `...concord.org.evil.com` rejected). The only residual difference from the rebuild approach is that a port/path/query in `platform_id` survives into the concatenated URL (blast radius bounded to the trusted host: a wrong port/path there → a failed request, not exfiltration), and real LTI `platform_id`s are clean origins. Chose to document the intentional validate-only choice in Step 3 (with the canonicalize-to-`https://${hostname}` path noted for a future requirement) rather than add URL-rebuild churn across all four call sites and their tests, since it is unnecessary for the exfiltration property the gate guarantees.
+
+**Superseded by PR review (2026-07-28):** the reviewer reframed this as a **correctness** gap, not a security one: a `platform_id` with a trailing slash (`https://learn.concord.org/`, which LTI launches carry routinely) or a query string would have produced a broken concatenated URL. `validatePortalHost` now rejects any non-bare-origin, returns the normalized `url.origin`, and `index.ts` threads it through `StepContext.portalOrigin`, so the steps build their portal URL from the clean origin (`portalUrl: portalOrigin`), matching the precedent after all. `platform_id` stays raw for identity (assignment doc IDs, answer queries), so the gate rejects rather than normalizes to keep the HTTP and identity views from diverging. The Step 3 code block above reflects the shipped behavior.
 
 ### Applied-and-run verification pass (2026-07-28, cutover compiled end-to-end)
 
