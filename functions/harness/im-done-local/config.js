@@ -40,6 +40,13 @@ const assertLoopbackEmulator = () => {
   }
 };
 
+// The classes the stub's classes/info serves, keyed by class word. The origin class is the
+// one the spring pipeline's offering belongs to; the destination is the one an authored
+// (or handed-off) class word resolves to, with a deliberately distinct id and name so a
+// run can tell the two apart.
+const ORIGIN_CLASS = { id: 90210, word: "FL-spring-2026-origin", name: "FL-spring-2026-origin" };
+const DESTINATION_CLASS = { id: 30001, word: "FT-fall-2026-A", name: "FT-fall-2026-A" };
+
 // One participating student and its launch context.
 const CONTEXT = {
   source_key: "im-done-local",
@@ -121,6 +128,8 @@ module.exports = {
   SUBMIT_URL,
   EMULATOR_HOSTS,
   assertLoopbackEmulator,
+  ORIGIN_CLASS,
+  DESTINATION_CLASS,
   CONTEXT,
   REQUEST,
   ANSWERS,

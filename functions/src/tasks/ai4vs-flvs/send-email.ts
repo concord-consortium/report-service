@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions";
 import { StepContext, StepResult } from "./types";
 import { getScopedPortalToken, portalTokenFetch, classifyPortalFailure, messageForBucket } from "../portal-api";
+import { resolveOriginOffering } from "../portal-reads";
 
 const DEFAULT_SUBJECT = "AI4VS: Student completed pre-test";
 const MAX_SUBJECT_LENGTH = 200;
@@ -81,20 +82,13 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
     const token = tokenResult.token;
 
     // send_class_teachers needs the origin class_id, but this step holds only resource_link_id.
-    const offeringResp = await portalTokenFetch({
-      portalUrl: portalOrigin,
-      path: `/api/v1/offerings/${resource_link_id}`,
-      method: "GET",
-      token,
-    });
-    const classId = offeringResp.data?.clazz_id;
-    const offeringOk =
-      offeringResp.status >= 200 && offeringResp.status < 300 && classId !== undefined && classId !== null;
-    if (!offeringOk) {
-      functions.logger.error(`send-email: offering-read failed for ${jobPath}`, { status: offeringResp.status });
-      const offeringBucket = classifyPortalFailure({ status: offeringResp.status, reason: offeringResp.data?.details?.reason });
+    const origin = await resolveOriginOffering(portalOrigin, token, String(resource_link_id));
+    if (!origin.offering) {
+      functions.logger.error(`send-email: offering-read failed for ${jobPath}`, { status: origin.status });
+      const offeringBucket = classifyPortalFailure({ status: origin.status });
       return { success: false, message: messageForBucket(offeringBucket, STUDENT_FAILURE_MESSAGE) };
     }
+    const classId = origin.offering.clazzId;
 
     const response = await portalTokenFetch({
       portalUrl: portalOrigin,

@@ -10,8 +10,15 @@
 //   lock:     ok | forbidden | notfound | server_error | network
 //   offering: ok | forbidden | notfound | no_clazz | server_error
 //   send:     ok | forbidden | no_teacher_email | delivery | nonsuccess
+//   classes:  ok | forbidden   (under "ok", an unknown class_word still 400s)
+//
+// Scenarios with `driver: "run-step"` are driven by run-step.js, which calls one
+// compiled step directly against the stub; the rest are whole-pipeline runs driven
+// by run.js through the emulator.
 
-const OK = { mint: "ok", enroll: "ok", lock: "ok", offering: "ok", send: "ok" };
+const { DESTINATION_CLASS } = require("./config");
+
+const OK = { mint: "ok", enroll: "ok", lock: "ok", offering: "ok", send: "ok", classes: "ok" };
 
 const SCENARIOS = {
   happy: {
@@ -123,6 +130,28 @@ const SCENARIOS = {
     describe: "send_class_teachers returns 200 without success:true.",
     behavior: { ...OK, send: "nonsuccess" },
     expect: { status: "failure", failsAt: "send-email", messageIncludes: "Unable to send notification email" },
+  },
+
+  "enroll-happy": {
+    describe: `The enroll step resolves the class word "${DESTINATION_CLASS.word}" to its own class and enrolls the student there (run twice, so a re-invocation with the same token cache is covered).`,
+    driver: "run-step",
+    behavior: OK,
+    targetClassWord: DESTINATION_CLASS.word,
+    expect: { status: "success", summaryIncludes: `Enrolled in ${DESTINATION_CLASS.name}` },
+  },
+  "enroll-unknown-word": {
+    describe: "The destination class word matches no class (classes#info 400).",
+    driver: "run-step",
+    behavior: OK,
+    targetClassWord: "FT-fall-2026-does-not-exist",
+    expect: { status: "failure", messageIncludes: "tell your teacher" },
+  },
+  "enroll-lookup-forbidden": {
+    describe: "classes#info denies the origin teacher token (403).",
+    driver: "run-step",
+    behavior: { ...OK, classes: "forbidden" },
+    targetClassWord: DESTINATION_CLASS.word,
+    expect: { status: "failure", messageIncludes: "tell your teacher" },
   },
 };
 
