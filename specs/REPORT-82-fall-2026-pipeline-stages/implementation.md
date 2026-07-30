@@ -928,6 +928,43 @@ After the last code step, on a clean tree:
 - The baseline both numbers are measured against was taken on this branch before any change: 26
   suites / 484 total, and 28/28 harness scenarios.
 
+Both numbers were confirmed against the implemented branch: `npx jest` reports 26 suites / 491
+passed / 4 skipped / 495 total, and `run-all.js` reports 31/31 over six consecutive runs.
+
+## Divergences in the implementation
+
+Five, all recorded here so this plan and the code agree. None changes what any step delivers.
+
+1. **`TREATMENT_CLASS_WORD` is derived rather than re-declared.** The plan kept it as its own string
+   literal beside `FALL_FT_TREATMENT_CLASS`, which puts `"ft-2026-bingler-gator"` in `config.js`
+   twice. It is now `FALL_FT_TREATMENT_CLASS.word`, and the fall classes are declared above it so
+   the reference resolves. The corrected comment the plan asked for is unchanged in substance.
+
+2. **The fall scenarios reference the config fixtures instead of repeating their words and ids.**
+   The plan wrote `originClassWord: "ft-2026-bingler"`, `assignedClassWord: "ft-2026-bingler-gator"`
+   and so on as literals. They are now `FALL_FT_REGISTRATION_CLASS.word`,
+   `FALL_FT_TREATMENT_CLASS.word` and `FALL_FT_TREATMENT_CLASS.id`, which is how `happy`'s own
+   declarations are written and removes the one place a fixture and a scenario could drift apart.
+
+3. **`send-email.ts` posts `class_id: classId` rather than `class_id: String(classId)`.** Once the
+   handoff branch lands, `classId` is a string on both paths, so the wrapper was a no-op.
+
+4. **`run.js` fails a success scenario that declares neither `expect.assignedClassWord` nor
+   `expect.noAssignment`.** The plan's two branches are opt-in, and its own ⚠️ block explains at
+   length that omitting a declaration is silent rather than loud: the scenario reports PASS while
+   verifying nothing beyond its completion text. Putting `happy`'s declaration in the driver commit
+   fixes that for `happy` only, and leaves the hazard live for the next stage scenario anyone adds.
+   The `else if` chain now ends in a branch that prints what is missing and fails the run. Verified
+   by deleting `happy`'s `assignedClassWord` and watching it fail.
+
+5. **The README correction is wider than the plan's step.** "Document the harness's fall behaviour"
+   scoped itself to the scenario list and the stickiness section, plus the README's claim that the
+   fall steps run only as direct-step scenarios. Two further claims were made false by the driver
+   commit and are corrected in the same pass: that `run.js` asserts **three** things per scenario
+   (it now asserts up to four), together with its caveat that a run does not prove "that exact
+   `clazz_id` reached the portal", which the enrolment assertion now disproves; and the Files
+   section's description of `TREATMENT_CLASS_WORD` as fixture-free.
+
 ## Open Questions
 
 ### RESOLVED: Should the pre-test scenarios assert the enrolment itself, or only the assignment document?

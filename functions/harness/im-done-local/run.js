@@ -127,6 +127,12 @@ const main = async () => {
     console.log(`assigned class word: ${assigned} (expected ${expect.assignedClassWord})`);
   } else if (expect.status === "success" && expect.noAssignment) {
     console.log("(this stage makes no assignment; no read-back)");
+  } else if (expect.status === "success") {
+    // ⚠️ Neither declared. Failing here rather than skipping quietly, because the two branches
+    // above are opt-in: a success scenario that declares neither would otherwise report PASS while
+    // verifying nothing beyond its completion text, and nothing on screen would say so.
+    console.log("(no expect.assignedClassWord and no expect.noAssignment; declare one)");
+    classOk = false;
   }
 
   // ⚠️ Stringified on both sides, and that is not defensive tidiness: the two enrolling steps
