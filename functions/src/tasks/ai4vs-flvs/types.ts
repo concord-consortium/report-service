@@ -39,6 +39,14 @@ export type StepResult = {
  * enroll-specified-class keeps its own local scan rather than calling this: its version is
  * entangled with the authored-parameter precedence rule and its conflict error, so folding the two
  * together would rewrite a step this change otherwise does not touch. Deliberate, not overlooked.
+ *
+ * ⚠️ RELATED CONSTRAINT, on the writer rather than this reader: pipeline entry `name` values must be
+ * UNIQUE within a pipeline. index.ts's `stepResults[step.name] = result` is the single writer, so
+ * two entries sharing a name silently lose the first result, and send-email prints one line per key,
+ * so the teacher's notification quietly loses a line too. This matters wherever one shared core is
+ * reached through several named steps, as offering-state.ts is: a stage may run a lock and an open
+ * together, and they must not be named alike. Nothing checks this at run time, on the standing
+ * principle that our own pipeline wiring is assumed correct.
  */
 export const readStepOutputField = (
   stepResults: Record<string, StepResult>,
