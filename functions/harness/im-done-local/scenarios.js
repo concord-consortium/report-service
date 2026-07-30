@@ -17,7 +17,8 @@
 // by run.js through the emulator.
 
 const {
-  DESTINATION_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME, TREATMENT_CLASS_WORD,
+  DESTINATION_CLASS, ORIGIN_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME, TREATMENT_CLASS_WORD,
+  DESTINATION_SUFFIX, REQUEST,
 } = require("./config");
 
 // The open-target scenarios all drive the same step; only the stub behavior and the seeded class
@@ -42,7 +43,14 @@ const SCENARIOS = {
     describe: "Everything succeeds; the student is assigned, locked, and the class teachers are notified.",
     behavior: OK,
     seedAnswers: true,
-    expect: { status: "success", messageIncludes: "teacher has been notified" },
+    originClassWord: ORIGIN_CLASS.word,
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      assignedClassWord: `${ORIGIN_CLASS.word}${DESTINATION_SUFFIX.control}`,
+      // Spring authors raw class ids and resolves no word, so this comes from the request rather
+      // than from a classes/info fixture.
+      enrolledClassId: REQUEST.control_class_id,
+    },
   },
 
   "mint-expired": {

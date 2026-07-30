@@ -191,8 +191,6 @@ const ANSWERS = [
   },
 ];
 
-const EXPECTED_CLASS = "FL-spring-2026-SHARK";
-
 // Written by seed.js, read by run.js.
 const RUN_CONTEXT_FILE = `${__dirname}/.run-context.json`;
 // Written by run.js before each submit, read by stub-portal.js per request.
@@ -225,7 +223,6 @@ module.exports = {
   FALL_CONTEXTS,
   REQUEST,
   ANSWERS,
-  EXPECTED_CLASS,
   RUN_CONTEXT_FILE,
   SCENARIO_FILE,
   LAST_ENROLL_FILE,
