@@ -15,10 +15,9 @@ import admin from "firebase-admin";
  * Adding a logger import here to explain a failure would therefore silently cost the story its one
  * unmockable proof. Log in the calling step instead, which already has jobPath for attribution.
  *
- * ⚠️ NOTHING AUTOMATED ENFORCES THIS YET. No CI job runs the functions suite, unit or emulator (the
- * workflow that triggers on functions/** runs the tests/ rules suite and query-creator, never this
- * package), so breaking the property above fails no build. Run `npm run test:emulator` by hand
- * before merging anything in this file.
+ * The test_functions CI job runs the emulator suite on every push touching functions/**, so
+ * breaking the property above fails a build rather than passing unnoticed. Run
+ * `npm run test:emulator` locally before merging anything in this file.
  */
 
 export type Arm = "treatment" | "control";
