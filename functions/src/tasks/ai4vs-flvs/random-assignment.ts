@@ -3,7 +3,7 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 import { StepContext, StepResult } from "./types";
 import { getClientFirestore } from "../../firebase-client";
 import { getScopedPortalToken, portalTokenFetch, classifyPortalFailure, messageForBucket } from "../portal-api";
-import { Arm, getAlternatingAssignment } from "./assignment-doc";
+import { Arm, getAlternatingAssignment, perClassScope } from "./assignment-doc";
 
 // --- Baked-in constants ---
 
@@ -319,8 +319,8 @@ export const randomAssignment = async ({
     }
 
     const assignment = await getAlternatingAssignment(
-      source_key, String(interactiveId), String(platform_id),
-      String(resource_link_id), String(context_id),
+      String(source_key),
+      perClassScope(String(interactiveId), String(platform_id), String(resource_link_id), String(context_id)),
       String(platform_user_id), stratumKey, n1Assignment,
     );
 
