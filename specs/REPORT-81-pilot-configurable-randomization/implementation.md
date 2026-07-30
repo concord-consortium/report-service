@@ -147,10 +147,9 @@ import admin from "firebase-admin";
  * Adding a logger import here to explain a failure would therefore silently cost the story its one
  * unmockable proof. Log in the calling step instead, which already has jobPath for attribution.
  *
- * ⚠️ NOTHING AUTOMATED ENFORCES THIS. No CI job runs the functions suite, unit or emulator (verified:
- * the workflow that triggers on functions/** runs the tests/ rules suite and query-creator, never this
- * package), so breaking the property above fails no build. Run `npm run test:emulator` by hand before
- * merging anything in this file. See finding DO-I1.
+ * The test_functions CI job runs the emulator suite on every push touching functions/**, so
+ * breaking the property above fails a build rather than passing unnoticed. Run
+ * `npm run test:emulator` locally before merging anything in this file.
  */
 
 export type Arm = "treatment" | "control";
@@ -679,8 +678,15 @@ export interface PreTestConfig {
  * thing the student-facing message can usefully say.
  */
 export type DemographicsOutcome =
-  /** One entry per REQUESTED dimension; unrequested dimensions are absent. */
-  | { ok: true; categories: Record<Dimension, string> }
+  /**
+   * One entry per REQUESTED dimension; unrequested dimensions are absent, which is why this is
+   * Partial. ⚠️ Amended during implementation from `Record<Dimension, string>`: that shape promised
+   * all four values while filling only the requested ones, so a caller reading an unrequested
+   * dimension got `undefined` with no type-level signal, and the fall step's `String(Gender)` would
+   * have interpolated the literal "undefined" into a persisted stratum key. The step now guards the
+   * dimensions it requires before building a key; see the fall step below.
+   */
+  | { ok: true; categories: Partial<Record<Dimension, string>> }
   /** Answers the student has not given. Retrying helps once they answer; the step names them. */
   | { ok: false; kind: "incomplete"; missing: Dimension[] }
   /**
@@ -1052,12 +1058,18 @@ export const FULL_TIME_TABLE: FullTimeStratum[] = [
 ];
 
 /**
- * The PERSISTED stratum key, built from the matched row's canonical surname
- * ("Female|White|Bingler"), never from the caller's input. It is a Firestore document key that
- * outlives any run, so it must not vary with how the portal happens to case a class word.
+ * The PERSISTED stratum key, built entirely from the matched row ("Female|White|Bingler"), never
+ * from the caller's input. It is a Firestore document key that outlives any run, so it must not
+ * vary with how the portal happens to case a class word, and it cannot describe a row other than
+ * the one that was matched.
+ *
+ * ⚠️ Amended during implementation from `(stratum, gender, race)`: the row already carries its own
+ * gender and race, so the extra parameters could disagree with the row they came from. The
+ * canonical-source argument that motivates taking the surname from the row applies identically to
+ * the other two components.
  */
-export const fullTimeStratumKey = (stratum: FullTimeStratum, gender: string, race: string): string =>
-  `${gender}|${race}|${stratum.surname}`;
+export const fullTimeStratumKey = (stratum: FullTimeStratum): string =>
+  `${stratum.gender}|${stratum.race}|${stratum.surname}`;
 
 // The LOOKUP is keyed on the lowercased surname, because the class word arrives in the portal's
 // stored (lowercased) form while the rows carry the readable "Bingler" for review against the PI's
@@ -1633,11 +1645,26 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
   }
   const { Gender, Race, Grade, Module } = demographics.categories;
 
+  // Added during implementation, with the Partial above. readDemographics fills only the dimensions
+  // it was asked for, so absence here means the dimension set and the table this branch consults
+  // have gone out of step. Named rather than interpolated, because "undefined" reaching a stratum
+  // key would be diagnosed only by the resulting lookup miss, and a persisted key containing it
+  // would outlive the run. Unreachable from data, like the flex branch's unmatched stratum, and
+  // classified the same way.
+  const required = program === FULL_TIME_PROGRAM ? FULL_TIME_DIMENSIONS : FLEX_DIMENSIONS;
+  const unresolved = required.filter(dimension => !demographics.categories[dimension]);
+  if (unresolved.length > 0) {
+    functions.logger.error(
+      `fall-random-assignment: ${program} resolved no category for ${unresolved.join(", ")} for ${jobPath}`,
+    );
+    return { success: false, message: TELL_TEACHER_MESSAGE };
+  }
+
   let stratumKey: string;
   let n1Assignment: Arm;
   if (program === FULL_TIME_PROGRAM) {
     const surname = teacherSurnameFromClassWord(originClassWord);
-    const stratum = findFullTimeStratum(Gender, Race, surname);
+    const stratum = findFullTimeStratum(Gender!, Race!, surname);
     if (!stratum) {
       // The surname is what diagnoses the fault, and it is safe to log for the same reasons as the
       // class word. The teacher's FULL name never reaches a log or a StepResult.
@@ -1647,8 +1674,8 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
       );
       return { success: false, message: TELL_TEACHER_MESSAGE };
     }
-    // Keyed on the matched row's canonical surname, not on the derived one.
-    stratumKey = fullTimeStratumKey(stratum, Gender, Race);
+    // Keyed on the matched row, not on the derived surname or the caller's categories.
+    stratumKey = fullTimeStratumKey(stratum);
     n1Assignment = stratum.n1;
   } else {
     stratumKey = `${Gender}|${Race}|${Grade}|${Module}`;
@@ -1821,6 +1848,29 @@ updates its attribution comment and deletes the pin.
 | Confirm the pre-test asks **all four** demographic questions | Full-time reads two, flex needs four; a pre-test authored for full-time alone tells every flex student to "complete" a question that does not exist |
 | Confirm **no demographic question is duplicated** across the two Green activities | The answers query spans the whole sequence, and `findAnswerByPrompt` throws on `matches.length > 1`, which is now an `unmappable` and gives tell-your-teacher |
 | Confirm the **gender question's answer options** against `genderMap` | `mapToCategory` throws on an unmapped Gender choice. Any option the fall pre-test adds blocks every student who picks it. This is the launch-likely one (ER-4) |
+
+---
+
+## What shipped differently from this plan
+
+Recorded 2026-07-30, after implementation. Every step above landed as written except for the following,
+each of which came out of running the code or reviewing it rather than from re-reading the plan. The
+code blocks above have been amended in place, so this list is the index rather than the detail.
+
+| Change | Why |
+|---|---|
+| `fullTimeStratumKey(stratum)` rather than `(stratum, gender, race)` | The row already carries its gender and race, so the extra parameters could disagree with the row they came from. The canonical-source argument for taking the surname from the row applies identically to the other two. |
+| `DemographicsOutcome.categories` is `Partial<Record<Dimension, string>>` | The total type promised four values while filling only the requested ones. Under it, the fall step's `String(Gender)` would have interpolated the literal `"undefined"` into a persisted stratum key on a full-time read of a flex dimension. |
+| The fall step guards its required dimensions before building a key | The consequence of the `Partial` above. Unreachable from data, exactly like the flex branch's unmatched stratum, and classified the same way (tell-your-teacher, error log). |
+| `"/lib/"` added to `jest.testPathIgnorePatterns` in step 7, not step 9 | Step 7 is where the harness fixture change is verified, and the `run-step` driver requires `npm run build`. Once `lib/` exists, jest picks up the compiled test duplicates and four fail. The plan had it as an optional extra on the CI step; it is needed two steps earlier. |
+| One extra step-level test in `random-assignment.test.ts` pinning spring's assignment document id | The criterion "a `spring-2026` student's assignment document identity is likewise unchanged" had no home in any step's test list. It is pinned against a direct sha256 of the shipped input string, matching how the per-class id is pinned in `assignment-doc.test.ts`. |
+| `random-assignment.test.ts` also loses its `cleanup` describe block | The plan named the matching, mapping and missing-answer blocks. Cleanup moved with them for the same reason: it now tests `readDemographics`, which owns the client Firestore lifetime, so leaving it would have been a duplicate of `demographics.test.ts`'s. |
+| One extra step-level test pinning that spring gives an `unmappable` read the same generic message as a `failed` one | Spring's "one message for both remaining kinds" was asserted nowhere, so a later change making spring match the fall step's split would have passed. |
+
+Two things the plan predicted and that held exactly: `readDemographics`'s outer catch had to say
+`unexpected error reading demographics` (the extraction landed with **no test file edited** and 231 tests
+green), and the de-duplication walk's loop variable had to be `candidate` rather than `stratum` or tslint's
+`no-shadowed-variable` fails the build.
 
 ---
 

@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
 import { createPortalTokenCache } from "../portal-api";
@@ -422,6 +423,19 @@ describe("randomAssignment", () => {
   });
 
   describe("alternating assignment integration", () => {
+    it("writes to the shipped per-class assignment document, unchanged", async () => {
+      // Pinned against a direct sha256 of the shipped input string rather than against
+      // perClassScope, so a re-keying of spring's live documents fails here. A changed id would
+      // treat every already-assigned spring student as new.
+      const docId = createHash("sha256")
+        .update("ai4vs-flvs-assignments|interactive-1|https://learn.concord.org|678|ctx-1")
+        .digest("hex");
+
+      await randomAssignment(makeContext());
+
+      expect(mockDoc).toHaveBeenCalledWith(`sources/test-source/jobs-task-data/${docId}`);
+    });
+
     it("returns student-friendly error when transaction fails", async () => {
       mockRunTransaction.mockRejectedValueOnce(new Error("transaction failed"));
 

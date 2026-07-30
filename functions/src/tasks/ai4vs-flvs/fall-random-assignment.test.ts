@@ -113,10 +113,12 @@ describe("fallRandomAssignment", () => {
       expect(stratumKeyHandedToCore()).toBe("Female|White|Bingler");
     });
 
-    it("resolves ft-2026-bingler to the row labelled Alyssa Bingler, and its seed arm", async () => {
+    it("takes the seed arm of the block its class word names", async () => {
+      // The Bingler block starts on treatment; the next test shows Hankamp's starts on control.
+      // That ft-2026-bingler reaches the row labelled "Alyssa Bingler" is asserted in
+      // fall-programs.test.ts, where the full name can be read without leaving the step.
       await fallRandomAssignment(makeContext("ft-2026-bingler"));
 
-      // The Bingler block starts on treatment; Hankamp's starts on control.
       expect(n1HandedToCore()).toBe("treatment");
     });
 
