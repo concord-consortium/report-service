@@ -7,20 +7,11 @@ import { Arm, getAlternatingAssignment, perClassScope, pooledProgramScope } from
 import { GENDER_RACE_GRADE_MODULE_TABLE, findFullTimeStratum, fullTimeStratumKey } from "./strata-tables";
 import {
   classifyFallProgram, teacherSurnameFromClassWord, FULL_TIME_PROGRAM,
-  FULL_TIME_DIMENSIONS, FLEX_DIMENSIONS,
+  FULL_TIME_DIMENSIONS, FLEX_DIMENSIONS, DESTINATION_SUFFIX,
 } from "./fall-programs";
 
 const STUDENT_FAILURE_MESSAGE =
   "Unable to complete your assignment. Please try again or contact your teacher.";
-
-/**
- * ⚠️ Lowercase, so the derived word is BYTE-IDENTICAL to what the portal stores. The destination
- * classes are created from the same spreadsheet as the origins, so "FT-2026-Bingler-Gator" is
- * stored as "ft-2026-bingler-gator". A mixed-case suffix on a lowercase origin would yield
- * "ft-2026-bingler-Gator", which resolves only through MySQL's case-insensitive utf8 collation. An
- * exact match is available for free, so study enrolment should not depend on a collation default.
- */
-const DESTINATION_SUFFIX: Record<Arm, string> = { treatment: "-gator", control: "-shark" };
 
 /**
  * Randomize a fall student and publish their destination class word.
