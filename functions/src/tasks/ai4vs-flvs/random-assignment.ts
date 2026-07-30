@@ -1,10 +1,9 @@
 import * as functions from "firebase-functions";
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { createHash } from "crypto";
-import admin from "firebase-admin";
 import { StepContext, StepResult } from "./types";
 import { getClientFirestore } from "../../firebase-client";
 import { getScopedPortalToken, portalTokenFetch, classifyPortalFailure, messageForBucket } from "../portal-api";
+import { Arm, getAlternatingAssignment } from "./assignment-doc";
 
 // --- Baked-in constants ---
 
@@ -61,7 +60,7 @@ const CLASS_NAMES: Record<string, string> = {
  * Assignment table — all 24 strata.
  * Key format: "Gender|Race|Grade|Module" → "treatment" | "control"
  */
-const ASSIGNMENT_TABLE: Record<string, "treatment" | "control"> = {
+const ASSIGNMENT_TABLE: Record<string, Arm> = {
   "Female|White|High|Mod2": "treatment",
   "Male|non-White|High|Mod2": "control",
   "Male|White|Mid|Mod2": "treatment",
@@ -214,68 +213,6 @@ const mapToCategory = (dimension: Dimension, choiceTexts: string[]): string => {
       return hasOnlyWhite ? "White" : "non-White";
     }
   }
-};
-
-// --- Assignment document helpers ---
-
-export const computeAssignmentDocId = (
-  interactiveId: string,
-  platform_id: string,
-  resource_link_id: string,
-  context_id: string,
-): string => {
-  const input = `ai4vs-flvs-assignments|${interactiveId}|${platform_id}|${resource_link_id}|${context_id}`;
-  return createHash("sha256").update(input).digest("hex");
-};
-
-export const getAlternatingAssignment = async (
-  source_key: string,
-  interactiveId: string,
-  platform_id: string,
-  resource_link_id: string,
-  context_id: string,
-  platform_user_id: string,
-  stratumKey: string,
-  n1Assignment: "treatment" | "control",
-): Promise<"treatment" | "control"> => {
-  const db = admin.firestore();
-  const docId = computeAssignmentDocId(interactiveId, platform_id, resource_link_id, context_id);
-  const docRef = db.doc(`sources/${source_key}/jobs-task-data/${docId}`);
-
-  return db.runTransaction(async (tx) => {
-    const doc = await tx.get(docRef);
-    const data = doc.data() || {};
-    const strata = data.strata || {};
-    const stratum = strata[stratumKey] || {};
-    const users = stratum.users || {};
-
-    // Dedup: if user already assigned, return cached assignment
-    if (users[platform_user_id]) {
-      return users[platform_user_id] as "treatment" | "control";
-    }
-
-    // Determine assignment: use nextAssignment if set, otherwise n1
-    const assignment: "treatment" | "control" = stratum.nextAssignment || n1Assignment;
-    const opposite: "treatment" | "control" = assignment === "treatment" ? "control" : "treatment";
-
-    // Write back
-    tx.set(docRef, {
-      type: "ai4vs-flvs-assignments",
-      interactiveId,
-      platform_id,
-      resource_link_id,
-      context_id,
-      strata: {
-        ...strata,
-        [stratumKey]: {
-          nextAssignment: opposite,
-          users: { ...users, [platform_user_id]: assignment },
-        },
-      },
-    }, { merge: true });
-
-    return assignment;
-  });
 };
 
 // --- Main step function ---
