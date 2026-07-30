@@ -50,6 +50,23 @@ const assertLoopbackEmulator = () => {
 const ORIGIN_CLASS = { id: 90210, word: "fl-spring-2026-origin", name: "FL-spring-2026-origin" };
 const DESTINATION_CLASS = { id: 30001, word: "ft-fall-2026-a", name: "FT-fall-2026-A" };
 
+// The fall control subclass. Its word must carry the "-shark" arm suffix, or open-target-offering
+// short-circuits on the arm check before the mint, the class read and the name match, and the
+// scenario reports a passing tell-your-teacher while the matching logic never runs. Neither class
+// word above carries either suffix.
+const STUDY_CONTROL_CLASS = { id: 30002, word: "ft-2026-bingler-shark", name: "FT-2026-Bingler-Shark" };
+
+// ⚠️ Must equal TARGET_OFFERING_NAME exported by open-target-offering.ts, or the by-name match
+// resolves nothing and every open-target scenario fails. A literal rather than an import of the
+// compiled constant, because stub-portal.js requires only http/fs/./config/./scenarios today, and
+// importing from lib/ would give it a dependency on a build in the process the README says to start
+// first, with no equivalent of run-step.js's existsSync guard. A unit test asserts the two match.
+const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
+
+// The treatment subclass word. Needs no class fixture: the arm check short-circuits before any
+// portal call, so nothing ever looks this word up.
+const TREATMENT_CLASS_WORD = "ft-2026-bingler-gator";
+
 // One participating student and its launch context.
 const CONTEXT = {
   source_key: "im-done-local",
@@ -133,6 +150,9 @@ module.exports = {
   assertLoopbackEmulator,
   ORIGIN_CLASS,
   DESTINATION_CLASS,
+  STUDY_CONTROL_CLASS,
+  TARGET_OFFERING_NAME,
+  TREATMENT_CLASS_WORD,
   CONTEXT,
   REQUEST,
   ANSWERS,

@@ -4,7 +4,7 @@ import { markComplete, setProcessingMessage } from "../task-helpers";
 import { StepContext, StepHandler } from "./types";
 import { createPortalTokenCache, validatePortalHost, TELL_TEACHER_MESSAGE } from "../portal-api";
 import { evaluateCompletion } from "./evaluate-completion";
-import { lockActivity } from "./lock-activity";
+import { lockCurrentOffering } from "./lock-current-offering";
 import { randomAssignment } from "./random-assignment";
 import { sendEmail } from "./send-email";
 
@@ -14,11 +14,26 @@ interface PipelineStep {
   handler: StepHandler;
 }
 
-const PIPELINES: Record<string, PipelineStep[]> = {
+/**
+ * \u26a0\ufe0f Entry `name` values must be UNIQUE WITHIN a pipeline. The loop below is the single writer of
+ * `stepResults[step.name]`, so two entries sharing a name silently lose the first result, and
+ * send-email prints one line per key, so the teacher's notification quietly loses a line too. Nothing
+ * enforces this at run time and a harness run would not catch it: the pipeline completes, the student
+ * sees success, and only the email is short. A test in index.test.ts asserts it across every entry
+ * here, which is why this table is exported.
+ *
+ * The hazard arrives with any stage that reaches one shared core through several named steps, as
+ * offering-state.ts is reached by both lock-current-offering and open-target-offering.
+ */
+export const PIPELINES: Record<string, PipelineStep[]> = {
   "spring-2026": [
     { name: "evaluate-completion", processingMessage: "Checking your answers\u2026", handler: evaluateCompletion },
     { name: "random-assignment", processingMessage: "Assigning you to a class\u2026", handler: randomAssignment },
-    { name: "lock-activity", processingMessage: "Locking your pre-test\u2026", handler: lockActivity },
+    // The ENTRY name stays "lock-activity" although the module and handler were renamed to
+    // lock-current-offering. It is deliberate and not a leftover: send-email prints one line per
+    // stepResults key, so renaming it changes the wording of a live pilot's teacher email, and the
+    // processingMessage beside it is a string spring students actually see.
+    { name: "lock-activity", processingMessage: "Locking your pre-test\u2026", handler: lockCurrentOffering },
     { name: "send-email", processingMessage: "Notifying your teacher\u2026", handler: sendEmail },
   ],
 };

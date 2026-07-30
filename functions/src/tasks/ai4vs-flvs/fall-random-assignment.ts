@@ -7,20 +7,11 @@ import { Arm, getAlternatingAssignment, perClassScope, pooledProgramScope } from
 import { GENDER_RACE_GRADE_MODULE_TABLE, findFullTimeStratum, fullTimeStratumKey } from "./strata-tables";
 import {
   classifyFallProgram, teacherSurnameFromClassWord, FULL_TIME_PROGRAM,
-  FULL_TIME_DIMENSIONS, FLEX_DIMENSIONS,
+  FULL_TIME_DIMENSIONS, FLEX_DIMENSIONS, DESTINATION_SUFFIX,
 } from "./fall-programs";
 
 const STUDENT_FAILURE_MESSAGE =
   "Unable to complete your assignment. Please try again or contact your teacher.";
-
-/**
- * ⚠️ Lowercase, so the derived word is BYTE-IDENTICAL to what the portal stores. The destination
- * classes are created from the same spreadsheet as the origins, so "FT-2026-Bingler-Gator" is
- * stored as "ft-2026-bingler-gator". A mixed-case suffix on a lowercase origin would yield
- * "ft-2026-bingler-Gator", which resolves only through MySQL's case-insensitive utf8 collation. An
- * exact match is available for free, so study enrolment should not depend on a collation default.
- */
-const DESTINATION_SUFFIX: Record<Arm, string> = { treatment: "-gator", control: "-shark" };
 
 /**
  * Randomize a fall student and publish their destination class word.
@@ -190,7 +181,7 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
     // Reachability is low but real: it needs a roster move between full-time classes plus a
     // re-completion of the Green pre-test, and the re-completion is plausible because the answers
     // query filters on resource_link_id and context_id (so the student has no answers in the new
-    // offering) and lock-activity locks per offering (so the new offering is unlocked). Closing it
+    // offering) and the lock step locks per offering (so the new offering is unlocked). Closing it
     // needs a program-wide student->arm index, which this story declined; a mid-study move between
     // full-time classes is therefore an operational item needing the prior assignment inspected,
     // not just a roster edit.

@@ -1,8 +1,8 @@
-import { computePooledAssignmentDocId } from "./assignment-doc";
+import { Arm, computePooledAssignmentDocId } from "./assignment-doc";
 import { findFullTimeStratum } from "./strata-tables";
 import {
   FLEX_DIMENSIONS, FLEX_PROGRAM, FULL_TIME_DIMENSIONS, FULL_TIME_PROGRAM,
-  classifyFallProgram, teacherSurnameFromClassWord,
+  classifyFallProgram, teacherSurnameFromClassWord, armFromClassWord, DESTINATION_SUFFIX,
 } from "./fall-programs";
 
 /** The study's real class words, as the portal stores them. */
@@ -80,6 +80,24 @@ describe("teacherSurnameFromClassWord", () => {
     for (const word of FULL_TIME_WORDS) {
       const surname = teacherSurnameFromClassWord(word);
       expect(findFullTimeStratum("Male", "non-White", surname)).toBeDefined();
+    }
+  });
+});
+
+describe("armFromClassWord", () => {
+  const arms: Arm[] = ["treatment", "control"];
+
+  it("classifies every study destination word the forward direction can produce", () => {
+    for (const word of [...FULL_TIME_WORDS, ...FLEX_WORDS]) {
+      for (const arm of arms) {
+        expect(armFromClassWord(`${word}${DESTINATION_SUFFIX[arm]}`)).toBe(arm);
+      }
+    }
+  });
+
+  it("does not classify an origin word, which carries neither suffix", () => {
+    for (const word of [...FULL_TIME_WORDS, ...FLEX_WORDS]) {
+      expect(armFromClassWord(word)).toBeUndefined();
     }
   });
 });

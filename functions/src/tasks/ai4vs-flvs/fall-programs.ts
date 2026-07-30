@@ -1,4 +1,7 @@
 import { Dimension } from "./demographics";
+// Type-only: tsc elides it, so this module gains no runtime require and stays free of
+// assignment-doc's firebase-admin import.
+import type { Arm } from "./assignment-doc";
 
 /**
  * The two fall programs. Resolved at run time from the student's origin class word, never authored:
@@ -79,3 +82,32 @@ export const FLEX_DIMENSIONS: readonly Dimension[] = ["Gender", "Grade", "Module
  */
 export const teacherSurnameFromClassWord = (originClassWord: string): string =>
   originClassWord.slice(originClassWord.lastIndexOf("-") + 1).trim();
+
+/**
+ * ⚠️ Lowercase, so a derived word is BYTE-IDENTICAL to what the portal stores. The destination
+ * classes are created from the same spreadsheet as the origins, so "FT-2026-Bingler-Gator" is
+ * stored as "ft-2026-bingler-gator". A mixed-case suffix on a lowercase origin would yield
+ * "ft-2026-bingler-Gator", which resolves only through MySQL's case-insensitive utf8 collation. An
+ * exact match is available for free, so study enrolment should not depend on a collation default.
+ *
+ * ⚠️ BOTH DIRECTIONS SHARE THIS ONE SOURCE OF TRUTH: fall-random-assignment appends a suffix to
+ * build the destination word, and armFromClassWord reads one back. A divergence would classify a
+ * "-shark" student as treatment and silently withhold the curriculum they are entitled to.
+ */
+export const DESTINATION_SUFFIX: Record<Arm, string> = { treatment: "-gator", control: "-shark" };
+
+/**
+ * Classify a study subclass word back to its arm.
+ *
+ * `undefined` is a CLASSIFIED FAILURE for the caller, never a default to either arm, matching how
+ * classifyFallProgram treats an unrecognized prefix. Defaulting would either open the curriculum to
+ * a treatment student who was deliberately locked out of it, or withhold it from a control student.
+ *
+ * ⚠️ Expects a word that carries a suffix. A registration word for a teacher surnamed "gator" or
+ * "shark" would classify rather than returning undefined, since the match is on the word's ending.
+ * None of the study's surnames collide.
+ */
+export const armFromClassWord = (classWord: string): Arm | undefined => {
+  const arms = Object.keys(DESTINATION_SUFFIX) as Arm[];
+  return arms.find((arm) => classWord.endsWith(DESTINATION_SUFFIX[arm]));
+};
