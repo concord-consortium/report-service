@@ -27,8 +27,20 @@ export type FallProgramId = typeof FULL_TIME_PROGRAM | typeof FLEX_PROGRAM;
 // spreadsheet's "FT-2026-Bingler" reaches us as "ft-2026-bingler". resolve-origin-class normalizes
 // to that stored form, and these prefixes match it exactly. The mixed-case prefixes fail against
 // all eight of the study's class words.
-const FULL_TIME_PREFIX = "ft-";
-const FLEX_PREFIX = "fl-";
+//
+// ⚠️ YEAR-QUALIFIED, matching the program ids these prefixes return. Two reasons, both about making
+// a misconfiguration loud rather than silent:
+//   - Full-time gets a second, strict gate downstream (an unknown teacher surname is a classified
+//     failure before anything is written). A bare "fl-" gives flex the opposite treatment for the
+//     same class of fault: a mistyped section word would classify, consume an alternation slot in
+//     the pooled fall-2026-flex document, and only fail later at enrolment.
+//   - The pooled document id is year-qualified precisely so a later cohort cannot land in this
+//     study's document. A bare prefix undoes that at the front door: "fl-spring-2026-origin" and
+//     "fl-2026-section1" are indistinguishable to it, so the spring-era harness word classifies as
+//     a fall flex student.
+// This keeps no per-section list in code: a new fall-2026 flex section still classifies unchanged.
+const FULL_TIME_PREFIX = "ft-2026-";
+const FLEX_PREFIX = "fl-2026-";
 
 /**
  * Classify the origin class word's prefix. Expects the normalized (lowercased, trimmed) word that

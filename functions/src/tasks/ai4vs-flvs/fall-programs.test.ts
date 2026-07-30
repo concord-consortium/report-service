@@ -43,6 +43,18 @@ describe("classifyFallProgram", () => {
   });
 
   /**
+   * The prefixes are year-qualified, like the program ids they return. `fl-spring-2026-origin` is
+   * the word the local harness actually carries, and it is what the negative case above reads as
+   * covering but does not: that word has the `fl-` prefix, so a bare-prefix classifier would admit
+   * a spring-era class into the pooled fall-2026-flex document.
+   */
+  it("does not classify a word from another cohort that shares the program prefix", () => {
+    expect(classifyFallProgram("fl-spring-2026-origin")).toBeUndefined();
+    expect(classifyFallProgram("ft-fall-2026-a")).toBeUndefined();
+    expect(classifyFallProgram("fl-2027-section1")).toBeUndefined();
+  });
+
+  /**
    * The assertion that documents why resolve-origin-class normalizes rather than leaving each
    * consumer to cope: the spreadsheet's casing classifies as nothing at all.
    */
