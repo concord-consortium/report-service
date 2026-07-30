@@ -35,9 +35,13 @@ const OPEN_TARGET_STEP = {
 const OK = { mint: "ok", enroll: "ok", lock: "ok", offering: "ok", send: "ok", classes: "ok" };
 
 const SCENARIOS = {
+  // No `context`, so its answers are seeded under the shared CONTEXT exactly as before, only under a
+  // scenario-qualified document id. Every other spring scenario reads them too: the answers query
+  // matches on the launch context fields rather than on the document id.
   happy: {
     describe: "Everything succeeds; the student is assigned, locked, and the class teachers are notified.",
     behavior: OK,
+    seedAnswers: true,
     expect: { status: "success", messageIncludes: "teacher has been notified" },
   },
 
