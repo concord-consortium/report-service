@@ -56,7 +56,7 @@ const makeContext = (
       version: 1,
       id: "test-job-123",
       status: "running",
-      request: { task: "ai4vs-flvs", pilot: "fall-2026-fulltime", ...requestOverrides },
+      request: { task: "ai4vs-flvs", pilot: "fall-2026-green", ...requestOverrides },
       createdAt: Date.now(),
     },
     ...overrides,
@@ -97,7 +97,7 @@ describe("enrollSpecifiedClass", () => {
         "https://learn.concord.org", ORIGIN_TOKEN, DESTINATION_WORD
       );
       expect(mintCallFor(undefined)).toEqual(
-        expect.objectContaining({ tokenType: "teacher", pilot: "fall-2026-fulltime" })
+        expect.objectContaining({ tokenType: "teacher", pilot: "fall-2026-green" })
       );
       expect(mintCallFor("30001")).toEqual(
         expect.objectContaining({ tokenType: "teacher", classId: "30001" })

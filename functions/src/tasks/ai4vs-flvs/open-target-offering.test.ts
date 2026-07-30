@@ -102,7 +102,7 @@ const makeContext = (
       version: 1,
       id: "test-job-123",
       status: "running",
-      request: { task: "ai4vs-flvs", pilot: "fall-2026-fulltime" },
+      request: { task: "ai4vs-flvs", pilot: "fall-2026-orange" },
       createdAt: Date.now(),
     },
   } as IJobDocument,

@@ -27,6 +27,9 @@ const OPEN_TARGET_STEP = {
   stepModule: "open-target-offering",
   stepExport: "openTargetOffering",
   stepName: "open-target",
+  // The post-test stage's pilot. Inert as behaviour (it reaches only the mint's audit description),
+  // but a run-step scenario should not model a stage it is not driving.
+  pilot: "fall-2026-orange",
 };
 
 const OK = { mint: "ok", enroll: "ok", lock: "ok", offering: "ok", send: "ok", classes: "ok" };

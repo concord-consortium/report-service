@@ -41,7 +41,7 @@ const seedStepResults = (scenario) =>
       }
     : {};
 
-const buildContext = (targetClassWord, tokenCache, stepResults) => ({
+const buildContext = (scenario, tokenCache, stepResults) => ({
   jobPath: `sources/${CONTEXT.source_key}/jobs/run-step-local`,
   jobDoc: {
     platform_id: PLATFORM_ID,
@@ -52,7 +52,11 @@ const buildContext = (targetClassWord, tokenCache, stepResults) => ({
       version: 1,
       id: "run-step-local",
       status: "running",
-      request: { task: "ai4vs-flvs", pilot: "fall-2026-fulltime", target_class_word: targetClassWord },
+      request: {
+        task: "ai4vs-flvs",
+        pilot: scenario.pilot || "fall-2026-green",
+        target_class_word: scenario.targetClassWord,
+      },
       createdAt: Date.now(),
     },
   },
@@ -106,7 +110,7 @@ const main = async () => {
     console.log(`seeded originClassWord: ${scenario.seedOriginClassWord}`);
   }
 
-  const context = buildContext(scenario.targetClassWord, createPortalTokenCache(), seedStepResults(scenario));
+  const context = buildContext(scenario, createPortalTokenCache(), seedStepResults(scenario));
 
   let pass = true;
   for (const run of [1, 2]) {
