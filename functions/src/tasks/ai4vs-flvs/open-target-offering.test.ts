@@ -68,6 +68,16 @@ const DEFAULT_OFFERINGS = [
   offering(TARGET_OFFERING_ID, `  ${TARGET_OFFERING_NAME.toUpperCase()}  `),
 ];
 
+/**
+ * A class holding neither the target nor anything like it. Shared by the diagnostic test and the
+ * privacy test below, which are the two halves of the same rule: this branch holds the whole class
+ * body, so it must log the offering names and nothing else off it.
+ */
+const NO_MATCH_OFFERINGS = [
+  offering(OWN_OFFERING_ID, POST_TEST_NAME),
+  offering(777, "Green Sequence for AI in Math (FLVS 26-27)"),
+];
+
 /** Route the one mocked fetch by method, so the class read and the write are both covered. */
 const routeFetch = (
   offerings: any[],
@@ -171,10 +181,7 @@ describe("openTargetOffering", () => {
 
   describe("target selection", () => {
     it("fails permanently when no offering matches, logging the class's offering names", async () => {
-      routeFetch([
-        offering(OWN_OFFERING_ID, POST_TEST_NAME),
-        offering(777, "Green Sequence for AI in Math (FLVS 26-27)"),
-      ]);
+      routeFetch(NO_MATCH_OFFERINGS);
 
       const result = await openTargetOffering(makeContext());
 
@@ -361,7 +368,7 @@ describe("openTargetOffering", () => {
     });
 
     it("leaks nothing on the no-match branch, which holds the whole class body", async () => {
-      routeFetch([offering(OWN_OFFERING_ID, POST_TEST_NAME)]);
+      routeFetch(NO_MATCH_OFFERINGS);
       const result = await openTargetOffering(makeContext());
       expect(result.success).toBe(false);
       expectNoLeaks(result);
