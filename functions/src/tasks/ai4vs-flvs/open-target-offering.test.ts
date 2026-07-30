@@ -1,5 +1,5 @@
 import { openTargetOffering, TARGET_OFFERING_NAME } from "./open-target-offering";
-import { armFromClassWord } from "./fall-programs";
+import { armFromClassWord, DESTINATION_SUFFIX, FLEX_PROGRAM } from "./fall-programs";
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
 import { createPortalTokenCache } from "../portal-api";
@@ -356,6 +356,16 @@ describe("openTargetOffering", () => {
     it("serves class words that classify as the arms their scenarios assume", () => {
       expect(armFromClassWord(harnessConfig.STUDY_CONTROL_CLASS.word)).toBe("control");
       expect(armFromClassWord(harnessConfig.TREATMENT_CLASS_WORD)).toBe("treatment");
+    });
+
+    it("composes destination words with the same arm suffixes the pipeline appends", () => {
+      expect(harnessConfig.DESTINATION_SUFFIX).toEqual(DESTINATION_SUFFIX);
+    });
+
+    // Hashed into the pooled assignment document id, so the harness reading it back from a document
+    // the pipeline wrote depends on the two spellings agreeing.
+    it("keys the pooled assignment document on the same flex program string", () => {
+      expect(harnessConfig.FLEX_PROGRAM).toBe(FLEX_PROGRAM);
     });
   });
 

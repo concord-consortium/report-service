@@ -1,6 +1,7 @@
-# Runtime artifacts written by seed.js / run.js
+# Runtime artifacts written by seed.js / run.js / stub-portal.js
 .run-context.json
 .scenario
+.last-enroll.json
 
 # These harness scripts are hand-written source, not tsc output, so re-include
 # them against the functions-wide **/*.js ignore.
