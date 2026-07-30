@@ -110,23 +110,26 @@ import {
 
 Append to the existing `fall-programs.test.ts`. It goes there rather than in a new file because it
 tests `fall-programs`, and because that suite imports no step module and therefore needs **no
-`firebase-functions` mock** (see the Open Question on that constraint):
+`firebase-functions` mock** (see the Open Question on that constraint). `Arm` joins the file's
+existing `assignment-doc` import rather than adding a second one, which tslint rejects, and the
+cases run over the study's real class words, which the suite already defines:
 
 ```ts
-describe("arm suffix round-trip", () => {
+describe("armFromClassWord", () => {
   const arms: Arm[] = ["treatment", "control"];
 
-  // ⚠️ The two directions must agree or a "-shark" student is classified as treatment at the
-  // post-test stage and silently withheld the curriculum they are entitled to.
-  it("classifies back to the arm each suffix was built from", () => {
-    arms.forEach((arm) => {
-      expect(armFromClassWord(`ft-2026-bingler${DESTINATION_SUFFIX[arm]}`)).toBe(arm);
-    });
+  it("classifies every study destination word the forward direction can produce", () => {
+    for (const word of [...FULL_TIME_WORDS, ...FLEX_WORDS]) {
+      for (const arm of arms) {
+        expect(armFromClassWord(`${word}${DESTINATION_SUFFIX[arm]}`)).toBe(arm);
+      }
+    }
   });
 
-  it("returns undefined for a class word carrying neither suffix, rather than defaulting", () => {
-    expect(armFromClassWord("ft-2026-bingler")).toBeUndefined();
-    expect(armFromClassWord("fl-2026-section1")).toBeUndefined();
+  it("does not classify an origin word, which carries neither suffix", () => {
+    for (const word of [...FULL_TIME_WORDS, ...FLEX_WORDS]) {
+      expect(armFromClassWord(word)).toBeUndefined();
+    }
   });
 });
 ```
@@ -741,9 +744,11 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
       `open-target-offering: opened offering ${targetOffering.id} for user ${platform_user_id} ` +
       `(portal returned active=${outcome.returned?.active} locked=${outcome.returned?.locked}) (${jobPath})`
     );
-    // summary is rendered into the teacher-notification email: the offering name and the flags
-    // written, and nothing off the class body beyond that.
-    return { success: true, summary: `Opened ${targetOffering.name} (unlocked and visible)` };
+    // summary is rendered into the teacher-notification email, so it carries the offering name and
+    // the flags written and nothing else off the class body. The constant rather than the matched
+    // offering's own name, since matching is case-insensitive and trimmed: the portal's value can
+    // differ in case and padding, which would reach the email verbatim.
+    return { success: true, summary: `Opened ${TARGET_OFFERING_NAME} (unlocked and visible)` };
   } catch (error) {
     functions.logger.error(`open-target-offering: unexpected error for ${jobPath}`, error);
     return { success: false, message: STUDENT_FAILURE_MESSAGE };
@@ -952,6 +957,35 @@ pass on both runs, and the write-back shows up in the driver's own output
   echo fix it read `locked=true` for a `locked=false` write.
 
 ---
+
+## Changes made while implementing
+
+**Shipped state**, across five commits: `npm run build` clean, `npm run lint` clean,
+`npx jest` **479 passed / 4 skipped in 26 suites**, `npm run test:emulator` **52 passed in 6
+suites**, and the local harness **28/28 scenarios**. The harness inspections all read as intended:
+one mint across both runs of the open scenario, both flags on the wire, and zero portal calls on the
+treatment path.
+
+Four differences between the plan above and the code that landed, all found by running the checks
+rather than by review, and all folded back into the plan.
+
+1. **The success summary uses the exported constant, not the matched offering's name.** The plan
+   read `Opened ${targetOffering.name}`. Because matching is trimmed and case-insensitive, the
+   portal's value can differ in case and padding from the constant, and the fixture proves it: the
+   summary rendered as `Opened   BLUE SEQUENCE FOR AI IN MATH (FLVS 26-27)  `. That string goes into
+   the researcher's teacher-notification email, so it now uses the canonical name.
+2. **One more stale reference than the dependents list carried.**
+   `fall-random-assignment.ts:184` names `lock-activity` in prose about a roster-move edge case. The
+   requirements list caught `enroll-specified-class.ts:72` and missed this one. Reworded to "the lock
+   step", which does not go stale again on the next rename.
+3. **The no-match diagnostic and privacy assertions now share one fixture.** They were written
+   against different class bodies, which satisfies each half separately and neither together. They
+   are the two halves of one rule about a branch that holds the whole class body.
+4. **Two lint-driven edits.** `fall-programs.test.ts` needed its new `Arm` import combined with the
+   existing `assignment-doc` import (tslint forbids two imports from one module), and the
+   `eslint-disable` directive shown for the harness-config `require` was dropped: the repo has **no
+   eslint configuration at all**, so it was inert, and lint passes without it. `npm run lint` is
+   tslint only.
 
 ## Cross-reference against the requirements
 
