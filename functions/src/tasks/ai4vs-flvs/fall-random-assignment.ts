@@ -181,7 +181,7 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
     // Reachability is low but real: it needs a roster move between full-time classes plus a
     // re-completion of the Green pre-test, and the re-completion is plausible because the answers
     // query filters on resource_link_id and context_id (so the student has no answers in the new
-    // offering) and lock-activity locks per offering (so the new offering is unlocked). Closing it
+    // offering) and the lock step locks per offering (so the new offering is unlocked). Closing it
     // needs a program-wide student->arm index, which this story declined; a mid-study move between
     // full-time classes is therefore an operational item needing the prior assignment inspected,
     // not just a roster edit.

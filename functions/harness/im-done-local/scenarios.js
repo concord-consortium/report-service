@@ -82,12 +82,12 @@ const SCENARIOS = {
   "lock-server-error": {
     describe: "update_student_metadata fails with a 500.",
     behavior: { ...OK, lock: "server_error" },
-    expect: { status: "failure", failsAt: "lock-activity", messageIncludes: "Unable to lock your pre-test" },
+    expect: { status: "failure", failsAt: "lock-activity", messageIncludes: "Unable to record that you finished this activity" },
   },
   "lock-network": {
     describe: "The lock connection is dropped (thrown fetch, no response) — the only thrown-fetch path outside mint.",
     behavior: { ...OK, lock: "network" },
-    expect: { status: "failure", failsAt: "lock-activity", messageIncludes: "Unable to lock your pre-test" },
+    expect: { status: "failure", failsAt: "lock-activity", messageIncludes: "Unable to record that you finished this activity" },
   },
 
   "offering-forbidden": {

@@ -4,7 +4,7 @@ import { markComplete, setProcessingMessage } from "../task-helpers";
 import { StepContext, StepHandler } from "./types";
 import { createPortalTokenCache, validatePortalHost, TELL_TEACHER_MESSAGE } from "../portal-api";
 import { evaluateCompletion } from "./evaluate-completion";
-import { lockActivity } from "./lock-activity";
+import { lockCurrentOffering } from "./lock-current-offering";
 import { randomAssignment } from "./random-assignment";
 import { sendEmail } from "./send-email";
 
@@ -18,7 +18,7 @@ const PIPELINES: Record<string, PipelineStep[]> = {
   "spring-2026": [
     { name: "evaluate-completion", processingMessage: "Checking your answers\u2026", handler: evaluateCompletion },
     { name: "random-assignment", processingMessage: "Assigning you to a class\u2026", handler: randomAssignment },
-    { name: "lock-activity", processingMessage: "Locking your pre-test\u2026", handler: lockActivity },
+    { name: "lock-activity", processingMessage: "Locking your pre-test\u2026", handler: lockCurrentOffering },
     { name: "send-email", processingMessage: "Notifying your teacher\u2026", handler: sendEmail },
   ],
 };

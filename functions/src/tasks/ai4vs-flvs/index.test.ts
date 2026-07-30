@@ -23,7 +23,7 @@ jest.mock("../task-helpers", () => ({
 const stepResultsSnapshots: Record<string, Record<string, any>> = {};
 
 const mockEvaluateCompletion = jest.fn();
-const mockLockActivity = jest.fn();
+const mockLockCurrentOffering = jest.fn();
 const mockRandomAssignment = jest.fn();
 const mockSendEmail = jest.fn();
 
@@ -33,10 +33,11 @@ jest.mock("./evaluate-completion", () => ({
     return mockEvaluateCompletion(ctx);
   },
 }));
-jest.mock("./lock-activity", () => ({
-  lockActivity: (ctx: StepContext) => {
+jest.mock("./lock-current-offering", () => ({
+  lockCurrentOffering: (ctx: StepContext) => {
+    // Keyed on the pipeline ENTRY name, which spring keeps as "lock-activity", not the module name.
     stepResultsSnapshots["lock-activity"] = { ...ctx.stepResults };
-    return mockLockActivity(ctx);
+    return mockLockCurrentOffering(ctx);
   },
 }));
 jest.mock("./random-assignment", () => ({
@@ -83,7 +84,7 @@ describe("orchestrator stepResults accumulation", () => {
 
   it("stepResults is empty for the first step handler", async () => {
     mockEvaluateCompletion.mockResolvedValue({ success: true, message: "8 of 10 completed" });
-    mockLockActivity.mockResolvedValue({ success: true });
+    mockLockCurrentOffering.mockResolvedValue({ success: true });
     mockRandomAssignment.mockResolvedValue({ success: true, message: "stub" });
     mockSendEmail.mockResolvedValue({ success: true });
 
@@ -96,7 +97,7 @@ describe("orchestrator stepResults accumulation", () => {
     const evalResult = { success: true, message: "8 of 10 completed" };
     mockEvaluateCompletion.mockResolvedValue(evalResult);
     mockRandomAssignment.mockResolvedValue({ success: true, message: "stub" });
-    mockLockActivity.mockResolvedValue({ success: true });
+    mockLockCurrentOffering.mockResolvedValue({ success: true });
     mockSendEmail.mockResolvedValue({ success: true });
 
     await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
@@ -111,7 +112,7 @@ describe("orchestrator stepResults accumulation", () => {
     const lockResult = { success: true };
     const assignResult = { success: true, message: "stub", summary: "Assigned to GATOR" };
     mockEvaluateCompletion.mockResolvedValue(evalResult);
-    mockLockActivity.mockResolvedValue(lockResult);
+    mockLockCurrentOffering.mockResolvedValue(lockResult);
     mockRandomAssignment.mockResolvedValue(assignResult);
     mockSendEmail.mockResolvedValue({ success: true });
 
@@ -130,7 +131,7 @@ describe("orchestrator stepResults accumulation", () => {
 
     await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
 
-    expect(mockLockActivity).not.toHaveBeenCalled();
+    expect(mockLockCurrentOffering).not.toHaveBeenCalled();
     expect(mockSendEmail).not.toHaveBeenCalled();
 
     expect(mockMarkComplete).toHaveBeenCalledWith(
@@ -142,7 +143,7 @@ describe("orchestrator stepResults accumulation", () => {
 
   it("updates the final success message", async () => {
     mockEvaluateCompletion.mockResolvedValue({ success: true });
-    mockLockActivity.mockResolvedValue({ success: true });
+    mockLockCurrentOffering.mockResolvedValue({ success: true });
     mockRandomAssignment.mockResolvedValue({ success: true });
     mockSendEmail.mockResolvedValue({ success: true });
 
@@ -177,7 +178,7 @@ describe("configurable completion message", () => {
 
   const setupAllStepsSuccess = () => {
     mockEvaluateCompletion.mockResolvedValue({ success: true });
-    mockLockActivity.mockResolvedValue({ success: true });
+    mockLockCurrentOffering.mockResolvedValue({ success: true });
     mockRandomAssignment.mockResolvedValue({ success: true });
     mockSendEmail.mockResolvedValue({ success: true });
   };
@@ -276,7 +277,7 @@ describe("platform_id host gate", () => {
     mockSetProcessingMessage.mockResolvedValue(undefined);
     mockEvaluateCompletion.mockResolvedValue({ success: true });
     mockRandomAssignment.mockResolvedValue({ success: true });
-    mockLockActivity.mockResolvedValue({ success: true });
+    mockLockCurrentOffering.mockResolvedValue({ success: true });
     mockSendEmail.mockResolvedValue({ success: true });
   });
 

@@ -1,4 +1,4 @@
-import { lockActivity } from "./lock-activity";
+import { lockCurrentOffering } from "./lock-current-offering";
 import { StepContext } from "./types";
 import { IJobDocument } from "../types";
 import { createPortalTokenCache } from "../portal-api";
@@ -44,7 +44,7 @@ const makeContext = (overrides: Partial<IJobDocument> = {}): StepContext => ({
   portalOrigin: "https://learn.concord.org",
 });
 
-describe("lockActivity", () => {
+describe("lockCurrentOffering", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetScopedPortalToken.mockResolvedValue({ ok: true, token: "minted-teacher-token", status: 201 });
@@ -52,8 +52,8 @@ describe("lockActivity", () => {
   });
 
   describe("success", () => {
-    it("mints the origin token and locks with it, preserving the form body", async () => {
-      const result = await lockActivity(makeContext());
+    it("mints the origin token and locks with it, sending both flags in the form body", async () => {
+      const result = await lockCurrentOffering(makeContext());
 
       expect(result).toEqual({ success: true });
       expect(mockGetScopedPortalToken).toHaveBeenCalledWith(
@@ -71,7 +71,7 @@ describe("lockActivity", () => {
         method: "PUT",
         token: "minted-teacher-token",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "locked=true&user_id=27",
+        body: "locked=true&active=true&user_id=27",
       });
       expect(mockLoggerInfo).toHaveBeenCalledWith(
         expect.stringContaining("locking offering 1190")
@@ -84,7 +84,7 @@ describe("lockActivity", () => {
     it("succeeds on any 2xx regardless of the response body", async () => {
       mockPortalTokenFetch.mockResolvedValue({ status: 204, data: null });
 
-      const result = await lockActivity(makeContext());
+      const result = await lockCurrentOffering(makeContext());
 
       expect(result).toEqual({ success: true });
     });
@@ -92,10 +92,10 @@ describe("lockActivity", () => {
 
   describe("missing context fields", () => {
     it("returns failure when platform_id is missing", async () => {
-      const result = await lockActivity(makeContext({ platform_id: undefined }));
+      const result = await lockCurrentOffering(makeContext({ platform_id: undefined }));
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Unable to lock your pre-test");
+      expect(result.message).toContain("Unable to record that you finished this activity");
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("platform_id")
@@ -103,23 +103,23 @@ describe("lockActivity", () => {
     });
 
     it("returns failure when platform_user_id is missing", async () => {
-      const result = await lockActivity(makeContext({ platform_user_id: undefined }));
+      const result = await lockCurrentOffering(makeContext({ platform_user_id: undefined }));
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Unable to lock your pre-test");
+      expect(result.message).toContain("Unable to record that you finished this activity");
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
     });
 
     it("returns failure when resource_link_id is missing", async () => {
-      const result = await lockActivity(makeContext({ resource_link_id: undefined }));
+      const result = await lockCurrentOffering(makeContext({ resource_link_id: undefined }));
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Unable to lock your pre-test");
+      expect(result.message).toContain("Unable to record that you finished this activity");
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
     });
 
     it("reports all missing fields in the log", async () => {
-      await lockActivity(makeContext({
+      await lockCurrentOffering(makeContext({
         platform_id: undefined,
         platform_user_id: undefined,
         resource_link_id: undefined,
@@ -135,7 +135,7 @@ describe("lockActivity", () => {
     it("returns the tell-teacher message on 403", async () => {
       mockPortalTokenFetch.mockResolvedValue({ status: 403, data: { error: "forbidden" } });
 
-      const result = await lockActivity(makeContext());
+      const result = await lockCurrentOffering(makeContext());
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("tell your teacher");
@@ -149,10 +149,10 @@ describe("lockActivity", () => {
     it("returns the generic message on 500", async () => {
       mockPortalTokenFetch.mockResolvedValue({ status: 500, data: null });
 
-      const result = await lockActivity(makeContext());
+      const result = await lockCurrentOffering(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Unable to lock your pre-test");
+      expect(result.message).toContain("Unable to record that you finished this activity");
     });
   });
 
@@ -160,7 +160,7 @@ describe("lockActivity", () => {
     it("returns the reload message when the mint reports an expired token", async () => {
       mockGetScopedPortalToken.mockResolvedValue({ ok: false, status: 422, reason: "expired" });
 
-      const result = await lockActivity(makeContext());
+      const result = await lockCurrentOffering(makeContext());
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("reload the activity");
@@ -170,7 +170,7 @@ describe("lockActivity", () => {
     it("returns the tell-teacher message on a mint auth failure", async () => {
       mockGetScopedPortalToken.mockResolvedValue({ ok: false, status: 403 });
 
-      const result = await lockActivity(makeContext());
+      const result = await lockCurrentOffering(makeContext());
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("tell your teacher");
@@ -182,10 +182,10 @@ describe("lockActivity", () => {
     it("returns student-friendly message when fetch throws", async () => {
       mockPortalTokenFetch.mockRejectedValue(new Error("ECONNREFUSED"));
 
-      const result = await lockActivity(makeContext());
+      const result = await lockCurrentOffering(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("Unable to lock your pre-test");
+      expect(result.message).toContain("Unable to record that you finished this activity");
       expect(result.message).not.toContain("ECONNREFUSED");
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("request failed"),

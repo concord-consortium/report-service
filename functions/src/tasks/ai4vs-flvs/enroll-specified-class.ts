@@ -69,7 +69,7 @@ const resolveDestinationWord = (context: StepContext, jobPath: string): Destinat
 
 /**
  * Enroll the student into an author-specified (or handed-off) class, resolved by class word at
- * run time. Like lock-activity / send-email, this step makes NO host check of its own: it
+ * run time. Like lock-current-offering / send-email, this step makes NO host check of its own: it
  * assumes the consuming pipeline ran validatePortalHost at setup before the pipeline loop, and
  * it uses the validated, normalized base URL that gate produced (StepContext.portalOrigin) for
  * every portal call, never the raw jobDoc.platform_id. That gate is the token-exfiltration
