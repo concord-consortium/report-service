@@ -18,6 +18,18 @@ export interface StepOutput {
    * Safe to log: authored, environment-stable, neither PII nor a token.
    */
   originClassWord?: string;
+  /**
+   * The launch offering's class id, published by resolve-origin-class from the SAME
+   * offerings#show response that yields originClassWord. send-email needs it for
+   * send_class_teachers and would otherwise re-read the offering.
+   *
+   * ⚠️ A STRING, because readStepOutputField accepts nothing else, while resolveOriginOffering
+   * types clazzId as `number | string` and the portal serves a JSON number. Publishing the raw
+   * value hands back undefined and send-email falls back forever, silently, with nothing failing.
+   *
+   * Safe to log: a database id, neither PII nor a token.
+   */
+  originClazzId?: string;
 }
 
 export type StepResult = {
