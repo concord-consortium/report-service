@@ -10,6 +10,14 @@ import { PortalTokenCache } from "../portal-api";
 export interface StepOutput {
   /** Class word the enroll step should resolve and enroll into. */
   destinationClassWord?: string;
+  /**
+   * The student's ORIGIN class word (the class they registered in), published by
+   * resolve-origin-class in the portal's stored (lowercased, trimmed) form. The fall
+   * randomization step needs it twice, for the teacher stratum and to derive the destination.
+   *
+   * Safe to log: authored, environment-stable, neither PII nor a token.
+   */
+  originClassWord?: string;
 }
 
 export type StepResult = {
@@ -17,6 +25,32 @@ export type StepResult = {
   message?: string;
   summary?: string;
   output?: StepOutput;
+};
+
+/**
+ * First non-blank value of `field` across the run's step outputs.
+ *
+ * Record iteration is insertion order, which is pipeline order, and the invariant is one producer
+ * per FIELD. Consuming steps therefore read a handoff with NO ordering guard: our own pipeline
+ * wiring is assumed correct rather than checked with defensive run-time code, and a mis-ordered
+ * stage fails on the first harness run. The same principle is recorded at length in
+ * enroll-specified-class's header.
+ *
+ * enroll-specified-class keeps its own local scan rather than calling this: its version is
+ * entangled with the authored-parameter precedence rule and its conflict error, so folding the two
+ * together would rewrite a step this change otherwise does not touch. Deliberate, not overlooked.
+ */
+export const readStepOutputField = (
+  stepResults: Record<string, StepResult>,
+  field: keyof StepOutput,
+): string | undefined => {
+  for (const result of Object.values(stepResults)) {
+    const value = result.output?.[field];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
 };
 
 export interface StepContext {
