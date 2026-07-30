@@ -148,6 +148,14 @@ export const getAlternatingAssignment = async (
     // nobody, that does not re-bucket the student: it enrolls them into a second class while
     // leaving them in the first, contaminating both arms invisibly.
     //
+    // ⚠️ The walk's reach is bounded by the SCOPE, so it protects a student only for as long as
+    // they keep resolving to the same document. A caller passing perClassScope loses the student on
+    // a class change (resource_link_id and context_id both move), and they are assigned afresh from
+    // the new class's counters, possibly into the opposite arm. pooledProgramScope has no such
+    // window within its program. The de-duplication is therefore per (scope, student), and the
+    // residual cross-arm case for the per-class callers is accepted and recorded at the call site;
+    // closing it would need a scope-independent student->arm index.
+    //
     // Returning here writes nothing, deliberately. The current stratum's nextAssignment counter is
     // left untouched, so a re-clicking student never consumes a rotation slot in a stratum they are
     // not counted in, and the next genuinely new student there still receives the arm it specifies.

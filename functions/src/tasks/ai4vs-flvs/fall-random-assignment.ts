@@ -79,13 +79,21 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
     return { success: false, message: TELL_TEACHER_MESSAGE };
   }
 
+  // Derived ONCE. The program selects exactly three things, and every one of them is read off these
+  // two constants: a second `program === FULL_TIME_PROGRAM` beside each use would be four
+  // expressions that must agree, with nothing checking that they do. In particular the dimension set
+  // requested below and the dimension set the guard checks must be the SAME value, or the guard is
+  // comparing two derivations of it rather than the read against the request.
+  const isFullTime = program === FULL_TIME_PROGRAM;
+  const dimensions = isFullTime ? FULL_TIME_DIMENSIONS : FLEX_DIMENSIONS;
+
   const demographics = await readDemographics({
     logPrefix: "fall-random-assignment", jobPath, firebaseJwt,
     source_key: String(source_key), platform_id: String(platform_id),
     resource_link_id: String(resource_link_id), context_id: String(context_id),
     platform_user_id: String(platform_user_id),
     preTest: FALL_PRE_TEST,
-    dimensions: program === FULL_TIME_PROGRAM ? FULL_TIME_DIMENSIONS : FLEX_DIMENSIONS,
+    dimensions,
   });
   if (!demographics.ok) {
     if (demographics.kind === "incomplete") {
@@ -115,8 +123,7 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
   // dimension set and the table this branch consults have gone out of step. Named rather than
   // interpolated, because "undefined" reaching a stratum key would be diagnosed only by the
   // resulting lookup miss, and a persisted key containing it would outlive the run.
-  const required = program === FULL_TIME_PROGRAM ? FULL_TIME_DIMENSIONS : FLEX_DIMENSIONS;
-  const unresolved = required.filter(dimension => !demographics.categories[dimension]);
+  const unresolved = dimensions.filter(dimension => !demographics.categories[dimension]);
   if (unresolved.length > 0) {
     functions.logger.error(
       `fall-random-assignment: ${program} resolved no category for ${unresolved.join(", ")} for ${jobPath}`,
@@ -126,7 +133,7 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
 
   let stratumKey: string;
   let n1Assignment: Arm;
-  if (program === FULL_TIME_PROGRAM) {
+  if (isFullTime) {
     const surname = teacherSurnameFromClassWord(originClassWord);
     const stratum = findFullTimeStratum(Gender!, Race!, surname);
     if (!stratum) {
@@ -157,7 +164,7 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
 
   // Full-time keeps the SHIPPED per-class key, which is what delivers "randomize within teacher".
   // Flex pools across all three sections, which the PI confirmed is one group.
-  const scope = program === FULL_TIME_PROGRAM
+  const scope = isFullTime
     ? perClassScope(String(interactiveId), String(platform_id), String(resource_link_id), String(context_id))
     : pooledProgramScope(program, String(interactiveId), String(platform_id));
 
@@ -165,13 +172,28 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
     const assignment = await getAlternatingAssignment(
       String(source_key), scope, String(platform_user_id), stratumKey, n1Assignment,
     );
-    // ⚠️ The ARM is sticky (the dedup walk returns it), the DESTINATION is not: it is re-derived
-    // from whatever origin class word this run resolved. A student whose origin class changes
-    // between two clicks therefore keeps their arm and gets the new section's or teacher's
-    // destination word. If the first click's enrolment had already succeeded, they end up in two
-    // destination classes. Both are in the SAME arm, so no arm is contaminated and study validity
-    // is intact; it is a roster tidiness problem, not a data-integrity one. Not persisted alongside
-    // the arm on purpose: that would make a legitimate class change unfollowable.
+    // ⚠️ The DESTINATION is not sticky: it is re-derived from whatever origin class word this run
+    // resolved. A student whose origin class changes between two clicks gets the new section's or
+    // teacher's destination word, so if the first click's enrolment had already succeeded they end
+    // up in two destination classes. Not persisted alongside the arm on purpose: that would make a
+    // legitimate class change unfollowable.
+    //
+    // ⚠️ Whether the ARM is sticky across that move depends on the SCOPE, and the two programs
+    // differ:
+    //   - FLEX pools across sections, so a section move reads the same document, the walk finds the
+    //     student, and both destinations are in the same arm. Roster tidiness, not data integrity.
+    //   - FULL-TIME keeps the per-class key, which includes resource_link_id and context_id. A move
+    //     between two full-time classes changes both, so the walk reads a DIFFERENT document, does
+    //     not find the student, and assigns them afresh from the new teacher's counters. That can
+    //     be the opposite arm, leaving them enrolled in one teacher's -gator class and another's
+    //     -shark class: cross-arm contamination, which is exactly what the walk exists to prevent.
+    // Reachability is low but real: it needs a roster move between full-time classes plus a
+    // re-completion of the Green pre-test, and the re-completion is plausible because the answers
+    // query filters on resource_link_id and context_id (so the student has no answers in the new
+    // offering) and lock-activity locks per offering (so the new offering is unlocked). Closing it
+    // needs a program-wide student->arm index, which this story declined; a mid-study move between
+    // full-time classes is therefore an operational item needing the prior assignment inspected,
+    // not just a roster edit.
     const destinationClassWord = `${originClassWord}${DESTINATION_SUFFIX[assignment]}`;
     functions.logger.info(
       `fall-random-assignment: ${program} student assigned to ${destinationClassWord} (${jobPath})`,
