@@ -189,7 +189,9 @@ describe("openTargetOffering", () => {
       const result = await openTargetOffering(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("tell your teacher");
+      // The step's OWN message, not the shared one: a stale constant or an archived runnable is a
+      // portal-data fault, and the preceding lock has already recorded the work this reassures about.
+      expect(result.message).toContain("Your work has been saved");
       expect(putCalls()).toHaveLength(0);
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("no offering matched"),
@@ -208,7 +210,7 @@ describe("openTargetOffering", () => {
       const result = await openTargetOffering(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("tell your teacher");
+      expect(result.message).toContain("Your work has been saved");
       expect(putCalls()).toHaveLength(0);
     });
 
@@ -218,7 +220,7 @@ describe("openTargetOffering", () => {
       const result = await openTargetOffering(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.message).toContain("tell your teacher");
+      expect(result.message).toContain("Your work has been saved");
       expect(putCalls()).toHaveLength(0);
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("own offering"),
@@ -254,6 +256,9 @@ describe("openTargetOffering", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("tell your teacher");
+      // The SHARED message: a class word carrying neither suffix is a mis-wired stage, not a portal
+      // fault, so this step cannot claim the work was saved.
+      expect(result.message).not.toContain("Your work has been saved");
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("unclassifiable"),

@@ -50,8 +50,18 @@ export const lockCurrentOffering = async (context: StepContext): Promise<StepRes
     const outcome = await applyOfferingState(context, {
       offeringId: resource_link_id,
       locked: true,
-      // Nothing in the study hides at class level, and reading the student's current value would
-      // cost an extra GET on a path that otherwise makes no read at all.
+      // ⚠️ `active: true` is written unconditionally, so it can OVERWRITE an existing per-student
+      // `active: false`. That per-student row, not class-level hiding, is the case worth naming: the
+      // portal's teacher progress roster writes exactly these rows through this same endpoint, so a
+      // teacher who had hidden this offering for this one student has it made visible again by the
+      // lock. (Nothing in the study hides at class level, which is a separate and easier fact.)
+      //
+      // Accepted rather than fixed, and deliberately without a read. A hidden offering is absent from
+      // the student's runnable list, so they cannot reach "I'm Done" on it at all unless they launched
+      // before the hide, which leaves a window of one already-open activity session. Against that,
+      // preserving the flag costs an extra GET on a path that otherwise makes no read, and writing
+      // `active: false` back alongside `locked: true` would leave a student locked out of an activity
+      // that is also invisible, which is harder for a teacher to diagnose than a visible locked one.
       active: true,
     });
 

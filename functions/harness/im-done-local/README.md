@@ -17,7 +17,8 @@ message.
 Two drivers run scenarios. `run.js` submits a whole pipeline through the
 emulator's `submitTask`. `run-step.js` calls one compiled step directly against
 the stub, for steps no wired pipeline reaches yet (today: the fall
-`enroll-specified-class` step); it needs the stub only, no emulator and no
+`enroll-specified-class` and `open-target-offering` steps, selected per
+scenario); it needs the stub only, no emulator and no
 `seed.js`, but it **does** need a prior `npm run build`, since it imports the
 compiled step from `lib/` (it exits with a "run `npm run build`" message when
 that file is missing).
@@ -101,19 +102,31 @@ driver its entry names, so it needs the emulator, the seed, **and** a build.
 
 `happy` plus a failure per bucket:
 
+- **success**: `happy`, plus the direct-step `enroll-happy`,
+  `open-target-happy` and `open-target-treatment` (the last of these succeeds by
+  doing nothing, which is the treatment arm's correct behavior).
 - **reload**: `mint-expired`.
 - **tell-your-teacher**: `mint-no-shared-teacher` / `mint-unauthorized` /
   `mint-unauthenticated` / `mint-signature` / `mint-bad-token-type` /
   `enroll-forbidden` / `lock-forbidden` / `offering-forbidden` /
   `offering-notfound` / `send-forbidden` / `send-no-teacher-email` /
-  `enroll-unknown-word` / `enroll-lookup-forbidden`.
+  `enroll-unknown-word` / `enroll-lookup-forbidden` /
+  `open-target-lookup-forbidden`.
 - **generic**: `mint-network` / `enroll-nonsuccess` / `lock-server-error` /
   `lock-network` / `offering-no-clazz` / `offering-server-error` /
-  `send-delivery` / `send-nonsuccess`.
+  `send-delivery` / `send-nonsuccess` / `open-target-write-error`.
+
+`open-target-write-error` is worth a note: it expects the open step's **own**
+message ("Your work has been saved…") rather than the shared tell-your-teacher
+one. The step keeps its own message for portal-data failures as well as portal
+errors, because it never promises a retry, so the two differ only in the
+reassurance clause, and the preceding lock has already recorded the work.
 
 The direct-step scenarios (`driver: "run-step"`) are `enroll-happy`,
 `enroll-unknown-word` (the destination word matches no class, a `400` from
-`classes#info` as in rigse), and `enroll-lookup-forbidden`.
+`classes#info` as in rigse), `enroll-lookup-forbidden`, and all four
+`open-target-*` scenarios (`-happy`, `-treatment`, `-lookup-forbidden`,
+`-write-error`).
 
 See `scenarios.js` for the full table and the exact response each maps to; every
 endpoint behavior the stub implements has a scenario that reaches it.
@@ -127,11 +140,11 @@ the `get_info` shape with each offering's `url` and `external_url`;
 `GET /api/v1/classes/:id`). To cover a new step: add its endpoint behavior to
 `stub-portal.js` only if it hits an endpoint not already stubbed, add a scenario
 to `scenarios.js` (with `driver: "run-step"` while no pipeline reaches the step),
-and point `config.js` at the new pilot/context/class. No portal plumbing changes
-are needed for endpoints the stub already has.
+and point `config.js` at the new pilot/context/class. No **stub** changes are
+needed for endpoints the stub already has.
 
-That last sentence is true of the **stub** and was misleading about the
-**driver**. `run-step.js` is no longer single-step: a `run-step` scenario names
+The **driver** is a separate question, and it may need work even when the stub
+does not. `run-step.js` is not single-step: a `run-step` scenario names
 `stepModule`, `stepExport` and `stepName`, defaulting to the enroll step. Two
 further things a new step may need, neither of which the stub can provide:
 
@@ -148,12 +161,17 @@ further things a new step may need, neither of which the stub can provide:
 The driver also writes each run's result into `context.stepResults` under the
 scenario's step name, the way `index.ts` does, so the second run is a real
 re-entry with accumulated state rather than a repeat of the first run's inputs.
+That includes the runner's guard: a result is recorded only if the step
+succeeded, since `index.ts` returns early on failure and would never leave a
+failed step's key behind for a later step to read.
 
 ## Files
 
-- `config.js` — ports, identifiers, the origin and destination classes the stub
-  serves, and the demographic answers (a `Female|White|High|Mod1` student,
-  assigned to `FL-spring-2026-SHARK`).
+- `config.js` — ports, identifiers, the classes the stub serves (the spring
+  origin and destination, plus the fall `STUDY_CONTROL_CLASS` and the
+  fixture-free `TREATMENT_CLASS_WORD`), `TARGET_OFFERING_NAME` (which a unit test
+  pins to the constant in `open-target-offering.ts`), and the demographic answers
+  (a `Female|White|High|Mod1` student, assigned to `FL-spring-2026-SHARK`).
 - `scenarios.js` — the named scenarios and their expected outcomes.
 - `stub-portal.js` — the stub portal (RIGSE-shaped responses, scenario-driven).
 - `seed.js` — seeds the emulator Firestore answers and mints a learner token.

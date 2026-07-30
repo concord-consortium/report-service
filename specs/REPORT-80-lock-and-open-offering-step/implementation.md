@@ -609,8 +609,10 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
 
   // Read the handoff rather than re-reading the offering, with no ordering guard, exactly as
   // fall-random-assignment does. An absent value can only mean a mis-wired stage, which is
-  // permanent until someone edits code, so "try again" would be false: the shared
-  // TELL_TEACHER_MESSAGE, not this step's own retryable one.
+  // permanent until someone edits code: the shared TELL_TEACHER_MESSAGE, not this step's own.
+  // Nothing about the student's work is knowable here, so "your work has been saved" would be a
+  // guess about a stage that never ran a lock. See R8b for why the TARGET-RESOLUTION failures
+  // below go the other way.
   const originClassWord = readStepOutputField(stepResults, "originClassWord");
   if (!originClassWord) {
     functions.logger.error(
@@ -682,7 +684,7 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
           class_offering_names: lookup.class.offerings.map((offering) => offering.name),
         },
       );
-      return { success: false, message: TELL_TEACHER_MESSAGE };
+      return { success: false, message: STUDENT_FAILURE_MESSAGE };
     }
 
     if (matches.length > 1) {
@@ -696,7 +698,7 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
           matched_offering_ids: matches.map((offering) => offering.id),
         },
       );
-      return { success: false, message: TELL_TEACHER_MESSAGE };
+      return { success: false, message: STUDENT_FAILURE_MESSAGE };
     }
 
     const targetOffering = matches[0];
@@ -719,7 +721,7 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
           resource_link_id,
         },
       );
-      return { success: false, message: TELL_TEACHER_MESSAGE };
+      return { success: false, message: STUDENT_FAILURE_MESSAGE };
     }
 
     const outcome = await applyOfferingState(context, {
@@ -1005,9 +1007,10 @@ short names: **suffix** (share the arm-suffix literals), **core**, **migrate**, 
 | R6 | open | target by name; no offering id in authored config |
 | R7 | open | `lookupClassByWord` on `originClassWord`, origin unscoped mint shared with the write |
 | R7a | open | trimmed, case-insensitive, no URL fallback, non-string names skipped |
-| R7b | open | absent handoff and unclassifiable word both `TELL_TEACHER_MESSAGE` at error level |
+| R7b | open | absent handoff and unclassifiable word both `TELL_TEACHER_MESSAGE` at error level (wiring faults only, narrowed by R8b) |
 | R7c | harness | stub's control class carries the curriculum **present but locked** |
 | R8 | open | no-match and multiple-match both permanent failures |
+| R8b | open | the three target-resolution failures return the step's own message, not the shared one |
 | R8a | open | self-target guard, compared as strings, before any write |
 | R9 | **core** | **the constraint is recorded in `types.ts`** beside the one-producer-per-field invariant (added by this pass) |
 | R10 | open | no pre-write authorization check; the structural guarantee is stated in the step header |

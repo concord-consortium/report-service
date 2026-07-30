@@ -113,8 +113,12 @@ const main = async () => {
     console.log(`\nrun ${run}: entering with stepResults [${Object.keys(context.stepResults).join(", ")}]`);
     const result = await handler(context);
     // Write the result back the way index.ts does, so run 2 is a real re-entry with accumulated
-    // state rather than a repeat of run 1's inputs.
-    context.stepResults[step.name] = result;
+    // state rather than a repeat of run 1's inputs. That includes the runner's guard: index.ts
+    // records a result only after checking success and returns early otherwise, so a failure
+    // scenario's run 2 must not enter carrying a key the real pipeline could never have produced.
+    if (result.success) {
+      context.stepResults[step.name] = result;
+    }
     const { statusOk, textOk, text } = checkRun(result, scenario.expect);
     console.log(`run ${run}: success=${result.success}`);
     console.log(`run ${run}: ${scenario.expect.status === "success" ? "summary" : "message"}: ${text}`);

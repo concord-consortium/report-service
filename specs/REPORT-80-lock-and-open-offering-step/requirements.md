@@ -197,20 +197,50 @@ normalized to the portal's stored (lowercase, trimmed) form. REPORT-79 already s
   `runnable.archived?` and nothing else (`clazz.rb:241`), so neither `locked` nor `active` hides the
   target from R7's name match. Second, the surviving absence risk is therefore **archival**, not
   assignment: archiving the curriculum's runnable would remove it from the read and turn every control
-  student's post-test into an R8 tell-your-teacher. That is the residual REPORT-82 should carry into its
+  student's post-test into an R8 no-match failure. That is the residual REPORT-82 should carry into its
   pre-launch checks.
+  ⚠️ **Archival and a stale `TARGET_OFFERING_NAME` are indistinguishable from the outside**, which is
+  what makes the log line load-bearing rather than merely helpful. Both surface as the same R8 no-match
+  branch, at the same moment, for the same students, with the same student-facing message. The only
+  thing that separates them is the `class_offering_names` list R8's error log carries: the target's name
+  present in that list means the constant is right and the runnable was archived out of
+  `teacher_visible_offerings`; the target's name absent, with a near-miss beside it, means the constant
+  is stale. They have different owners and different fixes, so REPORT-82's pre-launch check should read
+  that log line first rather than reasoning from the failure alone.
   Recorded for the reader, since the alternative was live until this was confirmed: had the curriculum
   instead been *unassigned* to the shark class, the name match would have resolved nothing, R8 would have
   failed **every control student** at the post-test, R10's structural guarantee would have had no target
   class to be about, and opening the activity would have meant *assigning* it, a portal operation this
   story neither implements nor scoped.
-- **R8.** A target name that matches **no** offering is a permanent, classified failure
-  (tell-your-teacher), never a silent skip. A name that matches **more than one** offering is
-  likewise a hard failure rather than a first-match guess: offering names are not unique in the
-  portal, and guessing would lock or unlock an activity nobody chose.
+- **R8.** A target name that matches **no** offering is a permanent, classified failure, never a
+  silent skip. A name that matches **more than one** offering is likewise a hard failure rather than
+  a first-match guess: offering names are not unique in the portal, and guessing would lock or unlock
+  an activity nobody chose.
+- **R8b.** All three **target-resolution** failures (R8's no-match and multi-match, and R8a's
+  self-target) return the step's **own** `STUDENT_FAILURE_MESSAGE`, not the shared
+  `TELL_TEACHER_MESSAGE`. *(Amended after PR #407 review; the three previously returned the shared
+  message.)*
+
+  R7b's rule sends permanent configuration failures to the shared message, and the reason it gives is
+  that a step's own message promises a retry a permanent fault cannot honour. That reason holds for
+  `fall-random-assignment`, whose message says *"please try again"*. It does not hold here: this step's
+  message promises no retry (R12), so the two messages both route the student to their teacher and
+  differ **only** in the reassurance clause *"Your work has been saved"*, which is true on all three
+  branches because a failed lock aborts the pipeline before this step runs. Applying the rule here
+  therefore removes a true statement and buys nothing, and substitutes *"Something went wrong setting
+  up your class"* for a student who is finishing a post-test.
+
+  The no-match branch is what decides it. It is where R7c's archival risk and a stale
+  `TARGET_OFFERING_NAME` both land, it fires for **every** control student at once, and it fires at the
+  last event in the study, for students whose work did count.
+
+  **R7b's branches are unchanged** and keep `TELL_TEACHER_MESSAGE`: an absent `originClassWord` handoff
+  and a class word carrying neither suffix are mis-wired stages rather than portal misconfiguration, and
+  on those branches nothing about the student's work is knowable, so the reassurance would be a guess.
+  The rule R7b states is therefore narrowed to what it can support: **wiring** failures take the shared
+  message; **portal-data** failures take the step's own, whenever that message makes no retry promise.
 - **R8a.** A resolved target whose offering id equals the run's own `resource_link_id` is a permanent,
-  classified failure returning `TELL_TEACHER_MESSAGE`, logged at error level with both ids and the
-  target name. This is a **target-selection** rule, not the pre-write authorization check R10 forbids:
+  classified failure (message per R8b), logged at error level with both ids and the target name. This is a **target-selection** rule, not the pre-write authorization check R10 forbids:
   it does not ask whether the write is permitted, it asks whether the step is about to undo the lock
   the stage just took. The failure mode it forecloses is a module constant naming the sequence the
   stage **locks** rather than the one it **opens**, which writes `locked: false` over the completion

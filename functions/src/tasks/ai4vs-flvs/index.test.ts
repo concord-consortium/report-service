@@ -53,8 +53,22 @@ jest.mock("./send-email", () => ({
   },
 }));
 
-import { ai4vsFlvs } from "./index";
+import { ai4vsFlvs, PIPELINES } from "./index";
 import { TELL_TEACHER_MESSAGE } from "../portal-api";
+
+describe("PIPELINES table", () => {
+  // A duplicate entry name is invisible everywhere else: index.ts's `stepResults[step.name] = result`
+  // is the single writer, so the first result is overwritten, and send-email renders one line per key,
+  // so the teacher's email loses a line while the run still reports success. Driving a pipeline cannot
+  // detect it, because collapsing is exactly what a duplicate does.
+  //
+  // it.each rather than a loop inside one `it`: once more pipelines exist, a loop reports
+  // "expected 3, received 2" without naming which pipeline is at fault.
+  it.each(Object.entries(PIPELINES))("gives every step in %s a distinct name", (_pilot, steps) => {
+    const names = steps.map(step => step.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+});
 
 describe("orchestrator stepResults accumulation", () => {
   const makeJobDoc = (): IJobDocument => ({

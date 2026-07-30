@@ -31,6 +31,32 @@ export const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
  * retry promise, because by the time this runs the student has been locked out by that preceding
  * step and cannot re-click. The reassurance is guaranteed by control flow, since a failed lock
  * aborts the pipeline before this step runs.
+ *
+ * ⚠️ ONE PATH BELOW CONTRADICTS THAT, AND ONLY OUTSIDE A WIRED STAGE. An expired-token mint failure
+ * routes through messageForBucket to the shared RELOAD_MESSAGE, which does say "click 'I'm Done'
+ * again", and a test pins that. It is unreachable once a stage wires a lock ahead of this step: the
+ * token cache is per-run with no expiry check (portal-api.ts), so a SUCCEEDED lock has already cached
+ * the token this step would ask for, and a FAILED lock aborts before this step runs. It stays reachable
+ * for a standalone invocation, which is how the harness drives this step today, and there the retry
+ * advice is correct. The header rule governs the wired case; this is the exception, not a divergence.
+ *
+ * ⚠️ THIS MESSAGE COVERS THE TARGET-RESOLUTION FAILURES TOO (no match, several matches, self-target),
+ * not only the retryable portal ones. Those three are permanent configuration faults, so the usual rule
+ * would hand them the shared TELL_TEACHER_MESSAGE; here that rule buys nothing and costs the
+ * reassurance. The rule exists because a step's own message typically promises a retry that a permanent
+ * fault cannot honour, which is true of fall-random-assignment, whose message says "please try again".
+ * This step's message promises no retry: both messages route the student to their teacher, and they
+ * differ only in the "Your work has been saved" clause, which is TRUE on every one of these branches
+ * because the preceding lock succeeded. The shared message would also tell a student finishing a
+ * post-test that something went wrong "setting up your class", which is not what happened.
+ *
+ * The no-match branch is where this matters most: it is where a stale TARGET_OFFERING_NAME or an
+ * archived runnable lands, it fires for EVERY control student at once, and it fires at the last event
+ * in the study. Those students' work did count, and the message they get says so.
+ *
+ * The genuine wiring faults below (an absent handoff, an unclassifiable class word) keep
+ * TELL_TEACHER_MESSAGE: they mean the stage is mis-wired rather than the portal misconfigured, and
+ * nothing about the student's work is knowable from them.
  */
 const STUDENT_FAILURE_MESSAGE =
   "Your work has been saved. We could not open your other activity, so please tell your teacher.";
@@ -44,9 +70,13 @@ const normalizeName = (name: string): string => name.trim().toLowerCase();
  * each offering's through raw. Without the guard a single unnamed SIBLING offering anywhere in the
  * class throws, and the catch below turns that into the retryable message, failing every control
  * student on a condition retry cannot fix while the target itself is present and correctly named.
+ *
+ * `normalizedTarget` is named for its contract: only the OFFERING's side is normalized in here, so a
+ * caller handing in TARGET_OFFERING_NAME raw would match nothing and take the no-match exit, which is
+ * the one failure this file works hardest to make loud.
  */
-const matchesTargetName = (offering: PortalOffering, target: string): boolean =>
-  typeof offering.name === "string" && normalizeName(offering.name) === target;
+const matchesTargetName = (offering: PortalOffering, normalizedTarget: string): boolean =>
+  typeof offering.name === "string" && normalizeName(offering.name) === normalizedTarget;
 
 /**
  * Open the curriculum to a control student: unlock it AND make it visible.
@@ -82,9 +112,9 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
   }
 
   // Read the handoff rather than re-reading the offering, with no ordering guard, as
-  // fall-random-assignment does. An absent value can only mean a mis-wired stage, which is permanent
-  // until someone edits code, so the shared tell-teacher message rather than this step's retryable
-  // one.
+  // fall-random-assignment does. An absent value can only mean a mis-wired stage, so the shared
+  // tell-teacher message rather than this step's own: nothing about the student's work is knowable
+  // here, and "your work has been saved" would be a guess about a stage that never ran a lock.
   const originClassWord = readStepOutputField(stepResults, "originClassWord");
   if (!originClassWord) {
     functions.logger.error(
@@ -154,7 +184,7 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
           class_offering_names: lookup.class.offerings.map((offering) => offering.name),
         },
       );
-      return { success: false, message: TELL_TEACHER_MESSAGE };
+      return { success: false, message: STUDENT_FAILURE_MESSAGE };
     }
 
     if (matches.length > 1) {
@@ -168,7 +198,7 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
           matched_offering_ids: matches.map((offering) => offering.id),
         },
       );
-      return { success: false, message: TELL_TEACHER_MESSAGE };
+      return { success: false, message: STUDENT_FAILURE_MESSAGE };
     }
 
     const targetOffering = matches[0];
@@ -189,7 +219,7 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
           resource_link_id,
         },
       );
-      return { success: false, message: TELL_TEACHER_MESSAGE };
+      return { success: false, message: STUDENT_FAILURE_MESSAGE };
     }
 
     const outcome = await applyOfferingState(context, {
