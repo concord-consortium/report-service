@@ -130,6 +130,25 @@ to `scenarios.js` (with `driver: "run-step"` while no pipeline reaches the step)
 and point `config.js` at the new pilot/context/class. No portal plumbing changes
 are needed for endpoints the stub already has.
 
+That last sentence is true of the **stub** and was misleading about the
+**driver**. `run-step.js` is no longer single-step: a `run-step` scenario names
+`stepModule`, `stepExport` and `stepName`, defaulting to the enroll step. Two
+further things a new step may need, neither of which the stub can provide:
+
+- **A seeded handoff.** A step that reads its input from `stepResults` rather
+  than from a request param (as `enroll-specified-class` does) fails its
+  absent-handoff check before reaching anything the scenario tests. Set
+  `seedOriginClassWord` on the scenario.
+- **A class word of the right shape.** `open-target-offering` classifies the
+  study arm from the word's `-gator` / `-shark` suffix before any portal call, so
+  a scenario seeded with `fl-spring-2026-origin` or `ft-fall-2026-a` fails on
+  that check and reports a passing tell-your-teacher while the logic it exists
+  to prove never runs.
+
+The driver also writes each run's result into `context.stepResults` under the
+scenario's step name, the way `index.ts` does, so the second run is a real
+re-entry with accumulated state rather than a repeat of the first run's inputs.
+
 ## Files
 
 - `config.js` — ports, identifiers, the origin and destination classes the stub

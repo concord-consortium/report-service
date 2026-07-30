@@ -9,7 +9,9 @@
 
 const http = require("http");
 const fs = require("fs");
-const { PORTS, SCENARIO_FILE, ORIGIN_CLASS, DESTINATION_CLASS } = require("./config");
+const {
+  PORTS, SCENARIO_FILE, ORIGIN_CLASS, DESTINATION_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME,
+} = require("./config");
 const { SCENARIOS, OK } = require("./scenarios");
 
 let mintCounter = 0;
@@ -32,7 +34,9 @@ const storedClassWord = (word) => String(word).trim().toLowerCase();
 // A get_info body. As in the real controller, each offering carries both `url` (the
 // offering's own API url) and `external_url` (the activity url), which resolve to
 // different fields for a consumer that matches offerings by activity.
-const classInfoFor = ({ id, word, name }, offering) => ({
+// `offerings` is a list, so a class can serve more than one. That is what lets a by-name match
+// prove it selected the right offering rather than the only one available.
+const classInfoFor = ({ id, word, name }, offerings) => ({
   id,
   uri: `http://localhost/api/v1/classes/${id}`,
   name,
@@ -40,23 +44,33 @@ const classInfoFor = ({ id, word, name }, offering) => ({
   class_word: storedClassWord(word),
   teachers: [{ id: "http://localhost/users/7", user_id: 7, first_name: "Stub", last_name: "Teacher" }],
   students: [],
-  offerings: [{
+  offerings: offerings.map((offering) => ({
     id: offering.id,
     name: offering.name,
     active: true,
-    locked: false,
+    // The study's control subclass holds the curriculum present but locked, which is what the open
+    // path exists to undo. get_info renders teacher_visible_offerings, which filters on
+    // runnable.archived? and nothing else, so neither flag hides it from the name match.
+    locked: !!offering.locked,
     metadata: [],
     url: `http://localhost/api/v1/offerings/${offering.id}`,
     external_url: `http://localhost/activities/${offering.id}`,
-  }],
+  })),
 });
 
-const classInfo = classInfoFor(ORIGIN_CLASS, { id: 555, name: "Origin Offering" });
-const destinationClassInfo = classInfoFor(DESTINATION_CLASS, { id: 556, name: "Destination Offering" });
+const classInfo = classInfoFor(ORIGIN_CLASS, [{ id: 555, name: "Origin Offering" }]);
+const destinationClassInfo = classInfoFor(DESTINATION_CLASS, [{ id: 556, name: "Destination Offering" }]);
+// Two offerings, mirroring the real study class: the post-test the student launched from (which is
+// CONTEXT.resource_link_id, so a correct match must not select it) and the locked curriculum.
+const studyControlClassInfo = classInfoFor(STUDY_CONTROL_CLASS, [
+  { id: "im-done-offering-1", name: "Orange Sequence for AI in Math (FLVS 26-27)", locked: false },
+  { id: 845, name: TARGET_OFFERING_NAME, locked: true },
+]);
 
 const CLASSES_BY_WORD = {
   [storedClassWord(ORIGIN_CLASS.word)]: classInfo,
   [storedClassWord(DESTINATION_CLASS.word)]: destinationClassInfo,
+  [storedClassWord(STUDY_CONTROL_CLASS.word)]: studyControlClassInfo,
 };
 
 const activeBehavior = () => {
@@ -130,7 +144,7 @@ const classesInfoResponse = (behavior, classWord) => {
     : { status: 400, body: errorEnvelope("The requested class was not found") };
 };
 
-const lockResponse = (behavior) => {
+const lockResponse = (behavior, body) => {
   switch (behavior) {
     case "forbidden":
       return { status: 403, body: punditForbidden };
@@ -139,7 +153,10 @@ const lockResponse = (behavior) => {
     case "server_error":
       return { status: 500, body: { error: "Internal Server Error" } };
     default:
-      return { status: 200, body: { active: true, locked: true } };
+      // Echo the request's flags rather than hardcoding them. The real action renders the resulting
+      // row, so a hardcoded response would make an unlock's success log report locked:true, a
+      // diagnostic that states the opposite of what the step did.
+      return { status: 200, body: { active: body.active === "true", locked: body.locked === "true" } };
   }
 };
 
@@ -203,7 +220,7 @@ const logFields = (route, body, url) => {
     case "enroll":
       return { user_id: body.user_id, clazz_id: body.clazz_id };
     case "lock":
-      return { locked: body.locked, user_id: body.user_id };
+      return { locked: body.locked, active: body.active, user_id: body.user_id };
     case "send":
       return { class_id: body.class_id, subject: body.subject };
     default:
@@ -244,7 +261,7 @@ const server = http.createServer((req, res) => {
         res.destroy();
         return;
       }
-      result = lockResponse(behavior.lock);
+      result = lockResponse(behavior.lock, body);
     } else if (req.method === "GET" && /^\/api\/v1\/offerings\/[^/]+$/.test(path)) {
       route = "offering";
       const id = path.split("/").pop();

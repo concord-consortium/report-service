@@ -16,7 +16,18 @@
 // compiled step directly against the stub; the rest are whole-pipeline runs driven
 // by run.js through the emulator.
 
-const { DESTINATION_CLASS } = require("./config");
+const {
+  DESTINATION_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME, TREATMENT_CLASS_WORD,
+} = require("./config");
+
+// The open-target scenarios all drive the same step; only the stub behavior and the seeded class
+// word differ.
+const OPEN_TARGET_STEP = {
+  driver: "run-step",
+  stepModule: "open-target-offering",
+  stepExport: "openTargetOffering",
+  stepName: "open-target",
+};
 
 const OK = { mint: "ok", enroll: "ok", lock: "ok", offering: "ok", send: "ok", classes: "ok" };
 
@@ -146,6 +157,37 @@ const SCENARIOS = {
     targetClassWord: "FT-fall-2026-does-not-exist",
     expect: { status: "failure", messageIncludes: "tell your teacher" },
   },
+  "open-target-happy": {
+    describe: `The open step classifies "${STUDY_CONTROL_CLASS.word}" as control, resolves "${TARGET_OFFERING_NAME}" among the class's two offerings, and unlocks and reveals it (run twice, covering re-entry with a populated token cache and accumulated stepResults).`,
+    ...OPEN_TARGET_STEP,
+    behavior: OK,
+    seedOriginClassWord: STUDY_CONTROL_CLASS.word,
+    expect: { status: "success", summaryIncludes: `Opened ${TARGET_OFFERING_NAME}` },
+  },
+  "open-target-treatment": {
+    // Needs no class fixture: the arm check short-circuits before the mint and the class read, so
+    // nothing looks this word up. Watch terminal 2 for the absent PUT.
+    describe: "A treatment student's post-test: the step does nothing and says so, with no portal call at all.",
+    ...OPEN_TARGET_STEP,
+    behavior: OK,
+    seedOriginClassWord: TREATMENT_CLASS_WORD,
+    expect: { status: "success", summaryIncludes: "No activity to open" },
+  },
+  "open-target-lookup-forbidden": {
+    describe: "classes#info denies the origin teacher token (403) while resolving the target's class.",
+    ...OPEN_TARGET_STEP,
+    behavior: { ...OK, classes: "forbidden" },
+    seedOriginClassWord: STUDY_CONTROL_CLASS.word,
+    expect: { status: "failure", messageIncludes: "tell your teacher" },
+  },
+  "open-target-write-error": {
+    describe: "The target resolves but update_student_metadata fails with a 500.",
+    ...OPEN_TARGET_STEP,
+    behavior: { ...OK, lock: "server_error" },
+    seedOriginClassWord: STUDY_CONTROL_CLASS.word,
+    expect: { status: "failure", messageIncludes: "Your work has been saved" },
+  },
+
   "enroll-lookup-forbidden": {
     describe: "classes#info denies the origin teacher token (403).",
     driver: "run-step",

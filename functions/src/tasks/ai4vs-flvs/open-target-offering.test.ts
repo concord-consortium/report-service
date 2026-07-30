@@ -1,7 +1,10 @@
 import { openTargetOffering, TARGET_OFFERING_NAME } from "./open-target-offering";
+import { armFromClassWord } from "./fall-programs";
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
 import { createPortalTokenCache } from "../portal-api";
+
+const harnessConfig = require("../../../harness/im-done-local/config");
 
 // Mock portal-api minted-token entry points; keep the real classifier/messages
 const mockGetScopedPortalToken = jest.fn();
@@ -325,6 +328,19 @@ describe("openTargetOffering", () => {
       expect(result.success).toBe(false);
       expect(result.message).toContain("reload the activity");
       expect(putCalls()).toHaveLength(0);
+    });
+  });
+
+  describe("harness fixture agreement", () => {
+    // The stub keeps these as literals so it stays buildless. These assertions are what replace the
+    // import: a rename that misses config.js fails here rather than as a silently non-matching run.
+    it("serves an offering named exactly the exported target constant", () => {
+      expect(harnessConfig.TARGET_OFFERING_NAME).toBe(TARGET_OFFERING_NAME);
+    });
+
+    it("serves class words that classify as the arms their scenarios assume", () => {
+      expect(armFromClassWord(harnessConfig.STUDY_CONTROL_CLASS.word)).toBe("control");
+      expect(armFromClassWord(harnessConfig.TREATMENT_CLASS_WORD)).toBe("treatment");
     });
   });
 
