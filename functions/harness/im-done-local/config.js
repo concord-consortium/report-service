@@ -44,8 +44,11 @@ const assertLoopbackEmulator = () => {
 // one the spring pipeline's offering belongs to; the destination is the one an authored
 // (or handed-off) class word resolves to, with a deliberately distinct id and name so a
 // run can tell the two apart.
-const ORIGIN_CLASS = { id: 90210, word: "FL-spring-2026-origin", name: "FL-spring-2026-origin" };
-const DESTINATION_CLASS = { id: 30001, word: "FT-fall-2026-A", name: "FT-fall-2026-A" };
+// The words are lowercase because that is what the portal stores: Portal::Clazz downcases and
+// strips class_word before validation on every save. `name` keeps its display casing, since the
+// portal lowercases the word only and `name` is what send-email renders.
+const ORIGIN_CLASS = { id: 90210, word: "fl-spring-2026-origin", name: "FL-spring-2026-origin" };
+const DESTINATION_CLASS = { id: 30001, word: "ft-fall-2026-a", name: "FT-fall-2026-A" };
 
 // One participating student and its launch context.
 const CONTEXT = {

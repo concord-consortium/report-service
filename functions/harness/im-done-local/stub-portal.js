@@ -24,6 +24,11 @@ const errorEnvelope = (message, details) => {
 
 const punditForbidden = { success: false, message: "Not authorized" };
 
+// Model the portal's behaviour rather than trusting the fixture: Portal::Clazz lowercases and
+// strips class_word before validation on every save, so a stub that echoes a mixed-case fixture
+// asserts a contract the portal does not honour.
+const storedClassWord = (word) => String(word).trim().toLowerCase();
+
 // A get_info body. As in the real controller, each offering carries both `url` (the
 // offering's own API url) and `external_url` (the activity url), which resolve to
 // different fields for a consumer that matches offerings by activity.
@@ -31,8 +36,8 @@ const classInfoFor = ({ id, word, name }, offering) => ({
   id,
   uri: `http://localhost/api/v1/classes/${id}`,
   name,
-  class_hash: `stub-${word}-hash`,
-  class_word: word,
+  class_hash: `stub-${storedClassWord(word)}-hash`,
+  class_word: storedClassWord(word),
   teachers: [{ id: "http://localhost/users/7", user_id: 7, first_name: "Stub", last_name: "Teacher" }],
   students: [],
   offerings: [{
@@ -50,8 +55,8 @@ const classInfo = classInfoFor(ORIGIN_CLASS, { id: 555, name: "Origin Offering" 
 const destinationClassInfo = classInfoFor(DESTINATION_CLASS, { id: 556, name: "Destination Offering" });
 
 const CLASSES_BY_WORD = {
-  [ORIGIN_CLASS.word]: classInfo,
-  [DESTINATION_CLASS.word]: destinationClassInfo,
+  [storedClassWord(ORIGIN_CLASS.word)]: classInfo,
+  [storedClassWord(DESTINATION_CLASS.word)]: destinationClassInfo,
 };
 
 const activeBehavior = () => {
@@ -113,11 +118,13 @@ const enrollResponse = (behavior) => {
 
 // classes#info keys its response on the requested class_word; an unknown word gets the
 // real controller's error('The requested class was not found'), which defaults to 400.
+// The lookup is case-insensitive because portal_clazzes is charset utf8 with no explicit collation
+// (so utf8_general_ci), which is why student self-registration accepts a typed word in any case.
 const classesInfoResponse = (behavior, classWord) => {
   if (behavior === "forbidden") {
     return { status: 403, body: punditForbidden };
   }
-  const found = CLASSES_BY_WORD[classWord];
+  const found = CLASSES_BY_WORD[storedClassWord(classWord)];
   return found
     ? { status: 200, body: found }
     : { status: 400, body: errorEnvelope("The requested class was not found") };
