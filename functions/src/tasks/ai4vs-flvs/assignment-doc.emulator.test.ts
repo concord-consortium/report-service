@@ -115,4 +115,7 @@ it("walks a full 24-stratum document", async () => {
 
   // The student seeded in the LAST stratum is still found when they re-click under the first.
   expect(await getAlternatingAssignment(SOURCE, scope, "user-23", "S0", "control")).toBe("treatment");
-});
+  // 25 sequential emulator transactions plus beforeEach's recursiveDelete, against jest 24's 5s
+  // default with no testTimeout in the config. This suite is the story's load-bearing proof, and a
+  // timeout flake here is what gets a suite marked unreliable and skipped.
+}, 30000);

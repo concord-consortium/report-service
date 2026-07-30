@@ -26,6 +26,25 @@ export interface AnswerDocOverrides {
   raceChoices?: string[];
 }
 
+/**
+ * Resolve an override label to its choice id, throwing at the FIXTURE rather than letting the
+ * failure surface from inside readDemographics.
+ *
+ * A bare `map[label]` yields `undefined` for a misspelled override, which reaches production code
+ * and reports `Choice ID "undefined" not found` — the code under test blamed for a caller's typo.
+ * A `?? fallback` is the converse hazard, and worse: a misspelled Module label would silently
+ * become the valid `Other/not sure` choice, so the test passes while testing something else.
+ */
+const choiceId = (dimension: string, map: Record<string, string>, label: string): string => {
+  const id = map[label];
+  if (!id) {
+    throw new Error(
+      `answer-doc-fixtures: unknown ${dimension} choice "${label}". Known: ${Object.keys(map).join(", ")}`,
+    );
+  }
+  return id;
+};
+
 /** Standard demographic answer docs for a "happy path" student. */
 export const makeStandardAnswerDocs = (overrides?: AnswerDocOverrides) => {
   const gender = overrides?.genderChoice ?? "Female";
@@ -58,7 +77,7 @@ export const makeStandardAnswerDocs = (overrides?: AnswerDocOverrides) => {
           { id: "c2", content: "Male" },
           { id: "c3", content: "Prefer not to answer" },
         ],
-        [genderIdMap[gender]],
+        [choiceId("Gender", genderIdMap, gender)],
       ),
       makeAnswerDoc(
         "<p>What grade are you in?</p>",
@@ -68,7 +87,7 @@ export const makeStandardAnswerDocs = (overrides?: AnswerDocOverrides) => {
           { id: "g10", content: "10th Grade" }, { id: "g11", content: "11th Grade" },
           { id: "g12", content: "12th Grade" }, { id: "gO", content: "Other" },
         ],
-        [gradeIdMap[grade]],
+        [choiceId("Grade", gradeIdMap, grade)],
       ),
       makeAnswerDoc(
         "<p>Which Algebra 1 module are you currently working on?</p>",
@@ -78,7 +97,7 @@ export const makeStandardAnswerDocs = (overrides?: AnswerDocOverrides) => {
           { id: "m3", content: "Module 3: Systems of Two Linear Equations" },
           { id: "mO", content: "Other/not sure" },
         ],
-        [moduleIdMap[module] ?? "mO"],
+        [choiceId("Module", moduleIdMap, module)],
       ),
       makeAnswerDoc(
         "<p>What is your race or ethnicity? (Select all that apply)</p>",
@@ -88,7 +107,7 @@ export const makeStandardAnswerDocs = (overrides?: AnswerDocOverrides) => {
           { id: "rH", content: "Hispanic or Latino" },
           { id: "rP", content: "Prefer to not answer" },
         ],
-        races.map(r => raceIdMap[r]),
+        races.map(r => choiceId("Race", raceIdMap, r)),
       ),
     ],
   };
