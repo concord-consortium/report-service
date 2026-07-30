@@ -26,6 +26,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # The Firestore emulator is a Java process, and firebase-tools 15 refuses to start it on a JDK
+      # older than 21. The runner's default JDK is older, so pin one rather than inherit it. The
+      # rules job below escapes this only because on node 18 npm resolves an older firebase-tools.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
       - run: npm install -g firebase-tools
       - run: npm ci
         working-directory: functions
