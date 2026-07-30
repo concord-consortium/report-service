@@ -240,10 +240,14 @@ describe("fallRandomAssignment", () => {
       expect(result.output).toEqual({ destinationClassWord: "ft-2026-bingler-shark" });
     });
 
-    it("derives it in the portal's stored form, all lowercase", async () => {
+    it("derives it in the portal's stored form, so the enrol lookup matches exactly", async () => {
+      // A mixed-case suffix would yield fl-2026-section2-Gator, which resolves only through MySQL's
+      // case-insensitive collation. The exact match is available for free.
+      mockGetDocs.mockResolvedValue(makeStandardAnswerDocs());
+
       const result = await fallRandomAssignment(makeContext("fl-2026-section2"));
 
-      expect(result.output?.destinationClassWord).toBe(result.output?.destinationClassWord?.toLowerCase());
+      expect(result.output?.destinationClassWord).toBe("fl-2026-section2-gator");
     });
   });
 
