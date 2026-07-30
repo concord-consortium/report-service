@@ -145,9 +145,12 @@ describe("openTargetOffering", () => {
       });
     });
 
-    it("mints once, with no class_id, and reuses that token for both calls", async () => {
+    it("requests an unscoped teacher token for both the class read and the write", async () => {
       await openTargetOffering(makeContext());
 
+      // Both requests hit the shared per-run cache, so only one mint reaches the portal. That is
+      // NOT what this asserts: getScopedPortalToken is mocked here, so the caching it performs is
+      // mocked away with it. The mint count is observable in the harness stub's log instead.
       expect(mockGetScopedPortalToken).toHaveBeenCalledTimes(2);
       for (const [params] of mockGetScopedPortalToken.mock.calls) {
         expect(params.classId).toBeUndefined();
