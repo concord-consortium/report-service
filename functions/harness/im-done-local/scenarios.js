@@ -18,7 +18,8 @@
 
 const {
   DESTINATION_CLASS, ORIGIN_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME, TREATMENT_CLASS_WORD,
-  DESTINATION_SUFFIX, REQUEST,
+  DESTINATION_SUFFIX, REQUEST, FALL_CONTEXTS, FALL_FT_TREATMENT_CLASS, FALL_FLEX_CONTROL_CLASS,
+  FALL_FT_REGISTRATION_CLASS, FALL_FLEX_REGISTRATION_CLASS,
 } = require("./config");
 
 // The open-target scenarios all drive the same step; only the stub behavior and the seeded class
@@ -201,6 +202,49 @@ const SCENARIOS = {
     behavior: { ...OK, lock: "server_error" },
     seedOriginClassWord: STUDY_CONTROL_CLASS.word,
     expect: { status: "failure", messageIncludes: "Your work has been saved" },
+  },
+
+  "fall-green-fulltime": {
+    describe: "The whole fall pre-test stage for a FULL-TIME student: complete, resolve, randomize, enroll, lock, notify.",
+    behavior: OK,
+    seedAnswers: true,
+    context: FALL_CONTEXTS["fall-green-fulltime"],
+    request: { pilot: "fall-2026-green", min_completed_questions: 4 },
+    originClassWord: FALL_FT_REGISTRATION_CLASS.word,
+    assignmentScope: "per-class",
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      assignedClassWord: FALL_FT_TREATMENT_CLASS.word, enrolledClassId: FALL_FT_TREATMENT_CLASS.id,
+    },
+  },
+  // ⚠️ The SAME seeded answers as the full-time scenario, landing in the OPPOSITE arm. That is the
+  // point: it can only pass if the program resolved from the origin class word actually selected a
+  // different strata table.
+  "fall-green-flex": {
+    describe: "The same pre-test stage for a FLEX student, whose identical answers must land in the opposite arm.",
+    behavior: OK,
+    seedAnswers: true,
+    context: FALL_CONTEXTS["fall-green-flex"],
+    request: { pilot: "fall-2026-green", min_completed_questions: 4 },
+    originClassWord: FALL_FLEX_REGISTRATION_CLASS.word,
+    assignmentScope: "pooled",
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      assignedClassWord: FALL_FLEX_CONTROL_CLASS.word, enrolledClassId: FALL_FLEX_CONTROL_CLASS.id,
+    },
+  },
+  // The only stage where two offering-state steps coexist, so the only place the entry-name
+  // uniqueness rule actually bites, and the only end-to-end exercise of the teacher email rendering
+  // a lock line beside an open line. It makes no assignment, which is why the driver's read-back had
+  // to stop being implied by success. It carries no seedAnswers: its stage runs no
+  // evaluate-completion and no demographics read, so it needs no answers at all.
+  "fall-orange-control": {
+    describe: "The whole fall post-test stage for a CONTROL student: resolve, lock the post-test, open the curriculum, notify.",
+    behavior: OK,
+    context: FALL_CONTEXTS["fall-orange-control"],
+    request: { pilot: "fall-2026-orange", email_subject: "AI4VS: Student completed post-test" },
+    originClassWord: STUDY_CONTROL_CLASS.word,
+    expect: { status: "success", messageIncludes: "teacher has been notified", noAssignment: true },
   },
 
   "enroll-lookup-forbidden": {
