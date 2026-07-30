@@ -4,6 +4,9 @@ on:
     paths:
       - 'functions/**'
       - 'query-creator/**'
+      # Without this, a change to the jobs below never runs them, so a broken workflow edit lands
+      # green and only fails on the next push that happens to touch a watched directory.
+      - '.github/workflows/firestore-and-query-creator-tests.yml'
 jobs:
   test_rules:
     name: Firestore Access Rule Tests
