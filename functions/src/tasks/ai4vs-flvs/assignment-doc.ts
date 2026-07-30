@@ -130,14 +130,41 @@ export const getAlternatingAssignment = async (
     const data = doc.data() || {};
     const strata = data.strata || {};
     const stratum = strata[stratumKey] || {};
-    const users = stratum.users || {};
 
-    // Dedup: if user already assigned, return cached assignment
-    if (users[platform_user_id]) {
-      return users[platform_user_id] as Arm;
+    // Per-student de-duplication, NOT per (stratum, student). A student who already holds an arm
+    // keeps it and is never issued a second one.
+    //
+    // Precision, because "first assignment wins" is very slightly stronger than this loop: on a
+    // document where a student ALREADY holds two arms (only reachable from a run predating this
+    // walk, since the walk prevents a second one from ever being written), the arm returned is
+    // whichever stratum Firestore yields first. Checked on the emulator: map fields came back in
+    // insertion order, so the first-written arm won, but that ordering is not a documented
+    // guarantee. Such a student is already enrolled in both classes, so no choice here makes it
+    // worse.
+    //
+    // Why the walk: the pre-test is locked only AFTER a successful run, so any failure between
+    // assignment and lock returns the student to an unlocked pre-test where they can edit an answer
+    // and click again. Indexing straight into the CURRENT stratum would not find them, and they
+    // would be assigned a second time. Since add_to_class only adds and this pipeline can remove
+    // nobody, that does not re-bucket the student: it enrolls them into a second class while
+    // leaving them in the first, contaminating both arms invisibly.
+    //
+    // Returning here writes nothing, deliberately. The current stratum's nextAssignment counter is
+    // left untouched, so a re-clicking student never consumes a rotation slot in a stratum they are
+    // not counted in, and the next genuinely new student there still receives the arm it specifies.
+    //
+    // At most 24 strata (the widest table), on a document the transaction already read in full.
+    // The loop variable is `candidate` rather than `stratum` because `stratum` above is in the same
+    // function scope and tslint's no-shadowed-variable rejects the shadow.
+    for (const candidate of Object.values<any>(strata)) {
+      const existing = candidate?.users?.[platform_user_id];
+      if (existing) {
+        return existing as Arm;
+      }
     }
 
     // Determine assignment: use nextAssignment if set, otherwise n1
+    const users = stratum.users || {};
     const assignment: Arm = stratum.nextAssignment || n1Assignment;
     const opposite: Arm = assignment === "treatment" ? "control" : "treatment";
 

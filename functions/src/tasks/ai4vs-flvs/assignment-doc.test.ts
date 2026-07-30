@@ -176,6 +176,29 @@ describe("getAlternatingAssignment", () => {
     expect(mockTransactionSet).not.toHaveBeenCalled();
   });
 
+  it("returns the first assignment when the student's stratum has changed", async () => {
+    mockTransactionGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        strata: {
+          "Female|White|High|Mod1": {
+            nextAssignment: "control",
+            users: { "user-1": "treatment" },
+          },
+        },
+      }),
+    });
+
+    const result = await getAlternatingAssignment(
+      "src-1", perClassScope("i1", "p1", "off-1", "ctx-1"), "user-1", "Female|White|High|Mod2", "control"
+    );
+
+    // Before the per-student walk the same input produced "control", a SECOND assignment under the
+    // new stratum, which enrolled the student into a second class alongside the first.
+    expect(result).toBe("treatment");
+    expect(mockTransactionSet).not.toHaveBeenCalled();
+  });
+
   it("creates document with correct structure on first call", async () => {
     await getAlternatingAssignment(
       "src-1", perClassScope("int-1", "plat-1", "rl-1", "ctx-1"), "user-1", "Female|White|High|Mod1", "control"
