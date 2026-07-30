@@ -8,8 +8,14 @@ import { Arm } from "./assignment-doc";
  * same source document, verified 2026-07-29 against the PI's document row by row.
  *
  * Key format: "Gender|Race|Grade|Module".
+ *
+ * ⚠️ The value type is `Arm | undefined`, not `Arm`. Under `Record<string, Arm>` an index by any
+ * string is typed `Arm`, so the `if (!n1Assignment)` miss guards in both calling steps are dead code
+ * to the compiler and could be deleted without a type error. This makes them load-bearing, and still
+ * narrows to `Arm` after the early return. The full-time lookup does not need this: `Map.get` is
+ * already `| undefined`.
  */
-export const GENDER_RACE_GRADE_MODULE_TABLE: Record<string, Arm> = {
+export const GENDER_RACE_GRADE_MODULE_TABLE: Record<string, Arm | undefined> = {
   "Female|White|High|Mod2": "treatment",
   "Male|non-White|High|Mod2": "control",
   "Male|White|Mid|Mod2": "treatment",
