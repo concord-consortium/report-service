@@ -4,10 +4,12 @@ import { StepContext, StepHandler } from "./types";
 // Mock firebase-functions logger
 const mockLoggerInfo = jest.fn();
 const mockLoggerError = jest.fn();
+const mockLoggerWarn = jest.fn();
 jest.mock("firebase-functions", () => ({
   logger: {
     info: (...args: any[]) => mockLoggerInfo(...args),
     error: (...args: any[]) => mockLoggerError(...args),
+    warn: (...args: any[]) => mockLoggerWarn(...args),
   },
 }));
 
@@ -201,6 +203,35 @@ describe("orchestrator stepResults accumulation", () => {
       "jobs/test",
       "failure",
       expect.objectContaining({ message: "assignment failed" })
+    );
+  });
+
+  // The failure line's level, which decides whether "the student has not answered enough questions
+  // yet" shows up in an error count. It is the most frequent way a run stops, on all four pilots.
+  it("logs an unexpected step failure at error level", async () => {
+    mockEvaluateCompletion.mockResolvedValue({ success: true });
+    mockRandomAssignment.mockResolvedValue({ success: false, message: "assignment failed" });
+
+    await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
+
+    expect(mockLoggerError).toHaveBeenCalledWith(expect.stringContaining('failed at step "random-assignment"'));
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  it("logs a step failure the step declares expected at warn level instead", async () => {
+    mockEvaluateCompletion.mockResolvedValue({
+      success: false, expected: true, message: "You have completed 2 of 4 required questions.",
+    });
+
+    await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(expect.stringContaining('failed at step "evaluate-completion"'));
+    expect(mockLoggerError).not.toHaveBeenCalled();
+    // Same student message either way: the flag governs the log level and nothing else.
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "failure",
+      expect.objectContaining({ message: "You have completed 2 of 4 required questions." })
     );
   });
 

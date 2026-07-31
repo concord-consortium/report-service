@@ -135,9 +135,16 @@ export const ai4vsFlvs = async (jobPath: string, jobDoc: IJobDocument, firebaseJ
 
     const result = await step.handler(stepContext);
     if (!result.success) {
-      functions.logger.error(
-        `ai4vs-flvs: pilot ${request.pilot} failed at step "${step.name}" for ${jobPath}`,
-      );
+      // ⚠️ warn rather than error for a step that declares its failure expected (see StepResult.expected).
+      // A student who clicks before answering enough questions is not an operational fault, and it is by
+      // far the most frequent way a run stops; logging it at error level would make error volume on all
+      // four pilots a count of ordinary student behaviour.
+      const failureLine = `ai4vs-flvs: pilot ${request.pilot} failed at step "${step.name}" for ${jobPath}`;
+      if (result.expected) {
+        functions.logger.warn(failureLine);
+      } else {
+        functions.logger.error(failureLine);
+      }
       await markComplete(jobPath, "failure", {
         message: result.message ?? `Step "${step.name}" failed`,
       });

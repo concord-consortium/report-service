@@ -37,6 +37,18 @@ export type StepResult = {
   message?: string;
   summary?: string;
   output?: StepOutput;
+  /**
+   * Set on a failure that is an ordinary student outcome rather than a fault: the student has not
+   * answered enough questions yet, or skipped a demographic question the randomization needs. Nothing
+   * is written, nobody is locked, and answering another question and clicking again fixes it.
+   *
+   * ⚠️ It governs the LOG LEVEL of index.ts's per-step failure line and nothing else. The student sees
+   * the same message either way, and a step that already logs its own line (demographics.ts logs an
+   * error for the skipped-question case) is unaffected. Without it every early click on an "I'm Done"
+   * button would raise an error-level line, and an alert built on that volume would be measuring
+   * students rather than the system.
+   */
+  expected?: boolean;
 };
 
 /**
