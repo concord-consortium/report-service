@@ -40,23 +40,24 @@ export const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
  * for a standalone invocation, which is how the harness drives this step today, and there the retry
  * advice is correct. The header rule governs the wired case; this is the exception, not a divergence.
  *
- * ⚠️ THIS MESSAGE COVERS THE TARGET-RESOLUTION FAILURES TOO (no match, several matches, self-target),
- * not only the retryable portal ones. Those three are permanent configuration faults, so the usual rule
- * would hand them the shared TELL_TEACHER_MESSAGE; here that rule buys nothing and costs the
- * reassurance. The rule exists because a step's own message typically promises a retry that a permanent
- * fault cannot honour, which is true of fall-random-assignment, whose message says "please try again".
- * This step's message promises no retry: both messages route the student to their teacher, and they
- * differ only in the "Your work has been saved" clause, which is TRUE on every one of these branches
- * because the preceding lock succeeded. The shared message would also tell a student finishing a
- * post-test that something went wrong "setting up your class", which is not what happened.
+ * ⚠️ THIS MESSAGE COVERS THE PORTAL-DATA FAILURES TOO (no match, several matches, self-target, a class
+ * word carrying neither arm suffix), not only the retryable portal ones. Those four are permanent
+ * configuration faults, so the usual rule would hand them the shared TELL_TEACHER_MESSAGE; here that
+ * rule buys nothing and costs the reassurance. The rule exists because a step's own message typically
+ * promises a retry that a permanent fault cannot honour, which is true of fall-random-assignment, whose
+ * message says "please try again". This step's message promises no retry: both messages route the
+ * student to their teacher, and they differ only in the "Your work has been saved" clause, which is
+ * TRUE on every one of these branches because the preceding lock succeeded. The shared message would
+ * also tell a student finishing a post-test that something went wrong "setting up your class", which is
+ * not what happened.
  *
  * The no-match branch is where this matters most: it is where a stale TARGET_OFFERING_NAME or an
  * archived runnable lands, it fires for EVERY control student at once, and it fires at the last event
  * in the study. Those students' work did count, and the message they get says so.
  *
- * The genuine wiring faults below (an absent handoff, an unclassifiable class word) keep
- * TELL_TEACHER_MESSAGE: they mean the stage is mis-wired rather than the portal misconfigured, and
- * nothing about the student's work is knowable from them.
+ * The one genuine wiring fault below (an absent handoff) keeps TELL_TEACHER_MESSAGE: it means the stage
+ * is mis-wired rather than the portal misconfigured, and nothing about the student's work is knowable
+ * from it.
  */
 const STUDENT_FAILURE_MESSAGE =
   "Your work has been saved. We could not open your other activity, so please tell your teacher.";
@@ -129,12 +130,19 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
   // for it.
   const arm = armFromClassWord(originClassWord);
   if (!arm) {
+    // ⚠️ This step's OWN message, like the other portal-data faults. The word is not ours: it is
+    // whatever offerings#show returned for the class the student launched from, so a word carrying
+    // neither suffix means the Orange sequence is sitting in a class that is not a study subclass (a
+    // registration class, most likely), which is portal-side placement in the same category as "no
+    // offering matched the name". And the reassurance is true here: the stage locks the post-test
+    // before this step runs, so the student's work IS recorded.
+    //
     // Safe to log the offending word: authored, environment-stable, not PII, not a token.
     functions.logger.error(
       `open-target-offering: unclassifiable origin class word for ${jobPath}`,
       { origin_class_word: originClassWord },
     );
-    return { success: false, message: TELL_TEACHER_MESSAGE };
+    return { success: false, message: STUDENT_FAILURE_MESSAGE };
   }
   if (arm === "treatment") {
     // Treatment students completed the curriculum and were deliberately locked out of it so they

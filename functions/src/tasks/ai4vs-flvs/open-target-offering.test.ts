@@ -252,13 +252,16 @@ describe("openTargetOffering", () => {
     });
 
     it("fails permanently on a class word carrying neither arm suffix", async () => {
+      // A registration class word, which is what this branch actually fires on: the word comes from
+      // the portal, not from us, so an unclassifiable one means the Orange sequence is in a class
+      // that is not a study subclass.
       const result = await openTargetOffering(makeContext({ classWord: "ft-2026-bingler" }));
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("tell your teacher");
-      // The SHARED message: a class word carrying neither suffix is a mis-wired stage, not a portal
-      // fault, so this step cannot claim the work was saved.
-      expect(result.message).not.toContain("Your work has been saved");
+      // The step's OWN message: portal-side placement is a portal-data fault like a no-match, and
+      // the preceding lock has already recorded the post-test this reassures about.
+      expect(result.message).toContain("Your work has been saved");
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("unclassifiable"),
