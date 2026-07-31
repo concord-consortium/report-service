@@ -95,14 +95,19 @@ const FALL_FLEX_REGISTRATION_CLASS = { id: 30022, word: "fl-2026-section1", name
 // full-time pre-test scenario enrols into it, so enroll-specified-class resolves it by name.
 const TREATMENT_CLASS_WORD = FALL_FT_TREATMENT_CLASS.word;
 
-// ⚠️ Duplicates of fall-programs.ts's DESTINATION_SUFFIX and FLEX_PROGRAM. Literals rather than
-// imports for the same reason TARGET_OFFERING_NAME is one: run.js requires only fs, crypto, ./config,
-// ./scenarios and firebase-admin, and giving it a dependency on a build would oblige it to carry
-// run-step.js's existsSync guard. Both are pinned by a unit test in open-target-offering.test.ts.
+// ⚠️ A duplicate of fall-programs.ts's FLEX_PROGRAM. A literal rather than an import for the same
+// reason TARGET_OFFERING_NAME is one: run.js requires only fs, crypto, ./config, ./scenarios and
+// firebase-admin, and giving it a dependency on a build would oblige it to carry run-step.js's
+// existsSync guard. It is pinned by a unit test in open-target-offering.test.ts.
 //
 // ⚠️ FLEX_PROGRAM is hashed into the pooled assignment document id, so a rename is a data migration
 // rather than a refactor; the pin is what makes a rename fail loudly here too.
-const DESTINATION_SUFFIX = { treatment: "-gator", control: "-shark" };
+//
+// There is deliberately no DESTINATION_SUFFIX duplicate. run.js used to compose a destination word
+// from the stored arm and compare it against a scenario's declaration, which compared two harness
+// values; it asserts the ARM the document actually holds instead. The suffixes still have to agree
+// with the pipeline's, and the subclass fixture WORDS above are what a unit test now pins against
+// fall-programs.ts, which is the same guarantee without a second copy of the constant.
 const FLEX_PROGRAM = "fall-2026-flex";
 
 // One participating student and its launch context.
@@ -133,6 +138,7 @@ const CONTEXT = {
 const FALL_CONTEXTS = {
   "fall-green-fulltime": { resource_link_id: "im-done-fall-green-ft", context_id: "im-done-fall-green-ft-ctx" },
   "fall-green-flex": { resource_link_id: "im-done-fall-green-flex", context_id: "im-done-fall-green-flex-ctx" },
+  "fall-blue-curriculum": { resource_link_id: "im-done-fall-blue", context_id: "im-done-fall-blue-ctx" },
   "fall-orange-control": { resource_link_id: "im-done-fall-orange", context_id: "im-done-fall-orange-ctx" },
 };
 
@@ -217,7 +223,6 @@ module.exports = {
   FALL_FLEX_TREATMENT_CLASS,
   FALL_FT_REGISTRATION_CLASS,
   FALL_FLEX_REGISTRATION_CLASS,
-  DESTINATION_SUFFIX,
   FLEX_PROGRAM,
   CONTEXT,
   FALL_CONTEXTS,

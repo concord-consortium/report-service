@@ -31,22 +31,28 @@ diverge:
 
 - the final job status (`success` / `failure`),
 - the student message bucket (a substring of the classifier's message),
-- the destination class **word**, when the scenario declares an
-  `expect.assignedClassWord`. It is read back from the persisted assignment doc,
-  which stores an *arm*; the word is composed from the scenario's
-  `originClassWord` and the arm's `-gator` / `-shark` suffix. Both sides of that
-  comparison are harness values, so it proves the strata-to-class mapping and
-  that some enroll succeeded, not that the pipeline computed the same word. A
-  scenario whose stage makes no assignment declares `expect.noAssignment`
-  instead, and the read-back is skipped.
-- the class **id** the pipeline actually enrolled into, when the scenario
-  declares an `expect.enrolledClassId`. This is the one check that observes a
-  decision the pipeline made rather than restating a harness value: the stub
-  records each `add_to_class` body to `.last-enroll.json` and `run.js` reads it
-  back, having deleted it before submitting so a stale record cannot satisfy the
-  run. It matters because every subclass word has a `classes/info` fixture on
-  purpose, so a pipeline that appended the wrong suffix would resolve a real
-  class, enroll successfully, and otherwise pass.
+- the **arm** stored in the persisted assignment document, which every success
+  scenario must declare: either `expect.assignedArm` (`treatment` / `control`) or
+  `expect.noAssignment`, which asserts that no arm was stored rather than
+  skipping the read-back. It is the arm and not a class word because the arm is
+  what the document holds; an earlier version composed a word from the arm and
+  the scenario's `originClassWord` and compared it against a word composed the
+  same way, which passed while naming a class that need not exist (spring's
+  composed `fl-spring-2026-origin-shark` never has: spring appends no suffix and
+  enrolls by authored class id).
+- the class **id** the pipeline actually enrolled into, also required of every
+  success scenario: either `expect.enrolledClassId` or `expect.noEnrollment`,
+  which asserts that no `add_to_class` reached the stub. This is the one check
+  that observes a decision the pipeline made rather than restating a harness
+  value: the stub records each `add_to_class` body to `.last-enroll.json` and
+  `run.js` reads it back, having deleted it before submitting so a stale record
+  cannot satisfy the run. It matters because every subclass word has a
+  `classes/info` fixture on purpose, so a pipeline that appended the wrong suffix
+  would resolve a real class, enroll successfully, and otherwise pass.
+
+Both declarations are mandatory rather than opt-in, because an omitted one is
+silent: the scenario reports PASS while checking nothing beyond its completion
+text.
 
 `run-step.js` runs its step **twice** against one `StepContext` and asserts, on
 both runs, the step's success and a substring of its `summary` (on success) or
@@ -116,11 +122,11 @@ driver its entry names, so it needs the emulator, the seed, **and** a build.
 
 `happy` plus a failure per bucket:
 
-- **success**: `happy`, the three whole-pipeline fall stages
-  `fall-green-fulltime` / `fall-green-flex` / `fall-orange-control` (below), plus
-  the direct-step `enroll-happy`, `open-target-happy` and `open-target-treatment`
-  (the last of these succeeds by doing nothing, which is the treatment arm's
-  correct behavior).
+- **success**: `happy`, the four whole-pipeline fall stages
+  `fall-green-fulltime` / `fall-green-flex` / `fall-blue-curriculum` /
+  `fall-orange-control` (below), plus the direct-step `enroll-happy`,
+  `open-target-happy` and `open-target-treatment` (the last of these succeeds by
+  doing nothing, which is the treatment arm's correct behavior).
 - **reload**: `mint-expired`.
 - **tell-your-teacher**: `mint-no-shared-teacher` / `mint-unauthorized` /
   `mint-unauthenticated` / `mint-signature` / `mint-bad-token-type` /
@@ -149,14 +155,17 @@ endpoint behavior the stub implements has a scenario that reaches it.
 
 ## The fall stages
 
-Three scenarios run a whole fall pipeline, each with its own `resource_link_id`
+Four scenarios run a whole fall pipeline, each with its own `resource_link_id`
 and `context_id` so they do not share a launch context with `happy` or with each
-other:
+other. `scenarios.js` checks that at require time, so a mistyped `FALL_CONTEXTS`
+key throws with the scenario's name instead of silently falling back to the
+shared context and colliding with `happy`:
 
 | Scenario | Stage | What it proves |
 |---|---|---|
 | `fall-green-fulltime` | pre-test (`fall-2026-green`) | complete → resolve → randomize → enroll → lock → notify, landing in `ft-2026-bingler-gator` |
 | `fall-green-flex` | pre-test (`fall-2026-green`) | the **same** seeded answers landing in the **opposite** arm, `fl-2026-section1-shark` |
+| `fall-blue-curriculum` | curriculum (`fall-2026-blue`) | lock the curriculum → notify, with no assignment and no enrollment, and `send-email` taking its **fallback** offering read |
 | `fall-orange-control` | post-test (`fall-2026-orange`) | resolve → lock the post-test → open the curriculum → notify, with no assignment at all |
 
 The pre-test pair is the point of the pair: identical demographics can only reach
@@ -164,6 +173,11 @@ opposite arms if the program resolved from the origin class word actually
 selected a different strata table. `fall-orange-control` is the only stage where
 two offering-state steps coexist, so it is the only end-to-end exercise of the
 teacher email rendering a lock line beside an open line.
+`fall-blue-curriculum` is the only stage where no step publishes an
+`originClazzId`, so it is the only end-to-end run of `send-email`'s retained
+offering read on a fall pipeline; it launches from a `-gator` class deliberately,
+since the curriculum lock applies to both arms and nothing in that stage reads
+the arm.
 
 ### An assigned arm is sticky, and re-running does not reset it
 
@@ -203,7 +217,11 @@ document do not collide with another scenario's), a `request` carrying the
 stage's `pilot` and any authored parameters, `seedAnswers` if the stage reads
 answers at all, `originClassWord` for the identity the stub should serve through
 `offerings#show`, and `assignmentScope: "pooled"` if the stage randomizes into
-the pooled document rather than the per-class one.
+the pooled document rather than the per-class one. A success scenario must also
+declare both read-backs: `expect.assignedArm` or `expect.noAssignment`, and
+`expect.enrolledClassId` or `expect.noEnrollment`. `run.js` fails a success
+scenario that omits either, since omitting one otherwise reports PASS while
+checking nothing.
 
 The **driver** is a separate question, and it may need work even when the stub
 does not. `run-step.js` is not single-step: a `run-step` scenario names
@@ -233,11 +251,13 @@ failed step's key behind for a later step to read.
   origin and destination, the fall `STUDY_CONTROL_CLASS`, the fall subclasses the
   pre-test stage enrolls into, and the two registration classes a fall pre-test
   launches from, which are served through `offerings#show` only), the fall
-  scenarios' launch contexts, `TARGET_OFFERING_NAME` / `DESTINATION_SUFFIX` /
-  `FLEX_PROGRAM` (which unit tests pin to their source constants), and the
-  demographic answers (a `Female|White|High|Mod1` student, assigned to
-  `FL-spring-2026-SHARK` under spring's table).
-- `scenarios.js` — the named scenarios and their expected outcomes.
+  scenarios' launch contexts, `TARGET_OFFERING_NAME` and `FLEX_PROGRAM` (which
+  unit tests pin to their source constants, along with the subclass fixture words
+  against the pipeline's arm suffixes), and the demographic answers (a
+  `Female|White|High|Mod1` student, assigned to `FL-spring-2026-SHARK` under
+  spring's table).
+- `scenarios.js` — the named scenarios and their expected outcomes, validated at
+  require time so a malformed or duplicated launch context throws by name.
 - `stub-portal.js` — the stub portal (RIGSE-shaped responses, scenario-driven).
 - `seed.js` — clears the answers collection, re-seeds it for every scenario
   declaring `seedAnswers` (under that scenario's own launch context), and mints

@@ -361,8 +361,19 @@ describe("openTargetOffering", () => {
       expect(armFromClassWord(harnessConfig.TREATMENT_CLASS_WORD)).toBe("treatment");
     });
 
-    it("composes destination words with the same arm suffixes the pipeline appends", () => {
-      expect(harnessConfig.DESTINATION_SUFFIX).toEqual(DESTINATION_SUFFIX);
+    // The fixtures themselves rather than a duplicated copy of the constant: these are the words
+    // enroll-specified-class has to resolve when fallRandomAssignment appends a suffix to the
+    // registration word, so a suffix rename that missed config.js would leave both fall pre-test
+    // scenarios resolving nothing, and would fail here first.
+    it("names its fall subclass fixtures with the same arm suffixes the pipeline appends", () => {
+      expect(harnessConfig.FALL_FT_TREATMENT_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FT_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.treatment}`);
+      expect(harnessConfig.FALL_FLEX_CONTROL_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FLEX_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.control}`);
+      expect(harnessConfig.FALL_FLEX_TREATMENT_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FLEX_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.treatment}`);
+      expect(harnessConfig.STUDY_CONTROL_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FT_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.control}`);
     });
 
     // Hashed into the pooled assignment document id, so the harness reading it back from a document

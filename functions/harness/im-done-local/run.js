@@ -6,7 +6,7 @@
 const fs = require("fs");
 const { createHash } = require("crypto");
 const {
-  CONTEXT, REQUEST, DESTINATION_SUFFIX, FLEX_PROGRAM, assertLoopbackEmulator, PROJECT_ID,
+  CONTEXT, REQUEST, FLEX_PROGRAM, assertLoopbackEmulator, PROJECT_ID,
   SUBMIT_URL, RUN_CONTEXT_FILE, SCENARIO_FILE, LAST_ENROLL_FILE,
 } = require("./config");
 const { SCENARIOS } = require("./scenarios");
@@ -44,11 +44,12 @@ const assignmentDocId = (scenario, context) => {
   return sha256(`ai4vs-flvs-assignments|${context.interactiveId}|${context.platform_id}|${context.resource_link_id}|${context.context_id}`);
 };
 
-// The stored value is an ARM, so the word is derived. Note what that does and does not observe:
-// both sides of the comparison are harness values, so this proves the strata-to-class mapping and
-// that some enrolment succeeded, not that the pipeline computed the same word. The enrolment
-// assertion below is what observes that.
-const readAssignedWord = async (scenario, context) => {
+// ⚠️ The ARM, which is what the document holds, rather than a class word composed from it. Composing
+// one asserted nothing: both sides came out of harness constants, so the check passed while printing
+// a class that need not exist (spring's composed "fl-spring-2026-origin-shark" never has: spring
+// appends no suffix and enrols by authored class id, into im-done-shark-202). What the pipeline
+// computed is observed by the enrolment assertion below, which reads what actually reached the stub.
+const readAssignedArm = async (scenario, context) => {
   const snap = await admin.firestore()
     .doc(`sources/${context.source_key}/jobs-task-data/${assignmentDocId(scenario, context)}`).get();
   if (!snap.exists) {
@@ -57,7 +58,7 @@ const readAssignedWord = async (scenario, context) => {
   for (const stratum of Object.values(snap.data().strata || {})) {
     const arm = stratum.users && stratum.users[context.platform_user_id];
     if (arm) {
-      return `${scenario.originClassWord}${DESTINATION_SUFFIX[arm]}`;
+      return arm;
     }
   }
   return undefined;
@@ -121,17 +122,21 @@ const main = async () => {
   const messageOk = typeof message === "string" && message.includes(expect.messageIncludes);
 
   let classOk = true;
-  if (expect.status === "success" && expect.assignedClassWord) {
-    const assigned = await readAssignedWord(scenario, context);
-    classOk = assigned === expect.assignedClassWord;
-    console.log(`assigned class word: ${assigned} (expected ${expect.assignedClassWord})`);
+  if (expect.status === "success" && expect.assignedArm) {
+    const assigned = await readAssignedArm(scenario, context);
+    classOk = assigned === expect.assignedArm;
+    console.log(`assigned arm: ${assigned} (expected ${expect.assignedArm})`);
   } else if (expect.status === "success" && expect.noAssignment) {
-    console.log("(this stage makes no assignment; no read-back)");
+    // Asserted, not skipped: the read-back is available either way, so "no assignment" can be
+    // checked as cheaply as it can be declared.
+    const assigned = await readAssignedArm(scenario, context);
+    classOk = assigned === undefined;
+    console.log(`assigned arm: ${assigned === undefined ? "(none, as expected)" : assigned} (this stage makes no assignment)`);
   } else if (expect.status === "success") {
     // ⚠️ Neither declared. Failing here rather than skipping quietly, because the two branches
     // above are opt-in: a success scenario that declares neither would otherwise report PASS while
     // verifying nothing beyond its completion text, and nothing on screen would say so.
-    console.log("(no expect.assignedClassWord and no expect.noAssignment; declare one)");
+    console.log("(no expect.assignedArm and no expect.noAssignment; declare one)");
     classOk = false;
   }
 
@@ -141,11 +146,25 @@ const main = async () => {
   // while spring's random-assignment posts an already-string authored class id. A === comparison
   // would pass for one and fail for the other, on the one assertion here that observes a decision
   // the pipeline made rather than restating a harness value.
+  //
+  // ⚠️ Declaring one or the other is REQUIRED, on the same reasoning as the assignment read-back
+  // above, and it matters more here: this is the assertion that observes the pipeline rather than
+  // comparing two harness values. A stage scenario added without it would check its completion text
+  // and an arm, and nothing about the class the pipeline actually resolved.
   let enrollOk = true;
   if (expect.status === "success" && expect.enrolledClassId !== undefined) {
     const enrolled = readEnrolledClassId();
     enrollOk = String(enrolled) === String(expect.enrolledClassId);
     console.log(`enrolled class id: ${enrolled} (expected ${expect.enrolledClassId})`);
+  } else if (expect.status === "success" && expect.noEnrollment) {
+    // Also asserted: the record file was deleted before the submit, so its absence is evidence that
+    // no add_to_class reached the stub at all, which is what a stage with no enrol step must do.
+    const enrolled = readEnrolledClassId();
+    enrollOk = enrolled === undefined;
+    console.log(`enrolled class id: ${enrolled === undefined ? "(none, as expected)" : enrolled} (this stage enrols nobody)`);
+  } else if (expect.status === "success") {
+    console.log("(no expect.enrolledClassId and no expect.noEnrollment; declare one)");
+    enrollOk = false;
   }
 
   const pass = statusOk && messageOk && classOk && enrollOk;
