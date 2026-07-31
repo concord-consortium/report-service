@@ -21,6 +21,12 @@ const buildEmailBody = (context: StepContext): string => {
     'AI4VS "I\'m Done!" Pipeline Summary',
     "===================================",
     "",
+    // The pilot names the stage (pre-test / curriculum / post-test). Four pipelines now render this
+    // one body, and R14's authored email_subject is the only other thing that distinguishes them: an
+    // omitted subject leaves a curriculum or post-test notification subject-lined "completed
+    // pre-test", which nothing in code can detect. This line makes that recoverable after the fact.
+    // It discloses nothing new: the pilot is an authored string, neither PII nor a token.
+    `Stage: ${jobDoc.jobInfo.request.pilot}`,
     `Student: ${platform_id}/users/${platform_user_id}`,
     `Offering: ${resource_link_id}`,
     "",

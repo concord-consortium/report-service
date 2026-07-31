@@ -136,6 +136,14 @@ describe("sendEmail", () => {
       expect(body.message).toContain("Offering: 678");
     });
 
+    // Four pipelines render this one body, and an omitted email_subject (R14) is the only other thing
+    // that would tell a curriculum or post-test notification apart from a pre-test one.
+    it("names the stage the run came from", async () => {
+      await sendEmail(makeContext({}, {}, { pilot: "fall-2026-orange" }));
+
+      expect(sendBody().message).toContain("Stage: fall-2026-orange");
+    });
+
     it("logs the email attempt and success", async () => {
       await sendEmail(makeContext());
 
