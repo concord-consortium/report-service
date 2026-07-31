@@ -160,7 +160,8 @@ predicate, no optional or continue-on-failure step. Each stage is a flat, ordere
 
 **R8a.** Two log lines are added to `ai4vsFlvs`, which is the one exception to R8 and is not a control-flow
 change: the selected pilot is logged once before the loop, and the failing step's `name` is logged on the
-failure path.
+failure path. *(Amended after PR review: the failure line logs at **warn** when the step marks its result
+`expected`, and at error otherwise. See "Post-approval review changes" below.)*
 
 The reason is that this story is what makes a log prefix ambiguous. With one pilot, `lock-current-offering:
 Portal returned 403` identified the run. With three stages over the same step modules it does not, and
@@ -395,6 +396,9 @@ expects success (`run.js:100-105`), which is hardcoded to the pre-test shape: a 
 a run in which every step succeeded. A scenario therefore declares either the destination class word it
 expects or that it makes no assignment, and `run.js` checks accordingly.
 
+*(Amended after PR review: the declared value is the **arm**, not a composed class word, and the same
+declare-or-fail rule now covers the enrolment read-back. See "Post-approval review changes" below.)*
+
 **The declared value is the class word, and `run.js` derives it.** Naming this precisely because three
 different values are in play and only one of them is stored. The document holds an **arm**
 (`strata[key].users[platform_user_id]` is `"treatment"` or `"control"`); `run.js:19,52` maps that arm to a
@@ -624,10 +628,10 @@ shipped test asserts the round trip; verification item 7 re-confirmed it against
 - `functions/src/tasks/ai4vs-flvs/enroll-specified-class.test.ts`: R3's stale pilot value, at a fixture
   (`:59`) **and at an assertion** (`:100`).
 - `functions/src/tasks/ai4vs-flvs/open-target-offering.test.ts`: R3's stale pilot value at a fixture
-  (`:105`), plus R15d's pin on the harness's duplicated suffixes and `FLEX_PROGRAM`, beside the
+  (`:105`), plus R15d's pin on the harness's suffixed subclass words and `FLEX_PROGRAM`, beside the
   `TARGET_OFFERING_NAME` pin already at `:348`.
 - `functions/harness/im-done-local/config.js`: fall class fixtures, per-scenario launch contexts, and the
-  `DESTINATION_SUFFIX` / `FLEX_PROGRAM` duplicates R15d pins.
+  `FLEX_PROGRAM` duplicate R15d pins.
 - `functions/harness/im-done-local/scenarios.js`: the three end-to-end fall scenarios, and R3a's
   per-scenario pilot for the run-step scenarios.
 - `functions/harness/im-done-local/run-step.js`: R3's stale pilot value at `:55`, replaced by R3a's
@@ -714,6 +718,21 @@ The first two items have the longest detection lag and cannot be caught any othe
   after a write of ours.
 - [ ] All eight registration class words and all sixteen subclass words exist and match
   `<origin>-gator` / `<origin>-shark` exactly, lowercase.
+- [ ] **Each sequence appears only where its stage assumes it does**: Blue and Orange **only** in the
+  `-gator` / `-shark` subclasses, Green **only** in the registration classes. One query per sequence,
+  and the cheapest item here to run.
+
+  This is the assumption the post-test's arm read depends on (see "Why the assignment record is not
+  consulted at the post-test stage"): `openTargetOffering` classifies the arm from the class word the
+  student launched from, which only works while Blue and Orange live exclusively in the subclasses.
+  An Orange sequence in a registration class gives every control student in it the unclassifiable-word
+  failure at the last event in the study.
+
+  It matters in the other direction too. A Green sequence added to a subclass has
+  `classifyFallProgram` see `ft-2026-bingler-shark`, derive the teacher surname as `shark`, and fail
+  the unknown-surname gate; on flex the destination word becomes `fl-2026-section1-shark-shark`, an
+  enrolment that cannot succeed. Both fail loudly, but loudly here means a whole class of students
+  blocked at their last click.
 - [ ] The five full-time surnames in the class words match the strata table's surname keys
   (`bingler`, `hankamp`, `long`, `newlon`, `torres`); an unrecognised surname is a classified failure
   before anything is written.
@@ -772,8 +791,8 @@ any requirement delivers.
    could drift apart.
 3. **`send-email.ts` posts `class_id: classId` rather than `class_id: String(classId)`.** Once the R11
    handoff branch lands, `classId` is a string on both paths, so the wrapper was a no-op.
-4. **`run.js` fails a success scenario that declares neither `expect.assignedClassWord` nor
-   `expect.noAssignment`.** The plan's two branches are opt-in, and its own analysis explains that
+4. **`run.js` fails a success scenario that declares neither assignment read-back (post-review, neither
+   enrolment read-back either).** The plan's two branches are opt-in, and its own analysis explains that
    omitting a declaration is silent rather than loud: the scenario reports PASS while verifying nothing
    beyond its completion text. Declaring `happy`'s expectations in the driver commit fixes that for
    `happy` only and leaves the hazard live for the next stage scenario anyone adds.
@@ -786,6 +805,9 @@ any requirement delivers.
 
 ## Verification as delivered
 
+⚠️ The figures below are as the story was delivered for review. The post-approval round moved them: see
+the re-run figures at the end of "Post-approval review changes".
+
 - `npx jest`: **26 suites, 491 passed, 4 skipped (495 total)**, the exact total the plan derived per step
   from a 484 baseline.
 - `npm run lint` and `npm run build`: clean.
@@ -797,6 +819,92 @@ any requirement delivers.
   `ft-2026-bingler-gator`, flex → `fl-2026-section1-shark`).
 - Three new assertions were checked to be falsifiable rather than vacuous, by breaking each and watching
   it fail: the ordered-handler test, the assignment document id formula, and the declaration guard.
+
+## Post-approval review changes
+
+PR #408 was approved with a set of non-blocking findings. All were taken. What each changed, and why it
+was worth changing after approval rather than being left as a follow-up.
+
+**Code**
+
+- **The post-test's unclassifiable-word branch gets the step's own message.** `openTargetOffering` failed
+  with the shared *"Something went wrong setting up your class"* on a class word carrying neither arm
+  suffix, on the header's reasoning that such a word means a mis-wired stage. Wiring `fall-2026-orange`
+  made that false in both halves. The word is not ours: `resolveOriginClass` publishes whatever
+  `offerings#show` returns, so an unclassifiable one means the Orange sequence is sitting in a class that
+  is not a study subclass, which is portal-side placement, the same category as "no offering matched the
+  name". And the student's work *is* knowable, because the stage locks the post-test before this step
+  runs. It now returns `STUDENT_FAILURE_MESSAGE`, the header says why, and the test that pinned the old
+  behaviour asserts the reassurance clause instead of its absence. The absent-handoff branch keeps the
+  shared message: that one really is a wiring fault, and in the wired stage it is unreachable anyway.
+- **`StepResult.expected`, and R8a's failure line at warn.** `evaluateCompletion` returns failure when the
+  student has answered too few questions. Nothing is written, nobody is locked, and answering one more
+  question fixes it, yet R8a's new line logged it at error on all four pilots, which would make error
+  volume a count of ordinary student behaviour. Steps now mark that class of failure `expected` and the
+  runner logs it at warn. Set on the completion gate and on both randomisation steps' skipped-question
+  branch. It governs the log level and nothing else: the student sees the same message, and
+  `demographics.ts`'s own pre-existing error line for the same event is untouched.
+- **`resolveOriginOffering` validates `clazz_id` with `isUsableId`.** It accepted anything but `undefined`
+  and `null`, while the other read in the same file used `isUsableId`, whose comment claims the two reads
+  agree on what a valid identifier is. They agreed on `null` only. A `""` passed the read, was skipped by
+  `readStepOutputField`, sent `send-email` to the fallback, and posted `class_id: ""`; a non-scalar posted
+  `"[object Object]"`. Neither is new and both end in a portal rejection rather than a wrong class, but
+  the value now travels as a documented handoff, which is what made it worth the one-line fix.
+- **The teacher email names the stage.** `buildEmailBody` gains `Stage: <pilot>`. Four pipelines render
+  one body, and R14's authored `email_subject` is the only other thing that distinguishes them, with no
+  code able to detect its omission by design. This makes a mis-subjected curriculum or post-test
+  notification identify itself after the fact. It discloses nothing new (the pilot is an authored string)
+  and adds one line to the live spring pilot's email, which is the only respect in which it touches R12.
+
+**Harness**
+
+- **`fall-blue-curriculum`**, the fourth end-to-end scenario. See the revisited decision above.
+- **The assignment read-back asserts the ARM.** It composed a class word from the stored arm and the
+  scenario's origin word and compared it against a word composed the same way, so it passed while
+  printing a class that need not exist: spring's `fl-spring-2026-origin-shark` never has existed, since
+  spring appends no suffix and enrols by authored class id into `im-done-shark-202`. Scenarios declare
+  `expect.assignedArm`, which is what the document holds. The word is already covered by
+  `expect.enrolledClassId`, which observes the pipeline rather than restating a harness value.
+- **`config.js`'s `DESTINATION_SUFFIX` duplicate is gone with it**, and R15d's pin is better for it: the
+  unit test now asserts the harness's subclass fixture *words* against `fall-programs.ts`'s suffixes, so
+  a suffix rename that missed the harness fails in CI, with no second copy of the constant to maintain.
+  The `FLEX_PROGRAM` pin is unchanged.
+- **The enrolment read-back is declare-or-fail too.** Commit `3c986b5` made a success scenario that
+  declares neither `assignedClassWord` nor `noAssignment` fail; `enrolledClassId` had the same opt-in
+  shape and no such rule, and it is the weaker half to leave open, being the one assertion that observes
+  the pipeline. Every success scenario now declares `expect.enrolledClassId` or `expect.noEnrollment`.
+  Both `no…` declarations are **asserted rather than skipped**: the arm read-back must come back
+  `undefined`, and `.last-enroll.json` (deleted before each submit) must be absent, so a stage that
+  enrolled someone it should not cannot pass by declaring it enrols nobody.
+- **Scenario declarations are validated at require time.** A typo in a `FALL_CONTEXTS` key yielded
+  `undefined`, and `{...CONTEXT, ...(scenario.context || {})}` fell back to the shared launch context in
+  `seed.js` and `run.js` independently, colliding with `happy`'s answers and assignment document, which is
+  R15a's exact hazard: it fails, but names nothing useful. `scenarios.js` now throws by scenario name for
+  a context that is not an object, one missing either field, and one that repeats another scenario's or
+  the shared `CONTEXT`. It lives there so both drivers and the stub get it; a guard inside `seed.js`'s
+  loop would see only the scenarios that seed answers, which is neither fall stage that seeds none.
+
+**Specs**
+
+- **R17 gains an exclusivity item**: Blue and Orange only in the subclasses, Green only in the
+  registration classes. This is the assumption the post-test's arm read rests on, stated in the technical
+  notes but checked by no item: R17 covered Blue's *presence* and the per-arm initial state, not where the
+  sequences may not be. It fails in both directions, and a Green sequence in a subclass derives the
+  teacher surname `shark` or builds `fl-2026-section1-shark-shark`. ⚠️ **The gist copy needs the same
+  edit**; the canonical text here is the one that was updated.
+- **REPORT-81's spec loses a claim this story disproved.** Its "the only fall pilot string in the tree"
+  is corrected in place, since the sentence still read as fact.
+
+**Re-run after the changes**
+
+- `npx jest`: **26 suites, 498 passed, 4 skipped (502 total)**, +7 on the delivered figure (four
+  unusable-`clazz_id` cases, the stage line, and the two log-level cases).
+- `npm run lint` and `npm run build`: clean.
+- The harness on the emulator against the stub portal: **32/32 scenarios**.
+- The curriculum run makes one mint, one `PUT`, one `GET offerings/:id` and one
+  `POST send_class_teachers` to class `30011` with the authored subject, which is the fallback read this
+  scenario was added for, and matches the cost table above line for line.
+
 ## Decisions
 
 Every question resolved while specifying and implementing this story, with the options that were on the
@@ -928,6 +1036,14 @@ uniqueness, and the teacher email rendering a lock line beside an open line.
 duplicate entry name there drops a line of the researcher's email rather than throwing, so no other test
 would notice. C is declined: a treatment post-test run and a curriculum run each add a scenario whose
 only untested content is a step already covered in isolation.
+
+*(Revisited after PR review, and the curriculum half of C was taken: `fall-blue-curriculum`. The
+declining reason held for its two steps but missed the stage-level content, which is that this is the
+only stage where no step publishes an `originClazzId`, so it is the only end-to-end run of the offering
+read R12 retained as a fallback, and the only stage whose notification is distinguishable from a
+pre-test one solely by R14's authored subject. It cost eleven lines of scenario and one launch context.
+A treatment post-test run is still declined: its only untested content really is the arm short-circuit,
+which `open-target-treatment` drives directly.)*
 
 ---
 
