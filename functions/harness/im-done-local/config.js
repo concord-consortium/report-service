@@ -63,9 +63,52 @@ const STUDY_CONTROL_CLASS = { id: 30002, word: "ft-2026-bingler-shark", name: "F
 // first, with no equivalent of run-step.js's existsSync guard. A unit test asserts the two match.
 const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
 
-// The treatment subclass word. Needs no class fixture: the arm check short-circuits before any
-// portal call, so nothing ever looks this word up.
-const TREATMENT_CLASS_WORD = "ft-2026-bingler-gator";
+// classes/info is read by exactly TWO steps: enroll-specified-class looks up the DESTINATION word,
+// and open-target-offering looks up the ORIGIN word on the post-test stage. The registration words
+// (ft-2026-bingler, fl-2026-section1) are looked up by neither, and are deliberately not here, so
+// the fixture set does not imply the origin is resolved through this endpoint. They ARE served by
+// offerings#show, from the separate identity map below.
+const FALL_FT_TREATMENT_CLASS = { id: 30011, word: "ft-2026-bingler-gator", name: "FT-2026-Bingler-Gator" };
+const FALL_FLEX_CONTROL_CLASS = { id: 30012, word: "fl-2026-section1-shark", name: "FL-2026-Section1-Shark" };
+// For the arm the sticky assignment can flip to. An edited ANSWERS or an un-reset pooled document
+// lands the flex scenario in treatment, whose destination would otherwise have no fixture; that
+// surfaces as a classes#info 400 and the generic tell-your-teacher message, with nothing naming the
+// missing fixture. Full-time's flipped destination is ft-2026-bingler-shark, which already exists as
+// STUDY_CONTROL_CLASS, so only the flex arm has this hole.
+const FALL_FLEX_TREATMENT_CLASS = { id: 30013, word: "fl-2026-section1-gator", name: "FL-2026-Section1-Gator" };
+
+// ⚠️ NOT classes/info fixtures, and they must not be added to CLASSES_BY_WORD. A fall pre-test
+// launches from a registration class, so resolveOriginClass reads one through offerings#show and
+// every downstream decision hangs off the class word it publishes; but no step ever looks these
+// words up by name, which is the property the comment above records. They are therefore a separate
+// identity-only pair, consumed by stub-portal.js's ORIGIN_IDENTITY_BY_WORD and by nothing else.
+//
+// Without them the pre-test scenarios do not fail loudly, they fail WRONGLY: offerings#show falls
+// back to the spring origin class, resolveOriginClass publishes fl-spring-2026-origin,
+// classifyFallProgram returns undefined, and the run reports "unclassifiable origin class word",
+// which reads as a pipeline fault.
+const FALL_FT_REGISTRATION_CLASS = { id: 30021, word: "ft-2026-bingler", name: "FT-2026-Bingler" };
+const FALL_FLEX_REGISTRATION_CLASS = { id: 30022, word: "fl-2026-section1", name: "FL-2026-Section1" };
+
+// The treatment subclass word, which is FALL_FT_TREATMENT_CLASS's. open-target-treatment still needs
+// no fixture for it, since that scenario's arm check short-circuits before any portal call, but the
+// full-time pre-test scenario enrols into it, so enroll-specified-class resolves it by name.
+const TREATMENT_CLASS_WORD = FALL_FT_TREATMENT_CLASS.word;
+
+// ⚠️ A duplicate of fall-programs.ts's FLEX_PROGRAM. A literal rather than an import for the same
+// reason TARGET_OFFERING_NAME is one: run.js requires only fs, crypto, ./config, ./scenarios and
+// firebase-admin, and giving it a dependency on a build would oblige it to carry run-step.js's
+// existsSync guard. It is pinned by a unit test in open-target-offering.test.ts.
+//
+// ⚠️ FLEX_PROGRAM is hashed into the pooled assignment document id, so a rename is a data migration
+// rather than a refactor; the pin is what makes a rename fail loudly here too.
+//
+// There is deliberately no DESTINATION_SUFFIX duplicate. run.js used to compose a destination word
+// from the stored arm and compare it against a scenario's declaration, which compared two harness
+// values; it asserts the ARM the document actually holds instead. The suffixes still have to agree
+// with the pipeline's, and the subclass fixture WORDS above are what a unit test now pins against
+// fall-programs.ts, which is the same guarantee without a second copy of the constant.
+const FLEX_PROGRAM = "fall-2026-flex";
 
 // One participating student and its launch context.
 const CONTEXT = {
@@ -76,6 +119,27 @@ const CONTEXT = {
   resource_link_id: "im-done-offering-1",
   interactiveId: "im-done-interactive-1",
   user_type: "learner",
+};
+
+// Per-scenario launch contexts for the fall stages. ADDITIONS, not edits: CONTEXT keeps its current
+// values, because stub-portal.js gives the study control class an Orange offering whose id IS
+// CONTEXT.resource_link_id, precisely so the by-name match has to discriminate AGAINST the offering
+// the student launched from rather than picking the only one available. That is the property
+// open-target-happy exercises.
+//
+// ⚠️ The isolation this buys is FULL-TIME's only. perClassScope hashes resource_link_id and
+// context_id, so without its own pair a fall full-time run lands in the SAME assignment document as
+// the spring `happy` scenario, where the per-student de-duplication hands it spring's arm and the
+// scenario silently stops testing what it claims to. pooledProgramScope takes program, interactiveId
+// and platform_id and nothing else, so the flex scenario's own pair changes its document id not at
+// all; flex is separated from spring by the pooled namespace prefix and by FLEX_PROGRAM being in the
+// hash. The consequence to hold on to is that the flex assignment document is per PROGRAM, not per
+// scenario.
+const FALL_CONTEXTS = {
+  "fall-green-fulltime": { resource_link_id: "im-done-fall-green-ft", context_id: "im-done-fall-green-ft-ctx" },
+  "fall-green-flex": { resource_link_id: "im-done-fall-green-flex", context_id: "im-done-fall-green-flex-ctx" },
+  "fall-blue-curriculum": { resource_link_id: "im-done-fall-blue", context_id: "im-done-fall-blue-ctx" },
+  "fall-orange-control": { resource_link_id: "im-done-fall-orange", context_id: "im-done-fall-orange-ctx" },
 };
 
 const REQUEST = {
@@ -133,12 +197,13 @@ const ANSWERS = [
   },
 ];
 
-const EXPECTED_CLASS = "FL-spring-2026-SHARK";
-
 // Written by seed.js, read by run.js.
 const RUN_CONTEXT_FILE = `${__dirname}/.run-context.json`;
 // Written by run.js before each submit, read by stub-portal.js per request.
 const SCENARIO_FILE = `${__dirname}/.scenario`;
+// Written by stub-portal.js on every add_to_class, read by run.js after a run. The stub and the
+// driver are separate processes, so a file is the channel available, as .scenario already is.
+const LAST_ENROLL_FILE = `${__dirname}/.last-enroll.json`;
 
 module.exports = {
   PROJECT_ID,
@@ -153,10 +218,17 @@ module.exports = {
   STUDY_CONTROL_CLASS,
   TARGET_OFFERING_NAME,
   TREATMENT_CLASS_WORD,
+  FALL_FT_TREATMENT_CLASS,
+  FALL_FLEX_CONTROL_CLASS,
+  FALL_FLEX_TREATMENT_CLASS,
+  FALL_FT_REGISTRATION_CLASS,
+  FALL_FLEX_REGISTRATION_CLASS,
+  FLEX_PROGRAM,
   CONTEXT,
+  FALL_CONTEXTS,
   REQUEST,
   ANSWERS,
-  EXPECTED_CLASS,
   RUN_CONTEXT_FILE,
   SCENARIO_FILE,
+  LAST_ENROLL_FILE,
 };

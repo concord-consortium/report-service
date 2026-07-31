@@ -1,13 +1,15 @@
 import { IJobDocument } from "../types";
-import { StepContext } from "./types";
+import { StepContext, StepHandler } from "./types";
 
 // Mock firebase-functions logger
 const mockLoggerInfo = jest.fn();
 const mockLoggerError = jest.fn();
+const mockLoggerWarn = jest.fn();
 jest.mock("firebase-functions", () => ({
   logger: {
     info: (...args: any[]) => mockLoggerInfo(...args),
     error: (...args: any[]) => mockLoggerError(...args),
+    warn: (...args: any[]) => mockLoggerWarn(...args),
   },
 }));
 
@@ -26,6 +28,10 @@ const mockEvaluateCompletion = jest.fn();
 const mockLockCurrentOffering = jest.fn();
 const mockRandomAssignment = jest.fn();
 const mockSendEmail = jest.fn();
+const mockResolveOriginClass = jest.fn();
+const mockFallRandomAssignment = jest.fn();
+const mockEnrollSpecifiedClass = jest.fn();
+const mockOpenTargetOffering = jest.fn();
 
 jest.mock("./evaluate-completion", () => ({
   evaluateCompletion: (ctx: StepContext) => {
@@ -33,10 +39,14 @@ jest.mock("./evaluate-completion", () => ({
     return mockEvaluateCompletion(ctx);
   },
 }));
+// Keyed on the PILOT, not the entry name. One handler now runs under four different entry names
+// (spring's lock-activity plus lock-pre-test / lock-curriculum / lock-post-test), and the runner
+// does not tell a handler which entry it is executing, so the pilot is the only thing in scope that
+// distinguishes the four. A single hardcoded key silently collides once more than one pipeline is
+// driven in this file.
 jest.mock("./lock-current-offering", () => ({
   lockCurrentOffering: (ctx: StepContext) => {
-    // Keyed on the pipeline ENTRY name, which spring keeps as "lock-activity", not the module name.
-    stepResultsSnapshots["lock-activity"] = { ...ctx.stepResults };
+    stepResultsSnapshots[`lock:${ctx.jobDoc.jobInfo.request.pilot}`] = { ...ctx.stepResults };
     return mockLockCurrentOffering(ctx);
   },
 }));
@@ -52,9 +62,33 @@ jest.mock("./send-email", () => ({
     return mockSendEmail(ctx);
   },
 }));
+// fall-random-assignment has to be mocked: unmocked it throws "fetch is not defined" through
+// demographics → firebase-client → firebase/auth, failing the whole file rather than one assertion.
+// The other three load fine unmocked and are stubbed only so every handler the table reaches is
+// stubbed from one place.
+jest.mock("./resolve-origin-class", () => ({
+  resolveOriginClass: (ctx: StepContext) => mockResolveOriginClass(ctx),
+}));
+jest.mock("./fall-random-assignment", () => ({
+  fallRandomAssignment: (ctx: StepContext) => mockFallRandomAssignment(ctx),
+}));
+jest.mock("./enroll-specified-class", () => ({
+  enrollSpecifiedClass: (ctx: StepContext) => mockEnrollSpecifiedClass(ctx),
+}));
+jest.mock("./open-target-offering", () => ({
+  openTargetOffering: (ctx: StepContext) => mockOpenTargetOffering(ctx),
+}));
 
 import { ai4vsFlvs, PIPELINES } from "./index";
 import { TELL_TEACHER_MESSAGE } from "../portal-api";
+import { evaluateCompletion } from "./evaluate-completion";
+import { lockCurrentOffering } from "./lock-current-offering";
+import { randomAssignment } from "./random-assignment";
+import { sendEmail } from "./send-email";
+import { resolveOriginClass } from "./resolve-origin-class";
+import { fallRandomAssignment } from "./fall-random-assignment";
+import { enrollSpecifiedClass } from "./enroll-specified-class";
+import { openTargetOffering } from "./open-target-offering";
 
 describe("PIPELINES table", () => {
   // A duplicate entry name is invisible everywhere else: index.ts's `stepResults[step.name] = result`
@@ -67,6 +101,23 @@ describe("PIPELINES table", () => {
   it.each(Object.entries(PIPELINES))("gives every step in %s a distinct name", (_pilot, steps) => {
     const names = steps.map(step => step.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  // Handler identity rather than entry name, so this asserts the wiring instead of restating the
+  // table's own labels. Each imported handler resolves to this file's mock, which is the same
+  // reference index.ts holds. The explicit table type is required: written as `[...] as const`,
+  // jest 24's it.each typings flatten the tuple and PIPELINES[pilot] fails to compile.
+  const EXPECTED_HANDLERS: Array<[string, StepHandler[]]> = [
+    ["spring-2026", [evaluateCompletion, randomAssignment, lockCurrentOffering, sendEmail]],
+    ["fall-2026-green", [
+      evaluateCompletion, resolveOriginClass, fallRandomAssignment,
+      enrollSpecifiedClass, lockCurrentOffering, sendEmail,
+    ]],
+    ["fall-2026-blue", [lockCurrentOffering, sendEmail]],
+    ["fall-2026-orange", [resolveOriginClass, lockCurrentOffering, openTargetOffering, sendEmail]],
+  ];
+  it.each(EXPECTED_HANDLERS)("selects the expected ordered handlers for %s", (pilot, handlers) => {
+    expect(PIPELINES[pilot].map(step => step.handler)).toEqual(handlers);
   });
 });
 
@@ -152,6 +203,35 @@ describe("orchestrator stepResults accumulation", () => {
       "jobs/test",
       "failure",
       expect.objectContaining({ message: "assignment failed" })
+    );
+  });
+
+  // The failure line's level, which decides whether "the student has not answered enough questions
+  // yet" shows up in an error count. It is the most frequent way a run stops, on all four pilots.
+  it("logs an unexpected step failure at error level", async () => {
+    mockEvaluateCompletion.mockResolvedValue({ success: true });
+    mockRandomAssignment.mockResolvedValue({ success: false, message: "assignment failed" });
+
+    await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
+
+    expect(mockLoggerError).toHaveBeenCalledWith(expect.stringContaining('failed at step "random-assignment"'));
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  it("logs a step failure the step declares expected at warn level instead", async () => {
+    mockEvaluateCompletion.mockResolvedValue({
+      success: false, expected: true, message: "You have completed 2 of 4 required questions.",
+    });
+
+    await ai4vsFlvs("jobs/test", makeJobDoc(), "jwt-token");
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(expect.stringContaining('failed at step "evaluate-completion"'));
+    expect(mockLoggerError).not.toHaveBeenCalled();
+    // Same student message either way: the flag governs the log level and nothing else.
+    expect(mockMarkComplete).toHaveBeenCalledWith(
+      "jobs/test",
+      "failure",
+      expect.objectContaining({ message: "You have completed 2 of 4 required questions." })
     );
   });
 

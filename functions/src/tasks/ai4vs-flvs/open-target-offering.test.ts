@@ -1,5 +1,5 @@
 import { openTargetOffering, TARGET_OFFERING_NAME } from "./open-target-offering";
-import { armFromClassWord } from "./fall-programs";
+import { armFromClassWord, DESTINATION_SUFFIX, FLEX_PROGRAM } from "./fall-programs";
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
 import { createPortalTokenCache } from "../portal-api";
@@ -102,7 +102,7 @@ const makeContext = (
       version: 1,
       id: "test-job-123",
       status: "running",
-      request: { task: "ai4vs-flvs", pilot: "fall-2026-fulltime" },
+      request: { task: "ai4vs-flvs", pilot: "fall-2026-orange" },
       createdAt: Date.now(),
     },
   } as IJobDocument,
@@ -252,13 +252,16 @@ describe("openTargetOffering", () => {
     });
 
     it("fails permanently on a class word carrying neither arm suffix", async () => {
+      // A registration class word, which is what this branch actually fires on: the word comes from
+      // the portal, not from us, so an unclassifiable one means the Orange sequence is in a class
+      // that is not a study subclass.
       const result = await openTargetOffering(makeContext({ classWord: "ft-2026-bingler" }));
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("tell your teacher");
-      // The SHARED message: a class word carrying neither suffix is a mis-wired stage, not a portal
-      // fault, so this step cannot claim the work was saved.
-      expect(result.message).not.toContain("Your work has been saved");
+      // The step's OWN message: portal-side placement is a portal-data fault like a no-match, and
+      // the preceding lock has already recorded the post-test this reassures about.
+      expect(result.message).toContain("Your work has been saved");
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("unclassifiable"),
@@ -356,6 +359,27 @@ describe("openTargetOffering", () => {
     it("serves class words that classify as the arms their scenarios assume", () => {
       expect(armFromClassWord(harnessConfig.STUDY_CONTROL_CLASS.word)).toBe("control");
       expect(armFromClassWord(harnessConfig.TREATMENT_CLASS_WORD)).toBe("treatment");
+    });
+
+    // The fixtures themselves rather than a duplicated copy of the constant: these are the words
+    // enroll-specified-class has to resolve when fallRandomAssignment appends a suffix to the
+    // registration word, so a suffix rename that missed config.js would leave both fall pre-test
+    // scenarios resolving nothing, and would fail here first.
+    it("names its fall subclass fixtures with the same arm suffixes the pipeline appends", () => {
+      expect(harnessConfig.FALL_FT_TREATMENT_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FT_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.treatment}`);
+      expect(harnessConfig.FALL_FLEX_CONTROL_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FLEX_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.control}`);
+      expect(harnessConfig.FALL_FLEX_TREATMENT_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FLEX_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.treatment}`);
+      expect(harnessConfig.STUDY_CONTROL_CLASS.word)
+        .toBe(`${harnessConfig.FALL_FT_REGISTRATION_CLASS.word}${DESTINATION_SUFFIX.control}`);
+    });
+
+    // Hashed into the pooled assignment document id, so the harness reading it back from a document
+    // the pipeline wrote depends on the two spellings agreeing.
+    it("keys the pooled assignment document on the same flex program string", () => {
+      expect(harnessConfig.FLEX_PROGRAM).toBe(FLEX_PROGRAM);
     });
   });
 

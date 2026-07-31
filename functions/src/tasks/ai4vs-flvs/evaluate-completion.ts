@@ -72,7 +72,10 @@ export const evaluateCompletion = async ({
           .replace(/\$\{completed\}/g, String(completed))
           .replace(/\$\{min_completed_questions\}/g, String(minCompleted));
       }
-      return { success: false, message };
+      // `expected`: the student simply has not finished yet. Nothing has been written, they are not
+      // locked, and answering another question and clicking again clears it, so the runner logs this
+      // at warn rather than error.
+      return { success: false, expected: true, message };
     }
 
     return {

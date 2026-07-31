@@ -25,6 +25,11 @@ const sendCall = () =>
   mockPortalTokenFetch.mock.calls.find(([o]: any[]) => o.path.includes("send_class_teachers"))?.[0];
 const sendBody = () => JSON.parse(sendCall().body);
 
+// resolveOriginOffering is NOT mocked in this file; it runs for real over the mocked transport, so
+// the offering read is only observable as the fetch calls it makes.
+const offeringCalls = () =>
+  mockPortalTokenFetch.mock.calls.filter(([o]: any[]) => /\/api\/v1\/offerings\//.test(o.path));
+
 // Mock firebase-functions logger
 const mockLoggerInfo = jest.fn();
 const mockLoggerError = jest.fn();
@@ -131,6 +136,14 @@ describe("sendEmail", () => {
       expect(body.message).toContain("Offering: 678");
     });
 
+    // Four pipelines render this one body, and an omitted email_subject (R14) is the only other thing
+    // that would tell a curriculum or post-test notification apart from a pre-test one.
+    it("names the stage the run came from", async () => {
+      await sendEmail(makeContext({}, {}, { pilot: "fall-2026-orange" }));
+
+      expect(sendBody().message).toContain("Stage: fall-2026-orange");
+    });
+
     it("logs the email attempt and success", async () => {
       await sendEmail(makeContext());
 
@@ -140,6 +153,32 @@ describe("sendEmail", () => {
       expect(mockLoggerInfo).toHaveBeenCalledWith(
         expect.stringContaining("email sent successfully")
       );
+    });
+  });
+
+  describe("origin class id handoff", () => {
+    it("uses a published originClazzId and skips the offering read", async () => {
+      const stepResults: Record<string, StepResult> = {
+        "resolve-origin-class": {
+          success: true,
+          summary: "Origin class ft-2026-bingler",
+          output: { originClassWord: "ft-2026-bingler", originClazzId: "30021" },
+        },
+      };
+
+      const result = await sendEmail(makeContext({}, stepResults));
+
+      expect(result).toEqual({ success: true });
+      expect(offeringCalls()).toHaveLength(0);
+      expect(sendBody().class_id).toBe("30021");
+    });
+
+    it("reads the offering itself when no step published an originClazzId", async () => {
+      const result = await sendEmail(makeContext());
+
+      expect(result).toEqual({ success: true });
+      expect(offeringCalls()).toHaveLength(1);
+      expect(sendBody().class_id).toBe("999");
     });
   });
 

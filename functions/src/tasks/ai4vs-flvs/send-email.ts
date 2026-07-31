@@ -1,5 +1,5 @@
 import * as functions from "firebase-functions";
-import { StepContext, StepResult } from "./types";
+import { StepContext, StepResult, readStepOutputField } from "./types";
 import { getScopedPortalToken, portalTokenFetch, classifyPortalFailure, messageForBucket } from "../portal-api";
 import { resolveOriginOffering } from "../portal-reads";
 
@@ -21,6 +21,12 @@ const buildEmailBody = (context: StepContext): string => {
     'AI4VS "I\'m Done!" Pipeline Summary',
     "===================================",
     "",
+    // The pilot names the stage (pre-test / curriculum / post-test). Four pipelines now render this
+    // one body, and R14's authored email_subject is the only other thing that distinguishes them: an
+    // omitted subject leaves a curriculum or post-test notification subject-lined "completed
+    // pre-test", which nothing in code can detect. This line makes that recoverable after the fact.
+    // It discloses nothing new: the pilot is an authored string, neither PII nor a token.
+    `Stage: ${jobDoc.jobInfo.request.pilot}`,
     `Student: ${platform_id}/users/${platform_user_id}`,
     `Offering: ${resource_link_id}`,
     "",
@@ -36,7 +42,7 @@ const buildEmailBody = (context: StepContext): string => {
 };
 
 export const sendEmail = async (context: StepContext): Promise<StepResult> => {
-  const { jobPath, jobDoc, firebaseJwt, tokenCache, portalOrigin } = context;
+  const { jobPath, jobDoc, firebaseJwt, stepResults, tokenCache, portalOrigin } = context;
   const { platform_id, platform_user_id, resource_link_id } = jobDoc;
 
   // Validate required context fields
@@ -82,13 +88,20 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
     const token = tokenResult.token;
 
     // send_class_teachers needs the origin class_id, but this step holds only resource_link_id.
-    const origin = await resolveOriginOffering(portalOrigin, token, String(resource_link_id));
-    if (!origin.offering) {
-      functions.logger.error(`send-email: offering-read failed for ${jobPath}`, { status: origin.status });
-      const offeringBucket = classifyPortalFailure({ status: origin.status });
-      return { success: false, message: messageForBucket(offeringBucket, STUDENT_FAILURE_MESSAGE) };
+    // A stage that ran resolve-origin-class already paid for that read and published the id, so
+    // take the handoff when it is there. The read below is RETAINED as a fallback and is NOT dead
+    // code: spring-2026 has no resolve-origin-class step and neither does the fall curriculum
+    // stage, so both reach it on every run.
+    let classId = readStepOutputField(stepResults, "originClazzId");
+    if (!classId) {
+      const origin = await resolveOriginOffering(portalOrigin, token, String(resource_link_id));
+      if (!origin.offering) {
+        functions.logger.error(`send-email: offering-read failed for ${jobPath}`, { status: origin.status });
+        const offeringBucket = classifyPortalFailure({ status: origin.status });
+        return { success: false, message: messageForBucket(offeringBucket, STUDENT_FAILURE_MESSAGE) };
+      }
+      classId = String(origin.offering.clazzId);
     }
-    const classId = origin.offering.clazzId;
 
     const response = await portalTokenFetch({
       portalUrl: portalOrigin,
@@ -96,7 +109,7 @@ export const sendEmail = async (context: StepContext): Promise<StepResult> => {
       method: "POST",
       token,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ class_id: String(classId), subject, message }),
+      body: JSON.stringify({ class_id: classId, subject, message }),
     });
 
     if (response.status >= 200 && response.status < 300 && response.data?.success === true) {

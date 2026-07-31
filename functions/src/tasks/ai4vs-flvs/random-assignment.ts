@@ -68,6 +68,10 @@ export const randomAssignment = async ({
       if (demographics.kind === "incomplete") {
         return {
           success: false,
+          // A skipped question, not a fault: `expected` keeps the runner's failure line at warn. It
+          // changes no message and no behaviour on this live pilot, and readDemographics's own
+          // error-level line for the same event is untouched.
+          expected: true,
           message: `Please complete the following question(s) before continuing: ${demographics.missing.join(", ")}.`,
         };
       }

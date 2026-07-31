@@ -18,6 +18,18 @@ export interface StepOutput {
    * Safe to log: authored, environment-stable, neither PII nor a token.
    */
   originClassWord?: string;
+  /**
+   * The launch offering's class id, published by resolve-origin-class from the SAME
+   * offerings#show response that yields originClassWord. send-email needs it for
+   * send_class_teachers and would otherwise re-read the offering.
+   *
+   * ⚠️ A STRING, because readStepOutputField accepts nothing else, while resolveOriginOffering
+   * types clazzId as `number | string` and the portal serves a JSON number. Publishing the raw
+   * value hands back undefined and send-email falls back forever, silently, with nothing failing.
+   *
+   * Safe to log: a database id, neither PII nor a token.
+   */
+  originClazzId?: string;
 }
 
 export type StepResult = {
@@ -25,6 +37,18 @@ export type StepResult = {
   message?: string;
   summary?: string;
   output?: StepOutput;
+  /**
+   * Set on a failure that is an ordinary student outcome rather than a fault: the student has not
+   * answered enough questions yet, or skipped a demographic question the randomization needs. Nothing
+   * is written, nobody is locked, and answering another question and clicking again fixes it.
+   *
+   * ⚠️ It governs the LOG LEVEL of index.ts's per-step failure line and nothing else. The student sees
+   * the same message either way, and a step that already logs its own line (demographics.ts logs an
+   * error for the skipped-question case) is unaffected. Without it every early click on an "I'm Done"
+   * button would raise an error-level line, and an alert built on that volume would be measuring
+   * students rather than the system.
+   */
+  expected?: boolean;
 };
 
 /**

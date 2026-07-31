@@ -96,6 +96,10 @@ export const fallRandomAssignment = async (context: StepContext): Promise<StepRe
       // PreTestConfig if the fall run shows students getting stuck here.
       return {
         success: false,
+        // The other "the student skipped something" outcome, so it carries the same flag
+        // evaluate-completion's does and the runner logs it at warn. readDemographics keeps its own
+        // error-level line for the same event, which is pre-existing and left alone.
+        expected: true,
         message: `Please complete the following question(s) before continuing: ${demographics.missing.join(", ")}.`,
       };
     }

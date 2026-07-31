@@ -17,7 +17,9 @@
 // by run.js through the emulator.
 
 const {
-  DESTINATION_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME, TREATMENT_CLASS_WORD,
+  DESTINATION_CLASS, ORIGIN_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME, TREATMENT_CLASS_WORD,
+  CONTEXT, REQUEST, FALL_CONTEXTS, FALL_FT_TREATMENT_CLASS, FALL_FLEX_CONTROL_CLASS,
+  FALL_FT_REGISTRATION_CLASS, FALL_FLEX_REGISTRATION_CLASS,
 } = require("./config");
 
 // The open-target scenarios all drive the same step; only the stub behavior and the seeded class
@@ -27,15 +29,33 @@ const OPEN_TARGET_STEP = {
   stepModule: "open-target-offering",
   stepExport: "openTargetOffering",
   stepName: "open-target",
+  // The post-test stage's pilot. Inert as behaviour (it reaches only the mint's audit description),
+  // but a run-step scenario should not model a stage it is not driving.
+  pilot: "fall-2026-orange",
 };
 
 const OK = { mint: "ok", enroll: "ok", lock: "ok", offering: "ok", send: "ok", classes: "ok" };
 
 const SCENARIOS = {
+  // No `context`, so its answers are seeded under the shared CONTEXT exactly as before, only under a
+  // scenario-qualified document id. Every other spring scenario reads them too: the answers query
+  // matches on the launch context fields rather than on the document id.
   happy: {
     describe: "Everything succeeds; the student is assigned, locked, and the class teachers are notified.",
     behavior: OK,
-    expect: { status: "success", messageIncludes: "teacher has been notified" },
+    seedAnswers: true,
+    originClassWord: ORIGIN_CLASS.word,
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      // The ARM, which is what the assignment document holds. Spring appends no suffix at all: it
+      // enrols by authored class id, so the composed word this used to assert
+      // ("fl-spring-2026-origin-shark") named a class that has never existed on either side of the
+      // comparison, and the check passed anyway because the driver composed it the same way.
+      assignedArm: "control",
+      // Spring authors raw class ids and resolves no word, so this comes from the request rather
+      // than from a classes/info fixture.
+      enrolledClassId: REQUEST.control_class_id,
+    },
   },
 
   "mint-expired": {
@@ -188,6 +208,71 @@ const SCENARIOS = {
     expect: { status: "failure", messageIncludes: "Your work has been saved" },
   },
 
+  "fall-green-fulltime": {
+    describe: "The whole fall pre-test stage for a FULL-TIME student: complete, resolve, randomize, enroll, lock, notify.",
+    behavior: OK,
+    seedAnswers: true,
+    context: FALL_CONTEXTS["fall-green-fulltime"],
+    request: { pilot: "fall-2026-green", min_completed_questions: 4 },
+    originClassWord: FALL_FT_REGISTRATION_CLASS.word,
+    assignmentScope: "per-class",
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      // The arm from the assignment document, and the class the pipeline actually enrolled into.
+      // Only the second observes the word the pipeline composed.
+      assignedArm: "treatment", enrolledClassId: FALL_FT_TREATMENT_CLASS.id,
+    },
+  },
+  // ⚠️ The SAME seeded answers as the full-time scenario, landing in the OPPOSITE arm. That is the
+  // point: it can only pass if the program resolved from the origin class word actually selected a
+  // different strata table.
+  "fall-green-flex": {
+    describe: "The same pre-test stage for a FLEX student, whose identical answers must land in the opposite arm.",
+    behavior: OK,
+    seedAnswers: true,
+    context: FALL_CONTEXTS["fall-green-flex"],
+    request: { pilot: "fall-2026-green", min_completed_questions: 4 },
+    originClassWord: FALL_FLEX_REGISTRATION_CLASS.word,
+    assignmentScope: "pooled",
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      assignedArm: "control", enrolledClassId: FALL_FLEX_CONTROL_CLASS.id,
+    },
+  },
+  // The curriculum stage: two steps, both already covered in isolation, so what this adds is the
+  // stage. It is the one stage where send-email takes its FALLBACK offering read (no
+  // resolve-origin-class publishes a clazz id), and the one whose notification is distinguishable
+  // from a pre-test one only by the authored email_subject R14 requires. Launching from a -gator
+  // class is deliberate: the curriculum lock applies to both arms, and nothing in this stage reads
+  // the arm at all.
+  "fall-blue-curriculum": {
+    describe: "The whole fall curriculum stage: lock the curriculum and notify, with no assignment and no enrolment.",
+    behavior: OK,
+    context: FALL_CONTEXTS["fall-blue-curriculum"],
+    request: { pilot: "fall-2026-blue", email_subject: "AI4VS: Student completed curriculum" },
+    originClassWord: FALL_FT_TREATMENT_CLASS.word,
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      noAssignment: true, noEnrollment: true,
+    },
+  },
+  // The only stage where two offering-state steps coexist, so the only place the entry-name
+  // uniqueness rule actually bites, and the only end-to-end exercise of the teacher email rendering
+  // a lock line beside an open line. It makes no assignment and no enrolment, which is why neither
+  // of the driver's read-backs may be implied by success. It carries no seedAnswers: its stage runs
+  // no evaluate-completion and no demographics read, so it needs no answers at all.
+  "fall-orange-control": {
+    describe: "The whole fall post-test stage for a CONTROL student: resolve, lock the post-test, open the curriculum, notify.",
+    behavior: OK,
+    context: FALL_CONTEXTS["fall-orange-control"],
+    request: { pilot: "fall-2026-orange", email_subject: "AI4VS: Student completed post-test" },
+    originClassWord: STUDY_CONTROL_CLASS.word,
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      noAssignment: true, noEnrollment: true,
+    },
+  },
+
   "enroll-lookup-forbidden": {
     describe: "classes#info denies the origin teacher token (403).",
     driver: "run-step",
@@ -196,5 +281,46 @@ const SCENARIOS = {
     expect: { status: "failure", messageIncludes: "tell your teacher" },
   },
 };
+
+// ⚠️ Checked at require time, so BOTH drivers and the stub see it, and so a fault in a scenario's
+// declaration is reported as one. The hazard is specifically silent: a typo in a FALL_CONTEXTS key
+// yields `undefined`, `{...CONTEXT, ...(scenario.context || {})}` quietly falls back to the shared
+// launch context (independently in seed.js and run.js), and the scenario then collides with `happy`'s
+// answers and assignment document, which is exactly what per-scenario contexts exist to prevent. It
+// fails rather than passes, but nothing on screen names the cause. The stub already guards the
+// neighbouring case this way: a declared originClassWord with no class fixture returns a 500 whose
+// message names it, precisely so it cannot masquerade as a pipeline fault.
+//
+// A guard inside seed.js's own loop would not do: it sees only the scenarios declaring seedAnswers,
+// which is neither of the two fall stages that seed none.
+const validateScenarios = (scenarios) => {
+  const launchContexts = new Map([[`${CONTEXT.resource_link_id}|${CONTEXT.context_id}`, "the shared CONTEXT"]]);
+  for (const [name, scenario] of Object.entries(scenarios)) {
+    if (!("context" in scenario)) {
+      continue;
+    }
+    const { context } = scenario;
+    if (!context || typeof context !== "object") {
+      throw new Error(
+        `scenario "${name}" declares a context that is not an object (a mistyped FALL_CONTEXTS key yields undefined)`,
+      );
+    }
+    for (const field of ["resource_link_id", "context_id"]) {
+      if (!context[field]) {
+        throw new Error(`scenario "${name}" declares a context with no ${field}`);
+      }
+    }
+    // A declared context that repeats another's is the same collision by a different route: two
+    // scenarios sharing a launch context share their answers and their per-class assignment document.
+    const key = `${context.resource_link_id}|${context.context_id}`;
+    const owner = launchContexts.get(key);
+    if (owner) {
+      throw new Error(`scenario "${name}" declares the launch context already used by ${owner}`);
+    }
+    launchContexts.set(key, `scenario "${name}"`);
+  }
+};
+
+validateScenarios(SCENARIOS);
 
 module.exports = { SCENARIOS, OK };

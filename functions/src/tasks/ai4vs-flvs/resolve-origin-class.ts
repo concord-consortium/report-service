@@ -14,12 +14,9 @@ const STUDENT_FAILURE_MESSAGE =
  * Mints ONCE: steps that need the class word read it from stepResults rather than re-reading the
  * offering, and the per-run tokenCache means a later step needing the same scope reuses the token.
  *
- * ⚠️ One pre-existing duplicate read is knowingly left in place. send-email calls
- * resolveOriginOffering itself for the offering's clazzId, which send_class_teachers needs, so a
- * stage containing both steps issues GET /api/v1/offerings/:id twice per run. Removing it means
- * either publishing clazzId here and rewiring send-email, or having send-email reach into another
- * step's output; both change a step this work does not otherwise touch, so the tidy-up belongs with
- * the stage wiring, where the step order is being decided anyway.
+ * The offering's clazzId is published alongside the class word, from the same response, so a stage
+ * containing this step spares send-email its own GET /api/v1/offerings/:id. send-email keeps that
+ * read as a fallback for the stages that have no resolve-origin-class.
  *
  * Like the other steps here this makes NO host check of its own: it assumes the pipeline ran
  * validatePortalHost before the loop and uses StepContext.portalOrigin for every portal call, never
@@ -77,7 +74,11 @@ export const resolveOriginClass = async (context: StepContext): Promise<StepResu
     functions.logger.info(`resolve-origin-class: resolved origin class word ${classWord} for ${jobPath}`);
     // summary is display-only (send-email renders it into the teacher email); a class word is
     // authored, environment-stable, and neither PII nor a token, so it is safe here.
-    return { success: true, summary: `Origin class ${classWord}`, output: { originClassWord: classWord } };
+    return {
+      success: true,
+      summary: `Origin class ${classWord}`,
+      output: { originClassWord: classWord, originClazzId: String(origin.offering.clazzId) },
+    };
   } catch (error) {
     functions.logger.error(`resolve-origin-class: unexpected error for ${jobPath}`, error);
     return { success: false, message: STUDENT_FAILURE_MESSAGE };

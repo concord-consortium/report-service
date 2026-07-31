@@ -62,11 +62,13 @@ describe("resolveOriginClass", () => {
   });
 
   describe("the happy path", () => {
-    it("publishes the origin class word for the later steps", async () => {
+    it("publishes the origin class word and clazz id for the later steps", async () => {
       const result = await resolveOriginClass(makeContext());
 
       expect(result.success).toBe(true);
       expect(result.output?.originClassWord).toBe("ft-2026-bingler");
+      // The portal serves a JSON number; readStepOutputField reads only strings.
+      expect(result.output?.originClazzId).toBe("90210");
       expect(result.summary).toBe("Origin class ft-2026-bingler");
     });
 

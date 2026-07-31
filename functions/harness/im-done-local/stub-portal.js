@@ -10,7 +10,9 @@
 const http = require("http");
 const fs = require("fs");
 const {
-  PORTS, SCENARIO_FILE, ORIGIN_CLASS, DESTINATION_CLASS, STUDY_CONTROL_CLASS, TARGET_OFFERING_NAME,
+  PORTS, SCENARIO_FILE, LAST_ENROLL_FILE, ORIGIN_CLASS, DESTINATION_CLASS, STUDY_CONTROL_CLASS,
+  TARGET_OFFERING_NAME, FALL_CONTEXTS, FALL_FT_TREATMENT_CLASS, FALL_FLEX_CONTROL_CLASS,
+  FALL_FLEX_TREATMENT_CLASS, FALL_FT_REGISTRATION_CLASS, FALL_FLEX_REGISTRATION_CLASS,
 } = require("./config");
 const { SCENARIOS, OK } = require("./scenarios");
 
@@ -60,10 +62,18 @@ const classInfoFor = ({ id, word, name }, offerings) => ({
 
 const classInfo = classInfoFor(ORIGIN_CLASS, [{ id: 555, name: "Origin Offering" }]);
 const destinationClassInfo = classInfoFor(DESTINATION_CLASS, [{ id: 556, name: "Destination Offering" }]);
-// Two offerings, mirroring the real study class: the post-test the student launched from (which is
-// CONTEXT.resource_link_id, so a correct match must not select it) and the locked curriculum.
+// Two offerings, mirroring the real study class: the post-test the student launched from and the
+// locked curriculum.
 const studyControlClassInfo = classInfoFor(STUDY_CONTROL_CLASS, [
-  { id: "im-done-offering-1", name: "Orange Sequence for AI in Math (FLVS 26-27)", locked: false },
+  // Its id is the post-test scenario's own resource_link_id, so the class contains the offering the
+  // student launched from, as the real study class does, and a correct by-name match must NOT
+  // select it.
+  //
+  // ⚠️ This id is NOT here to exercise the self-target guard, which compares the offering that
+  // matched the BLUE target name (id 845) against resource_link_id and never looks at this one.
+  // That guard is reached only by open-target-offering.test.ts, from a shape no harness scenario
+  // reproduces.
+  { id: FALL_CONTEXTS["fall-orange-control"].resource_link_id, name: "Orange Sequence for AI in Math (FLVS 26-27)", locked: false },
   { id: 845, name: TARGET_OFFERING_NAME, locked: true },
 ]);
 
@@ -71,6 +81,37 @@ const CLASSES_BY_WORD = {
   [storedClassWord(ORIGIN_CLASS.word)]: classInfo,
   [storedClassWord(DESTINATION_CLASS.word)]: destinationClassInfo,
   [storedClassWord(STUDY_CONTROL_CLASS.word)]: studyControlClassInfo,
+  [storedClassWord(FALL_FT_TREATMENT_CLASS.word)]: classInfoFor(FALL_FT_TREATMENT_CLASS, []),
+  [storedClassWord(FALL_FLEX_CONTROL_CLASS.word)]: classInfoFor(FALL_FLEX_CONTROL_CLASS, []),
+  [storedClassWord(FALL_FLEX_TREATMENT_CLASS.word)]: classInfoFor(FALL_FLEX_TREATMENT_CLASS, []),
+};
+
+// ⚠️ All THREE identity fields offerings#show serves are per scenario, not just class_word. Making
+// only the word scenario-aware would leave a post-test run reporting origin class
+// ft-2026-bingler-shark while send-email posts the teacher notification to class 90210, and THE
+// SCENARIO WOULD NOT CATCH IT, because send-email's fallback reads the same wrong value from this
+// same response: the handoff and the fallback would agree on being wrong.
+//
+// ⚠️ A SEPARATE map from CLASSES_BY_WORD, and deliberately a superset of it. classes/info serves
+// only the words a step looks up BY NAME; offerings#show additionally has to serve the two
+// registration classes, which a fall pre-test launches from and which no step ever looks up. Keeping
+// one map for both would force the registration words into the classes/info fixture set and make it
+// imply the origin is resolved through that endpoint, which is exactly what config.js's comment
+// exists to deny.
+const ORIGIN_IDENTITY_BY_WORD = {
+  ...CLASSES_BY_WORD,
+  // No offerings: these are never served through classes/info, so the list is never read.
+  [storedClassWord(FALL_FT_REGISTRATION_CLASS.word)]: classInfoFor(FALL_FT_REGISTRATION_CLASS, []),
+  [storedClassWord(FALL_FLEX_REGISTRATION_CLASS.word)]: classInfoFor(FALL_FLEX_REGISTRATION_CLASS, []),
+};
+
+// Returns undefined for a DECLARED word with no fixture, so the caller can fail loudly. A scenario
+// that declares nothing keeps today's shared identity, which is what leaves all the existing
+// scenarios unchanged.
+const originClassFor = (scenarioName) => {
+  const scenario = SCENARIOS[scenarioName];
+  const word = scenario && scenario.originClassWord;
+  return word ? ORIGIN_IDENTITY_BY_WORD[storedClassWord(word)] : classInfo;
 };
 
 const activeBehavior = () => {
@@ -160,7 +201,7 @@ const lockResponse = (behavior, body) => {
   }
 };
 
-const offeringResponse = (behavior, id) => {
+const offeringResponse = (behavior, id, scenarioName) => {
   switch (behavior) {
     case "forbidden":
       return { status: 403, body: punditForbidden };
@@ -170,11 +211,22 @@ const offeringResponse = (behavior, id) => {
       return { status: 200, body: { id, name: "Origin Offering" } };
     case "server_error":
       return { status: 500, body: { error: "Internal Server Error" } };
-    default:
+    default: {
+      // ⚠️ NEVER fall back to classInfo here. A scenario whose declared originClassWord has no
+      // fixture would then be served the SPRING origin class, resolveOriginClass would publish
+      // fl-spring-2026-origin, classifyFallProgram would return undefined, and the run would fail
+      // with "unclassifiable origin class word": a pipeline-shaped message for a fixture-shaped
+      // fault. A 500 plus this line in terminal 2 names the actual cause.
+      const origin = originClassFor(scenarioName);
+      if (!origin) {
+        console.error(`[stub] scenario "${scenarioName}" declares an originClassWord with no class fixture`);
+        return { status: 500, body: errorEnvelope("stub misconfiguration: no class fixture for this scenario's originClassWord") };
+      }
       return {
         status: 200,
-        body: { id, clazz_id: classInfo.id, clazz_hash: classInfo.class_hash, class_word: classInfo.class_word, name: "Origin Offering", active: true, locked: false },
+        body: { id, clazz_id: origin.id, clazz_hash: origin.class_hash, class_word: origin.class_word, name: "Origin Offering", active: true, locked: false },
       };
+    }
   }
 };
 
@@ -265,7 +317,7 @@ const server = http.createServer((req, res) => {
     } else if (req.method === "GET" && /^\/api\/v1\/offerings\/[^/]+$/.test(path)) {
       route = "offering";
       const id = path.split("/").pop();
-      result = offeringResponse(behavior.offering, id);
+      result = offeringResponse(behavior.offering, id, name);
     } else if (req.method === "POST" && path === "/api/v1/emails/send_class_teachers") {
       route = "send";
       result = sendResponse(behavior.send);
@@ -276,6 +328,18 @@ const server = http.createServer((req, res) => {
     } else if (req.method === "GET" && /^\/api\/v1\/classes\/[^/]+$/.test(path)) {
       route = "classes-show";
       result = { status: 200, body: classInfo };
+    }
+
+    // Record the enrolment so run.js can assert the class the pipeline actually enrolled into, rather
+    // than only the arm it stored. Written on every add_to_class, including the failure behaviours, so
+    // a stale file from an earlier scenario can never be mistaken for this run's.
+    //
+    // Non-secret by construction: clazz_id and user_id only, never the Authorization header or the
+    // forwarded token. Same masking rule as the request log below it.
+    if (route === "enroll") {
+      fs.writeFileSync(LAST_ENROLL_FILE, JSON.stringify({
+        scenario: name, clazz_id: body.clazz_id, user_id: body.user_id, status: result.status,
+      }));
     }
 
     const fields = logFields(route, body, url);
