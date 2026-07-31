@@ -129,6 +129,13 @@ export interface OriginOfferingResult {
  * Read the student's origin offering by resource_link_id, returning both clazz_id
  * (unconditional) and class_word (teacher-gated; present for the origin-class teacher
  * token these pipelines mint) from the single offerings#show response.
+ *
+ * `clazz_id` is validated with the same isUsableId the class read uses, which is what makes that
+ * helper's claim (that the two reads agree on what a valid identifier is) true for an empty string
+ * and a non-scalar as well as for null. It matters because the value now travels as a documented
+ * handoff: a blank id is skipped by readStepOutputField, so send-email would fall back to this same
+ * read, get the same blank, and post `class_id: ""`; a non-scalar would post "[object Object]". Both
+ * end in a portal rejection rather than a wrong class, but neither names its cause.
  */
 export const resolveOriginOffering = async (
   portalUrl: string,
@@ -142,8 +149,7 @@ export const resolveOriginOffering = async (
     token,
   });
   const clazzId = response.data?.clazz_id;
-  const ok =
-    response.status >= 200 && response.status < 300 && clazzId !== undefined && clazzId !== null;
+  const ok = response.status >= 200 && response.status < 300 && isUsableId(clazzId);
   if (!ok) {
     return { status: response.status };
   }

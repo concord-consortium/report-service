@@ -209,6 +209,24 @@ describe("resolveOriginOffering", () => {
     expect(result).toEqual({ status: 200 });
   });
 
+  // The same isUsableId the class read applies, so the two reads in this file agree on more than
+  // null. A blank id would be skipped by readStepOutputField and posted as class_id: "" by
+  // send-email's fallback; a non-scalar would be posted as "[object Object]".
+  // The explicit tuple type is required by jest 24's it.each typings, as index.test.ts's own table is.
+  const UNUSABLE_IDS: Array<[string, any]> = [
+    ["a blank string", ""],
+    ["whitespace", "   "],
+    ["an object", { id: 90210 }],
+    ["a non-finite number", Number.NaN],
+  ];
+  it.each(UNUSABLE_IDS)("returns status only when a 2xx body carries %s as clazz_id", async (_label, clazzId) => {
+    mockPortalTokenFetch.mockResolvedValue({ status: 200, data: { id: 678, clazz_id: clazzId } });
+
+    const result = await resolveOriginOffering(PORTAL_URL, TOKEN, "678");
+
+    expect(result).toEqual({ status: 200 });
+  });
+
   it("returns status only on a non-2xx", async () => {
     mockPortalTokenFetch.mockResolvedValue({ status: 404, data: null });
 
