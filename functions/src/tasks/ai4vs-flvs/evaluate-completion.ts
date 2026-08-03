@@ -10,7 +10,7 @@ export const evaluateCompletion = async ({
   firebaseJwt,
 }: StepContext): Promise<StepResult> => {
   if (!firebaseJwt) {
-    return { success: false, message: "evaluate-completion: missing Firebase JWT" };
+    return { success: false, message: "missing Firebase JWT" };
   }
 
   const { source_key, platform_user_id, platform_id, resource_link_id, context_id } = jobDoc;
@@ -18,7 +18,7 @@ export const evaluateCompletion = async ({
   if (!source_key || !platform_user_id || !platform_id || !resource_link_id || !context_id) {
     return {
       success: false,
-      message: "evaluate-completion: missing required context fields (source_key, platform_user_id, platform_id, resource_link_id, context_id)",
+      message: "missing required context fields (source_key, platform_user_id, platform_id, resource_link_id, context_id)",
     };
   }
 
@@ -28,14 +28,14 @@ export const evaluateCompletion = async ({
   if (rawMinCompleted === undefined || rawMinCompleted === null) {
     return {
       success: false,
-      message: "evaluate-completion: request is missing required parameter min_completed_questions",
+      message: "request is missing required parameter min_completed_questions",
     };
   }
   const minCompleted = Number(rawMinCompleted);
   if (!Number.isInteger(minCompleted) || minCompleted < 1) {
     return {
       success: false,
-      message: `evaluate-completion: min_completed_questions must be a positive integer, got: ${JSON.stringify(rawMinCompleted)}`,
+      message: `min_completed_questions must be a positive integer, got: ${JSON.stringify(rawMinCompleted)}`,
     };
   }
 
@@ -80,7 +80,7 @@ export const evaluateCompletion = async ({
 
     return {
       success: true,
-      message: `evaluate-completion: ${completed} of ${minCompleted} questions completed`,
+      message: `${completed} of ${minCompleted} questions completed`,
     };
   } finally {
     try {
