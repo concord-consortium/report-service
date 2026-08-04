@@ -149,8 +149,12 @@ defmodule ReportServer.Clue do
         AND ("log"."event" = 'QUESTION_ANSWERS_CHANGE' OR regexp_like("log"."event", '_TOOL_CHANGE$'))
     ),
 
+    #{track_a_cte()},
+
     #{track_c_cte()}
 
+    #{track_a_select()}
+    UNION ALL
     #{track_c_select()}
     """
   end
@@ -180,6 +184,50 @@ defmodule ReportServer.Clue do
     end
   end
   defp calendar_year(_), do: nil
+
+  defp track_a_cte() do
+    """
+    track_a AS (
+      SELECT
+        username,
+        run_remote_endpoint,
+        json_extract_scalar(parameters, '$.questionId') AS question_id,
+        json_format(json_extract(parameters, '$.answers')) AS answers,
+        json_extract_scalar(parameters, '$.prompt') AS prompt,
+        json_extract_scalar(parameters, '$.documentKey') AS document_key,
+        json_extract_scalar(parameters, '$.documentType') AS document_type,
+        json_extract_scalar(parameters, '$.documentHistoryId') AS document_history_id,
+        ROW_NUMBER() OVER (
+          PARTITION BY run_remote_endpoint,
+                       json_extract_scalar(parameters, '$.documentKey'),
+                       json_extract_scalar(parameters, '$.questionId')
+          ORDER BY time DESC) AS rn
+      FROM clue_logs
+      WHERE event = 'QUESTION_ANSWERS_CHANGE'
+    )
+    """
+  end
+
+  defp track_a_select() do
+    """
+    SELECT
+      'A' AS track,
+      username,
+      run_remote_endpoint,
+      question_id,
+      answers,
+      prompt,
+      CAST(NULL AS VARCHAR) AS event,
+      CAST(NULL AS VARCHAR) AS tool_id,
+      CAST(NULL AS VARCHAR) AS tile_title,
+      CAST(NULL AS VARCHAR) AS text_value,
+      document_key,
+      document_type,
+      document_history_id
+    FROM track_a
+    WHERE rn = 1
+    """
+  end
 
   defp track_c_cte() do
     """
@@ -282,10 +330,13 @@ defmodule ReportServer.Clue do
 
     learners_by_endpoint = Map.new(learners, &{&1.run_remote_endpoint, &1})
 
+    seed = Map.merge(return_struct, %{entries: %{}, unmatched: [], unknown_tracks: [], malformed: [], blank_question_ids: []})
+
     result = stream
     |> CSV.decode(headers: true, validate_row_length: true)
-    |> Enum.reduce(Map.merge(return_struct, %{unmatched: [], unknown_tracks: []}), &reduce_row(&1, learners_by_endpoint, &2))
+    |> Enum.reduce(seed, &reduce_row(&1, learners_by_endpoint, &2))
     |> report_skipped()
+    |> encode_entries()
     |> finalize()
 
     case write_answers.(result.answers) do
@@ -296,6 +347,9 @@ defmodule ReportServer.Clue do
 
   defp reduce_row({:ok, row}, learners_by_endpoint, row_acc) do
     case {row["track"], Map.get(learners_by_endpoint, row["run_remote_endpoint"])} do
+      {"A", learner} when not is_nil(learner) ->
+        reduce_question_row(row, learner, row_acc)
+
       {"C", learner} when not is_nil(learner) ->
         reduce_text_tile_row(row, learner, row_acc)
 
@@ -313,12 +367,162 @@ defmodule ReportServer.Clue do
 
   defp skip_row(row_acc, cause, detail), do: Map.update!(row_acc, cause, &[detail | &1])
 
+  defp reduce_question_row(row, learner, row_acc) do
+    question_id = row["question_id"]
+
+    with false <- blank?(question_id),
+         {:ok, groups} <- decode_answer_groups(row["answers"]) do
+      username = row["username"]
+      [user_id, portal_site] = String.split(username, "@")
+
+      link = history_link(row, learner, portal_site, user_id)
+
+      entries =
+        answer_entries(groups, %{
+          link: link,
+          document_key: row["document_key"],
+          document_type: row["document_type"]
+        })
+
+      if entries == [] do
+        row_acc
+      else
+        key = question_key(question_id)
+
+        row_acc
+        |> Map.put(:structure, put_question_prompt(row_acc.structure, key, question_id, row["prompt"]))
+        |> add_entries(key, entries, %{
+          track: "A",
+          username: username,
+          learner: learner,
+          user_id: user_id,
+          portal_url: "https://#{portal_site}",
+          link: link
+        })
+      end
+    else
+      true -> skip_row(row_acc, :blank_question_ids, row["username"])
+      :error -> skip_row(row_acc, :malformed, {row["username"], question_id})
+    end
+  end
+
+  ## A payload that does not decode, or decodes to something other than a list of
+  ## groups, means the event's shape changed. That would blank every question at
+  ## once while the report still rendered, so it is counted and reported rather
+  ## than dropped quietly, and never raised.
+  defp decode_answer_groups(answers) when is_binary(answers) do
+    with {:ok, groups} when is_list(groups) <- Jason.decode(answers),
+         true <- Enum.all?(groups, &group?/1) do
+      {:ok, groups}
+    else
+      _ -> :error
+    end
+  end
+  defp decode_answer_groups(_answers), do: :error
+
+  ## Every group must carry a list of answer tiles. A list of anything else still
+  ## decodes and still yields no tiles, so without this check a payload whose
+  ## shape had changed would look identical to a student who answered nothing:
+  ## every cell would empty out with nothing in the log.
+  defp group?(%{"answerTiles" => tiles}), do: is_list(tiles)
+  defp group?(_group), do: false
+
+  ## Placeholder is CLUE's empty-slot tile, so it means the student put nothing
+  ## there, and 44% of production Text entries are the empty string. Reported
+  ## verbatim both present a non-answer as an answer and inflate the completion
+  ## counters.
+  defp answer_entries(groups, context) do
+    groups
+    |> Enum.flat_map(& &1["answerTiles"])
+    |> Enum.flat_map(&answer_entry(&1, context))
+  end
+
+  defp answer_entry(%{"type" => "Placeholder"}, _context), do: []
+  defp answer_entry(tile = %{"type" => "Text"}, context) do
+    case blank_to_nil(tile["plainText"]) do
+      nil -> []
+      text -> [entry("Text", context) |> Map.put("text", text)]
+    end
+  end
+  defp answer_entry(%{"type" => type}, context) when is_binary(type), do: [entry(type, context)]
+  defp answer_entry(_tile, _context), do: []
+
+  defp entry(type, context) do
+    %{
+      "type" => type,
+      "link" => context.link,
+      "documentKey" => context.document_key,
+      "documentType" => context.document_type
+    }
+  end
+
+  ## The prompt is not write-once. A question has one structure entry but one row
+  ## per learner and document, and once CLUE ships the prompt those rows disagree
+  ## permanently: a learner whose latest answer predates the change carries none.
+  ## Taking whichever arrived first would make the header depend on row order.
+  defp put_question_prompt(structure, key, question_id, prompt) do
+    structure = put_question(structure, key, %{
+      type: "clue_question",
+      prompt: question_id,
+      required: false
+    })
+
+    case blank_to_nil(prompt) do
+      nil ->
+        structure
+
+      prompt ->
+        Map.update!(structure, :questions, fn questions ->
+          Map.update!(questions, key, fn question ->
+            if question.prompt == question_id, do: %{question | prompt: prompt}, else: question
+          end)
+        end)
+    end
+  end
+
+  defp add_entries(row_acc, key, entries, context) do
+    Map.update!(row_acc, :entries, fn accumulated ->
+      Map.update(accumulated, {context.username, key}, %{context: context, list: Enum.reverse(entries)},
+        fn existing -> %{existing | list: Enum.reverse(entries) ++ existing.list} end)
+    end)
+  end
+
+  ## Entry order is part of the cell contract: two runs over unchanged data must
+  ## produce the same cell, or a researcher diffing report runs sees changes that
+  ## are not there. Athena returns rows unordered, so the order is imposed here.
+  ## A stable sort keeps each payload's own tile order underneath.
+  defp encode_entries(result) do
+    Enum.reduce(result.entries, Map.delete(result, :entries), fn {{username, key}, %{context: context, list: list}}, acc ->
+      entries = list |> Enum.reverse() |> sort_entries(context.track)
+
+      case Jason.encode(entries) do
+        {:ok, answer_json} ->
+          answers =
+            add_answer_row(acc.answers, username,
+              answer_row(key, answer_json, context.learner, context.user_id, context.portal_url, context.link))
+
+          %{acc | answers: answers}
+
+        {:error, _reason} ->
+          Logger.error("CLUE answers: could not encode the cell for #{inspect(username)} #{inspect(key)}")
+          acc
+      end
+    end)
+  end
+
+  defp sort_entries(entries, "A"), do: Enum.sort_by(entries, & &1["documentKey"])
+  defp sort_entries(entries, "B"), do: Enum.sort_by(entries, &{&1["type"], &1["link"]})
+
+  defp blank?(value), do: is_nil(blank_to_nil(value))
+
   ## One line per cause rather than one per row, so a systematic mismatch does
   ## not bury the log, with an example to start diagnosis from.
   defp report_skipped(result) do
     log_skipped(result.unmatched, "rows whose run_remote_endpoint matches no learner")
     log_skipped(result.unknown_tracks, "rows with an unrecognized track")
-    result |> Map.delete(:unmatched) |> Map.delete(:unknown_tracks)
+    log_skipped(result.malformed, "rows with an unusable answers payload")
+    log_skipped(result.blank_question_ids, "rows with no questionId")
+    result |> Map.drop([:unmatched, :unknown_tracks, :malformed, :blank_question_ids])
   end
 
   defp log_skipped([], _description), do: :ok
@@ -435,21 +639,31 @@ defmodule ReportServer.Clue do
 
   ## The default writer: one parquet file per username, into the same
   ## partitioned-answers layout the AP path uses.
+  ## Split by offering as well as username: a student in two classes that both
+  ## assign this runnable shares a username across two offerings, and the parquet
+  ## path encodes the offering, so one file would hold both and attribute all of
+  ## them to whichever offering was written first.
   defp write_answer_parquet_files(url, answers) do
-    write_attempts = Enum.map(answers, fn {username, answerlist} ->
-      resource_link_id = answerlist |> List.first() |> Map.get(:resource_link_id)
+    write_attempts = Enum.flat_map(answers, fn {username, answerlist} ->
+      answerlist
+      |> Enum.group_by(& &1.resource_link_id)
+      |> Enum.map(&write_answer_parquet_file(url, username, &1))
+    end)
+
+    if (Enum.all?(write_attempts, fn result -> result == :ok end)) do
+      :ok
+    else
+      {:error, "Failed to write parquet files"}
+    end
+  end
+
+  defp write_answer_parquet_file(url, username, {resource_link_id, answerlist}) do
       with {:ok, path} <- get_parquet_file_path(url, username, resource_link_id) do
         answers_df = Explorer.DataFrame.new(answerlist)
         Explorer.DataFrame.to_parquet(answers_df, path)
       else
         _ -> {:error, "Failed to construct parquet file path"}
       end
-    end)
-    if (Enum.all?(write_attempts, fn result -> result == :ok end)) do
-      :ok
-    else
-      {:error, "Failed to write parquet files"}
-    end
   end
 
   ## Make arbitrary string into a legal SQL identifier.

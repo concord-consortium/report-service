@@ -331,7 +331,9 @@ The contract is pinned by test rather than by a branch: XR4's direct **answers-p
 
 ### Not changed
 
-`shared_queries.ex` (above), `reports/clue/history_link.ex`, the parquet writer and `partitioned-answers` layout, `resource_data.ex`, and the downstream report SQL.
+`shared_queries.ex` (above), `reports/clue/history_link.ex`, the `partitioned-answers` layout, `resource_data.ex`, and the downstream report SQL.
+
+**One exception, found during implementation (2026-08-04): the parquet writer splits by offering as well as username.** It previously took `resource_link_id` from `List.first()` of a username's answer rows and wrote one file per username. Because a student enrolled in two classes that both assign this runnable shares one username across two `offering_id`s, and the parquet path encodes the offering, that filed both offerings' answers under whichever row happened to be first, attributing one class's work to the other. The rows themselves always carried the right `resource_link_id`; only the file they landed in was wrong. The writer now groups a username's rows by `resource_link_id` and writes one file per pair. This is the same defect as the learner-lookup ambiguity in the row contract note, one level further down, and it is pre-existing rather than introduced by this story.
 
 ## Cell contract
 
