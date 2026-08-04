@@ -4,21 +4,17 @@ defmodule ReportServer.ClueTest do
 
   ## Status: runnable, mostly failing on purpose
 
-  Sequencing step 2, the testability seam, has landed, so these all execute.
-  As of that step 10 of 45 pass and 35 fail on assertions rather than on
-  missing functions, which is the intended state: the failures are steps 4, 5
-  and the query rewrite, not defects.
+  These are written ahead of the implementation, so while it is in progress the
+  failures are unimplemented behaviour rather than defects. Nothing here should
+  fail with an undefined function; if it does, an entry point is missing.
 
-  **Five of the ten passes are vacuous** and should not be read as coverage.
+  **Some passes are vacuous** and should not be read as coverage.
   Every assertion of the form "no answer row and no column is emitted" is
   trivially satisfied by an implementation that emits nothing at all, which is
   what Track A and Track B do today. Those are the QR6 suppression pair, the
-  two `other_tiles`-absent cases, and the VR20 row-order equality (nil equals
-  nil). They only start guarding anything once the tracks exist, and that is
-  exactly when the behaviour they guard becomes easy to get wrong. The five
-  real passes are the three XR2 label cases and the two Track C cases, and the
-  Track C pair is the useful signal from step 2: the seam refactor did not
-  change existing behaviour.
+  two `other_tiles`-absent cases, and the cross-document row-order equality
+  (nil equals nil). They only start guarding anything once the tracks exist, and
+  that is exactly when the behaviour they guard becomes easy to get wrong.
 
   The module stays tagged `:pending` and excluded in `test_helper.exs` until
   the tracks land, so `mix test` stays green. Run with
@@ -101,9 +97,9 @@ defmodule ReportServer.ClueTest do
 
       assert sql =~ "logs_by_app_and_secure_key"
       refute sql =~ "logs_by_time"
-      assert sql =~ ~r/\bapp\b\s*=\s*'CLUE'/
+      assert sql =~ ~r/\bapp"?\s*=\s*'CLUE'/
       ## created_at is 2026-03-01 in the fixture, so the floor is 2025 (year - 1).
-      assert sql =~ ~r/\byear\b\s*>=\s*2025/
+      assert sql =~ ~r/\byear"?\s*>=\s*2025/
     end
 
     test "embeds each learner list exactly once, in one base CTE (VR16/D2)", %{
@@ -115,8 +111,8 @@ defmodule ReportServer.ClueTest do
 
       ## Repeating these per track is what puts a large report over Athena's
       ## 262,144-byte query-string quota at ~628 learners.
-      assert count_occurrences(sql, endpoint) == 1
-      assert count_occurrences(sql, secure_key) == 1
+      assert count_occurrences(sql, "'#{endpoint}'") == 1
+      assert count_occurrences(sql, "'#{secure_key}'") == 1
     end
 
     test "treats a missing containerIds as free-standing (VR15)", %{learners: learners} do
@@ -163,6 +159,16 @@ defmodule ReportServer.ClueTest do
       ## inlining of the base CTE (VR22).
       refute sql =~ "MAX(\"log1\".\"time\")"
       assert count_occurrences(sql, "ROW_NUMBER") == 3
+    end
+
+    test "falls back to tileId for the tile identity when toolId is absent", %{
+      learners: learners
+    } do
+      ## The fallback lives in the window partition, so it is only observable in
+      ## the SQL: by the time rows reach the parse they are already deduplicated.
+      sql = Clue.answer_sql(learners)
+
+      assert sql =~ ~r/PARTITION BY.*COALESCE\(.*\$\.toolId.*\$\.tileId/s
     end
 
     test "applies no operation filter to the non-text tile tracks (VR11)", %{learners: learners} do
@@ -796,23 +802,6 @@ defmodule ReportServer.ClueTest do
       refute Map.has_key?(result.structure.questions, "other_tiles")
     end
 
-    test "identifies the tile by tileId when toolId is absent" do
-      ## COALESCE(toolId, tileId) is free, since logTileChangeEvent sets them
-      ## equal whenever both exist. It is what lets a correctly-logged future
-      ## event through even if it only carries tileId.
-      learners = learners_fixture(1)
-      a = hd(learners)
-
-      rows = [
-        track_b_row(a, "SKETCH_TOOL_CHANGE", "", tile_id: "tile-1"),
-        track_b_row(a, "SKETCH_TOOL_CHANGE", "", tile_id: "tile-2")
-      ]
-
-      entries = parse(rows, learners) |> cell(a, "other_tiles")
-
-      ## Two distinct tiles, not one collapsed entry.
-      assert length(entries) == 2
-    end
   end
 
   describe "Track C: free-standing text tiles are unchanged (BR1)" do

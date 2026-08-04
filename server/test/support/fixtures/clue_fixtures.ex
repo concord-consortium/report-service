@@ -9,19 +9,17 @@ defmodule ReportServer.ClueFixtures do
   `QUESTION_ANSWERS_CHANGE` payload picks up on its way through Athena's CSV
   writer.
 
-  See `specs/REPORT-36-clue-questions-in-student-answers-report/` for the rules
-  these fixtures exist to pin. Requirement ids (`QR*`, `BR*`, `XR*`), decisions
-  (`D1`-`D7`) and verification findings (`VR1`-`VR23`) are referenced rather
-  than restated.
+  Every row carries `run_remote_endpoint`, which is what identifies the learner:
+  a student in two classes assigned the same runnable shares one username.
   """
 
   @portal_site "learn.concord.org"
   @runnable_url "https://collaborative-learning.concord.org/?unit=m2s&problem=4.5"
 
   ## The union's column set. Columns absent for a track are empty, matching the
-  ## query's CAST(NULL AS VARCHAR) padding (D2).
-  @columns ~w(track username question_id answers prompt event tool_id tile_id tile_title
-              text_value document_key document_type document_history_id)
+  ## query's CAST(NULL AS VARCHAR) padding.
+  @columns ~w(track username run_remote_endpoint question_id answers prompt event tool_id
+              tile_title text_value document_key document_type document_history_id)
 
   def runnable_url, do: @runnable_url
   def portal_site, do: @portal_site
@@ -101,7 +99,7 @@ defmodule ReportServer.ClueFixtures do
   tiles with that id (see the Background's payload description).
 
   `answers` is JSON-encoded here the same way `json_format(json_extract(...))`
-  delivers it (D3, VR17), so the fixture round-trips through `CSV.decode` and
+  delivers it, so the fixture round-trips through `CSV.decode` and
   `Jason.decode` exactly as production data does.
   """
   def track_a_row(learner, question_id, answer_tiles, opts \\ []) do
@@ -131,10 +129,11 @@ defmodule ReportServer.ClueFixtures do
     %{
       "track" => "A",
       "username" => username(learner),
+      "run_remote_endpoint" => learner.run_remote_endpoint,
       "question_id" => question_id,
       "answers" => answers,
-      ## DR1's enrichment is absent from every current event (VR4), so the
-      ## default is "" and only the VR18 fixture sets it.
+      ## The prompt is absent from every current production event, so the
+      ## default is "" and only the enrichment fixture sets it.
       "prompt" => Keyword.get(opts, :prompt, ""),
       "document_key" => Keyword.get(opts, :document_key, "-OL0rmfqiDsPlriZks-X"),
       "document_type" => Keyword.get(opts, :document_type, "problem"),
@@ -148,17 +147,15 @@ defmodule ReportServer.ClueFixtures do
 
   @doc """
   A Track B row. `event` is the raw log event name, since the tile type exists
-  nowhere else in the payload (VR10) and is derived from it (D4).
+  nowhere else in the payload and is derived from it.
   """
   def track_b_row(learner, event, tool_id, opts \\ []) do
     %{
       "track" => "B",
       "username" => username(learner),
+      "run_remote_endpoint" => learner.run_remote_endpoint,
       "event" => event,
       "tool_id" => tool_id,
-      ## `tile_id` is the COALESCE fallback for the tile identity, and
-      ## `document_key` can be blanked to exercise VR25's structural gate.
-      "tile_id" => Keyword.get(opts, :tile_id, tool_id),
       "document_key" => Keyword.get(opts, :document_key, "-OL0rmfqiDsPlriZks-X"),
       "document_type" => Keyword.get(opts, :document_type, "problem"),
       "document_history_id" => Keyword.get(opts, :document_history_id, "histB-#{tool_id}")
@@ -182,6 +179,7 @@ defmodule ReportServer.ClueFixtures do
     %{
       "track" => "C",
       "username" => username(learner),
+      "run_remote_endpoint" => learner.run_remote_endpoint,
       "tile_title" => tile_title,
       "tool_id" => Keyword.get(opts, :tool_id, "text-tool-1"),
       "text_value" => slate,

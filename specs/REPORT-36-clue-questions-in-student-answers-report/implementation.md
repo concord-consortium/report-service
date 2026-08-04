@@ -232,6 +232,7 @@ Today this excludes exactly one event type: `IFRAME_INTERACTIVE_TOOL_CHANGE` log
 |---|---|---|---|
 | `track` | `'A'` | `'B'` | `'C'` |
 | `username` | `log.username` | same | same |
+| `run_remote_endpoint` | `log.run_remote_endpoint` | same | same |
 | `question_id` | `$.questionId`, **raw** (D1 encodes it in Elixir) | null | null |
 | `answers` | `json_format(json_extract(parameters,'$.answers'))` (D3) | null | null |
 | `prompt` | `$.prompt` (DR1, absent from all current data) | null | null |
@@ -242,6 +243,8 @@ Today this excludes exactly one event type: `IFRAME_INTERACTIVE_TOOL_CHANGE` log
 | `document_key` | `$.documentKey` | same | same |
 | `document_type` | `$.documentType` | same | null (BR1: Track C's cell is unchanged) |
 | `document_history_id` | `$.documentHistoryId` | same | same |
+
+`run_remote_endpoint` is what identifies the learner for a row, **not** `username` (added 2026-08-04 during implementation review). A student enrolled in two classes that both assign the same CLUE runnable appears as two learner rows sharing one `user_id`, and therefore one `username`, with different `offering_id` and `run_remote_endpoint`. Keying the parse's learner lookup on the username makes the choice between them arbitrary, and `offering_id` becomes the parquet `resource_link_id` and the history link's `resourceLinkId`, so an arbitrary choice is a misattributed row. The endpoint is already in the base CTE, so carrying it through costs one column and removes the ambiguity. The username is still split for `user_id` and `portal_site`.
 
 Track C's `tool_id` is selected but unused: BR3's fold into the column key is deferred, and an XR4 assertion checks it is ignored rather than folded. `document_history_id` is **not** passed to the history link verbatim: nil, empty and the literal `"first"` are all treated as absent (VR24). The empty case is not hypothetical: 5% to 12% of each non-text tile-change event type carries no `documentHistoryId` at all (VR25), against zero for `QUESTION_ANSWERS_CHANGE`.
 

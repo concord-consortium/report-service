@@ -1,5 +1,14 @@
 defmodule ReportServer.Clue do
 
+  require Logger
+
+  ## The year partition is projected over this range in the Glue table.
+  @projection_first_year 2014
+
+  @other_tiles_key "other_tiles"
+
+  @known_tracks ~w(A B C)
+
   alias ReportServer.Reports.ReportUtils
   alias ReportServer.AthenaDB
   alias ReportServer.Accounts.User
@@ -25,16 +34,16 @@ defmodule ReportServer.Clue do
     end
   end
 
-  ## Seams. The rest of the app reaches AWS through these so a test can swap in
-  ## a stub (see resource_data.ex:67 and jobs_file.ex:4). AthenaQueryPoller routes
-  ## its own AthenaDB call through the same seam, or stubbing here would intercept
-  ## the query and not the poll loop.
+  ## The rest of the app reaches AWS through these seams so a test can swap in a
+  ## stub, as ResourceData and JobsFile do. AthenaQueryPoller routes its own
+  ## AthenaDB call through the same seam, or stubbing here would intercept the
+  ## query and not the poll loop.
   defp athena_db(), do: Application.get_env(:report_server, :athena_db, AthenaDB)
   defp aws_file_store(), do: Application.get_env(:report_server, :aws_file_store, Aws)
 
   @doc """
   A label for the CLUE activity, parsed from the runnable URL's unit and problem
-  query parameters (XR2).
+  query parameters.
 
   The activity is already identified in the report output by res_N_resource_url,
   so the runnable URL is deliberately not a fallback: a name repeating it would
@@ -84,38 +93,101 @@ defmodule ReportServer.Clue do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
 
-    ## Get configuration value for log_db_name
+    secure_keys = Enum.map(run_remote_endpoints, &(&1 |> String.split("/") |> List.last()))
     log_db_name = Application.get_env(:report_server, :athena)[:log_db_name]
-    """
-    WITH last_changes AS (
-      SELECT
-        json_extract_scalar("log1"."parameters", '$.toolId') as tileId,
-        MAX("log1"."time") AS time
-      FROM "#{log_db_name}"."logs_by_time" log1
-      WHERE "log1"."application" = 'CLUE'
-        AND "log1"."event" = 'TEXT_TOOL_CHANGE'
-        AND json_extract_scalar("log1"."parameters", '$.operation') = 'update'
-        AND "log1"."run_remote_endpoint" in #{ReportUtils.string_list_to_single_quoted_in(run_remote_endpoints)}
-      GROUP BY json_extract_scalar("log1"."parameters", '$.toolId')
-    )
 
+    """
+    WITH clue_logs AS (
+      SELECT
+        "log"."username" AS username,
+        "log"."event" AS event,
+        "log"."time" AS time,
+        "log"."parameters" AS parameters,
+        "log"."run_remote_endpoint" AS run_remote_endpoint
+      FROM "#{log_db_name}"."logs_by_app_and_secure_key" log
+      WHERE "log"."app" = 'CLUE'
+        AND "log"."year" >= #{year_floor(learners)}
+        AND "log"."secure_key" IN #{ReportUtils.string_list_to_single_quoted_in(secure_keys)}
+        AND "log"."run_remote_endpoint" IN #{ReportUtils.string_list_to_single_quoted_in(run_remote_endpoints)}
+        AND ("log"."event" = 'QUESTION_ANSWERS_CHANGE' OR regexp_like("log"."event", '_TOOL_CHANGE$'))
+    ),
+
+    #{track_c_cte()}
+
+    #{track_c_select()}
+    """
+  end
+
+  ## A learner cannot log before their learner record exists, so the earliest
+  ## created_at year, less a year of slack, bounds the partitions worth scanning.
+  ## Without a bound Athena enumerates every projected year for every learner,
+  ## which costs wall time rather than bytes and so degrades invisibly. Only
+  ## created_at bounds a learner from below, so one learner without it means the
+  ## report cannot prune at all.
+  defp year_floor(learners) do
+    years = Enum.map(learners, &calendar_year(&1[:created_at]))
+
+    if Enum.any?(years, &is_nil/1) do
+      Logger.warning("CLUE answers: a learner has no created_at, scanning all projected years")
+      @projection_first_year
+    else
+      max(Enum.min(years) - 1, @projection_first_year)
+    end
+  end
+
+  defp calendar_year(%{year: year}), do: year
+  defp calendar_year(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {year, _} -> year
+      :error -> nil
+    end
+  end
+  defp calendar_year(_), do: nil
+
+  defp track_c_cte() do
+    """
+    track_c AS (
+      SELECT
+        username,
+        run_remote_endpoint,
+        json_extract_scalar(parameters, '$.toolId') AS tool_id,
+        json_extract_scalar(parameters, '$.tileTitle') AS tile_title,
+        json_extract_scalar(parameters, '$.args[0].text') AS text_value,
+        json_extract_scalar(parameters, '$.documentKey') AS document_key,
+        json_extract_scalar(parameters, '$.documentHistoryId') AS document_history_id,
+        ROW_NUMBER() OVER (
+          PARTITION BY run_remote_endpoint,
+                       COALESCE(json_extract_scalar(parameters, '$.toolId'),
+                                json_extract_scalar(parameters, '$.tileId'))
+          ORDER BY time DESC) AS rn
+      FROM clue_logs
+      WHERE event = 'TEXT_TOOL_CHANGE'
+        AND json_extract_scalar(parameters, '$.operation') = 'update'
+        AND json_extract_scalar(parameters, '$.tileTitle') IS NOT NULL
+        AND json_extract_scalar(parameters, '$.tileTitle') != ''
+        AND json_extract_scalar(parameters, '$.tileTitle') != '<no title>'
+    )
+    """
+  end
+
+  defp track_c_select() do
+    """
     SELECT
-      "log"."username" AS username,
-      json_extract_scalar("log"."parameters", '$.tileTitle') AS tile_title,
-      json_extract_scalar("log"."parameters", '$.documentKey') AS document_key,
-      json_extract_scalar("log"."parameters", '$.documentHistoryId') as document_history_id,
-      json_extract_scalar("log"."parameters", '$.args[0].text') as text_value
-    FROM "#{log_db_name}"."logs_by_time" log
-      JOIN "last_changes" on (
-        "last_changes"."tileId" = json_extract_scalar("log"."parameters", '$.toolId')
-        AND "log"."time" = "last_changes"."time")
-    WHERE "log"."application" = 'CLUE'
-      AND "log"."event" = 'TEXT_TOOL_CHANGE'
-      AND "log"."run_remote_endpoint" in #{ReportUtils.string_list_to_single_quoted_in(run_remote_endpoints)}
-      AND json_extract_scalar("log"."parameters", '$.operation') = 'update'
-      AND json_extract_scalar("log"."parameters", '$.tileTitle') is not null
-      AND json_extract_scalar("log"."parameters", '$.tileTitle') != ''
-      AND json_extract_scalar("log"."parameters", '$.tileTitle') != '<no title>'
+      'C' AS track,
+      username,
+      run_remote_endpoint,
+      CAST(NULL AS VARCHAR) AS question_id,
+      CAST(NULL AS VARCHAR) AS answers,
+      CAST(NULL AS VARCHAR) AS prompt,
+      CAST(NULL AS VARCHAR) AS event,
+      tool_id,
+      tile_title,
+      text_value,
+      document_key,
+      CAST(NULL AS VARCHAR) AS document_type,
+      document_history_id
+    FROM track_c
+    WHERE rn = 1
     """
   end
 
@@ -171,99 +243,157 @@ defmodule ReportServer.Clue do
       answers: %{}                                                     ## answer lists that will be written to parquet, keyed by username
     }
 
+    learners_by_endpoint = Map.new(learners, &{&1.run_remote_endpoint, &1})
+
     result = stream
     |> CSV.decode(headers: true, validate_row_length: true)
-    |> Enum.reduce(return_struct, fn {:ok, row}, row_acc ->
-      tile_title = row["tile_title"]
-      question_id = make_safe_id(tile_title)
-      username = row["username"]
-      [user_id, portal_site] = String.split(username, "@")
-      portal_url = "https://#{portal_site}"
-      learner = Enum.find(learners, fn learner -> Integer.to_string(learner.user_id) == user_id end)
-
-      ## Add the question to the structure if it doesn't already exist
-      new_question = not Map.has_key?(row_acc.structure.questions, question_id)
-      updated_questions = if new_question do
-        row_acc.structure.questions
-        |> Map.put(question_id, %{
-          :type => "clue_text_tile",
-          :prompt => tile_title,
-          :required => false
-        })
-      else
-        row_acc.structure.questions
-      end
-
-      updated_question_order = if new_question do
-        [question_id | row_acc.structure.question_order]
-      else
-        row_acc.structure.question_order
-      end
-
-      history_url = HistoryLink.format_link_to_work(%HistoryLink{
-        portal_url: portal_site,
-        offering_id: Integer.to_string(learner.offering_id),
-        class_id: Integer.to_string(learner.class_id),
-        document_key: row["document_key"],
-        document_uid: user_id,
-        maybe_document_history_id: row["document_history_id"]})
-
-      updated_answers = with text_field <- row["text_value"],
-            text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
-            {:ok, json} <- Jason.decode(text_trimmed),
-            plain_text <- extract_text(json),
-            {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => history_url }) do
-        answer_row = %{
-          question_id: question_id,
-          answer: answer_json,
-          platform_user_id: user_id,
-          resource_link_id: Integer.to_string(learner.offering_id),
-          remote_endpoint: learner.run_remote_endpoint,
-          id: row["id"], ## Using the ID of the event here, but it could be any arbitrary ID
-          ## The following are constant and could be added later
-          ## Pre-existing and harmless: the report takes resource_url from the
-          ## learners table (shared_queries.ex:78), not from this parquet column,
-          ## so nothing reads what is written here. Renamed from `url` so the
-          ## history link is not mistaken for the resource url.
-          resource_url: history_url,
-          platform_id: portal_url,
-          source_key: "collaborative-learning.concord.org",
-          tool_id: "collaborative-learning.concord.org",
-          version: "1",
-          submitted: false,
-          run_key: nil,
-          context_id: nil,
-          class_info_url: nil,
-          type: nil,
-          question_type: nil,
-          tool_user_id: nil,
-          created: nil
-        }
-        user_answers = [ answer_row | Map.get(row_acc.answers, username, [])]
-        Map.put(row_acc.answers, username, user_answers)
-      else
-        _ -> row_acc.answers
-      end
-
-      %{
-        structure: %{
-          questions: updated_questions,
-          choices: %{},
-          question_order: updated_question_order
-        },
-        answers: updated_answers
-      }
-    end)
-
-    ## CLUE answers have no natural order, so just sort alphabetically
-    result = Map.update!(result, :structure, fn structure ->
-      Map.put(structure, :question_order, Enum.sort(structure.question_order))
-    end)
+    |> Enum.reduce(Map.merge(return_struct, %{unmatched: [], unknown_tracks: []}), &reduce_row(&1, learners_by_endpoint, &2))
+    |> report_skipped()
+    |> finalize()
 
     case write_answers.(result.answers) do
       :ok -> {:ok, result}
       error -> error
     end
+  end
+
+  defp reduce_row({:ok, row}, learners_by_endpoint, row_acc) do
+    case {row["track"], Map.get(learners_by_endpoint, row["run_remote_endpoint"])} do
+      {"C", learner} when not is_nil(learner) ->
+        reduce_text_tile_row(row, learner, row_acc)
+
+      {track, nil} when track in @known_tracks ->
+        skip_row(row_acc, :unmatched, row["run_remote_endpoint"])
+
+      {track, _learner} ->
+        skip_row(row_acc, :unknown_tracks, track)
+    end
+  end
+  defp reduce_row({:error, reason}, _learners_by_endpoint, row_acc) do
+    Logger.error("CLUE answers: undecodable CSV row: #{inspect(reason)}")
+    row_acc
+  end
+
+  defp skip_row(row_acc, cause, detail), do: Map.update!(row_acc, cause, &[detail | &1])
+
+  ## One line per cause rather than one per row, so a systematic mismatch does
+  ## not bury the log, with an example to start diagnosis from.
+  defp report_skipped(result) do
+    log_skipped(result.unmatched, "rows whose run_remote_endpoint matches no learner")
+    log_skipped(result.unknown_tracks, "rows with an unrecognized track")
+    result |> Map.delete(:unmatched) |> Map.delete(:unknown_tracks)
+  end
+
+  defp log_skipped([], _description), do: :ok
+  defp log_skipped(details, description) do
+    Logger.error("CLUE answers: skipped #{length(details)} #{description}, e.g. #{inspect(List.last(details))}")
+  end
+
+  defp reduce_text_tile_row(row, learner, row_acc) do
+    tile_title = row["tile_title"]
+    question_id = text_tile_key(tile_title)
+    username = row["username"]
+    [user_id, portal_site] = String.split(username, "@")
+    portal_url = "https://#{portal_site}"
+
+    structure =
+      put_question(row_acc.structure, question_id, %{
+        type: "clue_text_tile",
+        prompt: tile_title,
+        required: false
+      })
+
+    history_url = history_link(row, learner, portal_site, user_id)
+
+    answers = with text_field <- row["text_value"],
+          text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
+          {:ok, json} <- Jason.decode(text_trimmed),
+          plain_text <- extract_text(json),
+          {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => history_url }) do
+      add_answer_row(row_acc.answers, username, answer_row(question_id, answer_json, learner, user_id, portal_url, history_url))
+    else
+      _ -> row_acc.answers
+    end
+
+    %{row_acc | structure: structure, answers: answers}
+  end
+
+  ## `other_tiles` is Track B's synthetic key, and make_safe_id/1 maps titles such
+  ## as "Other Tiles" onto it. Colliding would merge two column families under one
+  ## map_agg key, which silently keeps one of them.
+  defp text_tile_key(tile_title) do
+    case make_safe_id(tile_title) do
+      @other_tiles_key -> @other_tiles_key <> "_text"
+      key -> key
+    end
+  end
+
+  defp put_question(structure, question_id, question) do
+    if Map.has_key?(structure.questions, question_id) do
+      structure
+    else
+      %{structure |
+        questions: Map.put(structure.questions, question_id, question),
+        question_order: [question_id | structure.question_order]}
+    end
+  end
+
+  defp add_answer_row(answers, username, answer_row) do
+    Map.update(answers, username, [answer_row], &[answer_row | &1])
+  end
+
+  defp answer_row(question_id, answer_json, learner, user_id, portal_url, history_url) do
+    %{
+      question_id: question_id,
+      answer: answer_json,
+      platform_user_id: user_id,
+      resource_link_id: Integer.to_string(learner.offering_id),
+      remote_endpoint: learner.run_remote_endpoint,
+      id: nil,
+      resource_url: history_url,
+      platform_id: portal_url,
+      source_key: "collaborative-learning.concord.org",
+      tool_id: "collaborative-learning.concord.org",
+      version: "1",
+      submitted: false,
+      run_key: nil,
+      context_id: nil,
+      class_info_url: nil,
+      type: nil,
+      question_type: nil,
+      tool_user_id: nil,
+      created: nil
+    }
+  end
+
+  ## CLUE emits "first" when a document had no history entry at log time, and
+  ## omits the field entirely on some tile-change events. Neither resolves to a
+  ## history position in CLUE, and passing them through opens the playback UI at
+  ## a point it never navigated to, so the parameter is left off instead.
+  defp history_link(row, learner, portal_site, user_id) do
+    HistoryLink.format_link_to_work(%HistoryLink{
+      portal_url: portal_site,
+      offering_id: Integer.to_string(learner.offering_id),
+      class_id: Integer.to_string(learner.class_id),
+      document_key: row["document_key"],
+      document_uid: user_id,
+      maybe_document_history_id: usable_history_id(row["document_history_id"])})
+  end
+
+  defp usable_history_id(nil), do: nil
+  defp usable_history_id("first"), do: nil
+  defp usable_history_id(history_id) do
+    case String.trim(history_id) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  ## CLUE answers have no natural order, so just sort alphabetically
+  defp finalize(result) do
+    Map.update!(result, :structure, fn structure ->
+      Map.put(structure, :question_order, Enum.sort(structure.question_order))
+    end)
   end
 
   ## The default writer: one parquet file per username, into the same
