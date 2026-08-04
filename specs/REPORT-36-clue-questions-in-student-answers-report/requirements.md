@@ -40,7 +40,7 @@ This reframes the work into two additive tracks (below). It also largely dissolv
 - **QR2 (AC2): Copies show both/any answers.** Across-document copies share a `questionId` (student answers group correctly); within-document copies get a new `questionId` and appear as distinct questions. Neither case collapses or drops an answer. **Includes the case where a single learner holds one `questionId` in more than one document** (measured at 1.2% of learner/question pairs), which requires `documentKey` in Track A's window partition; see VR13, and VR20 for the cross-document entry ordering that follows from it.
 - **QR3 (AC3): Text answers shown.** Text answer tiles within a question surface their `plainText` from the answers payload, as the `text` field of their entry in the question's JSON answer array (see the "JSON array of `{type, text?, link}`" render decision in the Round 3 Self-Review).
 - **QR4 (AC4): Non-text answer tiles document their type.** Each non-text answer tile within a question surfaces its **type** (Drawing, Table, Geometry, etc.) as the `type` field of its entry in the question's JSON answer array, alongside a history `link` and the `documentKey`/`documentType` of the document it sits in; it carries no `text` field. Full rendered content is **not** required.
-- **QR5 (AC5): History link.** Each student's question answer links to their CLUE document at the correct history point, using `documentKey` + `documentHistoryId` from the event. Verified available on **every** production event: zero null `documentKey` and zero null `documentHistoryId` across all 8,600 events, with 299 (3.5%) using the `"first"` fallback (VR4).
+- **QR5 (AC5): History link.** Each student's question answer links to their CLUE document at the correct history point, using `documentKey` + `documentHistoryId` from the event. Verified available on **every** production event: zero null `documentKey` and zero null `documentHistoryId` across all 8,600 events, with 299 (3.5%) using the `"first"` fallback (VR4). **Those 299 omit the history parameter rather than passing the sentinel through (VR24):** nothing in CLUE resolves `"first"`, so passing it opens the playback UI at a position it never navigated to, which reads as positioned and is not. Omitting it opens the document honestly. Fixing this properly is a CLUE-side one-liner and is filed, but does not block.
 - **QR6 (new, VR5): Empty answers must not be reported as answers.** Production data is dominated by non-answers: **44% of Text answer entries (4,737 of 10,803) are the empty string** (plus 27 whitespace-only), and **208 entries are `Placeholder` tiles**, CLUE's empty-slot tile, which means the student put nothing in that slot. Reported verbatim, a Track A cell would read `[{"type":"Placeholder","link":…}]` or carry an empty `text`, presenting "no answer" as an answer and inflating the XR6 completion counters. Required behavior: **drop `Placeholder` entries entirely**, and treat empty/whitespace-only `plainText` as no answer for that tile. If a question's answer tiles reduce to nothing under those rules, emit **no answer row for that (student, question)** rather than an empty array, so the learner is not counted as having answered it. This rule is new in the 2026-08-01 verification round; it was not visible from source reading because it is a property of the data, not the code.
 
 ### Track B: Free-standing tiles (additive extension of today's text path)
@@ -680,6 +680,30 @@ BR4's derivation yields `"Graph"` for it, and that is not a cosmetic miss like `
 **Two further corrections follow.** (a) BR4's pattern-discovery requirement now has **retrospective** evidence, not just the prospective DR3 argument: an `IN (...)` list of today's seven event names would silently drop 1.27M historical Graph events, and the vocabulary has churned in both directions (Dataflow from 2022, Geometry and BarGraph from 2024, IframeInteractive only from 2026). "Seven types" is a 2026 snapshot of a moving target. (b) VR2's "Graph logs only `TILE_UNLINK`" is true of **current** code and false of the log history; VR2's coverage table is derived from `QUESTION_ANSWERS_CHANGE`, which only exists from 2025-05, so it cannot speak to historical free-standing coverage at all.
 
 **Threaded into**: BR2, BR4, VR2, VR15, implementation.md **D4** and XR4 fixture 8 (whose premise was wrong: it called `GRAPH_TOOL_CHANGE` "an event the code has never seen" and asserted the label `"Graph"`, so it is now split into a retired-name guard and a genuinely-unknown-event adaptivity guard).
+
+### VR24 (FIXES A LIVE DEFECT): the `"first"` history-id sentinel resolves to nothing in CLUE
+
+Added 2026-08-04, closing the last loose end from the readiness assessment. QR5 relied on `documentHistoryId` being present on every event, which VR4 confirmed (zero nulls across 8,600 events, 299 of them the string `"first"`, 3.5%). What nobody had checked is what the *consumer* does with that value.
+
+CLUE emits the literal `"first"` when a document has no history entry at log time, i.e. the student's first change to a brand-new document (`log-document-event.ts:51-53`). Traced end to end through `collaborative-learning`: `initialize-app.tsx:119` -> `stores.ts:196` -> `sorted-documents.ts:95` -> `canvas.tsx:107-124` -> `playback.tsx:25-26` -> `firestore-history-manager.ts:291-299`, where
+
+```js
+const entry = this.treeManager.findHistoryEntryIndex(historyId);
+if (entry >= 0) { this.treeManager.goToHistoryEntry(entry); }
+else { console.warn("Did not find history entry with id: ", historyId); }
+```
+
+and `findHistoryEntryIndex/1` is a plain `findIndex(entry => entry.id === historyEntryId)` (`tree-manager.ts:166-168`). Grepping all of `src/` for `"first"` returns only the emitter's comment and the line producing it, so **nothing consumes it as a sentinel**. The lookup fails, no navigation happens, and because `canvas.tsx:114-121` has already called `setShowPlaybackControls(true)`, the playback UI opens anyway and the document renders at playback's default. The researcher sees a history view that appears positioned and is not, with the only signal a console warning.
+
+That is mildly misleading rather than harmless: `"first"` means the change happened at the very start of the document's life, so by the time the link is opened the document may hold much later work that a reader could attribute to that early moment.
+
+**This is a live defect in the shipped report, not something REPORT-36 introduces**: `TEXT_TOOL_CHANGE` rides the same `logDocumentEvent`, so today's free-standing text links pass the sentinel through identically.
+
+**Fix (report side)**: treat `"first"` as absent when building the link. `HistoryLink.format_link_to_work/1` already omits the parameter for a nil history id (`history_link.ex:23`), so no history request is made, the playback controls stay closed, and the document opens normally, which is honest about not being positioned. The report cannot do better: the true first entry's id is not in the log. This changes Track C's link output for the affected rows, which is a defect fix rather than a BR1 breach (BR1 guarantees columns and keys), but it is the only change in this story reaching outside Tracks A and B.
+
+**Better fix (CLUE side, non-blocking)**: have `moveToHistoryEntryAfterLoad` treat `"first"` as index 0, which makes these links land correctly with no report change. Filed as ask 3 of the CLUE ticket set.
+
+**Threaded into**: QR5, implementation.md's row contract and the history-link section.
 
 ### Still open after this round
 

@@ -304,6 +304,42 @@ defmodule ReportServer.ClueTest do
       end
     end
 
+    test "omits the history parameter for the \"first\" sentinel (VR24)", %{
+      a: a,
+      learners: learners
+    } do
+      ## CLUE emits the literal "first" when a document had no history entry at
+      ## log time (3.5% of production events). Nothing in CLUE resolves it:
+      ## findHistoryEntryIndex is a plain findIndex, so the lookup fails, no
+      ## navigation happens, and the playback UI opens at a position it never
+      ## moved to. Omitting the parameter opens the document honestly instead.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "their first ever edit"}],
+          document_history_id: "first"
+        ),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1", document_history_id: "first")
+      ]
+
+      result = parse(rows, learners)
+
+      for entry <- cell(result, a, question_key("aB3xK9")) ++ cell(result, a, "other_tiles") do
+        refute entry["link"] =~ "studentDocumentHistoryId"
+        ## Still a usable link to the right student's right document.
+        assert entry["link"] =~ "studentDocument=-OL0rmfqiDsPlriZks-X"
+      end
+    end
+
+    test "keeps the history parameter for a real history id", %{a: a, learners: learners} do
+      result =
+        parse(
+          [track_a_row(a, "aB3xK9", [{"Text", "x"}], document_history_id: "histReal")],
+          learners
+        )
+
+      assert [%{"link" => link}] = cell(result, a, question_key("aB3xK9"))
+      assert link =~ "studentDocumentHistoryId=histReal"
+    end
+
     test "distinguishes a learner's documents within one other_tiles cell", %{
       a: a,
       learners: learners
