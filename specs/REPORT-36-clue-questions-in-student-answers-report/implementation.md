@@ -2,7 +2,7 @@
 
 **Jira**: https://concord-consortium.atlassian.net/browse/REPORT-36
 **Requirements**: [requirements.md](./requirements.md)
-**Status**: **Draft**
+**Status**: **Implemented** (2026-08-04, except step 0, the CLUE-side ticket, which is drafted but unfiled)
 
 ## Scope
 
@@ -370,23 +370,19 @@ This widens the cell rather than changing it, so a consumer reading `type`/`text
 
 ## Tests (XR4)
 
-**Written, committed and currently pending (2026-08-04).** The fixtures and assertions now exist in the repo rather than only in this plan:
+**Implemented (2026-08-04).** The fixtures and assertions live in the repo and run in the default suite:
 
-- `server/test/support/fixtures/clue_fixtures.ex` builds the unioned three-track CSV that Athena would emit, with row helpers per track, so tests exercise the real `CSV.decode` -> reduce -> structure/answers path rather than mocked Elixir structures.
-- `server/test/report_server/clue_test.exs` holds 34 tests, tagged `:pending` and excluded in `test_helper.exs`, so `mix test` stays green. Run them with `mix test --include pending`.
+- `server/test/support/fixtures/clue_fixtures.ex` builds the unioned three-track CSV Athena emits, with a row helper per track, so tests drive the real `CSV.decode` -> reduce -> structure/answers path rather than mocked Elixir structures.
+- `server/test/report_server/clue_test.exs` holds the track behaviour, the two pure functions and the query shape.
+- `server/test/report_server/reports/athena/shared_queries_test.exs` pins `res_<n>_<key>_json` for `clue_question` and `clue_tile`, which is the contract the `_ ->` fallback delivers implicitly.
 
-They currently fail with exactly two causes, `Clue.answer_sql/1` (7 tests) and `Clue.parse_answer_csv/4` (27), which are the two entry points sequencing step 2 must expose; the test moduledoc states their contracts, including the `write_answers` option that replaces the S3 parquet write. Nothing fails for a fixture or wiring reason, verified by running them.
+They were written before the code and were tagged `:pending` while it landed; that tag and its `test_helper.exs` exclusion are both gone now. Full suite is **503 tests, 0 failures**.
 
-Seven of the 34 assert on the **generated SQL text** rather than on Athena, which pins VR15's `COALESCE`, VR16's single base CTE and year floor, VR17's `regexp_like` and `json_format`, VR13's partition and VR22's three windows without needing credentials or a scan. The fixture round trip was verified separately: a `plainText` of `he said "hi", then left` plus an embedded newline survives `Jason.encode` -> CSV quoting -> `CSV.decode` -> `Jason.decode` byte-identical, and the newline never appears literally in the CSV field because JSON escapes it, which is what the discarded-non-issue note about `deps/csv` assumed.
+Nine of the assertions are on the **generated SQL text** rather than on Athena, which pins the `COALESCE` on `containerIds`, the single base CTE and its year floor, `regexp_like` over an event-name list, `json_format` on the answers column, the three-key Track A partition, the `COALESCE(toolId, tileId)` identity fallback and one window per track, all without credentials or a scan. Two scenarios are reachable **only** that way and are asserted there rather than through the parse: the XR1 disjointness filter and the identity fallback both live in SQL, so by the time rows reach the parse they are already filtered and deduplicated.
+
+The fixture round trip was verified separately: a `plainText` of `he said "hi", then left` plus an embedded newline survives `Jason.encode` -> CSV quoting -> `CSV.decode` -> `Jason.decode` byte-identical, and the newline never appears literally in the CSV field because JSON escapes it first.
 
 No test exercised `clue.ex`'s query path or the `clue_text_tile` branch before this, and every pre-existing fixture is `TEXT_TOOL_CHANGE`-only, so **fixture construction was a substantial part of the work**, not a tail task. The scenario list below is what those files implement.
-
-**Fixtures are necessary but not sufficient: sequencing step 2, the testability seam, must land first.** Nothing on this path is currently reachable from a test (all `defp`, no Athena or S3 seam, an unconditional S3 parquet write, and `fetch_resource/3` returns only the structure). That last point decides how the scenarios below split:
-
-- **Structure assertions** (reachable through `fetch_resource/3` once the query and CSV read are stubbed): 1, 3, 5, 6, 8, plus the "no column emitted" half of 7.
-- **Answer-row assertions** (require the answer map to be observable, i.e. step 2's parquet-write injection or an extended return value): 2b, 4, 7, 9, and the `map_agg` duplicate guard.
-
-Half the scenarios, including every one guarding a silent-loss failure mode (QR6 suppression, duplicate-key drops, the VR2 track boundary, the VR13 two-document case), sit in the second group. If step 2 slips or is skipped, those are the ones that quietly do not get written.
 
 Fixtures must carry nested `QUESTION_ANSWERS_CHANGE` payloads, `containerIds`, and non-text `*_TOOL_CHANGE` events, covering:
 
@@ -409,28 +405,16 @@ Plus direct **answers-path** query-generation tests asserting `get_columns_for_q
 
 ## Suggested sequencing
 
-Each step should be independently reviewable:
+Each step should be independently reviewable. All code steps landed 2026-08-04; the commit for each is noted.
 
-0. **File the CLUE-side enrichment ticket (DR1)**, first rather than last. It is the only non-code deliverable of this story, it is the item most likely to be blocked on someone else's availability, and the `$.prompt` lookup shipped in step 4 binds to the field name it specifies. The ticket must state **both** constraints: the prompt is added to `QUESTION_ANSWERS_CHANGE` as a **top-level `prompt` key** in the event parameters, and any new tile-change events follow the **`<TYPE>_TOOL_CHANGE`** naming convention (BR4/DR3, which may ride the same ticket). Completion evidence is the linked ticket id, not a Slack thread. Filed last, or filed without both constraints, the failure is silent: headers stay on the `questionId` fallback and nothing errors.
-1. **D7 table move plus the D2 base CTE**, on their own: repoint today's query at `logs_by_app_and_secure_key`, introduce `clue_logs` carrying the `app` + year-floor + `secure_key` + `run_remote_endpoint` prune (with `Enum.uniq()` on the endpoint list), and have today's `TEXT_TOOL_CHANGE` path select from it, switching its `MAX(time)` self-join to the `ROW_NUMBER` window (VR22) so the base CTE is inlined once per track from the start. No behavior change to emitted rows. Isolating it means the ~36,000x scan reduction is independently reviewable and independently revertible, every later step is measured against the cheap baseline rather than the 24 GB one, and the base CTE exists before Track A and Track B are added to it rather than being retrofitted around three duplicated predicate blocks.
-2. **Testability seam**, before any track work rather than after it (VR21). Not optional and not part of the tests step: as it stands, nothing on this path is reachable from a test, so every answer-row assertion in the Tests section is unwritable until this lands. Route `AthenaDB` through the existing `Application.get_env(:report_server, :athena_db, AthenaDB)` seam (`resource_data.ex:67` and six other modules use it) **including inside `AthenaQueryPoller`**, which calls `AthenaDB.get_query_info` directly (`athena_query_poller.ex:12`) and would otherwise defeat the stub; route the CSV read through `Application.get_env(:report_server, :aws_file_store, ReportServerWeb.Aws)` (`jobs_file.ex:4`, stubbed by `AwsFileStoreStub`); and expose the two entry points the committed tests call, which pin what this step must deliver:
-
-```elixir
-Clue.answer_sql(learners) :: String.t()
-
-Clue.resource_name(runnable_url) :: String.t()
-
-Clue.parse_answer_csv(url, stream, learners, opts) ::
-  {:ok, %{structure: %{questions: map, choices: map, question_order: [String.t()]},
-          answers: %{String.t() => [map]}}}
-```
-
-**The parquet write is injected via `opts[:write_answers]`**, a function of the answers map defaulting to today's S3 write, rather than the alternative of returning the answer map from `fetch_resource/3`. Earlier drafts left that an open "or"; it is pinned because the answer-row assertions are written against this shape, and `fetch_resource/3` keeps returning only the structure so `resource_data.ex` is untouched. `AthenaDBStub` and `AwsFileStoreStub` already exist and are used by `report_controller_test.exs` and `report_job_controller_test.exs`, so this is routine. It is also independent of every track step (it touches module boundaries, not query or parse logic), so putting it here costs nothing and is what makes "tests grow alongside the track steps" true rather than aspirational.
-3. Key encoding (D1) + `tile_type_from_event` (D4) with unit tests. Pure functions, no query changes.
-4. Track A: query CTE, parsing, structure entries, aggregation. The bulk of the value. The two VR17 SQL-literal items (the `json`/`varchar` union incompatibility and its `json_format` fix) are **confirmed live**, so this step has no outstanding precondition.
-5. Track B: query broadening, `containerIds` filter (with the VR15 `COALESCE`), `other_tiles` synthesis, D6 ordering.
-6. XR2 and the `history_url` rename (no `shared_queries` change; its contract test belongs with the tests step).
-7. Fixtures and tests. With the seam at step 2 these genuinely do grow alongside steps 4 and 5, which is the point of the reordering: every silent-loss guard in the Tests section is an answer-row assertion, and that group has grown over this review to include the VR15 missing-`containerIds` case, VR18's both-orders prompt assertion, VR19's reserved key and VR20's cross-document ordering.
+0. **File the CLUE-side enrichment ticket**, first rather than last. **Still outstanding.** It is the only non-code deliverable, it is the item most likely to be blocked on someone else's availability, and the `$.prompt` lookup shipped in the Track A step binds to the field name it specifies. The ticket must state the prompt is added to `QUESTION_ANSWERS_CHANGE` as a **top-level `prompt` key** in the event parameters, and that any new tile-change events follow the **`<TYPE>_TOOL_CHANGE`** naming convention. Two further asks were added during implementation review: resolve the `"first"` history-id sentinel, and route iframe-interactive logging through `logTileChangeEvent`. Drafted in a working note; completion evidence is the linked ticket id.
+1. **D7 table move plus the D2 base CTE** (`d3489a7`). Repointed at `logs_by_app_and_secure_key` behind `clue_logs` with the `app` + year-floor + `secure_key` + `run_remote_endpoint` prune, `Enum.uniq()` on the endpoint list, and today's text path selecting from it on a `ROW_NUMBER` window. No change to emitted rows. Also introduced the `track` discriminator and the padded union columns so the later tracks attach without reshaping either side.
+2. **Testability seam** (`ce2e782`), landed ahead of the track work. `AthenaDB` and the CSV read go through the `:athena_db` and `:aws_file_store` seams, including inside `AthenaQueryPoller`; the parquet write is injectable via `opts[:write_answers]`; `answer_sql/1`, `parse_answer_csv/4` and `resource_name/1` are exposed.
+3. **Key encoding and `tile_type_from_event/1`** (`3f6e4f1`), with unit tests. Both public, since a private function is unreachable from a unit test and unused in the step that introduces it.
+4. **Track A** (`9d12173`): query CTE, payload flatten, suppression rules, structure entry with the prompt upgrade, entry accumulation and encode.
+5. **Track B** (`06df892`): event pattern, `containerIds` and `documentKey` gates, `other_tiles` synthesis, aggregate-column ordering.
+6. **XR2 and the `history_url` rename**: folded into steps 2 and 1 respectively, since both sat directly in the way of the seam.
+7. **Fixtures and tests**: grew alongside steps 1, 4 and 5 rather than trailing them, which is what moving the seam to step 2 bought. The `shared_queries.ex` contract tests and the copy-semantics tests were added during the final audit.
 
 ## Self-Review (2026-08-04)
 

@@ -530,6 +530,49 @@ defmodule ReportServer.ClueTest do
     end
   end
 
+  describe "Track A: copied questions" do
+    ## Copying a Question tile across documents preserves its questionId, which is
+    ## the mechanism that lines every student's answer up in one column. Copying
+    ## it within a document generates a new one, so it becomes its own question.
+    ## Neither case may collapse or drop an answer.
+
+    test "an across-document copy aggregates under the one shared questionId", %{
+      a: a,
+      b: b,
+      learners: learners
+    } do
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "the author's copy, answered"}]),
+        track_a_row(b, "aB3xK9", [{"Text", "a second student's copy"}])
+      ]
+
+      result = parse(rows, learners)
+      key = question_key("aB3xK9")
+
+      assert Map.keys(result.structure.questions) == [key]
+      assert [%{"text" => "the author's copy, answered"}] = cell(result, a, key)
+      assert [%{"text" => "a second student's copy"}] = cell(result, b, key)
+    end
+
+    test "a within-document copy becomes a distinct question with its own column", %{
+      a: a,
+      learners: learners
+    } do
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "the original"}]),
+        track_a_row(a, "Zq7mN2", [{"Text", "the copy, answered differently"}])
+      ]
+
+      result = parse(rows, learners)
+      original = question_key("aB3xK9")
+      copy = question_key("Zq7mN2")
+
+      assert Enum.sort(Map.keys(result.structure.questions)) == Enum.sort([original, copy])
+      assert [%{"text" => "the original"}] = cell(result, a, original)
+      assert [%{"text" => "the copy, answered differently"}] = cell(result, a, copy)
+    end
+  end
+
   describe "Track A: one learner, one questionId, two documents" do
     ## 15 of 1,220 production learner/question pairs span more than one
     ## document, because an across-document copy preserves questionId. Each

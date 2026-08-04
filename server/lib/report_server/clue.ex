@@ -394,7 +394,8 @@ defmodule ReportServer.Clue do
         unknown_tracks: [],
         malformed: [],
         blank_question_ids: [],
-        tiles_without_document: []
+        tiles_without_document: [],
+        undecodable: []
       })
 
     result = stream
@@ -429,8 +430,7 @@ defmodule ReportServer.Clue do
     end
   end
   defp reduce_row({:error, reason}, _learners_by_endpoint, row_acc) do
-    Logger.error("CLUE answers: undecodable CSV row: #{inspect(reason)}")
-    row_acc
+    skip_row(row_acc, :undecodable, reason)
   end
 
   defp skip_row(row_acc, cause, detail), do: Map.update!(row_acc, cause, &[detail | &1])
@@ -474,10 +474,9 @@ defmodule ReportServer.Clue do
     }
   end
 
-  ## Every free-standing tile a learner has, in any of their documents, lands in
-  ## one cell. The tile type lives only in the event name, and an event this has
-  ## never seen still has to appear, so that a tile type CLUE starts logging shows
-  ## up without a change here.
+  ## Without a document there is no link to the student's work and nothing to
+  ## attribute the tile to, so the entry could not satisfy the cell contract. The
+  ## query filters these out; this keeps the invariant true of the parse alone.
   defp reduce_tile_row(row, learner, row_acc) do
     if blank?(row["document_key"]) do
       skip_row(row_acc, :tiles_without_document, row["event"])
@@ -486,9 +485,10 @@ defmodule ReportServer.Clue do
     end
   end
 
-  ## Without a document there is no link to the student's work and no document to
-  ## attribute the tile to, so the entry could not satisfy the cell contract. The
-  ## query filters these out; this keeps the invariant true of the parse alone.
+  ## Every free-standing tile a learner has, in any of their documents, lands in
+  ## one cell. The tile type lives only in the event name, and an event this has
+  ## never seen still has to appear, so that a tile type CLUE starts logging shows
+  ## up without a change here.
   defp accumulate_tile_row(row, learner, row_acc) do
     context = row_context(row, learner, "B")
 
@@ -518,21 +518,24 @@ defmodule ReportServer.Clue do
   defp group?(%{"answerTiles" => tiles}), do: is_list(tiles)
   defp group?(_group), do: false
 
-  ## Placeholder is CLUE's empty-slot tile, so it means the student put nothing
-  ## there, and 44% of production Text entries are the empty string. Reported
-  ## verbatim both present a non-answer as an answer and inflate the completion
-  ## counters.
+  ## One questionId can appear in more than one group when a document holds two
+  ## Question tiles carrying it, so the groups are flattened rather than read
+  ## directly.
   defp answer_entries(groups, context) do
     groups
     |> Enum.flat_map(& &1["answerTiles"])
     |> Enum.flat_map(&answer_entry(&1, context))
   end
 
+  ## Placeholder is CLUE's empty-slot tile, so it means the student put nothing
+  ## there, and 44% of production Text entries are the empty string. Reported
+  ## verbatim, both present a non-answer as an answer and inflate the completion
+  ## counters.
   defp answer_entry(%{"type" => "Placeholder"}, _context), do: []
   defp answer_entry(tile = %{"type" => "Text"}, context) do
     case blank_to_nil(tile["plainText"]) do
       nil -> []
-      text -> [entry("Text", context) |> Map.put("text", text)]
+      text -> [Map.put(entry("Text", context), "text", text)]
     end
   end
   defp answer_entry(%{"type" => type}, context) when is_binary(type), do: [entry(type, context)]
@@ -614,6 +617,7 @@ defmodule ReportServer.Clue do
     log_skipped(result.malformed, "rows with an unusable answers payload")
     log_skipped(result.blank_question_ids, "rows with no questionId")
     log_skipped(result.tiles_without_document, "tile-change rows with no documentKey")
+    log_skipped(result.undecodable, "undecodable CSV rows")
 
     result
     |> Map.drop([
@@ -621,7 +625,8 @@ defmodule ReportServer.Clue do
       :unknown_tracks,
       :malformed,
       :blank_question_ids,
-      :tiles_without_document
+      :tiles_without_document,
+      :undecodable
     ])
   end
 
