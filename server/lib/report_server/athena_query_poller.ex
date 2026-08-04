@@ -8,8 +8,13 @@ defmodule ReportServer.AthenaQueryPoller do
     Task.await(task, :infinity)
   end
 
+  ## Routed through the same seam the rest of the app uses, so a stubbed
+  ## AthenaDB is not bypassed here. Without this, swapping :athena_db in a test
+  ## intercepts the query but not the poll loop, which then calls out to AWS.
+  defp athena_db(), do: Application.get_env(:report_server, :athena_db, AthenaDB)
+
   defp poll_query_status(query_id) do
-    case AthenaDB.get_query_info(query_id) do
+    case athena_db().get_query_info(query_id) do
       {:ok, "succeeded", output_location} ->
         {:ok, output_location}
       {:ok, "failed", _output_location} ->

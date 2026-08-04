@@ -2,14 +2,27 @@ defmodule ReportServer.ClueTest do
   @moduledoc """
   Tests for the CLUE Student Answers report path (REPORT-36, both tracks).
 
-  ## These tests do not run yet
+  ## Status: runnable, mostly failing on purpose
 
-  The module is tagged `:pending` and excluded in `test_helper.exs`. Nothing on
-  this path is reachable from a test today: the whole pipeline is `defp`,
-  `AthenaDB` and `Aws.get_file_stream` are called directly rather than through
-  the repo's `Application.get_env` seams, the parse step writes parquet to S3
-  unconditionally, and `fetch_resource/3` returns only the structure. Making
-  these run is implementation sequencing **step 2**, the testability seam.
+  Sequencing step 2, the testability seam, has landed, so these all execute.
+  As of that step 10 of 45 pass and 35 fail on assertions rather than on
+  missing functions, which is the intended state: the failures are steps 4, 5
+  and the query rewrite, not defects.
+
+  **Five of the ten passes are vacuous** and should not be read as coverage.
+  Every assertion of the form "no answer row and no column is emitted" is
+  trivially satisfied by an implementation that emits nothing at all, which is
+  what Track A and Track B do today. Those are the QR6 suppression pair, the
+  two `other_tiles`-absent cases, and the VR20 row-order equality (nil equals
+  nil). They only start guarding anything once the tracks exist, and that is
+  exactly when the behaviour they guard becomes easy to get wrong. The five
+  real passes are the three XR2 label cases and the two Track C cases, and the
+  Track C pair is the useful signal from step 2: the seam refactor did not
+  change existing behaviour.
+
+  The module stays tagged `:pending` and excluded in `test_helper.exs` until
+  the tracks land, so `mix test` stays green. Run with
+  `mix test --include pending`.
 
   Written ahead of the code deliberately: every assertion here corresponds to a
   rule the spec pins, and several of those rules exist because the natural way

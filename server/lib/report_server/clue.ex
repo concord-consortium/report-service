@@ -17,7 +17,7 @@ defmodule ReportServer.Clue do
       {:ok, %{
         "type" => "clue",
         "url" => url,
-        "name" => "Test Clue",
+        "name" => resource_name(url),
         "denormalized" => data.structure
       }}
     else
@@ -25,10 +25,42 @@ defmodule ReportServer.Clue do
     end
   end
 
+  ## Seams. The rest of the app reaches AWS through these so a test can swap in
+  ## a stub (see resource_data.ex:67 and jobs_file.ex:4). AthenaQueryPoller routes
+  ## its own AthenaDB call through the same seam, or stubbing here would intercept
+  ## the query and not the poll loop.
+  defp athena_db(), do: Application.get_env(:report_server, :athena_db, AthenaDB)
+  defp aws_file_store(), do: Application.get_env(:report_server, :aws_file_store, Aws)
+
+  @doc """
+  A label for the CLUE activity, parsed from the runnable URL's unit and problem
+  query parameters (XR2).
+
+  The activity is already identified in the report output by res_N_resource_url,
+  so the runnable URL is deliberately not a fallback: a name repeating it would
+  add a redundant wide column and no information. The chain is the parsed label,
+  then the unit alone, then a bare "CLUE".
+  """
+  def resource_name(runnable_url) do
+    query = URI.decode_query(URI.parse(runnable_url).query || "")
+    case {blank_to_nil(query["unit"]), blank_to_nil(query["problem"])} do
+      {nil, _} -> "CLUE"
+      {unit, nil} -> "CLUE #{unit}"
+      {unit, problem} -> "CLUE #{unit}: Problem #{problem}"
+    end
+  end
+
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
   defp query_for_text_tile_answers(_url, learners,  user = %User{}) do
-    run_remote_endpoints = Enum.map(learners, fn learner -> learner[:run_remote_endpoint] end)
-    sql = get_text_tile_answer_sql(run_remote_endpoints)
-    with {:ok, query_id, _status} <- AthenaDB.query(sql, UUID.uuid4(), user),
+    sql = answer_sql(learners)
+    with {:ok, query_id, _status} <- athena_db().query(sql, UUID.uuid4(), user),
           {:ok, path} <- AthenaQueryPoller.wait_for(query_id) do
         {:ok, path}
     else
@@ -36,7 +68,22 @@ defmodule ReportServer.Clue do
     end
   end
 
-  defp get_text_tile_answer_sql(run_remote_endpoints) do
+  @doc """
+  The Athena log query behind the CLUE answers report, built from the learner
+  maps fetch_resource/3 receives.
+
+  Public so its shape can be asserted without running it: several of the
+  decisions it encodes are invisible in the result set and checkable only here,
+  such as which log table it reads and whether the learner predicates appear
+  once or once per track.
+  """
+  def answer_sql(learners) do
+    run_remote_endpoints =
+      learners
+      |> Enum.map(fn learner -> learner[:run_remote_endpoint] end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
     ## Get configuration value for log_db_name
     log_db_name = Application.get_env(:report_server, :athena)[:log_db_name]
     """
@@ -95,13 +142,30 @@ defmodule ReportServer.Clue do
   ## Writes a parquet file with the answer data for each user in the dataset
   ## Returns the denormalized questions
   defp read_text_tile_answer_csv(url, csv_path, learners) do
-    case Aws.get_file_stream(csv_path) do
-      {:ok, stream } -> parse_text_tile_answer_csv(url, stream, learners)
+    case aws_file_store().get_file_stream(csv_path) do
+      {:ok, stream } -> parse_answer_csv(url, stream, learners)
       error -> error
     end
   end
 
-  defp parse_text_tile_answer_csv(url, stream, learners) do
+  @doc """
+  Parses the Athena CSV into the denormalized question structure and the answer
+  rows, then writes the answer rows out.
+
+  Public, and with the write injectable, because the structure is only half the
+  output: fetch_resource/3 returns the structure alone, so assertions about the
+  emitted answer rows are otherwise unobservable, and those are the ones
+  guarding silent loss. Pass `write_answers: fn answers -> :ok end` to assert on
+  the rows without an S3 write or credentials.
+
+  Returns {:ok, %{structure: ..., answers: ...}}.
+  """
+  def parse_answer_csv(url, stream, learners, opts \\ []) do
+    write_answers = Keyword.get(opts, :write_answers, &write_answer_parquet_files(url, &1))
+    parse_text_tile_answer_csv(stream, learners, write_answers)
+  end
+
+  defp parse_text_tile_answer_csv(stream, learners, write_answers) do
     return_struct = %{
       structure: %{ questions: %{}, choices: %{}, question_order: []}, ## denormalized questions to return
       answers: %{}                                                     ## answer lists that will be written to parquet, keyed by username
@@ -136,7 +200,7 @@ defmodule ReportServer.Clue do
         row_acc.structure.question_order
       end
 
-      url = HistoryLink.format_link_to_work(%HistoryLink{
+      history_url = HistoryLink.format_link_to_work(%HistoryLink{
         portal_url: portal_site,
         offering_id: Integer.to_string(learner.offering_id),
         class_id: Integer.to_string(learner.class_id),
@@ -148,7 +212,7 @@ defmodule ReportServer.Clue do
             text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
             {:ok, json} <- Jason.decode(text_trimmed),
             plain_text <- extract_text(json),
-            {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => url }) do
+            {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => history_url }) do
         answer_row = %{
           question_id: question_id,
           answer: answer_json,
@@ -157,7 +221,11 @@ defmodule ReportServer.Clue do
           remote_endpoint: learner.run_remote_endpoint,
           id: row["id"], ## Using the ID of the event here, but it could be any arbitrary ID
           ## The following are constant and could be added later
-          resource_url: url,
+          ## Pre-existing and harmless: the report takes resource_url from the
+          ## learners table (shared_queries.ex:78), not from this parquet column,
+          ## so nothing reads what is written here. Renamed from `url` so the
+          ## history link is not mistaken for the resource url.
+          resource_url: history_url,
           platform_id: portal_url,
           source_key: "collaborative-learning.concord.org",
           tool_id: "collaborative-learning.concord.org",
@@ -192,8 +260,16 @@ defmodule ReportServer.Clue do
       Map.put(structure, :question_order, Enum.sort(structure.question_order))
     end)
 
-    ## Loop over answers and write a parquet file for each username
-    write_attempts = Enum.map(result.answers, fn {username, answerlist} ->
+    case write_answers.(result.answers) do
+      :ok -> {:ok, result}
+      error -> error
+    end
+  end
+
+  ## The default writer: one parquet file per username, into the same
+  ## partitioned-answers layout the AP path uses.
+  defp write_answer_parquet_files(url, answers) do
+    write_attempts = Enum.map(answers, fn {username, answerlist} ->
       resource_link_id = answerlist |> List.first() |> Map.get(:resource_link_id)
       with {:ok, path} <- get_parquet_file_path(url, username, resource_link_id) do
         answers_df = Explorer.DataFrame.new(answerlist)
@@ -203,7 +279,7 @@ defmodule ReportServer.Clue do
       end
     end)
     if (Enum.all?(write_attempts, fn result -> result == :ok end)) do
-      {:ok, result}
+      :ok
     else
       {:error, "Failed to write parquet files"}
     end
