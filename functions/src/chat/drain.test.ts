@@ -140,6 +140,103 @@ describeEmu("processAndDrain + acquireLock [emulator, fake OpenAI]", () => {
     expect((await parentRef.get()).data()!.lastProcessedMessageId).toBe("u2");
   });
 
+  // Serve the activity from a stub instead of the network, so the skip test stays hermetic. The jest
+  // env has no AbortController either, which fetchWithGuards needs, so provide a no-op one.
+  const stubActivityFetch = (pageId: string) => {
+    const activity = { version: 2, name: "stub", pages: [{ id: pageId, is_hidden: false, sections: [] }] };
+    const g = global as any;
+    const restore = { fetch: g.fetch, AbortController: g.AbortController };
+    if (!g.AbortController) g.AbortController = class { signal = undefined; abort() { /* no-op */ } };
+    g.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      text: async () => JSON.stringify(activity),
+    });
+    return () => { g.fetch = restore.fetch; g.AbortController = restore.AbortController; };
+  };
+
+  // Regression for the production wedge on 2026-08-04: a client sent an activityUrl whose host is not
+  // on AUTHORING_HOSTS, resolveActivityUrl threw, and because the cursor only advances on success the
+  // poisoned doc stayed at the queue HEAD. Every later trigger re-failed on it, so a well-formed
+  // message sent afterwards (by a FIXED client) was never reached. The conversation was bricked for
+  // that page permanently.
+  it("steps over a permanently-failing head message and still answers the ones queued behind it", async () => {
+    const { parentRef, messagesCol, pageId } = freshPaths();
+    // promptInstalled is deliberately NOT set: that is what forces composePageSystemPrompt (and so
+    // resolveActivityUrl) to run, which is the only path that can throw a PermanentUnitError.
+    await parentRef.set({ run_key: "anon-run-0123456789", status: "generating",
+      lockedAt: admin.firestore.FieldValue.serverTimestamp(), conversationId: "conv_test" });
+    // head: a disallowed host → PermanentUnitError, forever.
+    await messagesCol.doc("bad").set({ kind: "user", text: "q1", createdAt: ts(BASE + 1),
+      run_key: "anon-run-0123456789", activityId: "9",
+      activityUrl: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org" });
+    // behind it: a well-formed message that must NOT be blocked.
+    await messagesCol.doc("good").set({ kind: "user", text: "q2", createdAt: ts(BASE + 2),
+      run_key: "anon-run-0123456789", activityId: "9",
+      activityUrl: "https://authoring.concord.org/api/v1/activities/9.json" });
+
+    const openai = makeFakeOpenAI();
+    const restoreFetch = stubActivityFetch(pageId);
+    try {
+      // Must not throw: the whole point is that the poison pill no longer aborts the drain.
+      await processAndDrain(ctxFor(parentRef, messagesCol, openai, pageId));
+    } finally {
+      restoreFetch();
+    }
+
+    const after = (await parentRef.get()).data() as any;
+    expect(after.lastProcessedMessageId).toBe("good");   // cursor moved PAST the poison pill
+    expect(after.lockedAt).toBeUndefined();              // lock released, conversation not wedged
+    // A later success supersedes the skip: the tutor demonstrably works, so the conversation must NOT
+    // be left in `error` or the client shows "tutor unavailable" directly above a good reply.
+    expect(after.status).toBe("idle");
+    expect(after.error).toBeUndefined(); // and the stale reason is cleared, not left to mislead
+
+    // the queued-behind message really was answered
+    const assistants = (await messagesCol.where("kind", "==", "assistant").get()).docs.map(d => d.data());
+    expect(assistants).toHaveLength(1);
+  });
+
+  it("surfaces the failure when the skipped unit is the LAST thing that happened", async () => {
+    const { parentRef, messagesCol, pageId } = freshPaths();
+    await parentRef.set({ run_key: "anon-run-0123456789", status: "generating",
+      lockedAt: admin.firestore.FieldValue.serverTimestamp(), conversationId: "conv_test" });
+    // Only the poison pill: nothing queued behind it to prove the tutor still works.
+    await messagesCol.doc("bad").set({ kind: "user", text: "q", createdAt: ts(BASE + 1),
+      run_key: "anon-run-0123456789", activityId: "9",
+      activityUrl: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org" });
+
+    await processAndDrain(ctxFor(parentRef, messagesCol, makeFakeOpenAI(), pageId));
+
+    const after = (await parentRef.get()).data() as any;
+    expect(after.lastProcessedMessageId).toBe("bad");    // still unblocked for the next message
+    expect(after.lockedAt).toBeUndefined();
+    // the dropped turn is reported rather than silently swallowed as a healthy idle
+    expect(after.status).toBe("error");
+    expect(after.error).toMatch(/disallowed activity host/);
+    expect((await messagesCol.where("kind", "==", "assistant").get()).empty).toBe(true);
+  });
+
+  it("does NOT skip a transient failure — it propagates and leaves the cursor put for a retry", async () => {
+    const { parentRef, messagesCol, pageId } = freshPaths();
+    await parentRef.set({ run_key: "anon-run-0123456789", status: "generating",
+      conversationId: "conv_test", promptInstalled: true });
+    await messagesCol.doc("u1").set({ kind: "user", text: "q", createdAt: ts(BASE + 1),
+      run_key: "anon-run-0123456789" });
+
+    // A transient OpenAI outage. Skipping this would silently swallow the student's message with no
+    // reply and no error, so it must keep the old behaviour: throw, and leave the cursor alone.
+    const openai = makeFakeOpenAI();
+    openai.responses.create = async () => { throw new Error("503 upstream unavailable"); };
+
+    await expect(processAndDrain(ctxFor(parentRef, messagesCol, openai, pageId)))
+      .rejects.toThrow(/503/);
+
+    const after = (await parentRef.get()).data() as any;
+    expect(after.lastProcessedMessageId).toBeUndefined(); // cursor did NOT advance → u1 is retried
+  });
+
   it("acquireLock is single-in-flight and reclaims a stale lock", async () => {
     const { parentRef } = freshPaths();
     const owner = { run_key: "anon-run-0123456789" };
