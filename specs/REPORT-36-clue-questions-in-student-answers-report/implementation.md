@@ -15,8 +15,10 @@ The architecture is unchanged: read the Athena **log** DB, write CLUE answers as
 ### D1: `questionId` -> column key is a lowercase hex encode with a `q` prefix
 
 ```elixir
-defp question_key(question_id), do: "q" <> Base.encode16(question_id, case: :lower)
+def question_key(question_id), do: "q" <> Base.encode16(question_id, case: :lower)
 ```
+
+Public rather than private (2026-08-04, during implementation): sequencing step 3 calls for unit tests, and a `defp` is unreachable from one. It also has to be reachable in the step that introduces it, before Track A calls it, or the compiler flags it as unused under `--warnings-as-errors`. The same applies to `tile_type_from_event/1` in D4.
 
 `"9HzYd-"` -> `q39487a59642d` -> column `res_1_q39487a59642d_json`.
 
@@ -81,7 +83,7 @@ Derivation is the primary mechanism and the override table holds only genuine ex
 ## at which point this entry needs revisiting.
 @tile_type_overrides %{"BARGRAPH" => "BarGraph", "AI" => "AI", "GRAPH" => "Geometry"}
 
-defp tile_type_from_event(event) do
+def tile_type_from_event(event) do
   stem = String.replace_suffix(event, "_TOOL_CHANGE", "")
   Map.get_lazy(@tile_type_overrides, stem, fn ->
     stem |> String.split("_") |> Enum.map_join("", &String.capitalize/1)

@@ -11,7 +11,7 @@ defmodule ReportServer.ClueTest do
   **Some passes are vacuous** and should not be read as coverage.
   Every assertion of the form "no answer row and no column is emitted" is
   trivially satisfied by an implementation that emits nothing at all, which is
-  what Track A and Track B do today. Those are the QR6 suppression pair, the
+  what Track A and Track B do today. Those are the empty-answer suppression pair, the
   two `other_tiles`-absent cases, and the cross-document row-order equality
   (nil equals nil). They only start guarding anything once the tracks exist, and
   that is exactly when the behaviour they guard becomes easy to get wrong.
@@ -20,12 +20,13 @@ defmodule ReportServer.ClueTest do
   the tracks land, so `mix test` stays green. Run with
   `mix test --include pending`.
 
-  Written ahead of the code deliberately: every assertion here corresponds to a
-  rule the spec pins, and several of those rules exist because the natural way
-  to write the code produces something else silently (D5 rule 4, D6/VR9, VR18,
-  VR20). Fixtures alone do not guard those; assertions do.
+  Several of the behaviours asserted here exist because the natural way to write
+  the code produces something else silently: creating a question column for a
+  learner who contributed no answer, letting a sort carry the aggregate column
+  into alphabetical position, deciding a column header by row arrival order, and
+  ordering a cell by row arrival order. Fixtures alone do not guard those.
 
-  ## The entry points step 2 must expose
+  ## The entry points this module calls
 
       Clue.answer_sql(learners) :: String.t()
 
@@ -37,13 +38,8 @@ defmodule ReportServer.ClueTest do
 
   `opts[:write_answers]` replaces the S3 parquet write with a function of the
   answers map, so answer rows can be asserted without credentials. Half the
-  scenarios below assert on answer rows rather than structure, and those are
-  the ones guarding silent loss (QR6, the `map_agg` duplicate, VR2's track
-  boundary, VR13, VR15, VR23).
-
-  Requirement ids (`QR*`, `BR*`, `XR*`), decisions (`D1`-`D7`) and verification
-  findings (`VR1`-`VR23`) refer to
-  `specs/REPORT-36-clue-questions-in-student-answers-report/`.
+  scenarios below assert on answer rows rather than structure, and those are the
+  ones guarding silent loss.
   """
   use ExUnit.Case, async: true
 
@@ -69,7 +65,7 @@ defmodule ReportServer.ClueTest do
   end
 
   ## The decoded JSON cell for one learner's key, or nil when no answer row was
-  ## emitted. QR6 turns on the difference between nil and `[]`.
+  ## emitted. Suppression turns on the difference between nil and `[]`.
   defp cell(result, learner, key) do
     case result.answers
          |> Map.get(username(learner), [])
@@ -90,7 +86,7 @@ defmodule ReportServer.ClueTest do
     ## These assert on the generated SQL text rather than on Athena, so they
     ## pin this round's query decisions without needing credentials or a scan.
 
-    test "reads the partition-projected table with the app and year-floor prune (D7)", %{
+    test "reads the partition-projected table with the app and year-floor prune", %{
       learners: learners
     } do
       sql = Clue.answer_sql(learners)
@@ -102,7 +98,7 @@ defmodule ReportServer.ClueTest do
       assert sql =~ ~r/\byear"?\s*>=\s*2025/
     end
 
-    test "embeds each learner list exactly once, in one base CTE (VR16/D2)", %{
+    test "embeds each learner list exactly once, in one base CTE", %{
       learners: learners
     } do
       sql = Clue.answer_sql(learners)
@@ -115,16 +111,16 @@ defmodule ReportServer.ClueTest do
       assert count_occurrences(sql, "'#{secure_key}'") == 1
     end
 
-    test "treats a missing containerIds as free-standing (VR15)", %{learners: learners} do
+    test "treats a missing containerIds as free-standing", %{learners: learners} do
       sql = Clue.answer_sql(learners)
 
       ## Without the COALESCE, `NULL = '[]'` is NULL and every tile-change event
-      ## logged before 2025-05-07 is dropped: 85% of the corpus (VR23).
+      ## logged before 2025-05-07 is dropped: 85% of the corpus.
       assert sql =~ "COALESCE"
       assert sql =~ ~r/COALESCE\([^)]*containerIds[^)]*\)\s*=\s*'\[\]'/
     end
 
-    test "matches tile-change events by pattern, not by an event-name list (BR4/VR17)", %{
+    test "matches tile-change events by pattern, not by an event-name list", %{
       learners: learners
     } do
       sql = Clue.answer_sql(learners)
@@ -132,31 +128,31 @@ defmodule ReportServer.ClueTest do
       assert sql =~ "regexp_like"
       assert sql =~ "_TOOL_CHANGE$"
       ## An IN list would have silently dropped 1.27M historical
-      ## GRAPH_TOOL_CHANGE events (VR23).
+      ## GRAPH_TOOL_CHANGE events.
       refute sql =~ "DRAWING_TOOL_CHANGE"
       refute sql =~ "TABLE_TOOL_CHANGE"
-      ## The escaped LIKE form cannot survive the SQL heredoc (VR17).
+      ## The escaped LIKE form cannot survive the SQL heredoc.
       refute sql =~ "ESCAPE"
     end
 
-    test "formats Track A's answers as varchar so the union types agree (D3/VR17)", %{
+    test "formats Track A's answers as varchar so the union types agree", %{
       learners: learners
     } do
       sql = Clue.answer_sql(learners)
 
       ## Bare json_extract is Trino type `json` and the union with the varchar
-      ## tracks fails with TYPE_MISMATCH (confirmed live, VR17).
+      ## tracks fails with TYPE_MISMATCH, confirmed against Athena.
       assert sql =~ ~r/json_format\(\s*json_extract\([^)]*\$\.answers'\s*\)\s*\)/
     end
 
-    test "selects latest-per-key with a window on every track (VR13/VR22)", %{learners: learners} do
+    test "selects latest-per-key with a window on every track", %{learners: learners} do
       sql = Clue.answer_sql(learners)
 
       ## Track A must partition on documentKey as well as the learner, or one
-      ## learner's second document is silently dropped (VR13).
+      ## learner's second document is silently dropped.
       assert sql =~ ~r/PARTITION BY.*run_remote_endpoint.*documentKey.*questionId/s
       ## Track C moved off its MAX(time) self-join, which cost a fourth
-      ## inlining of the base CTE (VR22).
+      ## inlining of the base CTE.
       refute sql =~ "MAX(\"log1\".\"time\")"
       assert count_occurrences(sql, "ROW_NUMBER") == 3
     end
@@ -171,16 +167,88 @@ defmodule ReportServer.ClueTest do
       assert sql =~ ~r/PARTITION BY.*COALESCE\(.*\$\.toolId.*\$\.tileId/s
     end
 
-    test "applies no operation filter to the non-text tile tracks (VR11)", %{learners: learners} do
+    test "applies no operation filter to the non-text tile tracks", %{learners: learners} do
       sql = Clue.answer_sql(learners)
 
       ## Drawing never logs `update`, so a symmetric filter would erase every
-      ## free-standing Drawing tile. Track C keeps its own filter (BR1).
+      ## free-standing Drawing tile. Track C keeps its own filter.
       assert count_occurrences(sql, "'update'") == 1
     end
   end
 
-  describe "resource_name/1 (XR2)" do
+  describe "question_key/1" do
+    test "hex encodes the questionId behind a q prefix" do
+      assert Clue.question_key("9HzYd-") == "q39487a59642d"
+      assert Clue.question_key("aB3xK9") == "q614233784b39"
+    end
+
+    test "keeps ids that differ only by case or -/_ distinct" do
+      keys = Enum.map(["ab-cde", "ab_cde", "AB-CDE"], &Clue.question_key/1)
+
+      assert length(Enum.uniq(keys)) == 3
+    end
+
+    test "produces an alias-safe key for ids that are not legal identifiers" do
+      ## A raw hyphenated id emits res_1_9HzYd-_json, where Presto parses the
+      ## hyphen as subtraction and the whole query fails.
+      for id <- ["9HzYd-", "nb0-d3", "0aaaaa", "Zz_11a"] do
+        assert Clue.question_key(id) =~ ~r/^[a-z][a-z0-9]*$/
+      end
+    end
+
+    test "preserves relative order for equal-length ids, so column order is stable" do
+      ids = ["9HzYd-", "nb0-d3", "aB3xK9", "Zz_11a", "0aaaaa", "zzzzzz"]
+
+      decoded =
+        ids
+        |> Enum.map(&Clue.question_key/1)
+        |> Enum.sort()
+        |> Enum.map(&Base.decode16!(String.trim_leading(&1, "q"), case: :lower))
+
+      assert decoded == Enum.sort(ids)
+    end
+
+    test "round trips, so a key can be traced back to its question" do
+      assert Clue.question_key("9HzYd-")
+             |> String.trim_leading("q")
+             |> Base.decode16!(case: :lower) == "9HzYd-"
+    end
+  end
+
+  describe "tile_type_from_event/1" do
+    test "derives the registered type for every event CLUE logs today" do
+      assert Clue.tile_type_from_event("GEOMETRY_TOOL_CHANGE") == "Geometry"
+      assert Clue.tile_type_from_event("DRAWING_TOOL_CHANGE") == "Drawing"
+      assert Clue.tile_type_from_event("TABLE_TOOL_CHANGE") == "Table"
+      assert Clue.tile_type_from_event("TEXT_TOOL_CHANGE") == "Text"
+      assert Clue.tile_type_from_event("DATAFLOW_TOOL_CHANGE") == "Dataflow"
+      assert Clue.tile_type_from_event("IFRAME_INTERACTIVE_TOOL_CHANGE") == "IframeInteractive"
+      assert Clue.tile_type_from_event("BARGRAPH_TOOL_CHANGE") == "BarGraph"
+    end
+
+    test "labels the retired GRAPH event as the Geometry tile it belongs to" do
+      ## 1.27M historical events. "Graph" is the registered name of a different
+      ## current tile type, so deriving it would be wrong rather than untidy.
+      assert Clue.tile_type_from_event("GRAPH_TOOL_CHANGE") == "Geometry"
+    end
+
+    test "keeps acronyms uppercase to match the type CLUE registers" do
+      assert Clue.tile_type_from_event("AI_TOOL_CHANGE") == "AI"
+    end
+
+    test "derives a label for an event it has never seen rather than dropping it" do
+      assert Clue.tile_type_from_event("SKETCH_TOOL_CHANGE") == "Sketch"
+      assert Clue.tile_type_from_event("WAVE_RUNNER_TOOL_CHANGE") == "WaveRunner"
+      assert Clue.tile_type_from_event("DATA_CARD_TOOL_CHANGE") == "DataCard"
+    end
+
+    test "does not raise on an event with no recognizable stem" do
+      assert is_binary(Clue.tile_type_from_event("TOOL_CHANGE"))
+      assert is_binary(Clue.tile_type_from_event("SOMETHING_ELSE"))
+    end
+  end
+
+  describe "resource_name/1" do
     ## The only changed behaviour that otherwise had no regression guard. The
     ## fallback chain is three cases: the runnable URL is not one of them,
     ## because the activity is already identified by res_N_resource_url, so a
@@ -205,7 +273,7 @@ defmodule ReportServer.ClueTest do
 
     test "never emits the misleading placeholder or the raw URL" do
       ## `clue.ex:20` hardcoded "Test Clue", which mislabelled every CLUE
-      ## activity identically. That is the defect XR2 exists to fix.
+      ## activity identically, which is the defect this replaces.
       for url <- [
             "https://collaborative-learning.concord.org/?unit=m2s&problem=4.5",
             "https://collaborative-learning.concord.org/?unit=m2s",
@@ -219,7 +287,7 @@ defmodule ReportServer.ClueTest do
   end
 
   describe "Track A: keys and columns" do
-    test "keys questions by the hex encode of questionId (D1)", %{a: a, learners: learners} do
+    test "keys questions by the hex encode of questionId", %{a: a, learners: learners} do
       result = parse([track_a_row(a, "9HzYd-", [{"Text", "an answer"}])], learners)
       key = question_key("9HzYd-")
 
@@ -230,7 +298,7 @@ defmodule ReportServer.ClueTest do
       assert answer_keys(result, a) == [key]
     end
 
-    test "keeps ids differing only by case or -/_ in distinct columns (D1, VR7)", %{
+    test "keeps ids differing only by case or -/_ in distinct columns", %{
       a: a,
       learners: learners
     } do
@@ -251,7 +319,7 @@ defmodule ReportServer.ClueTest do
       end
     end
 
-    test "falls back to the raw questionId as the prompt (QR1/DR2)", %{a: a, learners: learners} do
+    test "falls back to the raw questionId as the prompt", %{a: a, learners: learners} do
       result = parse([track_a_row(a, "9HzYd-", [{"Text", "x"}])], learners)
 
       assert result.structure.questions[question_key("9HzYd-")].prompt == "9HzYd-"
@@ -264,7 +332,7 @@ defmodule ReportServer.ClueTest do
       learners: learners
     } do
       ## map_agg keeps one value per key and drops duplicates silently on engine
-      ## v3 (VR6), so a multi-tile question must be one row holding a JSON list.
+      ## v3, so a multi-tile question must be one row holding a JSON list.
       row =
         track_a_row(a, "aB3xK9", [
           {"Text", "first"},
@@ -284,7 +352,7 @@ defmodule ReportServer.ClueTest do
              ] = cell(result, a, key)
 
       ## `link` is carried per entry in both tracks so cc-data has one parsing
-      ## pattern, and non-Text entries carry no `text` field (QR4).
+      ## pattern, and non-Text entries carry no `text` field.
       for entry <- cell(result, a, key) do
         assert entry["link"] =~ "studentDocumentHistoryId=pQ99dWPLmCIvqTUWDr5NH"
       end
@@ -323,7 +391,7 @@ defmodule ReportServer.ClueTest do
       end
     end
 
-    test "omits the history parameter for the \"first\" sentinel (VR24)", %{
+    test "omits the history parameter for the \"first\" sentinel", %{
       a: a,
       learners: learners
     } do
@@ -339,7 +407,7 @@ defmodule ReportServer.ClueTest do
         track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1", document_history_id: "first"),
         ## A missing history id is the same case and is far more common on
         ## tile-change events: 5% to 12% per type, against zero for Track A
-        ## (VR25). Athena renders the null as an empty CSV field, which is
+        ##. Athena renders the null as an empty CSV field, which is
         ## truthy in Elixir and would emit a dangling parameter.
         track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2", document_history_id: "")
       ]
@@ -400,7 +468,7 @@ defmodule ReportServer.ClueTest do
                cell(result, a, question_key("aB3xK9"))
     end
 
-    test "reports every learner's answer to a shared questionId (QR1/AC1, VR4)", %{
+    test "reports every learner's answer to a shared questionId", %{
       a: a,
       b: b,
       learners: learners
@@ -420,7 +488,7 @@ defmodule ReportServer.ClueTest do
       assert [%{"text" => "learner b"}] = cell(result, b, key)
     end
 
-    test "preserves special characters in plainText through the CSV round trip (VR1)", %{
+    test "preserves special characters in plainText through the CSV round trip", %{
       a: a,
       learners: learners
     } do
@@ -456,7 +524,7 @@ defmodule ReportServer.ClueTest do
       assert Map.has_key?(result.structure.questions, key)
     end
 
-    test "reports an answer tile type that emits no tile-change event (VR2)", %{
+    test "reports an answer tile type that emits no tile-change event", %{
       a: a,
       learners: learners
     } do
@@ -474,7 +542,7 @@ defmodule ReportServer.ClueTest do
     end
   end
 
-  describe "Track A: one learner, one questionId, two documents (VR13/VR20)" do
+  describe "Track A: one learner, one questionId, two documents" do
     ## 15 of 1,220 production learner/question pairs span more than one
     ## document, because an across-document copy preserves questionId. Each
     ## event carries only its own document's answers, so both rows must survive
@@ -513,7 +581,7 @@ defmodule ReportServer.ClueTest do
     } do
       ## The query has no ORDER BY, so without this the cell differs between two
       ## runs over unchanged data, which is the diff noise the cell contract
-      ## exists to remove (VR20).
+      ## exists to remove.
       forward = [
         track_a_row(a, "aB3xK9", [{"Text", "doc a"}], document_key: "-DOCA"),
         track_a_row(a, "aB3xK9", [{"Text", "doc b"}], document_key: "-DOCB")
@@ -524,7 +592,7 @@ defmodule ReportServer.ClueTest do
     end
   end
 
-  describe "Track A: prompt enrichment (DR1/VR18)" do
+  describe "Track A: prompt enrichment" do
     ## After CLUE ships the `$.prompt` enrichment, learners on the same question
     ## disagree indefinitely about whether their latest event carries it. A
     ## write-once structure entry makes the header depend on row delivery order.
@@ -551,7 +619,7 @@ defmodule ReportServer.ClueTest do
     end
   end
 
-  describe "Track A: empty answers are not answers (QR6/D5)" do
+  describe "Track A: empty answers are not answers" do
     test "emits no answer row and no column for a Placeholder-only question", %{
       a: a,
       learners: learners
@@ -564,7 +632,7 @@ defmodule ReportServer.ClueTest do
       assert cell(result, a, key) == nil
       ## The column assertion is the load-bearing one: emitting no answer row
       ## while still creating the column inflates cardinality(questions) for
-      ## every learner in the report, which is the distortion QR6 removes.
+      ## every learner in the report, which is the distortion suppression removes.
       refute Map.has_key?(result.structure.questions, key)
       refute key in result.structure.question_order
     end
@@ -574,7 +642,7 @@ defmodule ReportServer.ClueTest do
       learners: learners
     } do
       ## 44% of production Text answer entries are the empty string, plus 27
-      ## whitespace-only (VR5).
+      ## whitespace-only.
       for text <- ["", "   ", "\n\t"] do
         result = parse([track_a_row(a, "aB3xK9", [{"Text", text}])], learners)
         key = question_key("aB3xK9")
@@ -624,7 +692,7 @@ defmodule ReportServer.ClueTest do
   end
 
   describe "Track B: other_tiles" do
-    test "collects a learner's free-standing tiles into one cell (BR2)", %{
+    test "collects a learner's free-standing tiles into one cell", %{
       a: a,
       learners: learners
     } do
@@ -664,7 +732,7 @@ defmodule ReportServer.ClueTest do
       end
     end
 
-    test "derives the tile type from the event name for an unseen event (BR4)", %{
+    test "derives the tile type from the event name for an unseen event", %{
       a: a,
       learners: learners
     } do
@@ -676,7 +744,7 @@ defmodule ReportServer.ClueTest do
       assert [%{"type" => "Sketch"}] = cell(result, a, "other_tiles")
     end
 
-    test "labels the retired GRAPH_TOOL_CHANGE as Geometry, not Graph (VR23)", %{
+    test "labels the retired GRAPH_TOOL_CHANGE as Geometry, not Graph", %{
       a: a,
       learners: learners
     } do
@@ -689,7 +757,7 @@ defmodule ReportServer.ClueTest do
       assert [%{"type" => "Geometry"}] = cell(result, a, "other_tiles")
     end
 
-    test "matches Track A's casing for compound and acronym types (D4)", %{
+    test "matches Track A's casing for compound and acronym types", %{
       a: a,
       learners: learners
     } do
@@ -716,7 +784,7 @@ defmodule ReportServer.ClueTest do
     end
   end
 
-  describe "structure ordering (D6/VR9, VR19)" do
+  describe "structure ordering" do
     test "puts other_tiles first pre-reverse, so it lands rightmost", %{a: a, learners: learners} do
       ## clue.ex sorts, then prepends; ResourceData reverses unconditionally
       ## (resource_data.ex:149), which makes the prepended key the last column.
@@ -735,9 +803,9 @@ defmodule ReportServer.ClueTest do
       assert List.last(Enum.reverse(order)) == "other_tiles"
     end
 
-    test "lists other_tiles exactly once (VR19)", %{a: a, learners: learners} do
+    test "lists other_tiles exactly once", %{a: a, learners: learners} do
       ## The structure contract wants the key in both `questions` and
-      ## `question_order`, and D6 prepends it after the sort. Adding it in both
+      ## `question_order`, and it is prepended after the sort. Adding it in both
       ## places emits res_1_other_tiles_json twice.
       rows = [
         track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1"),
@@ -749,7 +817,7 @@ defmodule ReportServer.ClueTest do
       assert Enum.count(order, &(&1 == "other_tiles")) == 1
     end
 
-    test "keeps a text tile titled \"Other Tiles\" out of the reserved key (VR19)", %{
+    test "keeps a text tile titled \"Other Tiles\" out of the reserved key", %{
       a: a,
       learners: learners
     } do
@@ -769,8 +837,8 @@ defmodule ReportServer.ClueTest do
     end
   end
 
-  describe "Track B: structural gates (VR25)" do
-    ## Gates, not an event-name filter, so BR4's no-enumerated-lists rule holds
+  describe "Track B: structural gates" do
+    ## Gates, not an event-name filter, so pattern-based discovery still holds
     ## and a future event that logs correctly is picked up with no code change.
 
     test "excludes a tile-change row with no documentKey" do
@@ -804,7 +872,7 @@ defmodule ReportServer.ClueTest do
 
   end
 
-  describe "Track C: free-standing text tiles are unchanged (BR1)" do
+  describe "Track C: free-standing text tiles are unchanged" do
     test "keys by the sanitized tile title and emits the legacy text/url shape", %{
       a: a,
       learners: learners
@@ -822,7 +890,7 @@ defmodule ReportServer.ClueTest do
       assert cell["url"] =~ "studentDocument=-OL0rmfqiDsPlriZks-X"
     end
 
-    test "does not fold toolId into the key (BR3 deferred)", %{a: a, learners: learners} do
+    test "does not fold toolId into the key", %{a: a, learners: learners} do
       result = parse([track_c_row(a, "My Notes", "x", tool_id: "abc123")], learners)
 
       assert Map.has_key?(result.structure.questions, "my_notes")

@@ -28,7 +28,7 @@ defmodule ReportServer.ClueFixtures do
   @doc """
   Learner maps in the shape `LearnerData` builds (`learner_data.ex:170-191`),
   which is what `Clue.fetch_resource/3` receives. `created_at` is included
-  because D7's year floor is derived from it.
+  because the year floor is derived from it.
   """
   def learners_fixture(count \\ 2) do
     for i <- 1..count do
@@ -163,13 +163,13 @@ defmodule ReportServer.ClueFixtures do
   end
 
   ## ------------------------------------------------------------------
-  ## Track C rows (TEXT_TOOL_CHANGE, free-standing text; BR1, unchanged)
+  ## Track C rows (TEXT_TOOL_CHANGE, free-standing text, unchanged)
   ## ------------------------------------------------------------------
 
   @doc """
   A Track C row. `text` is wrapped in the Slate document shape the existing
   text path decodes with `Jason.decode` + `extract_text` (`clue.ex:147-151`),
-  because BR1 requires that path unchanged.
+  because that path must stay unchanged.
   """
   def track_c_row(learner, tile_title, text, opts \\ []) do
     slate =
@@ -189,8 +189,9 @@ defmodule ReportServer.ClueFixtures do
   end
 
   @doc """
-  D1's key encode, restated here so the tests assert against the pinned
-  transform rather than against whatever `clue.ex` happens to do.
+  The key encode, restated here so the integration tests assert against the
+  pinned transform rather than against whatever `clue.ex` happens to do.
+  `Clue.question_key/1` is unit tested directly.
   """
   def question_key(question_id), do: "q" <> Base.encode16(question_id, case: :lower)
 end

@@ -9,6 +9,15 @@ defmodule ReportServer.Clue do
 
   @known_tracks ~w(A B C)
 
+  ## Derivation handles every registered tile type except three shapes the
+  ## uppercased event name has flattened: compound names, acronyms, and retired
+  ## names whose derivation is a valid but wrong label. GRAPH_TOOL_CHANGE is the
+  ## Geometry tile's old event name, renamed in February 2024, so every such
+  ## event in the logs is a Geometry tile and deriving "Graph" would label it as a
+  ## different tile type that still exists. WaveRunner needs an entry only if CLUE
+  ## ever names its event WAVERUNNER_TOOL_CHANGE rather than WAVE_RUNNER_TOOL_CHANGE.
+  @tile_type_overrides %{"BARGRAPH" => "BarGraph", "AI" => "AI", "GRAPH" => "Geometry"}
+
   alias ReportServer.Reports.ReportUtils
   alias ReportServer.AthenaDB
   alias ReportServer.Accounts.User
@@ -65,6 +74,34 @@ defmodule ReportServer.Clue do
       "" -> nil
       trimmed -> trimmed
     end
+  end
+
+  @doc """
+  The column key for a Question tile, a lowercase hex encode of its questionId
+  behind a `q` prefix.
+
+  A raw questionId cannot be used: it is a nanoid over an alphabet including `-`,
+  which the report emits as an unquoted SQL alias, so about one id in ten
+  produces a syntax error. Hex encoding is alias-safe without being lossy, unlike
+  make_safe_id/1, which folds ids differing only by case or by `-` against `_`
+  onto one key and silently merges their answers. It is also order-preserving for
+  equal-length ids, so column order stays stable across reports.
+  """
+  def question_key(question_id), do: "q" <> Base.encode16(question_id, case: :lower)
+
+  @doc """
+  The tile type for a tile-change event, derived from the event name.
+
+  Tile-change events carry no tile-type field, so the name is the only source. An
+  unrecognized event must still produce a label rather than being dropped, so
+  that a tile type CLUE starts logging appears with no change here.
+  """
+  def tile_type_from_event(event) do
+    stem = String.replace_suffix(event, "_TOOL_CHANGE", "")
+
+    Map.get_lazy(@tile_type_overrides, stem, fn ->
+      stem |> String.split("_") |> Enum.map_join("", &String.capitalize/1)
+    end)
   end
 
   defp query_for_text_tile_answers(_url, learners,  user = %User{}) do
