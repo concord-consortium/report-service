@@ -276,6 +276,30 @@ defmodule ReportServer.ClueTest do
       assert [%{"text" => ^text}] = cell(result, a, question_key("aB3xK9"))
     end
 
+    test "skips a row whose answers payload is malformed without failing the report", %{
+      a: a,
+      b: b,
+      learners: learners
+    } do
+      ## Track C drops any undecodable row with no signal at all
+      ## (`clue.ex:176-177`), and extending that shape inherits the silence. A
+      ## malformed payload means CLUE changed the event's shape, which would
+      ## zero out Track A while the report still rendered, so the row is
+      ## skipped and logged rather than dropped quietly or raised on.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "fine"}]) |> Map.put("answers", "{not json"),
+        track_a_row(b, "aB3xK9", [{"Text", "also fine"}])
+      ]
+
+      result = parse(rows, learners)
+      key = question_key("aB3xK9")
+
+      assert cell(result, a, key) == nil
+      ## One bad row must not cost the rest of the report.
+      assert [%{"text" => "also fine"}] = cell(result, b, key)
+      assert Map.has_key?(result.structure.questions, key)
+    end
+
     test "reports an answer tile type that emits no tile-change event (VR2)", %{
       a: a,
       learners: learners
