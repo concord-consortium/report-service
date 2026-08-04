@@ -192,7 +192,7 @@ and keep `rn = 1`. Partitioning on `run_remote_endpoint` is mandatory (VR4 measu
 
 The window also resolves the real duplicate-timestamp rows observed in production (VR3). Do **not** apply an `operation = 'update'` filter: `QUESTION_ANSWERS_CHANGE` has no `operation` field.
 
-Selected columns: `username`, `questionId`, `json_format(json_extract(parameters,'$.answers'))` as a raw JSON string (D3), `documentKey`, `documentHistoryId`.
+Selected columns: `username`, `questionId`, `json_format(json_extract(parameters,'$.answers'))` as a raw JSON string (D3), `documentKey`, `documentType`, `documentHistoryId`.
 
 *Track B CTE.* Match the event by **pattern**, never an `IN (…)` list of event names (BR4), **excluding** `TEXT_TOOL_CHANGE`, plus the XR1 disjointness filter. Carry `event` through so the type label can be derived (D4).
 
@@ -236,6 +236,7 @@ Latest-per-tile uses the **same window shape as Track A**, `ROW_NUMBER() OVER (P
 | `tile_title` | null | null | `$.tileTitle` |
 | `text_value` | null | null | `$.args[0].text` |
 | `document_key` | `$.documentKey` | same | same |
+| `document_type` | `$.documentType` | same | null (BR1: Track C's cell is unchanged) |
 | `document_history_id` | `$.documentHistoryId` | same | same |
 
 Track C's `tool_id` is selected but unused: BR3's fold into the column key is deferred, and an XR4 assertion checks it is ignored rather than folded. `document_history_id` is passed to the history link verbatim, including the literal `"first"` that `log-document-event.ts:51-53` emits when a document had no history entry at log time (299 events, 3.5%, VR4); that is today's Track C behavior unchanged.
@@ -285,7 +286,17 @@ If CLUE ships a different name or nests it inside `answers[]`, the lookup is dea
 
 **Ordering.** D6.
 
-**XR2**, `clue.ex:20`. Replace `"Test Clue"` by parsing `unit` and `problem` from the runnable URL into e.g. `"CLUE m2s: Problem 4.5"`, falling back to `"CLUE"` then the runnable URL. No unit-code lookup table.
+**XR2**, `clue.ex:20`. Replace `"Test Clue"` by parsing `unit` and `problem` from the runnable URL. No unit-code lookup table. Exposed as `Clue.resource_name(url)` so it is assertable, since this was otherwise the only changed behavior with no regression guard.
+
+**The fallback chain is pinned to three cases, and the runnable-URL fallback is dropped:**
+
+| Runnable URL query | Label |
+|---|---|
+| `?unit=m2s&problem=4.5` | `CLUE m2s: Problem 4.5` |
+| `?unit=m2s`, no `problem` | `CLUE m2s` |
+| neither present | `CLUE` |
+
+Earlier wording left this as "falling back to `CLUE` then the runnable URL", which cannot be asserted. The URL is dropped as a fallback on XR2's own reasoning: the activity is already identified in the output by `res_N_resource_url` (`shared_queries.ex:78`), so a name repeating it adds a redundant wide column and no information. `"CLUE"` is a less useful label than the parsed form but is never *misleading*, which is all XR2 asks for. A test also asserts the label is never `"Test Clue"`, so the actual defect cannot regress.
 
 **Housekeeping.** `clue.ex:139` rebinds the local `url` to the history link inside the reduce, so `resource_url: url` at `:160` writes the history link into the parquet's `resource_url` column. This is latent rather than breaking, because the report takes `resource_url` from the learners table (`runnable_url as resource_url`, `shared_queries.ex:78`) and not from the answers parquet. Rename the local to `history_url` while touching this function so Track A and Track B do not propagate the confusion.
 
@@ -313,18 +324,31 @@ Uniform across Track A and Track B, for cc-data SQL consumption:
 
 ```json
 [
-  {"type": "Text",    "text": "the student's answer", "link": "https://…historyId=…"},
-  {"type": "Drawing", "link": "https://…historyId=…"}
+  {"type": "Text",    "text": "the student's answer", "link": "https://…historyId=…",
+   "documentKey": "-OL0rmfqiDsPlriZks-X", "documentType": "problem"},
+  {"type": "Drawing", "link": "https://…historyId=…",
+   "documentKey": "-OK7YQig6OxOLf9F84zu", "documentType": "learningLog"}
 ]
 ```
 
 `type` always present. `text` only for Text tiles with surviving content. `link` carried **per entry** in both tracks: Track A repeats the question's single link on each entry (harmless redundancy) so cc-data has exactly one parsing pattern.
 
+**`documentKey` and `documentType` are surfaced per entry (decided 2026-08-04).** Both tracks aggregate across a learner's documents, so without them a cell is ambiguous about something a researcher genuinely asks. Track B collects every free-standing tile a learner has in *any* document (problem document, learning log, personal document) into the one `other_tiles` cell, and Track A can span documents too after the VR13 partition change. Document identity was technically recoverable, since each entry's `link` embeds `studentDocument=<documentKey>`, but only by string-parsing a URL, which is not a contract a cc-data query should have to rely on.
+
+- `documentKey` is the unambiguous identity and the join key: two entries are in the same document exactly when it matches.
+- `documentType` is the category a researcher actually wants (`problem`, `learningLog`, `personal`, …), which answers "was this work in their assigned document or their own notebook" without opening anything.
+
+Both are attached by CLUE to **every** document log event, `QUESTION_ANSWERS_CHANGE` and every `*_TOOL_CHANGE` alike (`log-document-event.ts:91-118`, `processDocumentEventParams`), and VR10's measured parameter set confirms them in production, so the two tracks stay uniform and no CLUE-side change is needed.
+
+`documentTitle` is available on the same events and is deliberately **not** surfaced: it is user-editable and can change after the fact, so it is not a stable identifier, and `documentType` plus the link cover the reader's need. Add it later if researchers ask for the student's own name for a learning log.
+
+This widens the cell rather than changing it, so a consumer reading `type`/`text`/`link` is unaffected. Track C is untouched: its cell stays the legacy `{"text": …, "url": …}` pair (BR1).
+
 **Entry order is part of the contract, not incidental.** Left unpinned it is nondeterministic for Track B, because the query has no `ORDER BY`, Athena's row order is arbitrary, and today's reduce prepends (`clue.ex:174`). Verified by throwaway execution: the same three tiles fed through a prepending reduce in two row orders produced `["Dataflow","Drawing","Table"]` and `["Table","Dataflow","Drawing"]`. Two runs of the same report over unchanged data would then differ, which matters because cc-data consumes these cells and because diffing two report runs is how a researcher finds what actually changed. It also makes any assertion on cell contents order-dependent, surfacing as intermittent test failures blamed on fixtures.
 
 - **Track A**: document order, as the tiles appear in `answers[].answerTiles[]`, flattened across groups in payload order. The flatten and the accumulation must preserve it (accumulate then `Enum.reverse` at the end, or append), which is the opposite of today's prepend-and-keep pattern. **Across payloads, order by `documentKey` ascending (VR20).** The VR13 partition change means a `{learner, questionId}` can contribute more than one row, one per document, each its own payload, and payload-order is only defined *within* a payload; the order *between* them is Athena's row delivery, which is unordered. Order a question's payload groups by `documentKey`, Elixir-side rather than via an `ORDER BY` in the CTE, for the reason this section already gives for Track B: the reduce has to preserve order anyway, so ordering at the point of use does not depend on how Athena delivers rows.
 
-**Mechanism, surfaced while writing the tests:** "sort the rows before flattening" is not directly available, because the parse is a single `Enum.reduce` over the CSV stream and cannot sort rows it has not seen yet. Carry `documentKey` on each accumulated entry internally, then **stable**-sort the entry list by it immediately before `Jason.encode`, dropping the field at that point since the cell contract carries only `type`, `text?` and `link`. A stable sort is what preserves the within-payload `answerTiles` order underneath the cross-document order. The alternative, materializing and sorting the Track A rows ahead of the reduce, works but costs a pass and buys nothing.
+**Mechanism, surfaced while writing the tests:** "sort the rows before flattening" is not directly available, because the parse is a single `Enum.reduce` over the CSV stream and cannot sort rows it has not seen yet. Carry `documentKey` on each accumulated entry, then **stable**-sort the entry list by it immediately before `Jason.encode`. A stable sort is what preserves the within-payload `answerTiles` order underneath the cross-document order. Earlier wording had this field dropped before encoding; now that `documentKey` is part of the cell contract it simply stays, so the sort key and the emitted field are the same thing. The alternative, materializing and sorting the Track A rows ahead of the reduce, works but costs a pass and buys nothing.
 - **Track B**: sort entries by `type`, then `link`, immediately before `Jason.encode`. An Elixir-side sort is used rather than an SQL `ORDER BY` because the reduce would have to preserve the SQL order anyway; sorting at the encode point is stable without depending on Athena's row delivery. (Ordering by tile `time` was considered and rejected: more meaningful to a reader, but it re-shuffles the cell whenever a student edits one tile, reintroducing the diff noise this rule exists to remove.)
 
 ## Tests (XR4)
@@ -376,6 +400,8 @@ Each step should be independently reviewable:
 
 ```elixir
 Clue.answer_sql(learners) :: String.t()
+
+Clue.resource_name(runnable_url) :: String.t()
 
 Clue.parse_answer_csv(url, stream, learners, opts) ::
   {:ok, %{structure: %{questions: map, choices: map, question_order: [String.t()]},
@@ -730,4 +756,4 @@ Suggested resolution: correct the multiplier to four in D7 and VR16, and switch 
 
 - **DR1** (CLUE prompt enrichment) and **DR3** (tile-change logging for the silent types) are cross-repo, new-data-only, and **not dependencies** of this story. Filing the DR1 ticket **is** a deliverable of this story, because the inert `$.prompt` lookup shipping here binds to the field name it specifies (see the Structure section); the same ticket, or DR3's, must also require the `<TYPE>_TOOL_CHANGE` naming convention so BR4's discovery absorbs new tile logging with no report-service change.
 - ~~**Performance** at report scale is measured but not final: Track A scanned ~25 MB over a 12-day window against ~489 MB for the tile-change filter (VR8), so Track B's broadening is the cost centre. Re-check per-runnable during implementation.~~ **Closed 2026-08-04 by D7/VR12.** The cost was the table, not the filter: `logs_by_time` has no partitions and today's query has no time bound. On `logs_by_app_and_secure_key`, the full three-track predicate over all history for 40 learners scans **0.67 MB**, so Track B's broadening is no longer a cost centre and needs no per-runnable re-check. **Amended 2026-08-04 by VR16:** the byte half stays closed, but the two residual costs that are linear in learner count (prefix-enumeration wall time, and SQL string length against Athena's 262 KB quota) are now designed for rather than deferred, via D7's required year floor and D2's shared base CTE.
-- **XR2 label format** is easily adjustable and not worth blocking on.
+- ~~**XR2 label format** is easily adjustable and not worth blocking on.~~ **Closed 2026-08-04:** the format and its fallback chain are pinned in the XR2 section above (three cases, no runnable-URL fallback) and covered by tests, since it was otherwise the only changed behavior with no regression guard.

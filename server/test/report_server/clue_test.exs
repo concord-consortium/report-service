@@ -16,9 +16,11 @@ defmodule ReportServer.ClueTest do
   to write the code produces something else silently (D5 rule 4, D6/VR9, VR18,
   VR20). Fixtures alone do not guard those; assertions do.
 
-  ## The two entry points step 2 must expose
+  ## The entry points step 2 must expose
 
       Clue.answer_sql(learners) :: String.t()
+
+      Clue.resource_name(runnable_url) :: String.t()
 
       Clue.parse_answer_csv(url, stream, learners, opts) ::
         {:ok, %{structure: %{questions: map, choices: map, question_order: [String.t()]},
@@ -159,6 +161,44 @@ defmodule ReportServer.ClueTest do
     end
   end
 
+  describe "resource_name/1 (XR2)" do
+    ## The only changed behaviour that otherwise had no regression guard. The
+    ## fallback chain is three cases: the runnable URL is not one of them,
+    ## because the activity is already identified by res_N_resource_url, so a
+    ## name repeating it adds a redundant wide column and no information.
+
+    test "builds the label from the runnable URL's unit and problem" do
+      assert Clue.resource_name(
+               "https://collaborative-learning.concord.org/?unit=m2s&problem=4.5"
+             ) ==
+               "CLUE m2s: Problem 4.5"
+    end
+
+    test "falls back to unit alone, then to a bare generic" do
+      assert Clue.resource_name("https://collaborative-learning.concord.org/?unit=m2s") ==
+               "CLUE m2s"
+
+      assert Clue.resource_name("https://collaborative-learning.concord.org/") == "CLUE"
+
+      assert Clue.resource_name("https://collaborative-learning.concord.org/?problem=4.5") ==
+               "CLUE"
+    end
+
+    test "never emits the misleading placeholder or the raw URL" do
+      ## `clue.ex:20` hardcoded "Test Clue", which mislabelled every CLUE
+      ## activity identically. That is the defect XR2 exists to fix.
+      for url <- [
+            "https://collaborative-learning.concord.org/?unit=m2s&problem=4.5",
+            "https://collaborative-learning.concord.org/?unit=m2s",
+            "https://collaborative-learning.concord.org/"
+          ] do
+        name = Clue.resource_name(url)
+        refute name == "Test Clue"
+        refute name =~ "collaborative-learning.concord.org"
+      end
+    end
+  end
+
   describe "Track A: keys and columns" do
     test "keys questions by the hex encode of questionId (D1)", %{a: a, learners: learners} do
       result = parse([track_a_row(a, "9HzYd-", [{"Text", "an answer"}])], learners)
@@ -231,6 +271,62 @@ defmodule ReportServer.ClueTest do
       end
 
       refute Map.has_key?(Enum.at(cell(result, a, key), 1), "text")
+    end
+
+    test "carries documentKey and documentType on every entry", %{a: a, learners: learners} do
+      ## Both tracks aggregate across a learner's documents, so a cell without
+      ## these is ambiguous about which document a tile is in. documentTitle is
+      ## available on the same events and deliberately not surfaced.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "in the assigned document"}],
+          document_key: "-DOCA",
+          document_type: "problem"
+        ),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1",
+          document_key: "-DOCB",
+          document_type: "learningLog"
+        )
+      ]
+
+      result = parse(rows, learners)
+
+      assert [%{"documentKey" => "-DOCA", "documentType" => "problem"}] =
+               cell(result, a, question_key("aB3xK9"))
+
+      assert [%{"documentKey" => "-DOCB", "documentType" => "learningLog"}] =
+               cell(result, a, "other_tiles")
+
+      ## Uniform across both tracks, so cc-data has one parsing pattern.
+      for entry <- cell(result, a, question_key("aB3xK9")) ++ cell(result, a, "other_tiles") do
+        assert Map.has_key?(entry, "documentKey")
+        assert Map.has_key?(entry, "documentType")
+        refute Map.has_key?(entry, "documentTitle")
+      end
+    end
+
+    test "distinguishes a learner's documents within one other_tiles cell", %{
+      a: a,
+      learners: learners
+    } do
+      ## The case that motivated surfacing the fields: Track B collects every
+      ## free-standing tile a learner has in any document into one cell, so
+      ## "which of these are in their learning log" is otherwise unanswerable
+      ## without opening each link.
+      rows = [
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1",
+          document_key: "-DOCA",
+          document_type: "problem"
+        ),
+        track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2",
+          document_key: "-DOCB",
+          document_type: "learningLog"
+        )
+      ]
+
+      entries = parse(rows, learners) |> cell(a, "other_tiles")
+
+      assert Enum.map(entries, &{&1["type"], &1["documentType"]}) ==
+               [{"Drawing", "learningLog"}, {"Table", "problem"}]
     end
 
     test "flattens multiple answers[] groups in payload order", %{a: a, learners: learners} do
@@ -346,6 +442,9 @@ defmodule ReportServer.ClueTest do
       assert Enum.map(entries, & &1["text"]) == ["in problem doc", "in learning log"]
       assert Enum.at(entries, 0)["link"] =~ "studentDocument=-DOCA"
       assert Enum.at(entries, 1)["link"] =~ "studentDocument=-DOCB"
+      ## Which document an entry belongs to is a field, not something a consumer
+      ## has to parse back out of the link URL.
+      assert Enum.map(entries, & &1["documentKey"]) == ["-DOCA", "-DOCB"]
     end
 
     test "orders payload groups by documentKey regardless of row delivery order", %{
