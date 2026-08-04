@@ -20,8 +20,8 @@ defmodule ReportServer.ClueFixtures do
 
   ## The union's column set. Columns absent for a track are empty, matching the
   ## query's CAST(NULL AS VARCHAR) padding (D2).
-  @columns ~w(track username question_id answers prompt event tool_id tile_title text_value
-              document_key document_type document_history_id)
+  @columns ~w(track username question_id answers prompt event tool_id tile_id tile_title
+              text_value document_key document_type document_history_id)
 
   def runnable_url, do: @runnable_url
   def portal_site, do: @portal_site
@@ -156,6 +156,9 @@ defmodule ReportServer.ClueFixtures do
       "username" => username(learner),
       "event" => event,
       "tool_id" => tool_id,
+      ## `tile_id` is the COALESCE fallback for the tile identity, and
+      ## `document_key` can be blanked to exercise VR25's structural gate.
+      "tile_id" => Keyword.get(opts, :tile_id, tool_id),
       "document_key" => Keyword.get(opts, :document_key, "-OL0rmfqiDsPlriZks-X"),
       "document_type" => Keyword.get(opts, :document_type, "problem"),
       "document_history_id" => Keyword.get(opts, :document_history_id, "histB-#{tool_id}")

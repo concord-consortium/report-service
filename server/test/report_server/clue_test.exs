@@ -317,7 +317,12 @@ defmodule ReportServer.ClueTest do
         track_a_row(a, "aB3xK9", [{"Text", "their first ever edit"}],
           document_history_id: "first"
         ),
-        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1", document_history_id: "first")
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1", document_history_id: "first"),
+        ## A missing history id is the same case and is far more common on
+        ## tile-change events: 5% to 12% per type, against zero for Track A
+        ## (VR25). Athena renders the null as an empty CSV field, which is
+        ## truthy in Elixir and would emit a dangling parameter.
+        track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2", document_history_id: "")
       ]
 
       result = parse(rows, learners)
@@ -742,6 +747,58 @@ defmodule ReportServer.ClueTest do
       assert result.structure.questions["other_tiles"].type == "clue_tile"
       assert length(answer_keys(result, a)) == 2
       assert [%{"type" => "Table"}] = cell(result, a, "other_tiles")
+    end
+  end
+
+  describe "Track B: structural gates (VR25)" do
+    ## Gates, not an event-name filter, so BR4's no-enumerated-lists rule holds
+    ## and a future event that logs correctly is picked up with no code change.
+
+    test "excludes a tile-change row with no documentKey" do
+      ## IFRAME_INTERACTIVE_TOOL_CHANGE logs via bare Logger.log, so it carries
+      ## no toolId, documentKey or containerIds on 100% of its 19,110 production
+      ## events. Without the gate it emits a link that opens nothing, and its
+      ## null partition key collapses all of a learner's iframe tiles into one
+      ## entry.
+      learners = learners_fixture(1)
+      a = hd(learners)
+
+      rows = [
+        track_b_row(a, "IFRAME_INTERACTIVE_TOOL_CHANGE", "", document_key: ""),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1")
+      ]
+
+      result = parse(rows, learners)
+
+      assert [%{"type" => "Table"}] = cell(result, a, "other_tiles")
+    end
+
+    test "omits other_tiles entirely when every candidate row is gated out" do
+      learners = learners_fixture(1)
+      a = hd(learners)
+
+      result =
+        parse([track_b_row(a, "IFRAME_INTERACTIVE_TOOL_CHANGE", "", document_key: "")], learners)
+
+      refute Map.has_key?(result.structure.questions, "other_tiles")
+    end
+
+    test "identifies the tile by tileId when toolId is absent" do
+      ## COALESCE(toolId, tileId) is free, since logTileChangeEvent sets them
+      ## equal whenever both exist. It is what lets a correctly-logged future
+      ## event through even if it only carries tileId.
+      learners = learners_fixture(1)
+      a = hd(learners)
+
+      rows = [
+        track_b_row(a, "SKETCH_TOOL_CHANGE", "", tile_id: "tile-1"),
+        track_b_row(a, "SKETCH_TOOL_CHANGE", "", tile_id: "tile-2")
+      ]
+
+      entries = parse(rows, learners) |> cell(a, "other_tiles")
+
+      ## Two distinct tiles, not one collapsed entry.
+      assert length(entries) == 2
     end
   end
 
