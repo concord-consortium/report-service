@@ -1,36 +1,22 @@
 defmodule ReportServer.ClueTest do
   @moduledoc """
-  Tests for the CLUE Student Answers report path (REPORT-36, both tracks).
-
-  ## Status: runnable, mostly failing on purpose
-
-  These are written ahead of the implementation, so while it is in progress the
-  failures are unimplemented behaviour rather than defects. Nothing here should
-  fail with an undefined function; if it does, an entry point is missing.
-
-  **Some passes are vacuous** and should not be read as coverage.
-  Every assertion of the form "no answer row and no column is emitted" is
-  trivially satisfied by an implementation that emits nothing at all, which is
-  what Track A and Track B do today. Those are the empty-answer suppression pair, the
-  two `other_tiles`-absent cases, and the cross-document row-order equality
-  (nil equals nil). They only start guarding anything once the tracks exist, and
-  that is exactly when the behaviour they guard becomes easy to get wrong.
-
-  The module stays tagged `:pending` and excluded in `test_helper.exs` until
-  the tracks land, so `mix test` stays green. Run with
-  `mix test --include pending`.
+  Tests for the CLUE Student Answers report path, all three tracks.
 
   Several of the behaviours asserted here exist because the natural way to write
   the code produces something else silently: creating a question column for a
   learner who contributed no answer, letting a sort carry the aggregate column
   into alphabetical position, deciding a column header by row arrival order, and
-  ordering a cell by row arrival order. Fixtures alone do not guard those.
+  ordering a cell by row arrival order.
 
   ## The entry points this module calls
 
       Clue.answer_sql(learners) :: String.t()
 
       Clue.resource_name(runnable_url) :: String.t()
+
+      Clue.question_key(question_id) :: String.t()
+
+      Clue.tile_type_from_event(event) :: String.t()
 
       Clue.parse_answer_csv(url, stream, learners, opts) ::
         {:ok, %{structure: %{questions: map, choices: map, question_order: [String.t()]},
@@ -42,8 +28,6 @@ defmodule ReportServer.ClueTest do
   ones guarding silent loss.
   """
   use ExUnit.Case, async: true
-
-  @moduletag :pending
 
   import ReportServer.ClueFixtures
 
@@ -117,7 +101,7 @@ defmodule ReportServer.ClueTest do
       ## Without the COALESCE, `NULL = '[]'` is NULL and every tile-change event
       ## logged before 2025-05-07 is dropped: 85% of the corpus.
       assert sql =~ "COALESCE"
-      assert sql =~ ~r/COALESCE\([^)]*containerIds[^)]*\)\s*=\s*'\[\]'/
+      assert sql =~ ~r/COALESCE\(.*containerIds.*'\[\]'\)\s*=\s*'\[\]'/s
     end
 
     test "matches tile-change events by pattern, not by an event-name list", %{
@@ -245,6 +229,10 @@ defmodule ReportServer.ClueTest do
     test "does not raise on an event with no recognizable stem" do
       assert is_binary(Clue.tile_type_from_event("TOOL_CHANGE"))
       assert is_binary(Clue.tile_type_from_event("SOMETHING_ELSE"))
+    end
+
+    test "labels a missing event rather than raising" do
+      assert Clue.tile_type_from_event(nil) == "Unknown"
     end
   end
 
@@ -790,15 +778,19 @@ defmodule ReportServer.ClueTest do
       ## (resource_data.ex:149), which makes the prepended key the last column.
       ## Prepending inside the reduce instead lets the sort carry it into
       ## alphabetical position, mid-table.
+      ## "abc_title" sorts before "other_tiles", so an aggregate column that was
+      ## sorted in rather than prepended would land second and this would fail.
       rows = [
         track_a_row(a, "aB3xK9", [{"Text", "x"}]),
-        track_c_row(a, "zzz title", "text tile"),
+        track_c_row(a, "abc title", "text tile"),
+        track_c_row(a, "zzz title", "another text tile", tool_id: "text-tool-2"),
         track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1")
       ]
 
       order = parse(rows, learners).structure.question_order
 
       assert hd(order) == "other_tiles"
+      assert "abc_title" in tl(order)
       assert tl(order) == Enum.sort(tl(order))
       assert List.last(Enum.reverse(order)) == "other_tiles"
     end

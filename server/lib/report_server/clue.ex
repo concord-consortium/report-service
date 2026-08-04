@@ -96,13 +96,14 @@ defmodule ReportServer.Clue do
   unrecognized event must still produce a label rather than being dropped, so
   that a tile type CLUE starts logging appears with no change here.
   """
-  def tile_type_from_event(event) do
+  def tile_type_from_event(event) when is_binary(event) do
     stem = String.replace_suffix(event, "_TOOL_CHANGE", "")
 
     Map.get_lazy(@tile_type_overrides, stem, fn ->
       stem |> String.split("_") |> Enum.map_join("", &String.capitalize/1)
     end)
   end
+  def tile_type_from_event(_event), do: "Unknown"
 
   defp query_for_text_tile_answers(_url, learners,  user = %User{}) do
     sql = answer_sql(learners)
@@ -151,9 +152,13 @@ defmodule ReportServer.Clue do
 
     #{track_a_cte()},
 
+    #{track_b_cte()},
+
     #{track_c_cte()}
 
     #{track_a_select()}
+    UNION ALL
+    #{track_b_select()}
     UNION ALL
     #{track_c_select()}
     """
@@ -225,6 +230,59 @@ defmodule ReportServer.Clue do
       document_type,
       document_history_id
     FROM track_a
+    WHERE rn = 1
+    """
+  end
+
+  ## Two assumptions hold this filter up, and a change to either needs a re-read.
+  ## Question is currently the only container tile type, so a non-empty
+  ## containerIds means the tile sits inside one and Track A already reports it.
+  ## And a missing containerIds means free-standing rather than unknown: no
+  ## container tile type existed before March 2025 and containerIds logging began
+  ## that May, so the key is simply absent from most of the log history. Without
+  ## the COALESCE those rows compare as NULL and drop, which is 83% of the corpus.
+  defp track_b_cte() do
+    """
+    track_b AS (
+      SELECT
+        username,
+        run_remote_endpoint,
+        event,
+        json_extract_scalar(parameters, '$.toolId') AS tool_id,
+        json_extract_scalar(parameters, '$.documentKey') AS document_key,
+        json_extract_scalar(parameters, '$.documentType') AS document_type,
+        json_extract_scalar(parameters, '$.documentHistoryId') AS document_history_id,
+        ROW_NUMBER() OVER (
+          PARTITION BY run_remote_endpoint,
+                       COALESCE(json_extract_scalar(parameters, '$.toolId'),
+                                json_extract_scalar(parameters, '$.tileId'))
+          ORDER BY time DESC) AS rn
+      FROM clue_logs
+      WHERE regexp_like(event, '_TOOL_CHANGE$')
+        AND event != 'TEXT_TOOL_CHANGE'
+        AND COALESCE(json_format(json_extract(parameters, '$.containerIds')), '[]') = '[]'
+        AND json_extract_scalar(parameters, '$.documentKey') IS NOT NULL
+    )
+    """
+  end
+
+  defp track_b_select() do
+    """
+    SELECT
+      'B' AS track,
+      username,
+      run_remote_endpoint,
+      CAST(NULL AS VARCHAR) AS question_id,
+      CAST(NULL AS VARCHAR) AS answers,
+      CAST(NULL AS VARCHAR) AS prompt,
+      event,
+      tool_id,
+      CAST(NULL AS VARCHAR) AS tile_title,
+      CAST(NULL AS VARCHAR) AS text_value,
+      document_key,
+      document_type,
+      document_history_id
+    FROM track_b
     WHERE rn = 1
     """
   end
@@ -330,7 +388,14 @@ defmodule ReportServer.Clue do
 
     learners_by_endpoint = Map.new(learners, &{&1.run_remote_endpoint, &1})
 
-    seed = Map.merge(return_struct, %{entries: %{}, unmatched: [], unknown_tracks: [], malformed: [], blank_question_ids: []})
+    seed = Map.merge(return_struct, %{
+        entries: %{},
+        unmatched: [],
+        unknown_tracks: [],
+        malformed: [],
+        blank_question_ids: [],
+        tiles_without_document: []
+      })
 
     result = stream
     |> CSV.decode(headers: true, validate_row_length: true)
@@ -349,6 +414,9 @@ defmodule ReportServer.Clue do
     case {row["track"], Map.get(learners_by_endpoint, row["run_remote_endpoint"])} do
       {"A", learner} when not is_nil(learner) ->
         reduce_question_row(row, learner, row_acc)
+
+      {"B", learner} when not is_nil(learner) ->
+        reduce_tile_row(row, learner, row_acc)
 
       {"C", learner} when not is_nil(learner) ->
         reduce_text_tile_row(row, learner, row_acc)
@@ -372,17 +440,8 @@ defmodule ReportServer.Clue do
 
     with false <- blank?(question_id),
          {:ok, groups} <- decode_answer_groups(row["answers"]) do
-      username = row["username"]
-      [user_id, portal_site] = String.split(username, "@")
-
-      link = history_link(row, learner, portal_site, user_id)
-
-      entries =
-        answer_entries(groups, %{
-          link: link,
-          document_key: row["document_key"],
-          document_type: row["document_type"]
-        })
+      context = row_context(row, learner, "A")
+      entries = answer_entries(groups, context)
 
       if entries == [] do
         row_acc
@@ -391,19 +450,51 @@ defmodule ReportServer.Clue do
 
         row_acc
         |> Map.put(:structure, put_question_prompt(row_acc.structure, key, question_id, row["prompt"]))
-        |> add_entries(key, entries, %{
-          track: "A",
-          username: username,
-          learner: learner,
-          user_id: user_id,
-          portal_url: "https://#{portal_site}",
-          link: link
-        })
+        |> add_entries(key, entries, context)
       end
     else
       true -> skip_row(row_acc, :blank_question_ids, row["username"])
       :error -> skip_row(row_acc, :malformed, {row["username"], question_id})
     end
+  end
+
+  defp row_context(row, learner, track) do
+    username = row["username"]
+    [user_id, portal_site] = String.split(username, "@")
+
+    %{
+      track: track,
+      username: username,
+      learner: learner,
+      user_id: user_id,
+      portal_url: "https://#{portal_site}",
+      link: history_link(row, learner, portal_site, user_id),
+      document_key: row["document_key"],
+      document_type: row["document_type"]
+    }
+  end
+
+  ## Every free-standing tile a learner has, in any of their documents, lands in
+  ## one cell. The tile type lives only in the event name, and an event this has
+  ## never seen still has to appear, so that a tile type CLUE starts logging shows
+  ## up without a change here.
+  defp reduce_tile_row(row, learner, row_acc) do
+    if blank?(row["document_key"]) do
+      skip_row(row_acc, :tiles_without_document, row["event"])
+    else
+      accumulate_tile_row(row, learner, row_acc)
+    end
+  end
+
+  ## Without a document there is no link to the student's work and no document to
+  ## attribute the tile to, so the entry could not satisfy the cell contract. The
+  ## query filters these out; this keeps the invariant true of the parse alone.
+  defp accumulate_tile_row(row, learner, row_acc) do
+    context = row_context(row, learner, "B")
+
+    row_acc
+    |> Map.put(:structure, put_other_tiles_question(row_acc.structure))
+    |> add_entries(@other_tiles_key, [entry(tile_type_from_event(row["event"]), context)], context)
   end
 
   ## A payload that does not decode, or decodes to something other than a list of
@@ -522,7 +613,16 @@ defmodule ReportServer.Clue do
     log_skipped(result.unknown_tracks, "rows with an unrecognized track")
     log_skipped(result.malformed, "rows with an unusable answers payload")
     log_skipped(result.blank_question_ids, "rows with no questionId")
-    result |> Map.drop([:unmatched, :unknown_tracks, :malformed, :blank_question_ids])
+    log_skipped(result.tiles_without_document, "tile-change rows with no documentKey")
+
+    result
+    |> Map.drop([
+      :unmatched,
+      :unknown_tracks,
+      :malformed,
+      :blank_question_ids,
+      :tiles_without_document
+    ])
   end
 
   defp log_skipped([], _description), do: :ok
@@ -533,9 +633,8 @@ defmodule ReportServer.Clue do
   defp reduce_text_tile_row(row, learner, row_acc) do
     tile_title = row["tile_title"]
     question_id = text_tile_key(tile_title)
-    username = row["username"]
-    [user_id, portal_site] = String.split(username, "@")
-    portal_url = "https://#{portal_site}"
+    context = row_context(row, learner, "C")
+    %{username: username, user_id: user_id, portal_url: portal_url, link: history_url} = context
 
     structure =
       put_question(row_acc.structure, question_id, %{
@@ -543,8 +642,6 @@ defmodule ReportServer.Clue do
         prompt: tile_title,
         required: false
       })
-
-    history_url = history_link(row, learner, portal_site, user_id)
 
     answers = with text_field <- row["text_value"],
           text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
@@ -566,6 +663,22 @@ defmodule ReportServer.Clue do
     case make_safe_id(tile_title) do
       @other_tiles_key -> @other_tiles_key <> "_text"
       key -> key
+    end
+  end
+
+  ## Deliberately not added to question_order here. It is prepended after the
+  ## sort instead, because the report reverses the order on the way out and the
+  ## aggregate column has to end up last. Sorting it in would drop it wherever the
+  ## letter o happens to fall among the other keys.
+  defp put_other_tiles_question(structure) do
+    if Map.has_key?(structure.questions, @other_tiles_key) do
+      structure
+    else
+      Map.update!(structure, :questions, &Map.put(&1, @other_tiles_key, %{
+        type: "clue_tile",
+        prompt: "Other tiles",
+        required: false
+      }))
     end
   end
 
@@ -630,10 +743,22 @@ defmodule ReportServer.Clue do
     end
   end
 
-  ## CLUE answers have no natural order, so just sort alphabetically
+  ## CLUE answers have no natural order, so sort alphabetically, which is stable
+  ## across reports because every key is a deterministic function of its question.
+  ## The aggregate column is prepended rather than sorted, since the report
+  ## reverses this order and it has to come out last.
   defp finalize(result) do
     Map.update!(result, :structure, fn structure ->
-      Map.put(structure, :question_order, Enum.sort(structure.question_order))
+      sorted = Enum.sort(structure.question_order)
+
+      order =
+        if Map.has_key?(structure.questions, @other_tiles_key) do
+          [@other_tiles_key | sorted]
+        else
+          sorted
+        end
+
+      Map.put(structure, :question_order, order)
     end)
   end
 
