@@ -212,8 +212,22 @@ service cloud.firestore {
               'interactive_id', 'interactive_url', 'action', 'value', 'data']);
     }
 
+    // A `get` of a document that does not exist evaluates with `resource == null`, so every branch of
+    // studentWorkRead() dereferences null and the read is denied. That denial is what the client sees on
+    // EVERY fresh conversation, because the parent doc is not created until the first send. Firestore
+    // terminates an onSnapshot listener once it invokes the error callback, so the client's authoritative
+    // status channel was being killed before the conversation even started. Permitting the missing-doc
+    // read lets that listener attach and simply report "does not exist" until the doc appears.
+    //
+    // What this exposes is only non-existence: an existing doc still has to pass studentWorkRead(), so a
+    // probe distinguishes "no conversation here" from "denied", keyed on a path that already requires
+    // knowing the run_key (>10 chars, unguessable) or the learner key. No document contents leak.
+    function chatParentRead() {
+      return resource == null || studentWorkRead();
+    }
+
     match /sources/{source}/chats/{key}/activities/{activityId}/pages/{pageId} {
-      allow read:   if studentWorkRead();      // parent must carry owner fields to be readable
+      allow read:   if chatParentRead();       // existing parent must carry owner fields to be readable
       allow create: if chatParentCreate();     // owner fields only — no server-owned fields
       // no client update — lock/cursor/conversation fields are Admin-written (Admin bypasses rules)
 

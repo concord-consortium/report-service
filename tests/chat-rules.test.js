@@ -157,6 +157,21 @@ describe("chat read path: owner fields required on function-written docs", () =>
     await firebase.assertFails(anon.firestore().doc(parent).get());
   });
 
+  it("client CAN read a parent that does not exist yet (every fresh conversation)", async () => {
+    const { parent } = chatPaths();
+    // Nothing is written first: this is the state of a page the student has never chatted on. Denying it
+    // killed the status listener (Firestore tears an onSnapshot down after its error callback) before the
+    // conversation began, which is exactly what chatParentRead()'s `resource == null` branch fixes.
+    const snap = await firebase.assertSucceeds(anon.firestore().doc(parent).get());
+    expect(snap.exists).toBe(false);
+  });
+
+  it("the missing-doc allowance does NOT widen reads of an existing parent owned by someone else", async () => {
+    const { parent } = chatPaths();
+    await adminDb().doc(parent).set({ ...learnerOwner, status: "idle" }); // a learner's conversation
+    await firebase.assertFails(anon.firestore().doc(parent).get());       // anon still cannot read it
+  });
+
   it("function-written assistant reply is VISIBLE to the client's filtered subscription when it carries owner fields", async () => {
     const { messages } = chatPaths();
     await adminDb().collection(messages).add({ run_key: RUN_KEY, kind: "user", text: "q", createdAt: 1 });
