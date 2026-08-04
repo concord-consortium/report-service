@@ -325,8 +325,11 @@ export async function processAndDrain(ctx: DrainContext): Promise<void> {
       console.error(`[chat] skipping permanently-failed unit ${last.id}: ${message}`);
       skippedError = message;
       lastSnap = last;
+      // Persist the reason + the cursor advance, but deliberately NOT `status`. We still hold the lock
+      // and are about to keep draining, and acquireLock only backs off while status === "generating":
+      // flipping it to "error" here would let a concurrent trigger win the lock and run a SECOND drain
+      // on this conversation. The final status is decided once, at the idle commit below.
       await parentRef.set({
-        status: "error",
         error: message,
         lastProcessedCreatedAt: last.get("createdAt"),
         lastProcessedMessageId: last.id,

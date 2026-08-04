@@ -80,16 +80,22 @@ describeEmu("processAndDrain + acquireLock [emulator, fake OpenAI]", () => {
     db = admin.firestore();
   });
 
-  // A fresh isolated per-page path per test.
+  // A fresh isolated per-page path per test. The activityId is unique per test too, NOT a shared "9":
+  // getActivityResource caches the fetched activity at module level keyed by the resolved URL, which is
+  // built from the activityId. A shared id let one test be served the previous test's stubbed activity,
+  // whose page ids do not match, turning a would-be transient failure into a findPage skip.
   const freshPaths = () => {
-    const pageId = `p-${n++}`;
-    const parentRef = db.doc(`sources/s/chats/k/activities/9/pages/${pageId}`);
-    return { parentRef, messagesCol: parentRef.collection("messages"), pageId };
+    const i = n++;
+    const pageId = `p-${i}`;
+    const activityId = `a-${i}`;
+    const parentRef = db.doc(`sources/s/chats/k/activities/${activityId}/pages/${pageId}`);
+    return { parentRef, messagesCol: parentRef.collection("messages"), pageId, activityId };
   };
 
+  // activityId is read back off the parent path, mirroring production where it is a path param.
   const ctxFor = (parentRef: any, messagesCol: any, openai: any, pageId: string): DrainContext => ({
     parentRef, messagesCol,
-    params: { source: "s", key: "k", activityId: "9", pageId },
+    params: { source: "s", key: "k", activityId: parentRef.path.split("/activities/")[1].split("/")[0], pageId },
     openai, model: "test-model", genericText: "generic",
   });
 
@@ -162,19 +168,19 @@ describeEmu("processAndDrain + acquireLock [emulator, fake OpenAI]", () => {
   // message sent afterwards (by a FIXED client) was never reached. The conversation was bricked for
   // that page permanently.
   it("steps over a permanently-failing head message and still answers the ones queued behind it", async () => {
-    const { parentRef, messagesCol, pageId } = freshPaths();
+    const { parentRef, messagesCol, pageId, activityId } = freshPaths();
     // promptInstalled is deliberately NOT set: that is what forces composePageSystemPrompt (and so
     // resolveActivityUrl) to run, which is the only path that can throw a PermanentUnitError.
     await parentRef.set({ run_key: "anon-run-0123456789", status: "generating",
       lockedAt: admin.firestore.FieldValue.serverTimestamp(), conversationId: "conv_test" });
     // head: a disallowed host → PermanentUnitError, forever.
     await messagesCol.doc("bad").set({ kind: "user", text: "q1", createdAt: ts(BASE + 1),
-      run_key: "anon-run-0123456789", activityId: "9",
+      run_key: "anon-run-0123456789", activityId,
       activityUrl: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org" });
     // behind it: a well-formed message that must NOT be blocked.
     await messagesCol.doc("good").set({ kind: "user", text: "q2", createdAt: ts(BASE + 2),
-      run_key: "anon-run-0123456789", activityId: "9",
-      activityUrl: "https://authoring.concord.org/api/v1/activities/9.json" });
+      run_key: "anon-run-0123456789", activityId,
+      activityUrl: `https://authoring.concord.org/api/v1/activities/${activityId}.json` });
 
     const openai = makeFakeOpenAI();
     const restoreFetch = stubActivityFetch(pageId);
@@ -199,12 +205,12 @@ describeEmu("processAndDrain + acquireLock [emulator, fake OpenAI]", () => {
   });
 
   it("surfaces the failure when the skipped unit is the LAST thing that happened", async () => {
-    const { parentRef, messagesCol, pageId } = freshPaths();
+    const { parentRef, messagesCol, pageId, activityId } = freshPaths();
     await parentRef.set({ run_key: "anon-run-0123456789", status: "generating",
       lockedAt: admin.firestore.FieldValue.serverTimestamp(), conversationId: "conv_test" });
     // Only the poison pill: nothing queued behind it to prove the tutor still works.
     await messagesCol.doc("bad").set({ kind: "user", text: "q", createdAt: ts(BASE + 1),
-      run_key: "anon-run-0123456789", activityId: "9",
+      run_key: "anon-run-0123456789", activityId,
       activityUrl: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org" });
 
     await processAndDrain(ctxFor(parentRef, messagesCol, makeFakeOpenAI(), pageId));
@@ -216,6 +222,40 @@ describeEmu("processAndDrain + acquireLock [emulator, fake OpenAI]", () => {
     expect(after.status).toBe("error");
     expect(after.error).toMatch(/disallowed activity host/);
     expect((await messagesCol.where("kind", "==", "assistant").get()).empty).toBe(true);
+  });
+
+  // Regression for the single-in-flight invariant. acquireLock backs off ONLY while
+  // status === "generating", so a skip that flipped status to "error" mid-drain (while still holding
+  // the lock and still draining) would let a concurrent trigger win the lock and run a SECOND drain on
+  // the same conversation. The skip must persist the reason + cursor and leave status alone.
+  it("keeps status generating while skipping, so the lock is not released mid-drain", async () => {
+    const { parentRef, messagesCol, pageId, activityId } = freshPaths();
+    await parentRef.set({ run_key: "anon-run-0123456789", status: "generating",
+      lockedAt: admin.firestore.FieldValue.serverTimestamp(), conversationId: "conv_test" });
+    await messagesCol.doc("bad").set({ kind: "user", text: "q1", createdAt: ts(BASE + 1),
+      run_key: "anon-run-0123456789", activityId,
+      activityUrl: "https://activity-player.concord.org/?activity=https%3A%2F%2Fauthoring.concord.org" });
+    await messagesCol.doc("next").set({ kind: "user", text: "q2", createdAt: ts(BASE + 2),
+      run_key: "anon-run-0123456789", activityId,
+      activityUrl: `https://authoring.concord.org/api/v1/activities/${activityId}.json` });
+
+    // The unit AFTER the skip fails transiently, so the drain throws before reaching the idle commit.
+    // That leaves the mid-drain state observable, which is exactly what this asserts.
+    const openai = makeFakeOpenAI();
+    openai.responses.create = async () => { throw new Error("503 upstream unavailable"); };
+
+    const restoreFetch = stubActivityFetch(pageId);
+    try {
+      await expect(processAndDrain(ctxFor(parentRef, messagesCol, openai, pageId)))
+        .rejects.toThrow(/503/);
+    } finally {
+      restoreFetch();
+    }
+
+    const after = (await parentRef.get()).data() as any;
+    expect(after.status).toBe("generating");             // lock still held → no concurrent drain
+    expect(after.lastProcessedMessageId).toBe("bad");    // the skip's cursor advance did persist
+    expect(after.error).toMatch(/disallowed activity host/); // and so did the reason
   });
 
   it("does NOT skip a transient failure — it propagates and leaves the cursor put for a retry", async () => {
