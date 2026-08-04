@@ -925,6 +925,20 @@ defmodule ReportServer.ClueTest do
       assert cell["url"] =~ "studentDocument=-OL0rmfqiDsPlriZks-X"
     end
 
+    test "keeps the column but no answer when the tile content will not decode", %{
+      a: a,
+      learners: learners
+    } do
+      ## The text is a serialized rich-text document. A row that will not decode
+      ## contributes no answer, but the tile exists, so its column does too.
+      rows = [track_c_row(a, "My Notes", "x") |> Map.put("text_value", "not a document")]
+
+      result = parse(rows, learners)
+
+      assert Map.has_key?(result.structure.questions, "my_notes")
+      assert result.answers == %{}
+    end
+
     test "does not fold toolId into the key", %{a: a, learners: learners} do
       result = parse([track_c_row(a, "My Notes", "x", tool_id: "abc123")], learners)
 

@@ -395,7 +395,8 @@ defmodule ReportServer.Clue do
         malformed: [],
         blank_question_ids: [],
         tiles_without_document: [],
-        undecodable: []
+        undecodable: [],
+        undecodable_text: []
       })
 
     result = stream
@@ -618,6 +619,7 @@ defmodule ReportServer.Clue do
     log_skipped(result.blank_question_ids, "rows with no questionId")
     log_skipped(result.tiles_without_document, "tile-change rows with no documentKey")
     log_skipped(result.undecodable, "undecodable CSV rows")
+    log_skipped(result.undecodable_text, "text tiles whose content would not decode")
 
     result
     |> Map.drop([
@@ -626,13 +628,14 @@ defmodule ReportServer.Clue do
       :malformed,
       :blank_question_ids,
       :tiles_without_document,
-      :undecodable
+      :undecodable,
+      :undecodable_text
     ])
   end
 
   defp log_skipped([], _description), do: :ok
   defp log_skipped(details, description) do
-    Logger.error("CLUE answers: skipped #{length(details)} #{description}, e.g. #{inspect(List.last(details))}")
+    Logger.error("CLUE answers: skipped #{length(details)} #{description}, e.g. #{inspect(hd(details))}")
   end
 
   defp reduce_text_tile_row(row, learner, row_acc) do
@@ -648,17 +651,23 @@ defmodule ReportServer.Clue do
         required: false
       })
 
-    answers = with text_field <- row["text_value"],
-          text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
-          {:ok, json} <- Jason.decode(text_trimmed),
-          plain_text <- extract_text(json),
-          {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => history_url }) do
-      add_answer_row(row_acc.answers, username, answer_row(question_id, answer_json, learner, user_id, portal_url, history_url))
-    else
-      _ -> row_acc.answers
-    end
+    with text_field <- row["text_value"],
+         text_trimmed <- String.trim_leading(text_field, "\"") |> String.trim_trailing("\""),
+         {:ok, json} <- Jason.decode(text_trimmed),
+         plain_text <- extract_text(json),
+         {:ok, answer_json} <- Jason.encode(%{ "text" => plain_text, "url" => history_url }) do
+      answers =
+        add_answer_row(row_acc.answers, username,
+          answer_row(question_id, answer_json, learner, user_id, portal_url, history_url))
 
-    %{row_acc | structure: structure, answers: answers}
+      %{row_acc | structure: structure, answers: answers}
+    else
+      ## The text is a serialized rich-text document, so a row that will not
+      ## decode contributes nothing. Counted rather than dropped in silence, the
+      ## way every other unusable row is, though the column still exists because
+      ## the tile itself does.
+      _ -> %{row_acc | structure: structure} |> skip_row(:undecodable_text, tile_title)
+    end
   end
 
   ## `other_tiles` is Track B's synthetic key, and make_safe_id/1 maps titles such
