@@ -10,6 +10,7 @@
 // version===1 resources are run through the lifted convertLegacyResource; v2 pass through. Results are
 // cached by URL (module-level, per-instance) with a TTL so a mid-pilot author edit self-heals.
 import { convertLegacyResource } from "./convert";
+import { PermanentUnitError } from "./permanent-error";
 import { Activity } from "./types";
 
 // Only these hosts may be fetched (the authoring hosts). https is also required.
@@ -39,15 +40,21 @@ export function resolveActivityUrl(params: {
   paramActivityId: string;
 }): string {
   const { activityUrl, messageActivityId, paramActivityId } = params;
+  // All four rejections below are PermanentUnitError: they are decided entirely by fields ON the
+  // message doc, so re-running against the same doc always fails the same way. See permanent-error.ts.
   let u: URL;
   try {
     u = new URL(activityUrl);
   } catch (e) {
-    throw new Error("invalid activityUrl");
+    throw new PermanentUnitError("invalid activityUrl");
   }
-  if (u.protocol !== "https:") throw new Error("activityUrl must use https");
-  if (!AUTHORING_HOSTS.includes(u.hostname)) throw new Error(`disallowed activity host: ${u.hostname}`);
-  if (String(messageActivityId) !== String(paramActivityId)) throw new Error("activityId mismatch");
+  if (u.protocol !== "https:") throw new PermanentUnitError("activityUrl must use https");
+  if (!AUTHORING_HOSTS.includes(u.hostname)) {
+    throw new PermanentUnitError(`disallowed activity host: ${u.hostname}`);
+  }
+  if (String(messageActivityId) !== String(paramActivityId)) {
+    throw new PermanentUnitError("activityId mismatch");
+  }
   // Path param is authoritative — build the URL from the trusted host + path id, not the raw client string.
   return `https://${u.hostname}/api/v1/activities/${encodeURIComponent(paramActivityId)}.json`;
 }

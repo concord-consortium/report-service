@@ -9,6 +9,7 @@ import { assemblePageContext, renderPageContext, OrientationHints } from "./chat
 import { getVisiblePages } from "./page-walk";
 import { Activity, Page } from "./types";
 import { resolveActivityUrl, defaultActivityUrl, getActivityResource } from "./fetch-activity";
+import { PermanentUnitError } from "./permanent-error";
 import { getSimPromptFragments } from "./sim-prompts";
 import {
   createOpenAIClient, createConversation, installDeveloperPrompt, createTutorResponse, TutorInputMessage,
@@ -83,7 +84,11 @@ function orientationHints(data: any): OrientationHints {
 function findPage(activity: Activity, pageId: string): Page {
   const pages = getVisiblePages(activity);
   const found = pages.find(p => String(p.id) === String(pageId));
-  if (!found) throw new Error(`no visible page matches pageId ${pageId}`);
+  // PermanentUnitError: the pageId comes from the path, so this fails identically on every retry for
+  // this conversation. Strictly it could self-heal if an author later un-hides the page (the fetch is
+  // cached for CACHE_TTL_MS), but blocking every later message until that happens is far worse than
+  // dropping the one turn that asked about a page the student can no longer be on.
+  if (!found) throw new PermanentUnitError(`no visible page matches pageId ${pageId}`);
   return found;
 }
 
@@ -251,6 +256,13 @@ export async function processAndDrain(ctx: DrainContext): Promise<void> {
     if (cursorSnap.exists) lastSnap = cursorSnap as MsgSnap;
   }
 
+  // Set when a unit was stepped over as a poison pill, so the idle commit below can settle to `error`
+  // instead of a healthy-looking `idle` after dropping a student's turn. CLEARED by any later unit that
+  // succeeds: `status` describes the conversation NOW, and a skip followed by a good answer means the
+  // tutor is working. Leaving it set showed the client's "tutor unavailable" banner directly above a
+  // perfectly good reply.
+  let skippedError: string | undefined;
+
   for (let i = 0; i < MAX_DRAIN_TURNS; i++) {
     const batch = await afterCursorQuery(lastSnap).get();
     const pending = batch.docs.filter(isPending);
@@ -275,10 +287,20 @@ export async function processAndDrain(ctx: DrainContext): Promise<void> {
         if (check.docs.length === DRAIN_BATCH) return false; // saturated race → keep draining, don't idle
         const stillPending = check.docs.filter(isPending);
         if (stillPending.length > 0) return false;
-        tx.set(parentRef, {
-          status: "idle",
-          lockedAt: admin.firestore.FieldValue.delete(),
-        }, { merge: true });
+        // A drain whose LAST outcome was a skip must NOT settle to a healthy-looking `idle`: the student
+        // asked something and will never get an answer to it, and `error` is what the client surfaces as
+        // "tutor unavailable". If a later unit succeeded, skippedError was cleared above and we settle to
+        // `idle`, because the tutor is working now. The lock is released either way, and acquireLock
+        // proceeds on anything != "generating", so the next message drains normally.
+        // Clear a stale `error` when settling to idle. It is written alongside status:"error" and was
+        // never cleared, so a recovered conversation kept carrying the text of a long-since-fixed
+        // failure — harmless to the client (which reads `status`) but actively misleading when
+        // querying Firestore to find broken conversations.
+        tx.set(parentRef, skippedError
+          ? { status: "error", error: skippedError, lockedAt: admin.firestore.FieldValue.delete() }
+          : { status: "idle", error: admin.firestore.FieldValue.delete(),
+              lockedAt: admin.firestore.FieldValue.delete() },
+        { merge: true });
         return true;
       });
       if (wentIdle) return;
@@ -286,9 +308,36 @@ export async function processAndDrain(ctx: DrainContext): Promise<void> {
     }
 
     const unit = extractUnit(pending);
-    const { assistant, parentUpdate } = await processUnit(ctx, unit);
-
     const last = unit.docs[unit.docs.length - 1];
+
+    let processed;
+    try {
+      processed = await processUnit(ctx, unit);
+    } catch (e) {
+      // Transient failures must keep the OLD behaviour: propagate, leave the cursor put, and let the
+      // next trigger retry. Skipping one would silently swallow the student's message.
+      if (!(e instanceof PermanentUnitError)) throw e;
+      // Poison pill: this unit fails identically forever, and the cursor only advances on success, so
+      // leaving it at the head wedges the whole conversation (every later message blocked behind it).
+      // Step over it, remember the error, and keep draining so queued messages still get answered.
+      // console.error keeps it in the function logs, which the rethrow used to provide.
+      const message = (e as Error).message;
+      console.error(`[chat] skipping permanently-failed unit ${last.id}: ${message}`);
+      skippedError = message;
+      lastSnap = last;
+      // Persist the reason + the cursor advance, but deliberately NOT `status`. We still hold the lock
+      // and are about to keep draining, and acquireLock only backs off while status === "generating":
+      // flipping it to "error" here would let a concurrent trigger win the lock and run a SECOND drain
+      // on this conversation. The final status is decided once, at the idle commit below.
+      await parentRef.set({
+        error: message,
+        lastProcessedCreatedAt: last.get("createdAt"),
+        lastProcessedMessageId: last.id,
+      }, { merge: true });
+      continue;
+    }
+    const { assistant, parentUpdate } = processed;
+
     lastSnap = last;
     // commit the assistant doc + earned parent state + cursor advance in ONE batch: either all
     // land or none, so a crash between the reply and the cursor can't duplicate the assistant doc (a
@@ -302,6 +351,8 @@ export async function processAndDrain(ctx: DrainContext): Promise<void> {
       lastProcessedMessageId: last.id,
     }, { merge: true });
     await writeBatch.commit();
+    // A successful turn supersedes an earlier skip: the conversation is demonstrably working again.
+    skippedError = undefined;
   }
 
   // Pathological drain length. Throw so the catch sets status:"error" (self-heals — acquire proceeds on
