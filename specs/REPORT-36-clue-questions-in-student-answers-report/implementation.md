@@ -2,7 +2,7 @@
 
 **Jira**: https://concord-consortium.atlassian.net/browse/REPORT-36
 **Requirements**: [requirements.md](./requirements.md)
-**Status**: **Implemented** (2026-08-04, except step 0, the CLUE-side ticket, which is drafted but unfiled)
+**Status**: **Implemented** (code 2026-08-04; step 0 filed as [CLUE-614](https://concord-consortium.atlassian.net/browse/CLUE-614) on 2026-08-05; verified against production the same day)
 
 ## Scope
 
@@ -407,7 +407,7 @@ Plus direct **answers-path** query-generation tests asserting `get_columns_for_q
 
 Each step should be independently reviewable. All code steps landed 2026-08-04; the commit for each is noted.
 
-0. **File the CLUE-side enrichment ticket**, first rather than last. **Still outstanding.** It is the only non-code deliverable, it is the item most likely to be blocked on someone else's availability, and the `$.prompt` lookup shipped in the Track A step binds to the field name it specifies. The ticket must state the prompt is added to `QUESTION_ANSWERS_CHANGE` as a **top-level `prompt` key** in the event parameters, and that any new tile-change events follow the **`<TYPE>_TOOL_CHANGE`** naming convention. Two further asks were added during implementation review: resolve the `"first"` history-id sentinel, and route iframe-interactive logging through `logTileChangeEvent`. Drafted in a working note; completion evidence is the linked ticket id.
+0. **File the CLUE-side enrichment ticket**, first rather than last. **Done 2026-08-05: [CLUE-614](https://concord-consortium.atlassian.net/browse/CLUE-614).** It is the only non-code deliverable, it is the item most likely to be blocked on someone else's availability, and the `$.prompt` lookup shipped in the Track A step binds to the field name it specifies. As filed the ticket carries five asks: the prompt as a **top-level `prompt` key** in the `QUESTION_ANSWERS_CHANGE` parameters, the **`<TYPE>_TOOL_CHANGE`** naming convention for new tile-change events, resolving the `"first"` history-id sentinel, routing iframe-interactive logging through `logTileChangeEvent`, and flagging rather than silently making event renames. The optional larger ask, tile types that log nothing at all, went separately as [CLUE-615](https://concord-consortium.atlassian.net/browse/CLUE-615). Ask 1 is now confirmed rather than predicted: the 2026-08-05 production run had all 44 question columns fall back to the raw `questionId`, none carrying a prompt.
 1. **D7 table move plus the D2 base CTE** (`d3489a7`). Repointed at `logs_by_app_and_secure_key` behind `clue_logs` with the `app` + year-floor + `secure_key` + `run_remote_endpoint` prune, `Enum.uniq()` on the endpoint list, and today's text path selecting from it on a `ROW_NUMBER` window. No change to emitted rows. Also introduced the `track` discriminator and the padded union columns so the later tracks attach without reshaping either side.
 2. **Testability seam** (`ce2e782`), landed ahead of the track work. `AthenaDB` and the CSV read go through the `:athena_db` and `:aws_file_store` seams, including inside `AthenaQueryPoller`; the parquet write is injectable via `opts[:write_answers]`; `answer_sql/1`, `parse_answer_csv/4` and `resource_name/1` are exposed.
 3. **Key encoding and `tile_type_from_event/1`** (`3f6e4f1`), with unit tests. Both public, since a private function is unreachable from a unit test and unused in the step that introduces it.
