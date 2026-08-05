@@ -29,18 +29,43 @@ defmodule ReportServer.Clue do
     String.contains?(url, "collaborative-learning.concord.org")
   end
 
+  ## Querying is only meaningful once some learner can be matched to a log row.
+  ## With none, the endpoint and secure-key lists interpolate as an empty `IN ()`,
+  ## which Athena rejects as a syntax error rather than returning no rows, and the
+  ## year floor has no created_at to derive from. Today's grouping builds a group
+  ## only from rows that exist, so an empty list is hard to reach, but nothing
+  ## upstream guarantees it and a learner whose run_remote_endpoint is nil is
+  ## dropped here rather than upstream, so a non-empty group can still reduce to
+  ## no usable endpoints. Return the empty structure instead: no answers is the
+  ## honest result, and it costs no Athena round trip to say so.
   def fetch_resource(url, learners, user = %User{}) do
-    with {:ok, csv_path} <- query_for_text_tile_answers(url, learners, user),
-         {:ok, data} <- read_text_tile_answer_csv(url, csv_path, learners) do
-      {:ok, %{
-        "type" => "clue",
-        "url" => url,
-        "name" => resource_name(url),
-        "denormalized" => data.structure
-      }}
-    else
-      error -> error
+    case run_remote_endpoints(learners) do
+      [] ->
+        Logger.warning("CLUE answers: no learner has a run_remote_endpoint, skipping the query for #{url}")
+        {:ok, empty_resource(url)}
+
+      _endpoints ->
+        with {:ok, csv_path} <- query_for_text_tile_answers(url, learners, user),
+             {:ok, data} <- read_text_tile_answer_csv(url, csv_path, learners) do
+          {:ok, %{
+            "type" => "clue",
+            "url" => url,
+            "name" => resource_name(url),
+            "denormalized" => data.structure
+          }}
+        else
+          error -> error
+        end
     end
+  end
+
+  defp empty_resource(url) do
+    %{
+      "type" => "clue",
+      "url" => url,
+      "name" => resource_name(url),
+      "denormalized" => %{questions: %{}, choices: %{}, question_order: []}
+    }
   end
 
   ## The rest of the app reaches AWS through these seams so a test can swap in a
@@ -125,12 +150,7 @@ defmodule ReportServer.Clue do
   once or once per track.
   """
   def answer_sql(learners) do
-    run_remote_endpoints =
-      learners
-      |> Enum.map(fn learner -> learner[:run_remote_endpoint] end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
-
+    run_remote_endpoints = run_remote_endpoints(learners)
     secure_keys = Enum.map(run_remote_endpoints, &(&1 |> String.split("/") |> List.last()))
     log_db_name = Application.get_env(:report_server, :athena)[:log_db_name]
 
@@ -164,12 +184,25 @@ defmodule ReportServer.Clue do
     """
   end
 
+  ## The learner predicate and the decision to query at all read the same list,
+  ## so they derive it the same way. A learner with no run_remote_endpoint cannot
+  ## be matched to a log row, so it contributes nothing but an empty slot.
+  defp run_remote_endpoints(learners) do
+    learners
+    |> Enum.map(fn learner -> learner[:run_remote_endpoint] end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
   ## A learner cannot log before their learner record exists, so the earliest
   ## created_at year, less a year of slack, bounds the partitions worth scanning.
   ## Without a bound Athena enumerates every projected year for every learner,
   ## which costs wall time rather than bytes and so degrades invisibly. Only
   ## created_at bounds a learner from below, so one learner without it means the
   ## report cannot prune at all.
+  ## An empty list has no minimum. Unreachable from fetch_resource/3, which now
+  ## returns early, but answer_sql/1 is public and asserted on directly.
+  defp year_floor([]), do: @projection_first_year
   defp year_floor(learners) do
     years = Enum.map(learners, &calendar_year(&1[:created_at]))
 
