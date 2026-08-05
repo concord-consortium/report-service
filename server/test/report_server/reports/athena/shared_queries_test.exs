@@ -2,13 +2,11 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
   @moduledoc """
   Pins the answer-column shape the CLUE question types depend on.
 
-  Neither `clue_question` nor `clue_tile` has a branch of its own in
-  `get_columns_for_question/5`: both fall through to the catch-all, which already
-  emits exactly the single JSON column they need. That keeps the CLUE work out of
-  shared query generation entirely, but it also means nothing in the code says
-  these types are expected to produce `res_<n>_<key>_json`. cc-data reads that
-  column name, so an edit to the catch-all would change a consumed contract
-  without touching anything that looks CLUE-related. These tests are what turns
+  `clue_question` and `clue_tile` share one branch in
+  `get_columns_for_question/5`, emitting the JSON cell verbatim plus a `_url`
+  column lifted out of it. cc-data reads the `res_<n>_<key>_json` name and
+  researchers read the `_url` one in a spreadsheet, so both are consumed
+  contracts that an edit here would change silently. These tests are what turns
   that into a failure rather than a surprise.
   """
   use ExUnit.Case, async: true
@@ -43,25 +41,39 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
 
   describe "get_columns_for_question/5 for the CLUE question types" do
     for type <- ["clue_question", "clue_tile"] do
-      test "#{type} emits one JSON column carrying the cell verbatim" do
-        assert [column] = columns(unquote(type))
+      test "#{type} emits the JSON cell verbatim, then a url column" do
+        assert [json_column, url_column] = columns(unquote(type))
 
-        assert column.name == "res_1_#{@key}_json"
-        assert column.value == "learners_and_answers_1.kv1['#{@key}']"
+        assert json_column.name == "res_1_#{@key}_json"
+        assert json_column.value == "learners_and_answers_1.kv1['#{@key}']"
+
+        assert url_column.name == "res_1_#{@key}_url"
       end
 
-      test "#{type} takes its header from the question's prompt" do
-        assert [column] = columns(unquote(type))
+      test "#{type} takes the url from the first entry, leaving the array untouched" do
+        ## Entries built from one event share a link, so element 0 stands for the
+        ## whole cell. The array itself is passed through unchanged, which is what
+        ## keeps the multi-document case navigable.
+        assert [json_column, url_column] = columns(unquote(type))
 
-        assert column.header == "activities_1.questions['#{@key}'].prompt"
+        assert url_column.value ==
+                 "json_extract_scalar(learners_and_answers_1.kv1['#{@key}'], '$[0].link')"
+
+        refute json_column.value =~ "json_extract"
       end
 
-      test "#{type} emits no url or text sub-columns" do
-        ## The cell is a variable-length array, so it is passed through whole
-        ## rather than decomposed the way a single text answer can be.
+      test "#{type} takes both headers from the question's prompt" do
+        assert [json_column, url_column] = columns(unquote(type))
+
+        assert json_column.header == "activities_1.questions['#{@key}'].prompt"
+        assert url_column.header == "activities_1.questions['#{@key}'].prompt"
+      end
+
+      test "#{type} emits no text sub-column" do
+        ## The cell is a variable-length array, so unlike a single text answer
+        ## there is no one text value to decompose it into.
         names = columns(unquote(type)) |> Enum.map(& &1.name)
 
-        refute Enum.any?(names, &String.ends_with?(&1, "_url"))
         refute Enum.any?(names, &String.ends_with?(&1, "_text"))
       end
     end
@@ -93,17 +105,26 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
           1
         )
 
-      assert Enum.map(optional, & &1.name) == ["res_1_#{@key}_json"]
-      assert Enum.map(required, & &1.name) == ["res_1_#{@key}_json", "res_1_#{@key}_submitted"]
+      assert Enum.map(optional, & &1.name) == ["res_1_#{@key}_json", "res_1_#{@key}_url"]
+
+      assert Enum.map(required, & &1.name) == [
+               "res_1_#{@key}_json",
+               "res_1_#{@key}_url",
+               "res_1_#{@key}_submitted"
+             ]
     end
 
-    test "the column name uses the key it is given, so a hex key stays alias-safe" do
+    test "the column names use the key they are given, so a hex key stays alias-safe" do
       ## A raw questionId would emit res_1_9HzYd-_json here, which is a syntax
       ## error rather than a degraded value, since the alias is unquoted.
-      assert [column] = columns("clue_question", "q6e62302d6433")
+      assert [json_column, url_column] = columns("clue_question", "q6e62302d6433")
 
-      assert column.name == "res_1_q6e62302d6433_json"
-      assert column.name =~ ~r/^[a-z0-9_]+$/
+      assert json_column.name == "res_1_q6e62302d6433_json"
+      assert url_column.name == "res_1_q6e62302d6433_url"
+
+      for name <- [json_column.name, url_column.name] do
+        assert name =~ ~r/^[a-z0-9_]+$/
+      end
     end
   end
 end

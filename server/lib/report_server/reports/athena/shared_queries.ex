@@ -488,6 +488,25 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
             %{name: "#{column_prefix}_url", value: conditional_model_url.(answer, answers_source_key), header: prompt_header}
           ]
 
+        ## The CLUE cell is an array, so it cannot be decomposed into a text and
+        ## url pair the way a single answer can. Researchers read this file in a
+        ## spreadsheet, though, and a link buried in a JSON string is neither
+        ## readable nor clickable, so the link is lifted into a column of its own
+        ## alongside the untouched array.
+        ##
+        ## Entries built from one event share one context and therefore one link,
+        ## so element 0 covers the whole cell for 96% of them. The exception is a
+        ## questionId held in two documents (a copied tile or a copied document),
+        ## where later elements link into the other document. `link` therefore
+        ## stays in the array: it is the only thing binding an entry to the
+        ## document it came from, and dropping it would make that case
+        ## unnavigable.
+        type when type in ["clue_question", "clue_tile"] ->
+          [
+            %{name: "#{column_prefix}_json", value: answer, header: prompt_header},
+            %{name: "#{column_prefix}_url", value: "json_extract_scalar(#{answer}, '$[0].link')", header: prompt_header}
+          ]
+
         _ ->
           [
             %{name: "#{column_prefix}_json", value: answer, header: prompt_header}
