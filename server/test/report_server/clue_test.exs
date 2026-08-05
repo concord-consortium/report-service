@@ -272,6 +272,48 @@ defmodule ReportServer.ClueTest do
         refute name =~ "collaborative-learning.concord.org"
       end
     end
+
+    ## A branch deploy passes the whole content.json URL as the unit. Reported
+    ## verbatim that is about a hundred characters of label sitting beside
+    ## res_N_resource_url, which is the redundancy this function exists to avoid.
+    test "reduces a URL-valued unit to its unit name" do
+      url_unit =
+        "https://collaborative-learning.concord.org/?unit=" <>
+          "https://models-resources.concord.org/clue-curriculum/branch/modsAuth/mods/content.json" <>
+          "&problem=1.2"
+
+      assert Clue.resource_name(url_unit) == "CLUE mods: Problem 1.2"
+    end
+
+    test "a URL-valued unit and a plain unit for the same curriculum agree" do
+      ## The acceptance criterion: one class assigned by branch URL and another
+      ## by unit name must not read as two different activities.
+      url_unit =
+        "https://collaborative-learning.concord.org/?unit=" <>
+          "https://models-resources.concord.org/clue-curriculum/branch/modsAuth/mods/content.json" <>
+          "&problem=1.2"
+
+      plain_unit = "https://collaborative-learning.concord.org/?unit=mods&problem=1.2"
+
+      assert Clue.resource_name(url_unit) == Clue.resource_name(plain_unit)
+    end
+
+    test "a URL-valued unit still shortens when there is no problem" do
+      url_unit =
+        "https://collaborative-learning.concord.org/?unit=" <>
+          "https://models-resources.concord.org/clue-curriculum/branch/modsAuth/mods/content.json"
+
+      assert Clue.resource_name(url_unit) == "CLUE mods"
+    end
+
+    test "falls back to the unit verbatim when a URL yields no usable segment" do
+      ## Better a long label than a wrong one: dropping to a filename or to an
+      ## empty string would be worse than what it replaces.
+      for unit <- ["https://models-resources.concord.org", "https://x.org/content.json"] do
+        name = Clue.resource_name("https://collaborative-learning.concord.org/?unit=#{unit}")
+        assert name == "CLUE #{unit}"
+      end
+    end
   end
 
   describe "Track A: keys and columns" do
