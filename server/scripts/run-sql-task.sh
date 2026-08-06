@@ -72,7 +72,31 @@ read -r TASKDEF SUBNETS SGS PUBIP < <("${AWS[@]}" ecs describe-services \
   echo "ERROR: could not resolve a task def for service '$SERVICE' on cluster '$CLUSTER'" >&2; exit 1; }
 
 WORKDIR="$(mktemp -d)"
-trap 'rm -rf "$WORKDIR"' EXIT
+
+# The one-off task def carries the statement in plaintext env, so it must not outlive
+# the run. Deregister from an EXIT trap rather than at the end of the script: with
+# set -e any failure between registering and finishing would otherwise leave an ACTIVE
+# task def holding the SQL. SQL_TD_ARN is the exact revision registered by this run,
+# so a concurrent run of the same family cannot make us deregister the wrong one.
+SQL_TD_ARN=""
+cleanup() {
+  local rc=$?
+  rm -rf "$WORKDIR"
+  if [ -n "$SQL_TD_ARN" ] && [ -z "$KEEP" ]; then
+    if "${AWS[@]}" ecs deregister-task-definition --task-definition "$SQL_TD_ARN" \
+         --query 'taskDefinition.status' --output text >/dev/null 2>&1; then
+      echo "deregistered one-off task def: $SQL_TD_ARN"
+    else
+      echo "WARNING: could not deregister $SQL_TD_ARN. It still holds the SQL in" >&2
+      echo "         plaintext env; deregister it manually." >&2
+    fi
+  fi
+  return $rc
+}
+trap cleanup EXIT
+# Route Ctrl-C and TERM through a normal exit so the EXIT trap runs exactly once.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 "${AWS[@]}" ecs describe-task-definition --task-definition "$TASKDEF" \
   --query 'taskDefinition' --output json > "$WORKDIR/td-src.json"
@@ -155,11 +179,15 @@ jq --arg fam "$SQL_FAMILY" --arg img "$IMAGE" --arg sql "$SQL" --arg body "$EVAL
   "$WORKDIR/td-src.json" > "$WORKDIR/td-sql.json"
 
 # --- Register + run ----------------------------------------------------------------
-"${AWS[@]}" ecs register-task-definition --cli-input-json "file://$WORKDIR/td-sql.json" \
-  --query 'taskDefinition.taskDefinitionArn' --output text
+# Capture the exact revision ARN: it is what the EXIT trap deregisters, and running by
+# ARN rather than family name means a concurrent run registering a new revision cannot
+# make us execute someone else's statement.
+SQL_TD_ARN=$("${AWS[@]}" ecs register-task-definition --cli-input-json "file://$WORKDIR/td-sql.json" \
+  --query 'taskDefinition.taskDefinitionArn' --output text)
+echo "registered: $SQL_TD_ARN"
 
 TASK_ARN=$("${AWS[@]}" ecs run-task \
-  --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$SQL_FAMILY" \
+  --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$SQL_TD_ARN" \
   --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=$PUBIP}" \
   --started-by "sql-task" \
   --query 'tasks[0].taskArn' --output text)
@@ -185,15 +213,8 @@ echo "--- query output ($LOG_GROUP : $LOG_PREFIX/$CONTAINER/$TASK_ID) ---"
   --log-stream-name "$LOG_PREFIX/$CONTAINER/$TASK_ID" \
   --start-from-head --query 'events[].message' --output text || true
 
-# --- Cleanup the one-off task def --------------------------------------------------
-# The task def carries the SQL in plaintext env, so deregistering is the default.
-if [ -z "$KEEP" ]; then
-  SQL_TD=$("${AWS[@]}" ecs describe-task-definition --task-definition "$SQL_FAMILY" \
-    --query 'taskDefinition.taskDefinitionArn' --output text)
-  "${AWS[@]}" ecs deregister-task-definition --task-definition "$SQL_TD" \
-    --query 'taskDefinition.status' --output text >/dev/null
-  echo "deregistered one-off task def: $SQL_TD"
-fi
+# The one-off task def is deregistered by the EXIT trap, so it is cleaned up on the
+# failure paths below too, not just here.
 
 if [ "${EXIT:-}" = "0" ]; then
   echo "✅ query completed (exit 0)"
