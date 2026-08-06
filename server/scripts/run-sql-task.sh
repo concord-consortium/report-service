@@ -81,7 +81,9 @@ WORKDIR="$(mktemp -d)"
 SQL_TD_ARN=""
 cleanup() {
   local rc=$?
-  rm -rf "$WORKDIR"
+  # :? so a future refactor that lets the trap arm before WORKDIR is set aborts here
+  # rather than running rm -rf against an empty path.
+  rm -rf "${WORKDIR:?}"
   if [ -n "$SQL_TD_ARN" ] && [ -z "$KEEP" ]; then
     if "${AWS[@]}" ecs deregister-task-definition --task-definition "$SQL_TD_ARN" \
          --query 'taskDefinition.status' --output text >/dev/null 2>&1; then
