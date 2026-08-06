@@ -79,6 +79,30 @@ fi
 
 WORKDIR="$(mktemp -d)"
 
+# Clean up from an EXIT trap rather than at the end of the script. With set -e, any
+# failure between registering the task def and reaching the end (an AWS error, a
+# migration that exits non-zero, Ctrl-C) skipped the old cleanup and left an ACTIVE
+# one-off task def behind. MIG_TD_ARN is the exact revision this run registered, so a
+# concurrent run of the same family cannot make us deregister the wrong one.
+MIG_TD_ARN=""
+cleanup() {
+  local rc=$?
+  rm -rf "$WORKDIR"
+  if [ -n "$MIG_TD_ARN" ] && [ -z "$KEEP" ]; then
+    if "${AWS[@]}" ecs deregister-task-definition --task-definition "$MIG_TD_ARN" \
+         --query 'taskDefinition.status' --output text >/dev/null 2>&1; then
+      echo "deregistered one-off task def: $MIG_TD_ARN"
+    else
+      echo "WARNING: could not deregister $MIG_TD_ARN, remove it manually." >&2
+    fi
+  fi
+  return $rc
+}
+trap cleanup EXIT
+# Route Ctrl-C and TERM through a normal exit so the EXIT trap runs exactly once.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # --- Clone the live task def into a one-off migrate task def -----------------------
 "${AWS[@]}" ecs describe-task-definition --task-definition "$TASKDEF" \
   --query 'taskDefinition' --output json > "$WORKDIR/td-src.json"
@@ -101,11 +125,15 @@ jq --arg fam "$MIGRATE_FAMILY" --arg img "$IMAGE" '{
   "$WORKDIR/td-src.json" > "$WORKDIR/td-migrate.json"
 
 # --- Register + run ----------------------------------------------------------------
-"${AWS[@]}" ecs register-task-definition --cli-input-json "file://$WORKDIR/td-migrate.json" \
-  --query 'taskDefinition.taskDefinitionArn' --output text
+# Capture the exact revision ARN: it is what the EXIT trap deregisters, and running by
+# ARN rather than family name means a concurrent run registering a new revision cannot
+# make us migrate from someone else's image.
+MIG_TD_ARN=$("${AWS[@]}" ecs register-task-definition --cli-input-json "file://$WORKDIR/td-migrate.json" \
+  --query 'taskDefinition.taskDefinitionArn' --output text)
+echo "registered: $MIG_TD_ARN"
 
 TASK_ARN=$("${AWS[@]}" ecs run-task \
-  --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$MIGRATE_FAMILY" \
+  --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$MIG_TD_ARN" \
   --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SGS],assignPublicIp=$PUBIP}" \
   --started-by "migrate:${IMAGE##*:}" \
   --query 'tasks[0].taskArn' --output text)
@@ -131,14 +159,8 @@ echo "--- migration log ($LOG_GROUP : $LOG_PREFIX/$CONTAINER/$TASK_ID) ---"
   --log-stream-name "$LOG_PREFIX/$CONTAINER/$TASK_ID" \
   --start-from-head --query 'events[].message' --output text || true
 
-# --- Cleanup the one-off task def --------------------------------------------------
-if [ -z "$KEEP" ]; then
-  MIG_TD=$("${AWS[@]}" ecs describe-task-definition --task-definition "$MIGRATE_FAMILY" \
-    --query 'taskDefinition.taskDefinitionArn' --output text)
-  "${AWS[@]}" ecs deregister-task-definition --task-definition "$MIG_TD" \
-    --query 'taskDefinition.status' --output text >/dev/null
-  echo "deregistered one-off task def: $MIG_TD"
-fi
+# The one-off task def is deregistered by the EXIT trap, so it is cleaned up on the
+# failure paths below too, not just here.
 
 if [ "${EXIT:-}" = "0" ]; then
   echo "✅ migrations applied (exit 0). Now safe to flip the service/stack image to: $IMAGE"
