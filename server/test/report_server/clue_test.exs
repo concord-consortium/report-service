@@ -314,6 +314,26 @@ defmodule ReportServer.ClueTest do
         assert name == "CLUE #{unit}"
       end
     end
+
+    test "keeps a relative-path unit verbatim so an in-repo unit stays distinct" do
+      ## A unit served from inside the CLUE repository is a relative path, not a
+      ## URL. Shortening it to its directory would label it "CLUE qa", which
+      ## reads as the unrelated `qa` unit on clue-curriculum, so the two would
+      ## merge into one activity name in the report.
+      in_repo = "./demo/units/qa/content.json"
+
+      assert Clue.resource_name(
+               "https://collaborative-learning.concord.org/?unit=#{in_repo}&problem=1.2"
+             ) ==
+               "CLUE #{in_repo}: Problem 1.2"
+
+      refute Clue.resource_name(
+               "https://collaborative-learning.concord.org/?unit=#{in_repo}&problem=1.2"
+             ) ==
+               Clue.resource_name(
+                 "https://collaborative-learning.concord.org/?unit=qa&problem=1.2"
+               )
+    end
   end
 
   describe "Track A: keys and columns" do

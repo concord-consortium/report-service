@@ -107,6 +107,13 @@ defmodule ReportServer.Clue do
   ## segments are dropped rather than only the last one, so a versioned directory
   ## cannot leave a filename as the label. Anything that yields nothing usable
   ## falls back to the unit verbatim, which is today's behaviour.
+  ##
+  ## The `://` guard is deliberate, not incidental. A unit served from inside the
+  ## CLUE repository is a relative path, `./demo/units/qa/content.json`, and
+  ## shortening it would label it `qa`, indistinguishable from the unrelated `qa`
+  ## unit on clue-curriculum. Only an absolute URL names the curriculum it came
+  ## from well enough for the directory to stand in for it, so a relative path
+  ## stays verbatim and keeps the two apart.
   defp unit_label(unit) do
     case unit_path_segments(unit) do
       [] -> unit
