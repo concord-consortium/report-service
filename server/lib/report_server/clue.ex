@@ -83,13 +83,52 @@ defmodule ReportServer.Clue do
   so the runnable URL is deliberately not a fallback: a name repeating it would
   add a redundant wide column and no information. The chain is the parsed label,
   then the unit alone, then a bare "CLUE".
+
+  A unit given as a URL is reduced to its unit name first, so the same guarantee
+  holds when a project deploys its curriculum from a branch.
   """
   def resource_name(runnable_url) do
     query = URI.decode_query(URI.parse(runnable_url).query || "")
     case {blank_to_nil(query["unit"]), blank_to_nil(query["problem"])} do
       {nil, _} -> "CLUE"
-      {unit, nil} -> "CLUE #{unit}"
-      {unit, problem} -> "CLUE #{unit}: Problem #{problem}"
+      {unit, nil} -> "CLUE #{unit_label(unit)}"
+      {unit, problem} -> "CLUE #{unit_label(unit)}: Problem #{problem}"
+    end
+  end
+
+  ## A branch deploy passes the whole content.json URL as the unit, which would
+  ## splice about a hundred characters into a label column and reintroduce the
+  ## exact redundancy the docstring above says this function avoids, since the
+  ## name would then repeat res_N_resource_url.
+  ##
+  ## In CLUE's curriculum layout the directory holding the content file is the
+  ## unit name, so `.../branch/modsAuth/mods/content.json` reduces to `mods` and
+  ## matches what a plain `?unit=mods` produces for the same curriculum. Dotted
+  ## segments are dropped rather than only the last one, so a versioned directory
+  ## cannot leave a filename as the label. Anything that yields nothing usable
+  ## falls back to the unit verbatim, which is today's behaviour.
+  ##
+  ## The `://` guard is deliberate, not incidental. A unit served from inside the
+  ## CLUE repository is a relative path, `./demo/units/qa/content.json`, and
+  ## shortening it would label it `qa`, indistinguishable from the unrelated `qa`
+  ## unit on clue-curriculum. Only an absolute URL names the curriculum it came
+  ## from well enough for the directory to stand in for it, so a relative path
+  ## stays verbatim and keeps the two apart.
+  defp unit_label(unit) do
+    case unit_path_segments(unit) do
+      [] -> unit
+      segments -> List.last(segments)
+    end
+  end
+
+  defp unit_path_segments(unit) do
+    if String.contains?(unit, "://") do
+      URI.parse(unit).path
+      |> to_string()
+      |> String.split("/", trim: true)
+      |> Enum.reject(&String.contains?(&1, "."))
+    else
+      []
     end
   end
 
