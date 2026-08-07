@@ -108,7 +108,12 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
             %{name: "res_#{res_index}_last_run", value: "learners_and_answers_#{res_index}.last_run"},
             %{name: "res_#{res_index}_total_num_questions", value: "activities_#{res_index}.num_questions"},
             %{name: "res_#{res_index}_total_num_answers", value: "learners_and_answers_#{res_index}.num_answers"},
-            %{name: "res_#{res_index}_total_percent_complete", value: "round(100.0 * learners_and_answers_#{res_index}.num_answers / activities_#{res_index}.num_questions, 1)"},
+            ## nullif guards the zero denominator. Presto returns NaN for 0.0/0
+            ## rather than erroring, so without it the CSV carries the literal
+            ## string "NaN" in a column that is empty everywhere else, and a
+            ## consumer reading it as numeric hits an unexpected token in a few
+            ## scattered rows. NULL renders as an empty cell and matches.
+            %{name: "res_#{res_index}_total_percent_complete", value: "round(100.0 * learners_and_answers_#{res_index}.num_answers / nullif(activities_#{res_index}.num_questions, 0), 1)"},
             %{name: "res_#{res_index}_num_required_questions", value: "learners_and_answers_#{res_index}.num_required_questions"},
             %{name: "res_#{res_index}_num_required_answers", value: "learners_and_answers_#{res_index}.num_required_answers"}
           ]
