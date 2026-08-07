@@ -1,0 +1,949 @@
+defmodule ReportServer.ClueTest do
+  @moduledoc """
+  Tests for the CLUE Student Answers report path, all three tracks.
+
+  Several of the behaviours asserted here exist because the natural way to write
+  the code produces something else silently: creating a question column for a
+  learner who contributed no answer, letting a sort carry the aggregate column
+  into alphabetical position, deciding a column header by row arrival order, and
+  ordering a cell by row arrival order.
+
+  ## The entry points this module calls
+
+      Clue.answer_sql(learners) :: String.t()
+
+      Clue.resource_name(runnable_url) :: String.t()
+
+      Clue.question_key(question_id) :: String.t()
+
+      Clue.tile_type_from_event(event) :: String.t()
+
+      Clue.parse_answer_csv(url, stream, learners, opts) ::
+        {:ok, %{structure: %{questions: map, choices: map, question_order: [String.t()]},
+                answers: %{String.t() => [map]}}}
+
+  `opts[:write_answers]` replaces the S3 parquet write with a function of the
+  answers map, so answer rows can be asserted without credentials. Half the
+  scenarios below assert on answer rows rather than structure, and those are the
+  ones guarding silent loss.
+  """
+  use ExUnit.Case, async: true
+
+  import ReportServer.ClueFixtures
+
+  alias ReportServer.Clue
+
+  setup do
+    learners = learners_fixture(2)
+    {:ok, learners: learners, a: Enum.at(learners, 0), b: Enum.at(learners, 1)}
+  end
+
+  ## Parses a CSV built from `rows` and returns the structure plus the answers map.
+  defp parse(rows, learners) do
+    {:ok, result} =
+      Clue.parse_answer_csv(runnable_url(), answer_csv(rows), learners,
+        write_answers: fn _answers -> :ok end
+      )
+
+    result
+  end
+
+  ## The decoded JSON cell for one learner's key, or nil when no answer row was
+  ## emitted. Suppression turns on the difference between nil and `[]`.
+  defp cell(result, learner, key) do
+    case result.answers
+         |> Map.get(username(learner), [])
+         |> Enum.find(&(&1.question_id == key)) do
+      nil -> nil
+      row -> Jason.decode!(row.answer)
+    end
+  end
+
+  defp answer_keys(result, learner) do
+    result.answers |> Map.get(username(learner), []) |> Enum.map(& &1.question_id) |> Enum.sort()
+  end
+
+  defp count_occurrences(haystack, needle),
+    do: haystack |> String.split(needle) |> length() |> Kernel.-(1)
+
+  describe "answer_sql/1: query shape" do
+    ## These assert on the generated SQL text rather than on Athena, so they
+    ## pin this round's query decisions without needing credentials or a scan.
+
+    test "reads the partition-projected table with the app and year-floor prune", %{
+      learners: learners
+    } do
+      sql = Clue.answer_sql(learners)
+
+      assert sql =~ "logs_by_app_and_secure_key"
+      refute sql =~ "logs_by_time"
+      assert sql =~ ~r/\bapp"?\s*=\s*'CLUE'/
+      ## created_at is 2026-03-01 in the fixture, so the floor is 2025 (year - 1).
+      assert sql =~ ~r/\byear"?\s*>=\s*2025/
+    end
+
+    test "embeds each learner list exactly once, in one base CTE", %{
+      learners: learners
+    } do
+      sql = Clue.answer_sql(learners)
+      endpoint = hd(learners).run_remote_endpoint
+      secure_key = endpoint |> String.split("/") |> List.last()
+
+      ## Repeating these per track is what puts a large report over Athena's
+      ## 262,144-byte query-string quota at ~628 learners.
+      assert count_occurrences(sql, "'#{endpoint}'") == 1
+      assert count_occurrences(sql, "'#{secure_key}'") == 1
+    end
+
+    test "treats a missing containerIds as free-standing", %{learners: learners} do
+      sql = Clue.answer_sql(learners)
+
+      ## Without the COALESCE, `NULL = '[]'` is NULL and every tile-change event
+      ## logged before 2025-05-07 is dropped: 85% of the corpus.
+      assert sql =~ "COALESCE"
+      assert sql =~ ~r/COALESCE\(.*containerIds.*'\[\]'\)\s*=\s*'\[\]'/s
+    end
+
+    test "matches tile-change events by pattern, not by an event-name list", %{
+      learners: learners
+    } do
+      sql = Clue.answer_sql(learners)
+
+      assert sql =~ "regexp_like"
+      assert sql =~ "_TOOL_CHANGE$"
+      ## An IN list would have silently dropped 1.27M historical
+      ## GRAPH_TOOL_CHANGE events.
+      refute sql =~ "DRAWING_TOOL_CHANGE"
+      refute sql =~ "TABLE_TOOL_CHANGE"
+      ## The escaped LIKE form cannot survive the SQL heredoc.
+      refute sql =~ "ESCAPE"
+    end
+
+    test "formats Track A's answers as varchar so the union types agree", %{
+      learners: learners
+    } do
+      sql = Clue.answer_sql(learners)
+
+      ## Bare json_extract is Trino type `json` and the union with the varchar
+      ## tracks fails with TYPE_MISMATCH, confirmed against Athena.
+      assert sql =~ ~r/json_format\(\s*json_extract\([^)]*\$\.answers'\s*\)\s*\)/
+    end
+
+    test "selects latest-per-key with a window on every track", %{learners: learners} do
+      sql = Clue.answer_sql(learners)
+
+      ## Track A must partition on documentKey as well as the learner, or one
+      ## learner's second document is silently dropped.
+      assert sql =~ ~r/PARTITION BY.*run_remote_endpoint.*documentKey.*questionId/s
+      ## Track C moved off its MAX(time) self-join, which cost a fourth
+      ## inlining of the base CTE.
+      refute sql =~ "MAX(\"log1\".\"time\")"
+      assert count_occurrences(sql, "ROW_NUMBER") == 3
+    end
+
+    test "falls back to tileId for the tile identity when toolId is absent", %{
+      learners: learners
+    } do
+      ## The fallback lives in the window partition, so it is only observable in
+      ## the SQL: by the time rows reach the parse they are already deduplicated.
+      sql = Clue.answer_sql(learners)
+
+      assert sql =~ ~r/PARTITION BY.*COALESCE\(.*\$\.toolId.*\$\.tileId/s
+    end
+
+    test "applies no operation filter to the non-text tile tracks", %{learners: learners} do
+      sql = Clue.answer_sql(learners)
+
+      ## Drawing never logs `update`, so a symmetric filter would erase every
+      ## free-standing Drawing tile. Track C keeps its own filter.
+      assert count_occurrences(sql, "'update'") == 1
+    end
+  end
+
+  describe "question_key/1" do
+    test "hex encodes the questionId behind a q prefix" do
+      assert Clue.question_key("9HzYd-") == "q39487a59642d"
+      assert Clue.question_key("aB3xK9") == "q614233784b39"
+    end
+
+    test "keeps ids that differ only by case or -/_ distinct" do
+      keys = Enum.map(["ab-cde", "ab_cde", "AB-CDE"], &Clue.question_key/1)
+
+      assert length(Enum.uniq(keys)) == 3
+    end
+
+    test "produces an alias-safe key for ids that are not legal identifiers" do
+      ## A raw hyphenated id emits res_1_9HzYd-_json, where Presto parses the
+      ## hyphen as subtraction and the whole query fails.
+      for id <- ["9HzYd-", "nb0-d3", "0aaaaa", "Zz_11a"] do
+        assert Clue.question_key(id) =~ ~r/^[a-z][a-z0-9]*$/
+      end
+    end
+
+    test "preserves relative order for equal-length ids, so column order is stable" do
+      ids = ["9HzYd-", "nb0-d3", "aB3xK9", "Zz_11a", "0aaaaa", "zzzzzz"]
+
+      decoded =
+        ids
+        |> Enum.map(&Clue.question_key/1)
+        |> Enum.sort()
+        |> Enum.map(&Base.decode16!(String.trim_leading(&1, "q"), case: :lower))
+
+      assert decoded == Enum.sort(ids)
+    end
+
+    test "round trips, so a key can be traced back to its question" do
+      assert Clue.question_key("9HzYd-")
+             |> String.trim_leading("q")
+             |> Base.decode16!(case: :lower) == "9HzYd-"
+    end
+  end
+
+  describe "tile_type_from_event/1" do
+    test "derives the registered type for every event CLUE logs today" do
+      assert Clue.tile_type_from_event("GEOMETRY_TOOL_CHANGE") == "Geometry"
+      assert Clue.tile_type_from_event("DRAWING_TOOL_CHANGE") == "Drawing"
+      assert Clue.tile_type_from_event("TABLE_TOOL_CHANGE") == "Table"
+      assert Clue.tile_type_from_event("TEXT_TOOL_CHANGE") == "Text"
+      assert Clue.tile_type_from_event("DATAFLOW_TOOL_CHANGE") == "Dataflow"
+      assert Clue.tile_type_from_event("IFRAME_INTERACTIVE_TOOL_CHANGE") == "IframeInteractive"
+      assert Clue.tile_type_from_event("BARGRAPH_TOOL_CHANGE") == "BarGraph"
+    end
+
+    test "labels the retired GRAPH event as the Geometry tile it belongs to" do
+      ## 1.27M historical events. "Graph" is the registered name of a different
+      ## current tile type, so deriving it would be wrong rather than untidy.
+      assert Clue.tile_type_from_event("GRAPH_TOOL_CHANGE") == "Geometry"
+    end
+
+    test "keeps acronyms uppercase to match the type CLUE registers" do
+      assert Clue.tile_type_from_event("AI_TOOL_CHANGE") == "AI"
+    end
+
+    test "derives a label for an event it has never seen rather than dropping it" do
+      assert Clue.tile_type_from_event("SKETCH_TOOL_CHANGE") == "Sketch"
+      assert Clue.tile_type_from_event("WAVE_RUNNER_TOOL_CHANGE") == "WaveRunner"
+      assert Clue.tile_type_from_event("DATA_CARD_TOOL_CHANGE") == "DataCard"
+    end
+
+    test "does not raise on an event with no recognizable stem" do
+      assert is_binary(Clue.tile_type_from_event("TOOL_CHANGE"))
+      assert is_binary(Clue.tile_type_from_event("SOMETHING_ELSE"))
+    end
+
+    test "labels a missing event rather than raising" do
+      assert Clue.tile_type_from_event(nil) == "Unknown"
+    end
+  end
+
+  describe "resource_name/1" do
+    ## The only changed behaviour that otherwise had no regression guard. The
+    ## fallback chain is three cases: the runnable URL is not one of them,
+    ## because the activity is already identified by res_N_resource_url, so a
+    ## name repeating it adds a redundant wide column and no information.
+
+    test "builds the label from the runnable URL's unit and problem" do
+      assert Clue.resource_name(
+               "https://collaborative-learning.concord.org/?unit=m2s&problem=4.5"
+             ) ==
+               "CLUE m2s: Problem 4.5"
+    end
+
+    test "falls back to unit alone, then to a bare generic" do
+      assert Clue.resource_name("https://collaborative-learning.concord.org/?unit=m2s") ==
+               "CLUE m2s"
+
+      assert Clue.resource_name("https://collaborative-learning.concord.org/") == "CLUE"
+
+      assert Clue.resource_name("https://collaborative-learning.concord.org/?problem=4.5") ==
+               "CLUE"
+    end
+
+    test "never emits the misleading placeholder or the raw URL" do
+      ## `clue.ex:20` hardcoded "Test Clue", which mislabelled every CLUE
+      ## activity identically, which is the defect this replaces.
+      for url <- [
+            "https://collaborative-learning.concord.org/?unit=m2s&problem=4.5",
+            "https://collaborative-learning.concord.org/?unit=m2s",
+            "https://collaborative-learning.concord.org/"
+          ] do
+        name = Clue.resource_name(url)
+        refute name == "Test Clue"
+        refute name =~ "collaborative-learning.concord.org"
+      end
+    end
+  end
+
+  describe "Track A: keys and columns" do
+    test "keys questions by the hex encode of questionId", %{a: a, learners: learners} do
+      result = parse([track_a_row(a, "9HzYd-", [{"Text", "an answer"}])], learners)
+      key = question_key("9HzYd-")
+
+      assert key == "q39487a59642d"
+      assert Map.has_key?(result.structure.questions, key)
+      assert result.structure.questions[key].type == "clue_question"
+      assert result.structure.questions[key].required == false
+      assert answer_keys(result, a) == [key]
+    end
+
+    test "keeps ids differing only by case or -/_ in distinct columns", %{
+      a: a,
+      learners: learners
+    } do
+      ## make_safe_id would fold all three into one key and merge their answers.
+      rows =
+        for id <- ["ab-cde", "ab_cde", "AB-CDE"],
+            do: track_a_row(a, id, [{"Text", "answer #{id}"}])
+
+      result = parse(rows, learners)
+      keys = Enum.map(["ab-cde", "ab_cde", "AB-CDE"], &question_key/1)
+
+      assert length(Enum.uniq(keys)) == 3
+      assert answer_keys(result, a) == Enum.sort(keys)
+
+      for {id, key} <- Enum.zip(["ab-cde", "ab_cde", "AB-CDE"], keys) do
+        assert [%{"text" => text}] = cell(result, a, key)
+        assert text == "answer #{id}"
+      end
+    end
+
+    test "falls back to the raw questionId as the prompt", %{a: a, learners: learners} do
+      result = parse([track_a_row(a, "9HzYd-", [{"Text", "x"}])], learners)
+
+      assert result.structure.questions[question_key("9HzYd-")].prompt == "9HzYd-"
+    end
+  end
+
+  describe "Track A: aggregation and cell contract" do
+    test "emits one answer row per (learner, question) with entries in answerTiles order", %{
+      a: a,
+      learners: learners
+    } do
+      ## map_agg keeps one value per key and drops duplicates silently on engine
+      ## v3, so a multi-tile question must be one row holding a JSON list.
+      row =
+        track_a_row(a, "aB3xK9", [
+          {"Text", "first"},
+          {"Drawing", nil},
+          {"Table", nil}
+        ])
+
+      result = parse([row], learners)
+      key = question_key("aB3xK9")
+
+      assert length(result.answers[username(a)]) == 1
+
+      assert [
+               %{"type" => "Text", "text" => "first"},
+               %{"type" => "Drawing"},
+               %{"type" => "Table"}
+             ] = cell(result, a, key)
+
+      ## `link` is carried per entry in both tracks so cc-data has one parsing
+      ## pattern, and non-Text entries carry no `text` field.
+      for entry <- cell(result, a, key) do
+        assert entry["link"] =~ "studentDocumentHistoryId=pQ99dWPLmCIvqTUWDr5NH"
+      end
+
+      refute Map.has_key?(Enum.at(cell(result, a, key), 1), "text")
+    end
+
+    test "carries documentKey and documentType on every entry", %{a: a, learners: learners} do
+      ## Both tracks aggregate across a learner's documents, so a cell without
+      ## these is ambiguous about which document a tile is in. documentTitle is
+      ## available on the same events and deliberately not surfaced.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "in the assigned document"}],
+          document_key: "-DOCA",
+          document_type: "problem"
+        ),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1",
+          document_key: "-DOCB",
+          document_type: "learningLog"
+        )
+      ]
+
+      result = parse(rows, learners)
+
+      assert [%{"documentKey" => "-DOCA", "documentType" => "problem"}] =
+               cell(result, a, question_key("aB3xK9"))
+
+      assert [%{"documentKey" => "-DOCB", "documentType" => "learningLog"}] =
+               cell(result, a, "other_tiles")
+
+      ## Uniform across both tracks, so cc-data has one parsing pattern.
+      for entry <- cell(result, a, question_key("aB3xK9")) ++ cell(result, a, "other_tiles") do
+        assert Map.has_key?(entry, "documentKey")
+        assert Map.has_key?(entry, "documentType")
+        refute Map.has_key?(entry, "documentTitle")
+      end
+    end
+
+    test "omits the history parameter for the \"first\" sentinel", %{
+      a: a,
+      learners: learners
+    } do
+      ## CLUE emits the literal "first" when a document had no history entry at
+      ## log time (3.5% of production events). Nothing in CLUE resolves it:
+      ## findHistoryEntryIndex is a plain findIndex, so the lookup fails, no
+      ## navigation happens, and the playback UI opens at a position it never
+      ## moved to. Omitting the parameter opens the document honestly instead.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "their first ever edit"}],
+          document_history_id: "first"
+        ),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1", document_history_id: "first"),
+        ## A missing history id is the same case and is far more common on
+        ## tile-change events: 5% to 12% per type, against zero for Track A
+        ##. Athena renders the null as an empty CSV field, which is
+        ## truthy in Elixir and would emit a dangling parameter.
+        track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2", document_history_id: "")
+      ]
+
+      result = parse(rows, learners)
+
+      for entry <- cell(result, a, question_key("aB3xK9")) ++ cell(result, a, "other_tiles") do
+        refute entry["link"] =~ "studentDocumentHistoryId"
+        ## Still a usable link to the right student's right document.
+        assert entry["link"] =~ "studentDocument=-OL0rmfqiDsPlriZks-X"
+      end
+    end
+
+    test "keeps the history parameter for a real history id", %{a: a, learners: learners} do
+      result =
+        parse(
+          [track_a_row(a, "aB3xK9", [{"Text", "x"}], document_history_id: "histReal")],
+          learners
+        )
+
+      assert [%{"link" => link}] = cell(result, a, question_key("aB3xK9"))
+      assert link =~ "studentDocumentHistoryId=histReal"
+    end
+
+    test "distinguishes a learner's documents within one other_tiles cell", %{
+      a: a,
+      learners: learners
+    } do
+      ## The case that motivated surfacing the fields: Track B collects every
+      ## free-standing tile a learner has in any document into one cell, so
+      ## "which of these are in their learning log" is otherwise unanswerable
+      ## without opening each link.
+      rows = [
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1",
+          document_key: "-DOCA",
+          document_type: "problem"
+        ),
+        track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2",
+          document_key: "-DOCB",
+          document_type: "learningLog"
+        )
+      ]
+
+      entries = parse(rows, learners) |> cell(a, "other_tiles")
+
+      assert Enum.map(entries, &{&1["type"], &1["documentType"]}) ==
+               [{"Drawing", "learningLog"}, {"Table", "problem"}]
+    end
+
+    test "flattens multiple answers[] groups in payload order", %{a: a, learners: learners} do
+      ## One questionId can yield more than one group when a document holds two
+      ## Question tiles with that id.
+      row = track_a_row(a, "aB3xK9", [[{"Text", "group one"}], [{"Text", "group two"}]])
+
+      result = parse([row], learners)
+
+      assert [%{"text" => "group one"}, %{"text" => "group two"}] =
+               cell(result, a, question_key("aB3xK9"))
+    end
+
+    test "reports every learner's answer to a shared questionId", %{
+      a: a,
+      b: b,
+      learners: learners
+    } do
+      ## 130 of 193 production questionIds are shared, up to 33 learners on one
+      ## id, so a partition missing run_remote_endpoint keeps one and drops the
+      ## rest.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "learner a"}]),
+        track_a_row(b, "aB3xK9", [{"Text", "learner b"}])
+      ]
+
+      result = parse(rows, learners)
+      key = question_key("aB3xK9")
+
+      assert [%{"text" => "learner a"}] = cell(result, a, key)
+      assert [%{"text" => "learner b"}] = cell(result, b, key)
+    end
+
+    test "preserves special characters in plainText through the CSV round trip", %{
+      a: a,
+      learners: learners
+    } do
+      text = ~s(he said "hi", then left\nand came back)
+      result = parse([track_a_row(a, "aB3xK9", [{"Text", text}])], learners)
+
+      ## plainText is consumed verbatim; routing it through the text path's
+      ## Slate decoder would hit `else -> row_acc.answers` and drop it silently.
+      assert [%{"text" => ^text}] = cell(result, a, question_key("aB3xK9"))
+    end
+
+    test "skips a row whose answers payload is malformed without failing the report", %{
+      a: a,
+      b: b,
+      learners: learners
+    } do
+      ## Track C drops any undecodable row with no signal at all
+      ## (`clue.ex:176-177`), and extending that shape inherits the silence. A
+      ## malformed payload means CLUE changed the event's shape, which would
+      ## zero out Track A while the report still rendered, so the row is
+      ## skipped and logged rather than dropped quietly or raised on.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "fine"}]) |> Map.put("answers", "{not json"),
+        track_a_row(b, "aB3xK9", [{"Text", "also fine"}])
+      ]
+
+      result = parse(rows, learners)
+      key = question_key("aB3xK9")
+
+      assert cell(result, a, key) == nil
+      ## One bad row must not cost the rest of the report.
+      assert [%{"text" => "also fine"}] = cell(result, b, key)
+      assert Map.has_key?(result.structure.questions, key)
+    end
+
+    test "reports an answer tile type that emits no tile-change event", %{
+      a: a,
+      learners: learners
+    } do
+      ## Image is the largest such type (222 distinct in-question tiles). Track A
+      ## sees it because getQuestionAnswersAsJSON enumerates every tile; Track B
+      ## cannot, because no event is ever logged. This pins which side of the
+      ## coverage line each track sits on.
+      rows = [track_a_row(a, "aB3xK9", [{"Text", "words"}, {"Image", nil}])]
+      result = parse(rows, learners)
+
+      types = cell(result, a, question_key("aB3xK9")) |> Enum.map(& &1["type"])
+
+      assert types == ["Text", "Image"]
+      refute Map.has_key?(result.structure.questions, "other_tiles")
+    end
+  end
+
+  describe "Track A: copied questions" do
+    ## Copying a Question tile across documents preserves its questionId, which is
+    ## the mechanism that lines every student's answer up in one column. Copying
+    ## it within a document generates a new one, so it becomes its own question.
+    ## Neither case may collapse or drop an answer.
+
+    test "an across-document copy aggregates under the one shared questionId", %{
+      a: a,
+      b: b,
+      learners: learners
+    } do
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "the author's copy, answered"}]),
+        track_a_row(b, "aB3xK9", [{"Text", "a second student's copy"}])
+      ]
+
+      result = parse(rows, learners)
+      key = question_key("aB3xK9")
+
+      assert Map.keys(result.structure.questions) == [key]
+      assert [%{"text" => "the author's copy, answered"}] = cell(result, a, key)
+      assert [%{"text" => "a second student's copy"}] = cell(result, b, key)
+    end
+
+    test "a within-document copy becomes a distinct question with its own column", %{
+      a: a,
+      learners: learners
+    } do
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "the original"}]),
+        track_a_row(a, "Zq7mN2", [{"Text", "the copy, answered differently"}])
+      ]
+
+      result = parse(rows, learners)
+      original = question_key("aB3xK9")
+      copy = question_key("Zq7mN2")
+
+      assert Enum.sort(Map.keys(result.structure.questions)) == Enum.sort([original, copy])
+      assert [%{"text" => "the original"}] = cell(result, a, original)
+      assert [%{"text" => "the copy, answered differently"}] = cell(result, a, copy)
+    end
+  end
+
+  describe "Track A: one learner, one questionId, two documents" do
+    ## 15 of 1,220 production learner/question pairs span more than one
+    ## document, because an across-document copy preserves questionId. Each
+    ## event carries only its own document's answers, so both rows must survive
+    ## and merge.
+
+    test "merges both documents into one cell, each entry with its own link", %{
+      a: a,
+      learners: learners
+    } do
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "in problem doc"}],
+          document_key: "-DOCA",
+          document_history_id: "histA"
+        ),
+        track_a_row(a, "aB3xK9", [{"Text", "in learning log"}],
+          document_key: "-DOCB",
+          document_history_id: "histB"
+        )
+      ]
+
+      result = parse(rows, learners)
+      entries = cell(result, a, question_key("aB3xK9"))
+
+      assert length(result.answers[username(a)]) == 1
+      assert Enum.map(entries, & &1["text"]) == ["in problem doc", "in learning log"]
+      assert Enum.at(entries, 0)["link"] =~ "studentDocument=-DOCA"
+      assert Enum.at(entries, 1)["link"] =~ "studentDocument=-DOCB"
+      ## Which document an entry belongs to is a field, not something a consumer
+      ## has to parse back out of the link URL.
+      assert Enum.map(entries, & &1["documentKey"]) == ["-DOCA", "-DOCB"]
+    end
+
+    test "orders payload groups by documentKey regardless of row delivery order", %{
+      a: a,
+      learners: learners
+    } do
+      ## The query has no ORDER BY, so without this the cell differs between two
+      ## runs over unchanged data, which is the diff noise the cell contract
+      ## exists to remove.
+      forward = [
+        track_a_row(a, "aB3xK9", [{"Text", "doc a"}], document_key: "-DOCA"),
+        track_a_row(a, "aB3xK9", [{"Text", "doc b"}], document_key: "-DOCB")
+      ]
+
+      assert cell(parse(forward, learners), a, question_key("aB3xK9")) ==
+               cell(parse(Enum.reverse(forward), learners), a, question_key("aB3xK9"))
+    end
+  end
+
+  describe "Track A: prompt enrichment" do
+    ## After CLUE ships the `$.prompt` enrichment, learners on the same question
+    ## disagree indefinitely about whether their latest event carries it. A
+    ## write-once structure entry makes the header depend on row delivery order.
+
+    for {label, reverse?} <- [{"enriched row first", false}, {"enriched row last", true}] do
+      test "uses the enriched prompt when any learner's row has one (#{label})", %{
+        a: a,
+        b: b,
+        learners: learners
+      } do
+        rows = [
+          track_a_row(a, "aB3xK9", [{"Text", "before the deploy"}]),
+          track_a_row(b, "aB3xK9", [{"Text", "after the deploy"}],
+            prompt: "How much water does the tank need?"
+          )
+        ]
+
+        rows = if unquote(reverse?), do: Enum.reverse(rows), else: rows
+        result = parse(rows, learners)
+
+        assert result.structure.questions[question_key("aB3xK9")].prompt ==
+                 "How much water does the tank need?"
+      end
+    end
+  end
+
+  describe "Track A: empty answers are not answers" do
+    test "emits no answer row and no column for a Placeholder-only question", %{
+      a: a,
+      learners: learners
+    } do
+      ## 147 distinct Placeholder tiles across 81 production documents. A
+      ## Placeholder means the student put nothing in that slot.
+      result = parse([track_a_row(a, "aB3xK9", [{"Placeholder", nil}])], learners)
+      key = question_key("aB3xK9")
+
+      assert cell(result, a, key) == nil
+      ## The column assertion is the load-bearing one: emitting no answer row
+      ## while still creating the column inflates cardinality(questions) for
+      ## every learner in the report, which is the distortion suppression removes.
+      refute Map.has_key?(result.structure.questions, key)
+      refute key in result.structure.question_order
+    end
+
+    test "emits no answer row and no column for empty or whitespace-only text", %{
+      a: a,
+      learners: learners
+    } do
+      ## 44% of production Text answer entries are the empty string, plus 27
+      ## whitespace-only.
+      for text <- ["", "   ", "\n\t"] do
+        result = parse([track_a_row(a, "aB3xK9", [{"Text", text}])], learners)
+        key = question_key("aB3xK9")
+
+        assert cell(result, a, key) == nil, "expected no answer row for #{inspect(text)}"
+        refute Map.has_key?(result.structure.questions, key)
+      end
+    end
+
+    test "keeps the column when any learner contributes a surviving entry", %{
+      a: a,
+      b: b,
+      learners: learners
+    } do
+      ## The drop rules apply to entries, and the structure is a union across
+      ## learners, so one real answer keeps the column for everyone.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", ""}]),
+        track_a_row(b, "aB3xK9", [{"Text", "a real answer"}])
+      ]
+
+      result = parse(rows, learners)
+      key = question_key("aB3xK9")
+
+      assert Map.has_key?(result.structure.questions, key)
+      assert cell(result, a, key) == nil
+      assert [%{"text" => "a real answer"}] = cell(result, b, key)
+    end
+
+    test "drops empty entries but keeps the question when siblings survive", %{
+      a: a,
+      learners: learners
+    } do
+      row =
+        track_a_row(a, "aB3xK9", [
+          {"Placeholder", nil},
+          {"Text", ""},
+          {"Text", "the only real answer"},
+          {"Drawing", nil}
+        ])
+
+      result = parse([row], learners)
+
+      assert [%{"type" => "Text", "text" => "the only real answer"}, %{"type" => "Drawing"}] =
+               cell(result, a, question_key("aB3xK9"))
+    end
+  end
+
+  describe "Track B: other_tiles" do
+    test "collects a learner's free-standing tiles into one cell", %{
+      a: a,
+      learners: learners
+    } do
+      rows = [
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1"),
+        track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2"),
+        track_b_row(a, "DATAFLOW_TOOL_CHANGE", "tool-3")
+      ]
+
+      result = parse(rows, learners)
+
+      assert result.structure.questions["other_tiles"].type == "clue_tile"
+      assert result.structure.questions["other_tiles"].prompt == "Other tiles"
+      assert answer_keys(result, a) == ["other_tiles"]
+      assert length(cell(result, a, "other_tiles")) == 3
+    end
+
+    test "sorts entries by type then link, stable under shuffled row order", %{
+      a: a,
+      learners: learners
+    } do
+      rows = [
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1"),
+        track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2"),
+        track_b_row(a, "DATAFLOW_TOOL_CHANGE", "tool-3")
+      ]
+
+      expected = ["Dataflow", "Drawing", "Table"]
+
+      for order <- [
+            rows,
+            Enum.reverse(rows),
+            [Enum.at(rows, 1), Enum.at(rows, 2), Enum.at(rows, 0)]
+          ] do
+        types = parse(order, learners) |> cell(a, "other_tiles") |> Enum.map(& &1["type"])
+        assert types == expected
+      end
+    end
+
+    test "derives the tile type from the event name for an unseen event", %{
+      a: a,
+      learners: learners
+    } do
+      ## An event name that exists in neither the code nor the logs. It must
+      ## appear with a derived label, never be dropped and never raise, or the
+      ## covered types are hardwired in practice (fixture 8b).
+      result = parse([track_b_row(a, "SKETCH_TOOL_CHANGE", "tool-9")], learners)
+
+      assert [%{"type" => "Sketch"}] = cell(result, a, "other_tiles")
+    end
+
+    test "labels the retired GRAPH_TOOL_CHANGE as Geometry, not Graph", %{
+      a: a,
+      learners: learners
+    } do
+      ## 1,270,737 real events across 2019-2024. The Geometry tile logged under
+      ## this name until the 2024-02-14 rename, and "Graph" is the registered
+      ## name of a different current tile type, so deriving it is wrong rather
+      ## than merely inconsistent (fixture 8a).
+      result = parse([track_b_row(a, "GRAPH_TOOL_CHANGE", "tool-8")], learners)
+
+      assert [%{"type" => "Geometry"}] = cell(result, a, "other_tiles")
+    end
+
+    test "matches Track A's casing for compound and acronym types", %{
+      a: a,
+      learners: learners
+    } do
+      rows = [
+        track_b_row(a, "BARGRAPH_TOOL_CHANGE", "tool-1"),
+        track_b_row(a, "IFRAME_INTERACTIVE_TOOL_CHANGE", "tool-2")
+      ]
+
+      types = parse(rows, learners) |> cell(a, "other_tiles") |> Enum.map(& &1["type"])
+
+      ## Track A takes `type` verbatim from the payload as CLUE's registered
+      ## string, so a derived "Bargraph" would render the same tile two ways.
+      assert types == ["BarGraph", "IframeInteractive"]
+    end
+
+    test "omits other_tiles entirely when no learner has a free-standing non-text tile", %{
+      a: a,
+      learners: learners
+    } do
+      result = parse([track_a_row(a, "aB3xK9", [{"Text", "x"}])], learners)
+
+      refute Map.has_key?(result.structure.questions, "other_tiles")
+      refute "other_tiles" in result.structure.question_order
+    end
+  end
+
+  describe "structure ordering" do
+    test "puts other_tiles first pre-reverse, so it lands rightmost", %{a: a, learners: learners} do
+      ## clue.ex sorts, then prepends; ResourceData reverses unconditionally
+      ## (resource_data.ex:149), which makes the prepended key the last column.
+      ## Prepending inside the reduce instead lets the sort carry it into
+      ## alphabetical position, mid-table.
+      ## "abc_title" sorts before "other_tiles", so an aggregate column that was
+      ## sorted in rather than prepended would land second and this would fail.
+      rows = [
+        track_a_row(a, "aB3xK9", [{"Text", "x"}]),
+        track_c_row(a, "abc title", "text tile"),
+        track_c_row(a, "zzz title", "another text tile", tool_id: "text-tool-2"),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1")
+      ]
+
+      order = parse(rows, learners).structure.question_order
+
+      assert hd(order) == "other_tiles"
+      assert "abc_title" in tl(order)
+      assert tl(order) == Enum.sort(tl(order))
+      assert List.last(Enum.reverse(order)) == "other_tiles"
+    end
+
+    test "lists other_tiles exactly once", %{a: a, learners: learners} do
+      ## The structure contract wants the key in both `questions` and
+      ## `question_order`, and it is prepended after the sort. Adding it in both
+      ## places emits res_1_other_tiles_json twice.
+      rows = [
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1"),
+        track_b_row(a, "DRAWING_TOOL_CHANGE", "tool-2")
+      ]
+
+      order = parse(rows, learners).structure.question_order
+
+      assert Enum.count(order, &(&1 == "other_tiles")) == 1
+    end
+
+    test "keeps a text tile titled \"Other Tiles\" out of the reserved key", %{
+      a: a,
+      learners: learners
+    } do
+      ## make_safe_id("Other Tiles") is exactly "other_tiles". Colliding loses
+      ## one of the two under map_agg and reads the JSON array cell as
+      ## json_extract_scalar(answer, '$.text').
+      rows = [
+        track_c_row(a, "Other Tiles", "a text tile"),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1")
+      ]
+
+      result = parse(rows, learners)
+
+      assert result.structure.questions["other_tiles"].type == "clue_tile"
+      assert length(answer_keys(result, a)) == 2
+      assert [%{"type" => "Table"}] = cell(result, a, "other_tiles")
+    end
+  end
+
+  describe "Track B: structural gates" do
+    ## Gates, not an event-name filter, so pattern-based discovery still holds
+    ## and a future event that logs correctly is picked up with no code change.
+
+    test "excludes a tile-change row with no documentKey" do
+      ## IFRAME_INTERACTIVE_TOOL_CHANGE logs via bare Logger.log, so it carries
+      ## no toolId, documentKey or containerIds on 100% of its 19,110 production
+      ## events. Without the gate it emits a link that opens nothing, and its
+      ## null partition key collapses all of a learner's iframe tiles into one
+      ## entry.
+      learners = learners_fixture(1)
+      a = hd(learners)
+
+      rows = [
+        track_b_row(a, "IFRAME_INTERACTIVE_TOOL_CHANGE", "", document_key: ""),
+        track_b_row(a, "TABLE_TOOL_CHANGE", "tool-1")
+      ]
+
+      result = parse(rows, learners)
+
+      assert [%{"type" => "Table"}] = cell(result, a, "other_tiles")
+    end
+
+    test "omits other_tiles entirely when every candidate row is gated out" do
+      learners = learners_fixture(1)
+      a = hd(learners)
+
+      result =
+        parse([track_b_row(a, "IFRAME_INTERACTIVE_TOOL_CHANGE", "", document_key: "")], learners)
+
+      refute Map.has_key?(result.structure.questions, "other_tiles")
+    end
+
+  end
+
+  describe "Track C: free-standing text tiles are unchanged" do
+    test "keys by the sanitized tile title and emits the legacy text/url shape", %{
+      a: a,
+      learners: learners
+    } do
+      result = parse([track_c_row(a, "My Notes", "what I noticed")], learners)
+
+      assert result.structure.questions["my_notes"].type == "clue_text_tile"
+      assert result.structure.questions["my_notes"].prompt == "My Notes"
+
+      ## The legacy pair, not the JSON array: this key is rendered as
+      ## _text + _url and must not change, since the key drives the column name.
+      cell = result.answers |> Map.get(username(a)) |> hd() |> Map.get(:answer) |> Jason.decode!()
+
+      assert cell["text"] == "what I noticed"
+      assert cell["url"] =~ "studentDocument=-OL0rmfqiDsPlriZks-X"
+    end
+
+    test "keeps the column but no answer when the tile content will not decode", %{
+      a: a,
+      learners: learners
+    } do
+      ## The text is a serialized rich-text document. A row that will not decode
+      ## contributes no answer, but the tile exists, so its column does too.
+      rows = [track_c_row(a, "My Notes", "x") |> Map.put("text_value", "not a document")]
+
+      result = parse(rows, learners)
+
+      assert Map.has_key?(result.structure.questions, "my_notes")
+      assert result.answers == %{}
+    end
+
+    test "does not fold toolId into the key", %{a: a, learners: learners} do
+      result = parse([track_c_row(a, "My Notes", "x", tool_id: "abc123")], learners)
+
+      assert Map.has_key?(result.structure.questions, "my_notes")
+      refute Enum.any?(Map.keys(result.structure.questions), &String.contains?(&1, "abc123"))
+    end
+  end
+end
