@@ -10,7 +10,7 @@
     "@concord-consortium/token-service": "^2.0.0-pre.5",
     "aws-sdk": "^2.702.0",
     "axios": "^0.21.2",
-    "node-fetch": "^2.6.1",
+    "node-fetch": "^2.6.7",
     "query-string": "^6.13.1",
     "string-strip-html": "^8.3.0",
     "uuid": "^8.1.0"
