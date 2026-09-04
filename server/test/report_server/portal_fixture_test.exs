@@ -69,6 +69,9 @@ defmodule ReportServer.PortalFixtureTest do
     assert [%{project_id: 900}] =
              rows("SELECT project_id FROM admin_project_users WHERE user_id = 555 AND is_admin = 1")
 
+    assert [%{project_id: 900}] =
+             rows("SELECT project_id FROM admin_project_users WHERE user_id = 557 AND is_researcher = 1")
+
     assert [] = rows("SELECT project_id FROM admin_project_users WHERE user_id = 556")
 
     assert [%{item_id: 31}] =

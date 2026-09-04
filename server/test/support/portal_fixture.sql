@@ -69,7 +69,7 @@ INSERT INTO portal_student_permission_forms VALUES (1,71,11),(2,71,12);
 INSERT INTO admin_cohorts VALUES (1,900),(2,901);
 INSERT INTO admin_cohort_items VALUES (1,1,'Portal::Teacher',31),(2,1,'ExternalActivity',801);
 INSERT INTO admin_project_materials VALUES (1,900,'ExternalActivity',801);
-INSERT INTO admin_project_users VALUES (1,900,555,1,0),(2,901,557,0,1);
+INSERT INTO admin_project_users VALUES (1,900,555,1,0),(2,900,557,0,1);
 INSERT INTO report_learners
   (learner_id,student_id,user_id,offering_id,class_id,last_run,teachers_name,student_name,username,
    school_name,class_name,school_id,permission_forms,teachers_district,teachers_state,teachers_email,

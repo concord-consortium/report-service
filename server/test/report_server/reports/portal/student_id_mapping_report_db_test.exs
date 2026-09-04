@@ -88,6 +88,18 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReportDbTest do
       assert length(scoped) < length(unscoped)
     end
 
+    test "a project researcher is scoped by their project, like a project admin" do
+      researcher =
+        learner_ids(%User{portal_server: @server, portal_is_project_researcher: true, portal_user_id: 557})
+
+      project_admin =
+        learner_ids(%User{portal_server: @server, portal_is_project_admin: true, portal_user_id: 555})
+
+      assert researcher != []
+      assert researcher == project_admin
+      assert length(researcher) < length(learner_ids(admin()))
+    end
+
     test "a role-less caller gets zero rows rather than an error, on both surfaces" do
       assert_zero_rows(%User{portal_server: @server})
     end

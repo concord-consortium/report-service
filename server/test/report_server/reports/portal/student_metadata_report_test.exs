@@ -79,7 +79,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportTest do
     refute sql =~ "MIN(pd."
   end
 
-  test "keeps a position for a teacher with no district" do
+  test "coalesces the district lookup so a missing value cannot collapse a position" do
     assert sql_for(admin()) =~ "GROUP_CONCAT(COALESCE("
   end
 
