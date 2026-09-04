@@ -6,6 +6,7 @@ defmodule ReportServer.Reports.Tree do
   }
   alias ReportServer.Reports.Portal.{
     StudentIdMappingReport,
+    StudentMetadataReport,
     TeacherStatusReport,
     ResourceMetricsSummaryReport,
     ResourceMetricsDetailsReport,
@@ -194,6 +195,13 @@ defmodule ReportServer.Reports.Tree do
           title: "Student ID Mapping",
           subtitle: "One row per selected learner with the portal ids and the run_remote_endpoint that joins them to the answers, history and attachments stored for those learners. No names.",
           include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form]
+        }),
+        StudentMetadataReport.new(%Report{
+          slug: "student-metadata",
+          title: "Student Metadata",
+          subtitle: "One row per selected learner with the human-readable context: name, username, class, school, teachers, permission forms. Joins 1:1 to Student ID Mapping on learner_id. Names are hidden unless you are an admin and clear the hide-names option.",
+          include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
+          form_options: [enable_hide_names: true]
         }),
       ]},
       %ReportGroup{slug: "teacher-reports", title: "Teacher Reports", subtitle: "Reports about teachers", children: [
