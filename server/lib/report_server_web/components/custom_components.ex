@@ -3,6 +3,7 @@ defmodule ReportServerWeb.CustomComponents do
 
   import ReportServerWeb.CoreComponents
 
+  alias ReportServer.Reports.AthenaFailure
   alias ReportServer.Reports.ReportFilter
 
   def portal_stats(assigns) do
@@ -151,6 +152,17 @@ defmodule ReportServerWeb.CustomComponents do
         ~H"""
         <div>
           Report status: <span class="font-bold capitalize"><%= @report_run.athena_query_state || "gathering information..." %></span>
+        </div>
+        <div role="status" class="mt-2">
+          <div :if={@report_run.athena_query_error}>
+            <div :if={guidance = AthenaFailure.guidance_for(@report, @report_run.athena_query_error)} class="font-bold">
+              <%= guidance %>
+            </div>
+            <div class="mt-1 font-mono text-sm"><%= @report_run.athena_query_error %></div>
+            <div :if={@report_run.athena_query_id} class="mt-1 text-xs text-gray-600">
+              Athena query id: <%= @report_run.athena_query_id %>
+            </div>
+          </div>
         </div>
         """
       end

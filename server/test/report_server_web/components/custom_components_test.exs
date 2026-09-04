@@ -5,7 +5,7 @@ defmodule ReportServerWeb.CustomComponentsTest do
 
   alias ReportServerWeb.CustomComponents
   alias ReportServer.Accounts.ApiToken
-  alias ReportServer.Reports.{ReportFilter, ReportRun}
+  alias ReportServer.Reports.{Report, ReportFilter, ReportRun}
 
   test "renders never-used, an accessible caption, scoped headers, and an id-disambiguated revoke name" do
     t1 = %ApiToken{id: 41, label: nil, inserted_at: ~U[2026-07-01 14:22:00Z], last_used_at: nil}
@@ -90,5 +90,44 @@ defmodule ReportServerWeb.CustomComponentsTest do
     html = render_component(&CustomComponents.report_filter_values/1, report_run: run)
 
     refute html =~ "Application"
+  end
+
+  defp render_header(report, report_run) do
+    render_component(&CustomComponents.report_header/1,
+      report: report,
+      report_run: report_run,
+      row_count: 0,
+      row_limit: 100
+    )
+  end
+
+  defp athena_report(form_options \\ []),
+    do: %Report{type: :athena, slug: "student-actions", form_options: form_options}
+
+  defp athena_run(attrs), do: struct(%ReportRun{athena_query_state: "failed", athena_query_id: "qid-1"}, attrs)
+
+  describe "report_header/1 for an Athena run" do
+    test "names an application only when the report offers that filter" do
+      run = athena_run(%{athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many"})
+
+      refute render_header(athena_report(), run) =~ "one or more applications"
+      assert render_header(athena_report(enable_app_filter: true), run) =~ "one or more applications"
+    end
+
+    test "the live region wraps the block and is present before a reason arrives" do
+      with_reason = render_header(athena_report(), athena_run(%{athena_query_error: "HIVE_MYSTERY: x"}))
+      without_reason = render_header(athena_report(), athena_run(%{athena_query_error: nil}))
+
+      assert with_reason =~ ~s(role="status")
+      assert without_reason =~ ~s(role="status")
+      refute without_reason =~ "Athena query id"
+    end
+
+    test "a succeeded run renders the download control rather than a failure block" do
+      html = render_header(athena_report(), athena_run(%{athena_query_state: "succeeded"}))
+
+      refute html =~ ~s(role="status")
+      assert html =~ "Only CSV download is available"
+    end
   end
 end

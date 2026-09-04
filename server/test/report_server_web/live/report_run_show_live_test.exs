@@ -91,4 +91,74 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
     assert reloaded.athena_query_state == "succeeded"
     assert reloaded.athena_result_url == "s3://bucket/done.csv"
   end
+  defp failed_run(user, attrs) do
+    {:ok, run} =
+      Reports.create_report_run(
+        Map.merge(
+          %{
+            user_id: user.id,
+            report_slug: "teacher-actions",
+            report_filter: %ReportFilter{filters: [:cohort], cohort: [1]},
+            report_filter_values: %{"cohort" => %{"1" => "Cohort One"}},
+            athena_query_id: "qid-failed",
+            athena_query_state: "failed"
+          },
+          attrs
+        )
+      )
+
+    run
+  end
+
+  defp render_run(conn, user, run) do
+    conn = log_in_conn(conn, user)
+    {:ok, view, _html} = live(conn, ~p"/reports/runs/#{run.id}")
+    render_async(view)
+  end
+
+  describe "a failed run" do
+    test "renders the suggestion, the raw reason and the query id", %{conn: conn} do
+      user = user_fixture()
+      run = failed_run(user, %{athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many"})
+
+      html = render_run(conn, user, run)
+
+      assert html =~ "This query covers too many Athena partitions"
+      assert html =~ "HIVE_EXCEEDED_PARTITION_LIMIT: too many"
+      assert html =~ "Athena query id: qid-failed"
+    end
+
+    test "renders an unmapped reason with no suggestion", %{conn: conn} do
+      user = user_fixture()
+      run = failed_run(user, %{athena_query_error: "HIVE_MYSTERY: something else"})
+
+      html = render_run(conn, user, run)
+
+      assert html =~ "HIVE_MYSTERY: something else"
+      refute html =~ "Narrow it with"
+    end
+
+    test "an admin who does not own the run still sees the reason", %{conn: conn} do
+      owner = user_fixture()
+      run = failed_run(owner, %{athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many"})
+      admin = user_fixture(%{portal_is_admin: true})
+
+      html = render_run(conn, admin, run)
+
+      assert html =~ "HIVE_EXCEEDED_PARTITION_LIMIT: too many"
+    end
+  end
+
+  describe "a run with no failure reason" do
+    test "renders the live region but no suggestion, reason or query id", %{conn: conn} do
+      user = user_fixture()
+      run = failed_run(user, %{athena_query_error: nil})
+
+      html = render_run(conn, user, run)
+
+      assert html =~ ~s(role="status")
+      refute html =~ "Athena query id"
+      refute html =~ "Narrow it with"
+    end
+  end
 end
