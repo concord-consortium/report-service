@@ -329,6 +329,54 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
         assert json_response(conn, 404) == not_found
       end
     end
+
+    test "returns the failure reason and the query id for a failed run", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          athena_query_id: "qid-failed",
+          athena_query_state: "failed",
+          athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many partitions"
+        })
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}"), 200)
+
+      assert body["athena_query_id"] == "qid-failed"
+      assert body["athena_query_error"] == "HIVE_EXCEEDED_PARTITION_LIMIT: too many partitions"
+      assert body["athena_query_state"] == "failed"
+    end
+
+    test "returns nil for a terminal run written before the reason column existed", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          athena_query_id: "qid-old",
+          athena_query_state: "failed",
+          athena_query_error: nil
+        })
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}"), 200)
+
+      assert Map.has_key?(body, "athena_query_error")
+      assert body["athena_query_error"] == nil
+      assert body["athena_query_id"] == "qid-old"
+      assert body["athena_query_state"] == "failed"
+    end
+
+    test "an admin who does not own the run gets the same 404, not the reason" do
+      owner = user_fixture()
+
+      owners_run =
+        run_fixture(owner, %{
+          athena_query_state: "failed",
+          athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many partitions"
+        })
+
+      admin = user_fixture(%{portal_is_admin: true})
+      {admin_token, _} = api_token_fixture(admin)
+
+      conn = get(authed_conn(admin_token), ~p"/api/v1/reports/#{owners_run.id}")
+
+      assert json_response(conn, 404) == %{"error" => "NOT_FOUND", "message" => "Not found."}
+    end
   end
 
   describe "GET /api/v1/reports/:id (show freshness and self-start)" do
@@ -453,6 +501,22 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       end
 
       assert entry_count() == 0
+    end
+
+    test "the NOT_READY body carries the state, the query id and the reason", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          athena_query_id: "qid-failed",
+          athena_query_state: "failed",
+          athena_query_error: "HIVE_S3_THROTTLING: Error Code: SlowDown"
+        })
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download"), 409)
+
+      assert body["error"] == "NOT_READY"
+      assert body["athena_query_state"] == "failed"
+      assert body["athena_query_id"] == "qid-failed"
+      assert body["athena_query_error"] == "HIVE_S3_THROTTLING: Error Code: SlowDown"
     end
 
     test "refreshes a running run to succeeded during download", %{raw_token: raw_token, user: user} do
