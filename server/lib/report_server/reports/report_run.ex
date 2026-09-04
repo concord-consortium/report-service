@@ -4,6 +4,7 @@ defmodule ReportServer.Reports.ReportRun do
   import Ecto.Changeset
 
   alias ReportServer.Accounts.User
+  alias ReportServer.Reports.AthenaFailure
   alias ReportServer.Types.EctoReportFilter
 
   schema "report_runs" do
@@ -13,6 +14,7 @@ defmodule ReportServer.Reports.ReportRun do
     field :athena_query_id, :string
     field :athena_query_state, :string
     field :athena_result_url, :string
+    field :athena_query_error, :string
 
     belongs_to :user, User, foreign_key: :user_id
 
@@ -22,7 +24,17 @@ defmodule ReportServer.Reports.ReportRun do
   @doc false
   def changeset(report_run, attrs) do
     report_run
-    |> cast(attrs, [:user_id, :report_slug, :report_filter, :report_filter_values, :athena_query_id, :athena_query_state, :athena_result_url])
+    |> cast(attrs, [
+      :user_id,
+      :report_slug,
+      :report_filter,
+      :report_filter_values,
+      :athena_query_id,
+      :athena_query_state,
+      :athena_result_url,
+      :athena_query_error
+    ])
+    |> update_change(:athena_query_error, &AthenaFailure.truncate/1)
     |> validate_required([:user_id, :report_slug])
   end
 end
