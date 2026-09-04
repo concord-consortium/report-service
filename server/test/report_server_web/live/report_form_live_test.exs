@@ -5,7 +5,17 @@ defmodule ReportServerWeb.ReportFormLiveTest do
   import Phoenix.LiveViewTest
   import ReportServer.AccountsFixtures
 
+  alias ReportServer.LearnerDataStub
   alias ReportServer.Reports
+
+  setup do
+    on_exit(fn ->
+      Application.delete_env(:report_server, :learner_data)
+      Application.delete_env(:report_server, :partition_warning_threshold)
+    end)
+
+    :ok
+  end
 
   # a super admin resolves allowed projects without a portal round trip
   defp mount_form(conn, slug) do
@@ -17,7 +27,36 @@ defmodule ReportServerWeb.ReportFormLiveTest do
   # the date, hide-names and application controls only render once a first filter has a value
   defp choose_first_filter(view, extra_params \\ %{}) do
     params = Map.merge(%{"filter1_type" => "cohort", "filter1" => ["1"]}, extra_params)
-    render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1"], "filter_form" => params})
+
+    render_change(view, "form_updated", %{
+      "_target" => ["filter_form", "filter1"],
+      "filter_form" => params
+    })
+  end
+
+  defp stub_learner_count(counter) do
+    {:ok, pid} = LearnerDataStub.start(%{count: counter})
+    on_exit(fn -> if Process.alive?(pid), do: Agent.stop(pid) end)
+    Application.put_env(:report_server, :learner_data, LearnerDataStub)
+  end
+
+  defp stub_count(result), do: stub_learner_count(fn _filter, _user -> result end)
+
+  # the count runs as a task, so its result reaches the view after the click has been answered
+  defp wait_for(view, needle, attempts \\ 100) do
+    html = render(view)
+
+    cond do
+      html =~ needle ->
+        html
+
+      attempts == 0 ->
+        flunk("timed out waiting for #{inspect(needle)}")
+
+      true ->
+        Process.sleep(5)
+        wait_for(view, needle, attempts - 1)
+    end
   end
 
   describe "the application control" do
@@ -37,7 +76,8 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       assert choose_first_filter(view) =~ "All applications"
     end
 
-    test "does not render on teacher-actions, which reads a table with no app partition", %{conn: conn} do
+    test "does not render on teacher-actions, which reads a table with no app partition",
+         %{conn: conn} do
       {view, _user} = mount_form(conn, "teacher-actions")
 
       html = choose_first_filter(view)
@@ -56,9 +96,11 @@ defmodule ReportServerWeb.ReportFormLiveTest do
   describe "submitting" do
     test "stores the selected application on the run", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
+      stub_count({:ok, 1})
       choose_first_filter(view, %{"app" => "CLUE"})
 
-      assert {:error, {:redirect, %{to: _path}}} = render_click(view, "submit_form")
+      render_click(view, "submit_form")
+      assert_redirect(view)
 
       assert [run] = Reports.list_user_report_runs(user, "student-actions")
       assert run.report_filter.app == "CLUE"
@@ -66,9 +108,11 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
     test "creates the run when the control was left blank", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
+      stub_count({:ok, 1})
       choose_first_filter(view, %{"app" => ""})
 
-      assert {:error, {:redirect, %{to: _path}}} = render_click(view, "submit_form")
+      render_click(view, "submit_form")
+      assert_redirect(view)
 
       assert [run] = Reports.list_user_report_runs(user, "student-actions")
       assert run.report_filter.app == ""
@@ -88,9 +132,139 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       {view, user} = mount_form(conn, "teacher-actions")
       choose_first_filter(view, %{"app" => ""})
 
-      assert {:error, {:redirect, %{to: _path}}} = render_click(view, "submit_form")
+      render_click(view, "submit_form")
+      assert_redirect(view)
 
       assert [_run] = Reports.list_user_report_runs(user, "teacher-actions")
+    end
+  end
+
+  describe "the partition warning" do
+    test "warns and creates nothing when the projection crosses the limit", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      stub_count({:ok, 151})
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      html = wait_for(view, "151 learners")
+
+      assert html =~ "1,005,660 partitions"
+      assert html =~ "over the 1,000,000 limit"
+      assert Reports.list_user_report_runs(user, "student-actions") == []
+    end
+
+    test "does not warn just under the limit", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      stub_count({:ok, 150})
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      assert_redirect(view)
+
+      assert [_run] = Reports.list_user_report_runs(user, "student-actions")
+    end
+
+    test "confirming runs it anyway, from the filter the count was made against", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      # over the limit even with one application selected: 3000 x 1 x 444
+      stub_count({:ok, 3_000})
+      choose_first_filter(view, %{"app" => "CLUE"})
+      render_click(view, "submit_form")
+      wait_for(view, "Run it anyway")
+
+      # the form keeps changing while the warning is up, and the run must not pick that up
+      choose_first_filter(view, %{"app" => "Dataflow"})
+      render_click(view, "submit_form_confirmed")
+      assert_redirect(view)
+
+      assert [run] = Reports.list_user_report_runs(user, "student-actions")
+      assert run.report_filter.app == "CLUE"
+    end
+
+    test "a configured threshold lowers where the warning fires", %{conn: conn} do
+      Application.put_env(:report_server, :partition_warning_threshold, 1_000)
+      {view, user} = mount_form(conn, "student-actions")
+      stub_count({:ok, 1})
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+
+      assert wait_for(view, "over the 1,000 limit")
+      assert Reports.list_user_report_runs(user, "student-actions") == []
+    end
+
+    test "a count that fails still creates the run, leaving the view alive", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      stub_count({:error, "portal is down"})
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      assert_redirect(view)
+
+      assert [_run] = Reports.list_user_report_runs(user, "student-actions")
+    end
+
+    test "a count that crashes still creates the run, leaving the view alive", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      stub_learner_count(fn _filter, _user -> raise "boom" end)
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      assert_redirect(view)
+
+      assert [_run] = Reports.list_user_report_runs(user, "student-actions")
+    end
+
+    test "a report without the filter enabled never counts", %{conn: conn} do
+      {view, user} = mount_form(conn, "teacher-actions")
+      stub_count({:ok, 10_000_000})
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      assert_redirect(view)
+
+      assert [_run] = Reports.list_user_report_runs(user, "teacher-actions")
+    end
+
+    test "confirming with nothing pending does nothing", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      choose_first_filter(view)
+
+      render_click(view, "submit_form_confirmed")
+
+      assert Reports.list_user_report_runs(user, "student-actions") == []
+      assert render(view) =~ "Run Report"
+    end
+
+    test "the run button reports being busy while the count is in flight", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+      test_process = self()
+
+      stub_learner_count(fn _filter, _user ->
+        send(test_process, :counting)
+        Process.sleep(200)
+        {:ok, 1}
+      end)
+
+      choose_first_filter(view)
+      render_click(view, "submit_form")
+      assert_receive :counting
+
+      html = render(view)
+
+      assert html =~ ~s(aria-busy="true")
+      assert html =~ "Checking"
+    end
+
+    test "the warning is announced and offers the confirm", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+      stub_count({:ok, 151})
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      html = wait_for(view, "Run it anyway")
+
+      assert html =~ ~s(role="alert")
     end
   end
 end

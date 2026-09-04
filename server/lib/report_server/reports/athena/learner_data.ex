@@ -21,8 +21,25 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     end
   end
 
-  def fetch(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form,
-        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}, opts \\ []) do
+  def fetch(report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
+    with {:ok, portal_query} <- build_query(report_filter, user),
+         {:ok, sql} <- ReportQuery.get_sql(portal_query),
+         {:ok, result} <- PortalDbs.query(user.portal_server, sql),
+         {:ok, learner_data} <- map_learner_data(result, user, opts) do
+      {:ok, learner_data}
+    else
+      error -> error
+    end
+  end
+
+  @doc """
+  Builds the portal query selecting the learners a filter covers.
+
+  Not a pure builder: with `exclude_internal` set it runs its own portal query to resolve the
+  internal teacher ids, so it can fail before any SQL is produced.
+  """
+  def build_query(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form,
+        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
     portal_query = %ReportQuery{
       cols: [
         {"DISTINCT rl.learner_id", "learner_id"},
@@ -121,14 +138,26 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       |> apply_start_date(start_date)
       |> apply_end_date(end_date)
 
-    with {:ok, portal_query} <- ReportQuery.update_query(portal_query, join: join, where: where),
-         {:ok, sql} <- ReportQuery.get_sql(portal_query),
-         {:ok, result} <- PortalDbs.query(user.portal_server, sql),
-         {:ok, learner_data} <- map_learner_data(result, user, opts) do
-      {:ok, learner_data}
-    else
-      error -> error
+    ReportQuery.update_query(portal_query, join: join, where: where)
+  end
+
+  @doc """
+  Counts the distinct learners a filter covers.
+
+  Deliberately not `ReportQuery.get_count_sql/1`: that replaces the column list, dropping the
+  `DISTINCT rl.learner_id` the query relies on, and the `LEFT JOIN portal_runs` then makes the
+  result one row per learner run rather than per learner.
+  """
+  def count(report_filter = %ReportFilter{}, user = %User{}) do
+    with {:ok, portal_query} <- build_query(report_filter, user),
+         {:ok, sql} <- ReportQuery.get_sql(count_query(portal_query)),
+         {:ok, result} <- PortalDbs.query(user.portal_server, sql) do
+      {:ok, result.rows |> List.first() |> List.first()}
     end
+  end
+
+  def count_query(portal_query = %ReportQuery{}) do
+    %{portal_query | cols: [{"COUNT(DISTINCT rl.learner_id)", "learner_count"}]}
   end
 
   # fail closed: a lost upload means the Athena query joins zero learners and the report

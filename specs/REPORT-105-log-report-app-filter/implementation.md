@@ -399,11 +399,14 @@ def period_months(start_date, end_date) do
 end
 
 def projected_partitions(learner_count, app, start_date, end_date) do
-  # length/1, never a literal 15: adding an application to the projection must not
-  # leave the estimate silently low.
-  apps = if app in [nil, ""], do: length(AthenaConfig.get_log_apps()), else: 1
-  learner_count * apps * period_months(start_date, end_date)
+  learner_count * app_count(app) * period_months(start_date, end_date)
 end
+
+# length/1, never a literal 15: adding an application to the projection must not
+# leave the estimate silently low. Public because the warning message shows the
+# arithmetic and must not re-derive this.
+def app_count(app) when app in [nil, ""], do: length(AthenaConfig.get_log_apps())
+def app_count(_app), do: 1
 
 # an absent or unparseable bound falls back to the projection's edge, so a half-open range runs to it
 defp to_ym(bound, default) do
@@ -475,12 +478,19 @@ count column over the same `from`/`join`/`where` instead:
 ```elixir
 def count(report_filter = %ReportFilter{}, user = %User{}) do
   with {:ok, portal_query} <- build_query(report_filter, user),
-       {:ok, sql} <- ReportQuery.get_sql(%{portal_query | cols: [{"COUNT(DISTINCT rl.learner_id)", "learner_count"}]}),
+       {:ok, sql} <- ReportQuery.get_sql(count_query(portal_query)),
        {:ok, result} <- PortalDbs.query(user.portal_server, sql) do
     {:ok, result.rows |> List.first() |> List.first()}
   end
 end
+
+def count_query(portal_query = %ReportQuery{}) do
+  %{portal_query | cols: [{"COUNT(DISTINCT rl.learner_id)", "learner_count"}]}
+end
 ```
+
+`count_query/1` is split out and public so the shape can be asserted without a database: the tests
+build a query, swap the columns, and compare the generated SQL against the fetch query's.
 
 `build_query/2` is everything in `fetch/3` from the `portal_query` literal (line 26) through
 `ReportQuery.update_query/2` (line 124), extracted unchanged and returning `{:ok, %ReportQuery{}}`.
@@ -572,13 +582,18 @@ The Run Report button is disabled while `@checking_partitions` is true, matching
 gates the download button. A count that fails or times out falls through to creating the run rather
 than blocking it: the estimate is advisory, and a broken advisory must not become an outage.
 
-`warning_applicable?/2` is false for any report without the application filter enabled, so no count
-query runs and no async task starts for them. That is the new work only: every submit already pays
+The count is reached through the `:learner_data` seam the codebase already uses
+(`endpoint_set.ex:64`, with `ReportServer.LearnerDataStub` in test support), so the warning paths are
+testable without a portal. The stub gains a `count/2` alongside its existing `fetch/3`.
+
+The application-filter flag is what decides whether to count, so no count query runs and no async
+task starts for a report without it. That is the new work only: every submit already pays
 for `get_filter_values/2` (`form.ex:217`), and this step does not change that. The message names the
-learner count and shows the arithmetic, for example: *"This report covers 694 learners. With no
-application filter and no date range, Athena would need to check 694 x 15 x 444 = 4,622,040
-partitions, over its 1,000,000 limit. Consider selecting an application or a date range. You can run
-it anyway."*
+learner count and shows the arithmetic with its terms labeled, so the researcher can see which one
+to change: *"This report covers 694 learners. Athena would need to check 694 learners x 15
+applications x 444 months = 4,622,040 partitions, over the 1,000,000 limit. Selecting an
+application, or narrowing the date range, will reduce it. You can run it anyway."* The threshold is
+named rather than Athena's limit, so a configured lower one reads correctly.
 
 **The warning has to be announced, not just rendered.** It arrives asynchronously, after the click,
 into a page that has not otherwise changed, and it reports that the submit did not do what the
@@ -610,8 +625,10 @@ Tests:
 
 - the count SQL contains `COUNT(DISTINCT rl.learner_id)` and no bare `COUNT(*)`, which is what
   catches a later refactor routing it back through `get_count_sql/1`
-- `build_query/2` extraction leaves `fetch/3`'s generated SQL unchanged, asserted against the
-  pre-refactor string
+- `build_query/2` still selects `DISTINCT rl.learner_id` and still carries the filter into the
+  `WHERE`. The extraction itself is verified by the diff being a pure move: the head and the closing
+  `with` change and the filter-building body is untouched, so `fetch/3`'s SQL is unchanged by
+  construction rather than by a pinned string
 - just under the threshold creates the run with no warning; just over assigns the warning and creates
   nothing. With no threshold configured those two values are 150 and 151 learners unfiltered with no
   date range, which is the measured edge: 999,000 partitions against 1,005,660

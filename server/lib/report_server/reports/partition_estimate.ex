@@ -38,11 +38,15 @@ defmodule ReportServer.Reports.PartitionEstimate do
   end
 
   def projected_partitions(learner_count, app, start_date, end_date) do
-    # derived from the list, never a literal, so adding an application cannot leave this low
-    apps = if app in [nil, ""], do: length(AthenaConfig.get_log_apps()), else: 1
-
-    learner_count * apps * period_months(start_date, end_date)
+    learner_count * app_count(app) * period_months(start_date, end_date)
   end
+
+  @doc """
+  How many applications a query must probe: every projected one unless the filter names one.
+  """
+  # derived from the list, never a literal, so adding an application cannot leave the estimate low
+  def app_count(app) when app in [nil, ""], do: length(AthenaConfig.get_log_apps())
+  def app_count(_app), do: 1
 
   # an absent or unparseable bound falls back to the projection's edge, so a half-open range runs to it
   defp to_ym(bound, default) do

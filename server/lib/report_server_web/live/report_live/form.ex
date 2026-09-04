@@ -15,7 +15,8 @@ defmodule ReportServerWeb.ReportLive.Form do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
-  alias ReportServer.Reports.Athena.AthenaConfig
+  alias ReportServer.Reports.Athena.{AthenaConfig, LearnerData}
+  alias ReportServer.Reports.PartitionEstimate
 
   @filter_types %{
     :school => "Schools",
@@ -59,6 +60,10 @@ defmodule ReportServerWeb.ReportLive.Form do
     |> assign(:filter_options, [[]])
     |> assign(:form_options, get_form_options(report, user))
     |> assign(:app_options, AthenaConfig.app_options())
+    |> assign(:checking_partitions, false)
+    |> assign(:count_task_ref, nil)
+    |> assign(:pending_report_filter, nil)
+    |> assign(:partition_warning, nil)
     |> assign(:placeholder_text, [""])
     |> assign(:dev, @dev)
     |> assign(:allowed_project_ids, PortalDbs.get_allowed_project_ids(user))
@@ -219,11 +224,105 @@ defmodule ReportServerWeb.ReportLive.Form do
 
     case check_app_supported(report_filter, form_options) do
       :ok ->
-        {:noreply, create_run(socket, report_filter)}
+        if warning_applicable?(form_options) do
+          {:noreply, start_count_task(socket, report_filter)}
+        else
+          {:noreply, create_run(socket, report_filter)}
+        end
 
       {:error, message} ->
         {:noreply, assign(socket, :error, message)}
     end
+  end
+
+  @impl true
+  def handle_event("submit_form_confirmed", _unsigned_params, %{assigns: %{pending_report_filter: nil}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("submit_form_confirmed", _unsigned_params, %{assigns: %{pending_report_filter: report_filter}} = socket) do
+    {:noreply, create_run(socket, report_filter)}
+  end
+
+  # only the reports reading the partitioned log table can hit the partition ceiling, and they are
+  # exactly the ones offering the filter
+  defp warning_applicable?(%{enable_app_filter: enable_app_filter}), do: enable_app_filter
+
+  # The count is slowest for the large cohorts the warning exists for, and a blocking call in a
+  # handler cannot render a checking state, so it runs as a supervised task.
+  defp start_count_task(%{assigns: %{user: user}} = socket, report_filter) do
+    task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
+      learner_data().count(report_filter, user)
+    end)
+
+    socket
+      |> assign(:checking_partitions, true)
+      |> assign(:count_task_ref, task.ref)
+      |> assign(:pending_report_filter, report_filter)
+      |> assign(:partition_warning, nil)
+      |> assign(:error, nil)
+  end
+
+  @impl true
+  def handle_info({ref, {:ok, learner_count}}, socket) when ref == socket.assigns.count_task_ref do
+    Process.demonitor(ref, [:flush])
+    socket = count_finished(socket)
+    report_filter = socket.assigns.pending_report_filter
+
+    case partition_warning(learner_count, report_filter) do
+      nil -> {:noreply, create_run(socket, report_filter)}
+      warning -> {:noreply, assign(socket, :partition_warning, warning)}
+    end
+  end
+
+  # the estimate is advisory, so a count that fails or crashes creates the run rather than
+  # blocking it
+  @impl true
+  def handle_info({ref, {:error, error}}, socket) when ref == socket.assigns.count_task_ref do
+    Process.demonitor(ref, [:flush])
+    Logger.error("Unable to count learners for the partition estimate: #{inspect(error)}")
+    socket = count_finished(socket)
+
+    {:noreply, create_run(socket, socket.assigns.pending_report_filter)}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, socket) when ref == socket.assigns.count_task_ref do
+    Logger.error("Learner count for the partition estimate crashed: #{inspect(reason)}")
+    socket = count_finished(socket)
+
+    {:noreply, create_run(socket, socket.assigns.pending_report_filter)}
+  end
+
+  defp count_finished(socket) do
+    socket
+      |> assign(:checking_partitions, false)
+      |> assign(:count_task_ref, nil)
+  end
+
+  defp partition_warning(learner_count, %ReportFilter{app: app, start_date: start_date, end_date: end_date}) do
+    partitions = PartitionEstimate.projected_partitions(learner_count, app, start_date, end_date)
+    apps = PartitionEstimate.app_count(app)
+    months = PartitionEstimate.period_months(start_date, end_date)
+    threshold = PartitionEstimate.warning_threshold()
+
+    if partitions > threshold do
+      "This report covers #{delimit(learner_count)} learners. Athena would need to check " <>
+        "#{delimit(learner_count)} learners x #{delimit(apps)} applications x #{delimit(months)} months = " <>
+        "#{delimit(partitions)} partitions, over the #{delimit(threshold)} limit. Selecting an application, " <>
+        "or narrowing the date range, will reduce it. You can run it anyway."
+    end
+  end
+
+  defp learner_data,
+    do: Application.get_env(:report_server, :learner_data, LearnerData)
+
+  defp delimit(number) do
+    number
+      |> Integer.to_string()
+      |> String.reverse()
+      |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+      |> String.reverse()
   end
 
   defp create_run(%{assigns: %{report: %Report{} = report, user: user}} = socket, report_filter = %ReportFilter{}) do

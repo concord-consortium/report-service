@@ -3,6 +3,7 @@ defmodule ReportServer.LearnerDataStub do
 
   def fetch(report_filter, user, opts \\ []), do: apply_stub(:fetch, [report_filter, user, opts])
   def get_allowed_project_ids(user), do: apply_stub(:get_allowed_project_ids, [user])
+  def count(report_filter, user), do: apply_stub(:count, [report_filter, user])
 
   defp apply_stub(name, args) do
     Agent.get(__MODULE__, &Map.fetch!(&1, name)) |> apply(args)
