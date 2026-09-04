@@ -23,6 +23,15 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   ]
 
   @doc """
+  The grouping that collapses this query's fan-out to one row per learner.
+
+  Every table the select list can read contributes its primary key. `rl.id` alone is accepted only
+  while MySQL can see the joins: the project scoping's `1 = 0` clause lets the optimizer discard
+  them, and `ONLY_FULL_GROUP_BY` then rejects their columns.
+  """
+  def group_by, do: "rl.id, u.id, ea.id, pl.id"
+
+  @doc """
   The `run_remote_endpoint` string, byte-identical to the one `LearnerData` builds in Elixir,
   including the trailing-slash form for a learner with no `secure_key`.
   """

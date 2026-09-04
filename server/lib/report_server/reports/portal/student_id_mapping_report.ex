@@ -3,13 +3,9 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReport do
 
   alias ReportServer.Reports.LearnerBaseQuery
 
-  # every table the select list reads needs its primary key here: the project scoping's `1 = 0`
-  # clause lets MySQL discard the joins, and ONLY_FULL_GROUP_BY then rejects their columns
-  @group_by "rl.id, u.id, ea.id, pl.id"
-
   def get_query(report_filter = %ReportFilter{}, user = %User{portal_server: portal_server}) do
     LearnerBaseQuery.build(report_filter, user, cols(portal_server),
-      group_by: @group_by, order_by: [{"learner_id", :asc}])
+      group_by: LearnerBaseQuery.group_by(), order_by: [{"learner_id", :asc}])
   end
 
   defp cols(portal_server) do

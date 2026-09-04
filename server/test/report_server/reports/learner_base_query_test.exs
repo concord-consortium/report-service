@@ -86,6 +86,26 @@ defmodule ReportServer.Reports.LearnerBaseQueryTest do
     assert grouped_sql =~ "ORDER BY learner_id asc"
   end
 
+  test "the grouping carries the primary key of every table the portal reports project from" do
+    assert LearnerBaseQuery.group_by() == "rl.id, u.id, ea.id, pl.id"
+  end
+
+  test "every alias in the grouping is one the base query actually joins" do
+    {:ok, query} =
+      LearnerBaseQuery.build(%ReportFilter{filters: [:class], class: [600]},
+        %User{portal_server: "portal.example.com", portal_is_admin: true},
+        [{"rl.learner_id", "learner_id"}])
+
+    {:ok, sql} = ReportQuery.get_sql(query)
+    aliases = LearnerBaseQuery.group_by() |> String.split(", ") |> Enum.map(&hd(String.split(&1, ".")))
+
+    assert length(aliases) == 4
+
+    for table_alias <- aliases do
+      assert sql =~ ~r/\b#{table_alias}\b/, "#{table_alias} is grouped but never joined"
+    end
+  end
+
   test "run_remote_endpoint_sql/1 matches the string LearnerData builds in Elixir" do
     portal_server = "portal.example.com"
     sql = LearnerBaseQuery.run_remote_endpoint_sql(portal_server)

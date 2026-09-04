@@ -146,6 +146,17 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportDbTest do
     end
   end
 
+  test "the row count the web UI computes matches the rows the report emits" do
+    {:ok, query} = StudentMetadataReport.get_query(filter(), admin())
+    {:ok, count_sql} = ReportQuery.get_count_sql(query)
+    {:ok, count_result} = PortalDbs.query(@server, count_sql)
+    {_result, rows} = run()
+
+    assert [[4]] = count_result.rows
+    assert length(rows) == 4
+    refute count_sql =~ "GROUP_CONCAT", "the count discards the select list, hint and all"
+  end
+
   test "one row per learner for a single-learner filter" do
     {_result, rows} = run(%ReportFilter{filters: [:student], student: [71]})
 

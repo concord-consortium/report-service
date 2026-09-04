@@ -3,9 +3,6 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
 
   alias ReportServer.Reports.{LearnerBaseQuery, LearnerHideNames}
 
-  # see StudentIdMappingReport: rl.id alone fails once the scoping adds `1 = 0`
-  @group_by "rl.id, u.id, ea.id, pl.id"
-
   # GROUP_CONCAT cuts mid-value at group_concat_max_len with only a warning nothing reads, which
   # would misalign the teacher columns. The hint raises the ceiling for this statement alone: a
   # SET SESSION would be a second statement and would leak across the pooled connection. It rides
@@ -14,7 +11,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
 
   def get_query(report_filter = %ReportFilter{hide_names: hide_names}, user = %User{portal_server: portal_server}) do
     LearnerBaseQuery.build(report_filter, user, cols(portal_server, hide_names),
-      group_by: @group_by, order_by: [{"learner_id", :asc}])
+      group_by: LearnerBaseQuery.group_by(), order_by: [{"learner_id", :asc}])
   end
 
   defp cols(portal_server, hide_names) do

@@ -2,7 +2,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportTest do
   use ExUnit.Case, async: true
 
   alias ReportServer.Accounts.User
-  alias ReportServer.Reports.{ReportFilter, ReportQuery, ReportRun, Tree}
+  alias ReportServer.Reports.{LearnerBaseQuery, ReportFilter, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.StudentMetadataReport
   alias ReportServerWeb.Api.V1.ReportJSON
 
@@ -97,12 +97,19 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportTest do
   test "collapses with a grouping that survives the scoping clause, not with DISTINCT" do
     sql = sql_for(admin())
 
-    assert sql =~ "GROUP BY rl.id, u.id, ea.id, pl.id"
+    assert sql =~ "GROUP BY #{LearnerBaseQuery.group_by()}"
     refute sql =~ "DISTINCT"
   end
 
   test "orders by learner_id so its rows line up with the mapping report's" do
     assert sql_for(admin()) =~ "ORDER BY learner_id asc"
+  end
+
+  test "a super-admin applies no project scoping" do
+    sql = sql_for(admin())
+
+    refute sql =~ "project_id IN"
+    refute sql =~ "1 = 0"
   end
 
   test "a user with no allowed projects constrains to zero rows with valid SQL, not IN ()" do

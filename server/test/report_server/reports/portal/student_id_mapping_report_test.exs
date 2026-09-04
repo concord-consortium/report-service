@@ -2,7 +2,7 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReportTest do
   use ExUnit.Case, async: true
 
   alias ReportServer.Accounts.User
-  alias ReportServer.Reports.{ReportFilter, ReportQuery, Tree}
+  alias ReportServer.Reports.{LearnerBaseQuery, ReportFilter, ReportQuery, Tree}
   alias ReportServer.Reports.Portal.StudentIdMappingReport
   alias ReportServer.Reports.ReportRun
   alias ReportServerWeb.Api.V1.ReportJSON
@@ -44,23 +44,8 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReportTest do
   test "collapses with a grouping that survives the scoping clause, not with DISTINCT" do
     sql = sql_for(admin())
 
-    assert sql =~ "GROUP BY rl.id, u.id, ea.id, pl.id"
+    assert sql =~ "GROUP BY #{LearnerBaseQuery.group_by()}"
     refute sql =~ "DISTINCT"
-  end
-
-  test "every table the select list reads from contributes its primary key to the grouping" do
-    group_by =
-      sql_for(admin())
-      |> String.split("GROUP BY ", parts: 2)
-      |> List.last()
-      |> String.split(" ORDER BY", parts: 2)
-      |> List.first()
-      |> String.split(", ")
-
-    for alias_name <- ["u.id", "ea.id", "pl.id"] do
-      assert alias_name in group_by,
-             "#{alias_name} must be grouped: its table is read by the select list"
-    end
   end
 
   test "orders by learner_id so repeated runs and the two reports agree row for row" do

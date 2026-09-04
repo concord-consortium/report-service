@@ -66,6 +66,15 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   ]
 
   @doc """
+  The grouping that collapses this query's fan-out to one row per learner.
+
+  Every table the select list can read contributes its primary key. `rl.id` alone is accepted only
+  while MySQL can see the joins: the project scoping's `1 = 0` clause lets the optimizer discard
+  them, and `ONLY_FULL_GROUP_BY` then rejects their columns.
+  """
+  def group_by, do: "rl.id, u.id, ea.id, pl.id"
+
+  @doc """
   The `run_remote_endpoint` string, byte-identical to the one `LearnerData` builds in Elixir,
   including the trailing-slash form for a learner with no `secure_key`.
   """
@@ -247,18 +256,37 @@ System.put_env("PORTAL_TEST_EXAMPLE_COM_DB", "mysql://root:xyzzy@localhost:3406"
 
 ```elixir
 defmodule ReportServer.PortalFixture do
-  @moduledoc "Creates the `portal` schema PortalDbs connects to and seeds one class of learners."
   @server "portal-test.example.com"
 
   def server, do: @server
 
+  # PortalDbs derives this name from the server, so config/test.exs and the fixture cannot drift
+  # apart silently; a test asserts the variable it names is set
+  def env_var do
+    "#{@server}_DB" |> String.replace(".", "_") |> String.replace("-", "_") |> String.upcase()
+  end
+
   def setup! do
-    sql = File.read!(Path.join(__DIR__, "portal_fixture.sql"))
-    # split on ";\n" and run each statement through the same pool the reports use
-    sql |> String.split(";\n", trim: true) |> Enum.each(&ReportServer.PortalDbs.query(@server, &1))
+    {:ok, _} = ensure_database()
+
+    Path.join(__DIR__, "portal_fixture.sql")
+    |> File.read!()
+    |> String.split(";\n", trim: true)
+    |> Enum.each(fn statement ->
+      case ReportServer.PortalDbs.query(@server, statement) do
+        {:ok, result} -> result
+        {:error, reason} -> raise "portal fixture statement failed: #{reason}\n#{statement}"
+      end
+    end)
   end
 end
 ```
+
+`setup!` raises rather than ignoring a failed statement: a fixture that half-loads leaves the later
+tests failing on absent rows, which sends the reader looking in the wrong place. The connection
+details come from the same `<SERVER>_DB` variable `PortalDbs` reads, so the credentials are written
+once, in `config/test.exs`, which builds the URL from the values the `Repo` is already configured
+with.
 
 The fixture seeds the cases the requirements care about, and the list is longer than it first
 looked: the second-pass review found three defects, and a fixture without these shapes catches none
@@ -369,10 +397,10 @@ defmodule ReportServer.Reports.HideNames do
 end
 ```
 
-`form.ex`'s two private functions become one-line delegations, so its behavior is unchanged and the
-existing form tests keep passing untouched. The call site is inside `submit_form`, which REPORT-105
-split into several clauses and drained into `create_run/2`; the enforcement still runs once, on the
-filter built from the form, before either the count task or `create_run/2` sees it.
+`form.ex`'s two private functions go away entirely and the four places that built a filter from form
+params call `HideNames` directly: `submit_form`, `debug_form`, `live_select_change` and
+`update_options`. Delegations would have left a local name that no longer carries logic and could
+drift from the shared rule. Behavior is unchanged and the existing form tests pass untouched.
 
 Tests assert the full role matrix, including that `enforce/2` overrides an explicit
 `hide_names: false` for a researcher rather than merely defaulting it.
@@ -396,17 +424,9 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReport do
 
   alias ReportServer.Reports.LearnerBaseQuery
 
-  # rl.id alone is not enough: with the project scoping's `1 = 0` clause present MySQL discards the
-  # joins, and every select expression reading a joined table is then rejected under
-  # ONLY_FULL_GROUP_BY. Grouping on those tables' primary keys satisfies the dependency through the
-  # grouping columns themselves. pl.id is in the list because run_remote_endpoint reads
-  # pl.secure_key; MySQL names one offending expression at a time, so the list is derived from the
-  # select list rather than from the first error message.
-  @group_by "rl.id, u.id, ea.id, pl.id"
-
   def get_query(report_filter = %ReportFilter{}, user = %User{portal_server: portal_server}) do
     LearnerBaseQuery.build(report_filter, user, cols(portal_server),
-      group_by: @group_by, order_by: [{"learner_id", :asc}])
+      group_by: LearnerBaseQuery.group_by(), order_by: [{"learner_id", :asc}])
   end
 
   defp cols(portal_server) do
@@ -555,9 +575,6 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
 
   alias ReportServer.Reports.{LearnerBaseQuery, LearnerHideNames}
 
-  # see StudentIdMappingReport: rl.id alone fails once the scoping adds `1 = 0`
-  @group_by "rl.id, u.id, ea.id, pl.id"
-
   # GROUP_CONCAT cuts its result at group_concat_max_len (1024 bytes by default), mid-value, with
   # only a warning nothing reads, which would misalign the teacher columns this report guarantees
   # are aligned. A per-statement optimizer hint raises the ceiling for this query without touching
@@ -569,7 +586,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
 
   def get_query(report_filter = %ReportFilter{hide_names: hide_names}, user = %User{portal_server: portal_server}) do
     LearnerBaseQuery.build(report_filter, user, cols(portal_server, hide_names),
-      group_by: @group_by, order_by: [{"learner_id", :asc}])
+      group_by: LearnerBaseQuery.group_by(), order_by: [{"learner_id", :asc}])
   end
 
   defp cols(portal_server, hide_names) do
@@ -757,6 +774,25 @@ learner query without changing the join set, the filters or the columns:
   retires the largest implementation risk in the plan, since the requirements ask for result-level
   tests the suite has never been able to write.
 
+## Deviations found while implementing
+
+Three things the plan did not anticipate, each settled in the code and recorded here so the plan and
+the branch agree:
+
+- **`AthenaConfig.get_hide_username_hash_salt/0` crashed in test.** `:athena` is configured under
+  `config_env() == :prod` and in `dev.exs` only, so the getter ran `Keyword.get(nil, ...)` the first
+  time a test reached it, which the metadata report does through `LearnerHideNames`. It now defaults
+  the missing config the way the log-projection getters beside it already do, with its own test. No
+  Athena report reached it before, which is why nothing caught it earlier.
+- **Each report needs two test files, not one.** The result-level tests are `async: false` (they
+  share one portal database and one global salt) and tagged `:portal_db` so they are excluded when
+  that database is unreachable, while the SQL-shape tests stay `async: true` and DB-free. Splitting
+  them by module is what lets both properties hold, so each report has a `_test.exs` and a
+  `_db_test.exs`.
+- **The API-surface test moved.** The plan wrote it against both reports in the mapping report's
+  step, which is a forward dependency on a report that does not exist yet at that point. The mapping
+  step asserts its own report; the both-reports version lives in the metadata step, where both exist.
+
 ## Requirements coverage
 
 Every requirement bullet was walked against the six steps above. Four had no step, and were settled
@@ -809,10 +845,13 @@ The mapping report's test list says "`GROUP BY rl.id` present and no `DISTINCT`"
 to change with the string, and it is worth asserting the joined primary keys are in the grouping
 rather than matching the literal, so the test says why they are there.
 
-**Resolution**: applied. Both modules carry `@group_by "rl.id, u.id, ea.id, pl.id"` with the reason
-beside
-it, and both test lists assert the joined keys are in the grouping. Verified after the change: the
-role-less caller returns zero rows through `query/4` and through `stream_query/4`.
+**Resolution**: applied, with the value on `LearnerBaseQuery` rather than copied into both reports:
+the grouping is determined by the base query's join set, so it belongs beside the joins, and two
+copies that must agree is the shape this repo's reviewers flag. `LearnerBaseQuery.group_by/0` carries
+the reason, its own test asserts the value and that every alias in it is one the base actually joins,
+and each report's test asserts it uses the shared value. Verified after the change: the role-less
+caller and a project admin with no projects both return zero rows through `query/4` and through
+`stream_query/4`, for both reports.
 
 #### RESOLVED: `teacher_school_field/1` needs to be rebuilt, not adjusted
 

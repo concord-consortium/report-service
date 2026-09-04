@@ -33,6 +33,11 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReportDbTest do
     assert Enum.map(rows, & &1.learner_id) == [901, 902]
   end
 
+  test "a filter selecting one learner emits exactly one row" do
+    assert run(admin(), %ReportFilter{filters: [:student], student: [71]}) |> Enum.map(& &1.learner_id) ==
+             [901]
+  end
+
   test "the row count the web UI computes matches the rows the report emits" do
     query = query_for(admin(), filter([601]))
     {:ok, count_sql} = ReportQuery.get_count_sql(query)
