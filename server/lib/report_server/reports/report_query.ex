@@ -201,7 +201,8 @@ defmodule ReportServer.Reports.ReportQuery do
     where ++ start_clauses ++ end_clauses ++ Enum.filter([start_ts_clause, end_ts_clause], & &1)
   end
 
-  defp normalize_date(nil), do: nil
-  defp normalize_date(""), do: nil
-  defp normalize_date(date_str), do: Date.from_iso8601(date_str)
+  # public so PartitionEstimate bounds a range exactly as apply_date_range/3 does
+  def normalize_date(nil), do: nil
+  def normalize_date(""), do: nil
+  def normalize_date(date_str), do: Date.from_iso8601(date_str)
 end

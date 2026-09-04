@@ -393,9 +393,9 @@ def period_months(start_date, end_date) do
   years = AthenaConfig.get_log_projection_years()
   months = AthenaConfig.get_log_projection_months()
 
-  {sy, sm} = floor_ym(start_date, {years.first, months.first})
-  {ey, em} = ceil_ym(end_date, {years.last, months.last})
-  max((ey * 12 + em) - (sy * 12 + sm) + 1, 0)
+  {start_year, start_month} = to_ym(start_date, {years.first, months.first})
+  {end_year, end_month} = to_ym(end_date, {years.last, months.last})
+  max(end_year * 12 + end_month - (start_year * 12 + start_month) + 1, 0)
 end
 
 def projected_partitions(learner_count, app, start_date, end_date) do
@@ -405,27 +405,23 @@ def projected_partitions(learner_count, app, start_date, end_date) do
   learner_count * apps * period_months(start_date, end_date)
 end
 
-# An absent or unparseable bound falls back to the projection's own edge, so a half-open range
-# counts to the end of the projection rather than collapsing to a point. normalize_date/1 mirrors
-# report_query.ex:191-193: nil and "" are both "no bound", which is what the form submits.
-defp floor_ym(date, default), do: to_ym(date, default)
-defp ceil_ym(date, default), do: to_ym(date, default)
-
-defp to_ym(date, default) do
-  case normalize_date(date) do
-    {:ok, d} -> {d.year, d.month}
+# an absent or unparseable bound falls back to the projection's edge, so a half-open range runs to it
+defp to_ym(bound, default) do
+  case ReportQuery.normalize_date(bound) do
+    {:ok, date} -> {date.year, date.month}
     _ -> default
   end
 end
-
-defp normalize_date(nil), do: nil
-defp normalize_date(""), do: nil
-defp normalize_date(date_str), do: Date.from_iso8601(date_str)
 ```
 
-`floor_ym/2` and `ceil_ym/2` differ only in the default they are handed, which is why they share
-`to_ym/2` rather than being written twice. Keeping the two names is deliberate: the call site reads
-as a floor and a ceiling, and a later change that makes them genuinely differ has somewhere to go.
+The date parser is `ReportQuery.normalize_date/1`, promoted from private to public rather than
+copied here. The estimate is only correct if it bounds a range exactly as `apply_date_range/3` does,
+so the two reading the same function is the property that keeps them from drifting; a second copy
+alongside a comment saying it mirrors the first is the shape that drifts. `nil` and `""` are both
+"no bound" there, which is what the form submits.
+
+One `to_ym/2` serves both ends. Separate `floor_ym`/`ceil_ym` wrappers would have identical bodies,
+and the `years.first`/`years.last` arguments at the call site already say which end is which.
 
 Deriving `period_months/2` from a month ordinal rather than from `years x months` is what makes the
 partial-year cases correct, and it is worth stating why the naive form is wrong: for 2024-09-01 to
