@@ -21,10 +21,10 @@ defmodule ReportServer.AthenaQueryPoller do
       {:ok, "succeeded", output_location, _reason} ->
         {:ok, output_location}
       {:ok, "failed", _output_location, reason} ->
-        Logger.error("Athena query #{query_id} failed: #{inspect(AthenaFailure.truncate(reason))}")
+        Logger.error("Athena query #{query_id} failed: #{inspect(AthenaFailure.error_code(reason))}")
         {:error, "Query failed"}
       {:ok, "cancelled", _output_location, reason} ->
-        Logger.error("Athena query #{query_id} cancelled: #{inspect(AthenaFailure.truncate(reason))}")
+        Logger.error("Athena query #{query_id} cancelled: #{inspect(AthenaFailure.error_code(reason))}")
         {:error, "Query cancelled"}
       {:ok, _status, _output_location, _reason} ->
         ## Queued or Running

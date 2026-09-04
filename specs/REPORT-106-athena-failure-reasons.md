@@ -19,7 +19,7 @@ All requirements were implemented. Grouped as they were specified.
 - `get_query_info/1` returns the reason alongside the state and result url. Capture is unconditional pass-through, with no state-conditional logic.
 - `AthenaRunOps.refresh_query_state/1` persists it, and the field is added to the `cast/3` list. An uncast field is dropped in silence.
 - Every caller is updated: `AthenaRunOps`, all four `AthenaQueryPoller` clauses, and six test stub sites.
-- The poller logs the bounded reason on the `failed` and `cancelled` branches, its return value unchanged, so the CLUE answers path is undisturbed.
+- The poller logs the reason's error code on the `failed` and `cancelled` branches, never the message after it, and its return value is unchanged so the CLUE answers path is undisturbed.
 - A failed run is never retried in place, so no stale reason can survive and nothing needs clearing. A terminal run's reason is not overwritten by a later poll.
 
 **Expose it**

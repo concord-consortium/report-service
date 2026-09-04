@@ -10,6 +10,9 @@ defmodule ReportServer.Reports.AthenaFailure do
   @max_reason_bytes 4_000
   @truncation_marker " ... (truncated)"
 
+  # A reason carrying no colon is returned whole, so the code is bounded independently.
+  @max_code_length 60
+
   # The wording is specified externally and must ship verbatim. It must never suggest narrowing:
   # Slowdown is an internal Athena condition that neither the researcher nor this server can act on.
   @slowdown "Your query was delayed due to high traffic in AWS Athena. Please try again in a few moments. This is a temporary issue caused by heavy usage."
@@ -24,6 +27,23 @@ defmodule ReportServer.Reports.AthenaFailure do
     keep = @max_reason_bytes - byte_size(@truncation_marker)
     <<prefix::binary-size(keep), _rest::binary>> = reason
     trim_to_valid(prefix) <> @truncation_marker
+  end
+
+  @doc """
+  The leading error code of a reason, bounded, for use in logs.
+
+  Only the code, never the message after it: Athena's message can echo the query, and the queries
+  this server generates embed secure keys and learner endpoint urls. The code is the part an
+  operator acts on, and the query id logged beside it retrieves the full reason from Athena.
+  """
+  def error_code(nil), do: nil
+
+  def error_code(reason) do
+    reason
+    |> String.split(":", parts: 2)
+    |> hd()
+    |> String.trim()
+    |> String.slice(0, @max_code_length)
   end
 
   @doc """

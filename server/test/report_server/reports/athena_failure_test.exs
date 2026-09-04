@@ -61,6 +61,46 @@ defmodule ReportServer.Reports.AthenaFailureTest do
     end
   end
 
+  describe "error_code/1" do
+    test "keeps the code and drops the message that can echo the query" do
+      reason =
+        "SYNTAX_ERROR: line 5:12: Column cannot be resolved; near IN ('a1b2c3d4e5f6','9f8e7d6c5b4a') " <>
+          "https://learn.concord.org/dataservice/external_activity_data/a1b2c3d4e5f6"
+
+      code = AthenaFailure.error_code(reason)
+
+      assert code == "SYNTAX_ERROR"
+      refute code =~ "a1b2c3d4e5f6"
+      refute code =~ "dataservice"
+    end
+
+    test "returns the whole reason when it carries no code separator" do
+      assert AthenaFailure.error_code("Slowdown") == "Slowdown"
+    end
+
+    test "bounds a reason that carries no separator" do
+      code = AthenaFailure.error_code(String.duplicate("x", 70_000))
+
+      assert String.length(code) <= 60
+    end
+
+    test "passes nil through" do
+      assert AthenaFailure.error_code(nil) == nil
+    end
+
+    test "keeps the code for each observed reason" do
+      assert AthenaFailure.error_code(@throttling_reason) == "HIVE_S3_THROTTLING"
+
+      assert AthenaFailure.error_code("HIVE_EXCEEDED_PARTITION_LIMIT: too many") ==
+               "HIVE_EXCEEDED_PARTITION_LIMIT"
+
+      assert AthenaFailure.error_code("CONSTRAINT_VIOLATION: injected column") ==
+               "CONSTRAINT_VIOLATION"
+
+      assert AthenaFailure.error_code("Query timeout: exhausted resources") == "Query timeout"
+    end
+  end
+
   describe "guidance_for/2 suggestions" do
     test "each observed reason maps to its suggestion when no application filter is offered" do
       report = without_app_filter()
