@@ -10,7 +10,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
 
   alias ReportServer.Accounts.User
   alias ReportServer.{PortalDbs, AthenaDB}
-  alias ReportServer.Reports.{ReportFilter, ReportQuery}
+  alias ReportServer.Reports.{LearnerBaseQuery, ReportFilter, ReportQuery}
 
   def fetch_and_upload(report_filter = %ReportFilter{}, user = %User{}) do
     with {:ok, learner_data} <- fetch(report_filter, user),
@@ -32,113 +32,35 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     end
   end
 
+  @learner_cols [
+    {"DISTINCT rl.learner_id", "learner_id"},
+    {"rl.student_id", "student_id"},
+    {"rl.class_id", "class_id"},
+    {"rl.class_name", "class"},
+    {"rl.school_name", "school"},
+    {"rl.user_id", "user_id"},
+    {"COALESCE(u.primary_account_id, u.id)", "primary_user_id"},
+    {"rl.offering_id", "offering_id"},
+    {"rl.username", "username"},
+    {"rl.student_name", "student_name"},
+    {"rl.last_run", "last_run"},
+    {"rl.teachers_id", "teachers_id"},
+    {"rl.permission_forms_id", "permission_forms_id"},
+    {"ea.url", "runnable_url"},
+    {"pl.secure_key", "secure_key"},
+    {"pl.created_at", "created_at"}
+  ]
+
+  def learner_cols, do: @learner_cols
+
   @doc """
-  Builds the portal query selecting the learners a filter covers.
+  The learner columns the Athena reports consume, projected onto the shared base query.
 
-  Not a pure builder: with `exclude_internal` set it runs its own portal query to resolve the
-  internal teacher ids, so it can fail before any SQL is produced.
+  Inherits `LearnerBaseQuery.build/4`'s failure modes, including the portal round trip
+  `exclude_internal` makes before any SQL exists.
   """
-  def build_query(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment, permission_form: permission_form,
-        class: class, student: student, exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
-    portal_query = %ReportQuery{
-      cols: [
-        {"DISTINCT rl.learner_id", "learner_id"},
-        {"rl.student_id", "student_id"},
-        {"rl.class_id", "class_id"},
-        {"rl.class_name", "class"},
-        {"rl.school_name", "school"},
-        {"rl.user_id", "user_id"},
-        {"COALESCE(u.primary_account_id, u.id)", "primary_user_id"},
-        {"rl.offering_id", "offering_id"},
-        {"rl.username", "username"},
-        {"rl.student_name", "student_name"},
-        {"rl.last_run", "last_run"},
-        {"rl.teachers_id", "teachers_id"},
-        {"rl.permission_forms_id", "permission_forms_id"},
-        {"ea.url", "runnable_url"},
-        {"pl.secure_key", "secure_key"},
-        {"pl.created_at", "created_at"}
-      ],
-      from: "report_learners rl",
-      join: [[
-        "JOIN portal_learners pl ON (rl.learner_id = pl.id)",
-        "JOIN users u ON (u.id = rl.user_id)",
-        "JOIN portal_offerings po ON (po.id = rl.offering_id)",
-        "JOIN external_activities ea on (po.runnable_type = 'ExternalActivity' AND po.runnable_id = ea.id)",
-        "JOIN portal_student_clazzes psc ON (psc.student_id = rl.student_id)",
-        "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id AND rl.class_id = ptc.clazz_id)",
-        "LEFT JOIN portal_runs run on (run.learner_id = pl.id)",
-      ]]
-    }
-
-    join = []
-    where = []
-
-    {join, where} = apply_allowed_project_ids_filter(user, join, where, "po.runnable_id", "ptc.teacher_id")
-
-    {join, where} = if have_filter?(cohort) do
-      {
-        [
-          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)",
-          "join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' AND aci_assignment.item_id = po.runnable_id)"
-          | join
-        ],
-        [
-          "aci_teacher.admin_cohort_id in #{list_to_in(cohort)}",
-          "aci_assignment.admin_cohort_id in #{list_to_in(cohort)}"
-          | where
-        ]
-      }
-    else
-      {join, where}
-    end
-
-    {join, where} = if have_filter?(permission_form) do
-      {
-        [
-          "JOIN portal_student_permission_forms pspf ON (pspf.portal_student_id = psc.student_id)"
-          | join
-        ],
-        [
-          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
-          | where
-        ]
-      }
-    else
-      {join, where}
-    end
-
-    internal_teacher_ids = if exclude_internal do
-      get_internal_teacher_ids(user.portal_server)
-    else
-      []
-    end
-
-    {join, where} = if exclude_internal && length(internal_teacher_ids) > 0 do
-      {
-        [
-          "JOIN portal_teachers pt ON (pt.id = ptc.teacher_id)"
-          | join,
-        ],
-        [
-          "pt.id NOT IN #{list_to_in(internal_teacher_ids)}"
-          | where
-        ]
-      }
-    else
-      {join, where}
-    end
-
-    where = where
-      |> apply_where_filter(school, "rl.school_id IN #{list_to_in(school)}")
-      |> apply_where_filter(teacher, "ptc.teacher_id IN #{list_to_in(teacher)}")
-      |> apply_where_filter(assignment, "po.runnable_id IN #{list_to_in(assignment)}")
-      |> apply_where_filter(class, "rl.class_id IN #{list_to_in(class)}")
-      |> apply_where_filter(student, "rl.student_id IN #{list_to_in(student)}")
-      |> apply_start_date(start_date)
-      |> apply_end_date(end_date)
-
-    ReportQuery.update_query(portal_query, join: join, where: where)
+  def build_query(report_filter = %ReportFilter{}, user = %User{}) do
+    LearnerBaseQuery.build(report_filter, user, @learner_cols)
   end
 
   @doc """
