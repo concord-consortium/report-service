@@ -21,6 +21,12 @@ The high-level parts:
 * **Report-Server**: An Elixir/Phoenix app that replaces the **Researcher-Reports** app.  It allows for long-running processes
     to post-process log files.
 
+## Deployment
+
+S3 deployment is handled by GitHub Actions using OIDC for AWS authentication. See [deploy-setup.md in starter-projects](https://github.com/concord-consortium/starter-projects/blob/main/doc/deploy-setup.md) for how the AWS side is set up, and [doc/deploy.md](doc/deploy.md) for how deploys work in this repo.
+
+The only S3 deploy is the retired Researcher-Reports app, which was replaced by the report server (see above). It publishes nothing that any service reads, and now runs only when triggered by hand. See [doc/deploy.md](doc/deploy.md) for why it was left in place rather than deleted.
+
 ## Setting up a new report on a portal
 
 1. Add new external report from the portal's admin section. The URL should be to the query-creator
