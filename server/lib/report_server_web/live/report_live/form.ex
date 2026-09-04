@@ -254,8 +254,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   # exactly the ones offering the filter
   defp warning_applicable?(%{enable_app_filter: enable_app_filter}), do: enable_app_filter
 
-  # The count is slowest for the large cohorts the warning exists for, and a blocking call in a
-  # handler cannot render a checking state, so it runs as a supervised task.
+  # a blocking call in a handler cannot render a checking state, so the count runs as a task
   defp start_count_task(%{assigns: %{user: user}} = socket, report_filter) do
     task = Task.Supervisor.async_nolink(ReportServer.PostProcessingTaskSupervisor, fn ->
       learner_data().count(report_filter, user)

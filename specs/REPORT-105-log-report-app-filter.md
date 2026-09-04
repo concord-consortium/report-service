@@ -108,7 +108,10 @@ produces exactly the query the server produced before, so no existing report cha
   `LearnerData.fetch/3` would return for the same filter. This is a statement about what the warning
   means, not only about how it is built: the learner join fans out (it carries
   `LEFT JOIN portal_runs`), so a naive row count over it counts one row per learner run and
-  overestimates without bound.
+  overestimates badly. Measured on production against the twelve assignments matching
+  `name LIKE '%Dataflow%'`: `COUNT(DISTINCT rl.learner_id)` gives 814 while
+  `ReportQuery.get_count_sql/1` gives 4,971, a 6.11x fan-out. At that factor a cohort of roughly 150
+  real learners would project past the partition limit and warn on a run that is fine.
 - The projected partition count is `learners x apps x period_months`, where `apps` is 1 when the
   application filter is set and 15 otherwise, and `period_months` is **the number of `(year, month)`
   pairs the emitted date predicate admits**, not `years x months`.
@@ -359,9 +362,16 @@ synchronous with a five-minute timeout.
 
 **Decision**: Start the count as a supervised task, gate the button on a checking state the way
 `@downloading` gates the download button, and fall through to creating the run if the count fails so
-an advisory cannot become an outage. The count is slowest for precisely the large cohorts the warning
-exists for, so the inline worst case was a LiveView frozen for five minutes with no feedback,
-introduced by the feature meant to save the researcher from waiting.
+an advisory cannot become an outage. The reasoning at the time was that the count could grow with the
+cohort against a five-minute timeout, so the inline worst case was a LiveView frozen with no
+feedback, introduced by the feature meant to save the researcher from waiting.
+
+**Measured afterwards**: on production, an 814-learner cohort (the twelve assignments matching
+`name LIKE '%Dataflow%'`) counted in 109 ms over an SSH tunnel, so for a cohort of that size an
+inline call would have been imperceptible and the freeze this decision guarded against did not
+materialize. The decision stands on the argument below rather than on this one: an inline call cannot
+render a checking state at all. Nothing larger has been measured, so how the count behaves on the
+several-thousand-learner cohorts the ticket cites is still unknown.
 
 ---
 
@@ -405,9 +415,10 @@ the filter the researcher just built, worst on the large cohorts the feature exi
 `{ref, {:error, _}}` and `{:DOWN, ...}` clauses, the `demonitor` calls, and the initialization of the
 task assigns are all required. B was rejected because an inline call cannot report progress at all:
 an assign made before a blocking call never reaches the client, so the researcher would click Run
-Report and see nothing. C was rejected because the count is slowest for the large cohorts the warning
-exists for, so the timeout would skip the warning exactly when it matters, and no defensible timeout
-value can be chosen without a production measurement.
+Report and see nothing. C was rejected because no defensible timeout value could be chosen without a
+production measurement, and a timeout would skip the warning precisely on the cohorts that need it.
+The measurement has since been taken for one cohort: 814 learners counted in 109 ms, which any
+plausible timeout would have cleared.
 
 ---
 
@@ -502,7 +513,7 @@ is not: the handler already calls `ReportFilter.get_filter_values/2`, which quer
 every submit of every report.
 
 **Decision**: Reword to cost. `get_filter_values/2` is an id lookup whose cost does not grow with the
-cohort, while the count runs the learner join and is slowest for exactly the large cohorts the
-warning targets, and the settling argument is that an inline call cannot report progress at all. The
+cohort, while the count runs the learner join and so scales with it, and the settling argument is
+that an inline call cannot report progress at all. The
 "non-log reports pay nothing" claim is scoped to the new count only, since every submit already pays
 for `get_filter_values/2`.
