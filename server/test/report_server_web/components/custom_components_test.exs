@@ -37,6 +37,7 @@ defmodule ReportServerWeb.CustomComponentsTest do
 
     refute html =~ "Start Date"
     refute html =~ "Hide Names"
+    refute html =~ "Application"
   end
 
   test "report_filter_values renders a populated report_filter" do
@@ -52,5 +53,22 @@ defmodule ReportServerWeb.CustomComponentsTest do
     assert html =~ "Start Date"
     assert html =~ "2024-01-01"
     assert html =~ "Hide Names"
+  end
+
+  test "report_filter_values renders the application when one was selected" do
+    run = %ReportRun{report_filter: %ReportFilter{app: "CLUE"}, report_filter_values: nil}
+
+    html = render_component(&CustomComponents.report_filter_values/1, report_run: run)
+
+    assert html =~ "Application"
+    assert html =~ "CLUE"
+  end
+
+  test "report_filter_values omits the application row for the empty string the form submits" do
+    run = %ReportRun{report_filter: %ReportFilter{app: ""}, report_filter_values: nil}
+
+    html = render_component(&CustomComponents.report_filter_values/1, report_run: run)
+
+    refute html =~ "Application"
   end
 end
