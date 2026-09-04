@@ -217,7 +217,13 @@ defmodule ReportServerWeb.ReportLive.Form do
     end
   end
 
+  # the form still submits on Enter while the Run Report button is disabled, and a second count
+  # would orphan the first, whose reply would then match no clause
   @impl true
+  def handle_event("submit_form", _unsigned_params, %{assigns: %{checking_partitions: true}} = socket) do
+    {:noreply, socket}
+  end
+
   def handle_event("submit_form", _unsigned_params, %{assigns: %{form: form, num_filters: num_filters, user: user, form_options: form_options}} = socket) do
     report_filter = ReportFilter.from_form(form, num_filters)
       |> maybe_enforce_hide_names(user)

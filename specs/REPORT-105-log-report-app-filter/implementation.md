@@ -526,12 +526,24 @@ arrives as a message and either creates the run or assigns the warning. The conf
 separate event so the warning cannot be skipped by a re-render:
 
 ```elixir
+# the form carries phx-submit as well as the button's phx-click, so Enter still submits while the
+# button is disabled; a second count would orphan the first, whose reply would then match no clause
+def handle_event("submit_form", _params, %{assigns: %{checking_partitions: true}} = socket) do
+  {:noreply, socket}
+end
+
 def handle_event("submit_form", _params, socket) do
-  # ... build report_filter as today, then check_app_supported/2 from the previous step ...
-  if warning_applicable?(report, socket) do
-    {:noreply, socket |> assign(:checking_partitions, true) |> start_count_task(report_filter)}
-  else
-    create_run(socket, report_filter)
+  # ... build report_filter as today ...
+  case check_app_supported(report_filter, form_options) do
+    :ok ->
+      if warning_applicable?(form_options) do
+        {:noreply, start_count_task(socket, report_filter)}
+      else
+        {:noreply, create_run(socket, report_filter)}
+      end
+
+    {:error, message} ->
+      {:noreply, assign(socket, :error, message)}
   end
 end
 
@@ -543,20 +555,28 @@ end
 # the estimate is advisory: a failed count creates the run rather than blocking it
 def handle_info({ref, {:error, error}}, socket) when ref == socket.assigns.count_task_ref do
   Process.demonitor(ref, [:flush])
-  Logger.error("Partition estimate failed: #{inspect(error)}")
-  create_run(socket, socket.assigns.pending_report_filter)
+  Logger.error("Unable to count learners for the partition estimate: #{inspect(error)}")
+  {:noreply, create_run(count_finished(socket), socket.assigns.pending_report_filter)}
 end
 
 # and so does a crashed one
 def handle_info({:DOWN, ref, :process, _pid, reason}, socket) when ref == socket.assigns.count_task_ref do
-  Logger.error("Partition estimate crashed: #{inspect(reason)}")
-  create_run(socket, socket.assigns.pending_report_filter)
+  Logger.error("Learner count for the partition estimate crashed: #{inspect(reason)}")
+  {:noreply, create_run(count_finished(socket), socket.assigns.pending_report_filter)}
 end
 
-def handle_event("submit_form_confirmed", _params, socket) do
-  # ... same report_filter, straight to create_run/2 ...
+# nothing pending means a stray event rather than a confirm, and create_run/2 takes a struct
+def handle_event("submit_form_confirmed", _params, %{assigns: %{pending_report_filter: nil}} = socket) do
+  {:noreply, socket}
+end
+
+def handle_event("submit_form_confirmed", _params, %{assigns: %{pending_report_filter: report_filter}} = socket) do
+  {:noreply, create_run(socket, report_filter)}
 end
 ```
+
+`start_count_task/2` sets the checking state, the task ref and the pending filter together, and
+clears any previous warning, so a second submit cannot show the last one's message.
 
 **All three message clauses are load-bearing, and so are the `demonitor` calls.** Verified by
 running: `Task.Supervisor.async_nolink` delivers `{ref, result}` and then
@@ -579,7 +599,10 @@ rather than re-deriving it from `@form`. The form keeps changing under `form_upd
 is in flight, so re-deriving would create a run from a filter the warning never described.
 
 The Run Report button is disabled while `@checking_partitions` is true, matching how `@downloading`
-gates the download button. A count that fails or times out falls through to creating the run rather
+gates the download button, and `submit_form` refuses to start a second count while one is in flight,
+matching how `download_report` refuses a second download (`show.ex:80`). Disabling the button is not
+enough on its own: `form.html.heex:23` also carries `phx-submit="submit_form"`, so pressing Enter in
+a field submits regardless, and the orphaned first reply would then crash the view. A count that fails or times out falls through to creating the run rather
 than blocking it: the estimate is advisory, and a broken advisory must not become an outage.
 
 The count is reached through the `:learner_data` seam the codebase already uses
@@ -644,6 +667,7 @@ Tests:
   a unit test of the estimate cannot catch, because the crash is in the message plumbing rather than
   in the arithmetic
 - a count that crashes still creates the run, exercising the `:DOWN` path with a real task failure
+- a second submit while a count is in flight starts no second count and does not lose the first
 - the warning container carries `role="alert"`, and the Run Report button carries `aria-busy` while
   the count is in flight
 

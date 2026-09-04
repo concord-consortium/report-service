@@ -256,6 +256,28 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       assert html =~ "Checking"
     end
 
+    test "a second submit while a count is in flight is ignored", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      test_process = self()
+
+      stub_learner_count(fn _filter, _user ->
+        send(test_process, :counting)
+        Process.sleep(100)
+        {:ok, 1}
+      end)
+
+      choose_first_filter(view)
+      render_click(view, "submit_form")
+      assert_receive :counting
+
+      # the form still submits on Enter while the button is disabled, and a second task would
+      # orphan the first, whose reply would then match no clause
+      render_click(view, "submit_form")
+
+      refute_receive :counting, 300
+      assert [_run] = Reports.list_user_report_runs(user, "student-actions")
+    end
+
     test "the warning is announced and offers the confirm", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions")
       stub_count({:ok, 151})
