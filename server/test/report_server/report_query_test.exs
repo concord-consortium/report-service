@@ -158,27 +158,43 @@ defmodule ReportServer.ReportQueryTest do
     end
 
     test "a set application filter adds one predicate beside the secure key clause" do
+      assert athena_sql(%ReportFilter{app: ["CLUE"]}) ==
+               "#{@select_and_join} WHERE (log.app IN ('CLUE')) AND #{@secure_key_clause}"
+    end
+
+    test "several applications go into one IN list rather than several predicates" do
+      sql = athena_sql(%ReportFilter{app: ["CLUE", "Dataflow"]})
+
+      assert sql == "#{@select_and_join} WHERE (log.app IN ('CLUE','Dataflow')) AND #{@secure_key_clause}"
+      assert length(String.split(sql, "log.app")) - 1 == 1
+    end
+
+    test "an application stored before the filter took a list still works" do
       assert athena_sql(%ReportFilter{app: "CLUE"}) ==
-               "#{@select_and_join} WHERE (log.app = 'CLUE') AND #{@secure_key_clause}"
+               "#{@select_and_join} WHERE (log.app IN ('CLUE')) AND #{@secure_key_clause}"
+    end
+
+    test "an empty list is blank, which is what deselecting everything submits" do
+      assert athena_sql(%ReportFilter{app: []}) == "#{@select_and_join} WHERE #{@secure_key_clause}"
     end
 
     test "a set application filter stays beside the secure key clause with a date range" do
-      filter = %ReportFilter{app: "CLUE", start_date: "2024-09-01", end_date: "2025-06-30"}
+      filter = %ReportFilter{app: ["CLUE"], start_date: "2024-09-01", end_date: "2025-06-30"}
 
       assert athena_sql(filter) ==
-               "#{@select_and_join} WHERE #{@date_clauses} AND (log.app = 'CLUE') AND " <>
+               "#{@select_and_join} WHERE #{@date_clauses} AND (log.app IN ('CLUE')) AND " <>
                  "#{@secure_key_clause}"
     end
 
     test "the predicate is emitted once, not once per learner or runnable" do
-      occurrences = athena_sql(%ReportFilter{app: "CLUE"}) |> String.split("log.app") |> length()
+      occurrences = athena_sql(%ReportFilter{app: ["CLUE"]}) |> String.split("log.app") |> length()
 
       assert occurrences - 1 == 1
     end
 
     test "an application outside the projected values is an error" do
       assert {:error, message} =
-               ReportQuery.get_athena_query(%ReportFilter{app: "NotAnApp"}, learner_data(), [])
+               ReportQuery.get_athena_query(%ReportFilter{app: ["NotAnApp"]}, learner_data(), [])
 
       assert message =~ "Unknown application filter"
     end
@@ -186,19 +202,28 @@ defmodule ReportServer.ReportQueryTest do
     test "a value that would break out of the string literal is an error" do
       for app <- ["CL'UE", "CLUE' OR '1'='1", "CLUE; DROP TABLE learners"] do
         assert {:error, _} =
-                 ReportQuery.get_athena_query(%ReportFilter{app: app}, learner_data(), [])
+                 ReportQuery.get_athena_query(%ReportFilter{app: [app]}, learner_data(), [])
       end
+    end
+
+    test "one bad value among good ones is still rejected" do
+      assert {:error, _} =
+               ReportQuery.get_athena_query(
+                 %ReportFilter{app: ["CLUE", "NotAnApp"]},
+                 learner_data(),
+                 []
+               )
     end
 
     test "an unknown application is reported ahead of the no learners outcome" do
       assert {:error, message} =
-               ReportQuery.get_athena_query(%ReportFilter{app: "NotAnApp"}, [], [])
+               ReportQuery.get_athena_query(%ReportFilter{app: ["NotAnApp"]}, [], [])
 
       assert message =~ "Unknown application filter"
     end
 
     test "no learners is still reported when the application filter is valid" do
-      assert {:error, message} = ReportQuery.get_athena_query(%ReportFilter{app: "CLUE"}, [], [])
+      assert {:error, message} = ReportQuery.get_athena_query(%ReportFilter{app: ["CLUE"]}, [], [])
 
       assert message =~ "No learners found"
     end

@@ -60,6 +60,17 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
       assert unfiltered == filtered * length(AthenaConfig.get_log_apps())
     end
 
+    test "selecting several applications divides by how many were selected" do
+      assert PartitionEstimate.app_count(["CLUE", "Dataflow"]) == 2
+
+      assert PartitionEstimate.projected_partitions(100, ["CLUE", "Dataflow"], nil, nil) ==
+               100 * 2 * 444
+    end
+
+    test "an empty selection is unfiltered" do
+      assert PartitionEstimate.app_count([]) == length(AthenaConfig.get_log_apps())
+    end
+
     test "the empty string the control submits counts as unfiltered" do
       assert PartitionEstimate.projected_partitions(100, "", nil, nil) ==
                PartitionEstimate.projected_partitions(100, nil, nil, nil)

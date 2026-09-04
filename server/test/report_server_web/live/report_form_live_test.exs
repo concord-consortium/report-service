@@ -7,6 +7,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
   alias ReportServer.LearnerDataStub
   alias ReportServer.Reports
+  alias ReportServer.Reports.ReportFilter
 
   setup do
     on_exit(fn ->
@@ -65,15 +66,17 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       html = choose_first_filter(view)
 
-      assert html =~ "All applications"
       assert html =~ ~s(<option value="CLUE">CLUE</option>)
       assert html =~ "none (no application recorded)"
+      assert html =~ ~s(name="filter_form[app][]")
+      assert html =~ "multiple=\"multiple\""
+      assert html =~ "logs can span more than one"
     end
 
     test "renders on student-actions-with-metadata", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions-with-metadata")
 
-      assert choose_first_filter(view) =~ "All applications"
+      assert choose_first_filter(view) =~ ~s(<option value="CLUE">CLUE</option>)
     end
 
     test "does not render on teacher-actions, which reads a table with no app partition",
@@ -82,7 +85,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       html = choose_first_filter(view)
 
-      refute html =~ "All applications"
+      refute html =~ ~s(<option value="CLUE">CLUE</option>)
       assert html =~ "Earliest date:"
     end
 
@@ -97,30 +100,31 @@ defmodule ReportServerWeb.ReportFormLiveTest do
     test "stores the selected application on the run", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
       stub_count({:ok, 1})
-      choose_first_filter(view, %{"app" => "CLUE"})
+      choose_first_filter(view, %{"app" => ["CLUE"]})
 
       render_click(view, "submit_form")
       assert_redirect(view)
 
       assert [run] = Reports.list_user_report_runs(user, "student-actions")
-      assert run.report_filter.app == "CLUE"
+      assert run.report_filter.app == ["CLUE"]
     end
 
     test "creates the run when the control was left blank", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
       stub_count({:ok, 1})
-      choose_first_filter(view, %{"app" => ""})
+      choose_first_filter(view, %{"app" => []})
 
       render_click(view, "submit_form")
       assert_redirect(view)
 
       assert [run] = Reports.list_user_report_runs(user, "student-actions")
-      assert run.report_filter.app == ""
+      # deselecting everything sends no key at all, so the stored value is nil rather than []
+      assert ReportFilter.app_list(run.report_filter.app) == []
     end
 
     test "refuses an application on a report that does not support one", %{conn: conn} do
       {view, user} = mount_form(conn, "teacher-actions")
-      choose_first_filter(view, %{"app" => "CLUE"})
+      choose_first_filter(view, %{"app" => ["CLUE"]})
 
       html = render_click(view, "submit_form")
 
@@ -130,7 +134,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
     test "accepts a blank application on a report that does not support one", %{conn: conn} do
       {view, user} = mount_form(conn, "teacher-actions")
-      choose_first_filter(view, %{"app" => ""})
+      choose_first_filter(view, %{"app" => []})
 
       render_click(view, "submit_form")
       assert_redirect(view)
@@ -168,17 +172,17 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       {view, user} = mount_form(conn, "student-actions")
       # over the limit even with one application selected: 3000 x 1 x 444
       stub_count({:ok, 3_000})
-      choose_first_filter(view, %{"app" => "CLUE"})
+      choose_first_filter(view, %{"app" => ["CLUE"]})
       render_click(view, "submit_form")
       wait_for(view, "Run it anyway")
 
       # the form keeps changing while the warning is up, and the run must not pick that up
-      choose_first_filter(view, %{"app" => "Dataflow"})
+      choose_first_filter(view, %{"app" => ["Dataflow"]})
       render_click(view, "submit_form_confirmed")
       assert_redirect(view)
 
       assert [run] = Reports.list_user_report_runs(user, "student-actions")
-      assert run.report_filter.app == "CLUE"
+      assert run.report_filter.app == ["CLUE"]
     end
 
     test "a configured threshold lowers where the warning fires", %{conn: conn} do

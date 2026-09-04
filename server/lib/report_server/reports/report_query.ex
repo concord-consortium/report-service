@@ -94,7 +94,7 @@ defmodule ReportServer.Reports.ReportQuery do
     cond do
       # checked before the data-dependent outcome so a bad value is not reported as no learners
       !valid_app?(app) ->
-        {:error, "Unknown application filter: #{app}"}
+        {:error, "Unknown application filter: #{inspect(app)}"}
 
       Enum.empty?(query_ids) ->
         {:error, "No learners found to match the requested filter(s)."}
@@ -160,11 +160,16 @@ defmodule ReportServer.Reports.ReportQuery do
   end
   defp hide_learner_student_name(tuple, _), do: tuple
 
-  defp valid_app?(app) when app in [nil, ""], do: true
-  defp valid_app?(app), do: app in AthenaConfig.get_log_apps()
+  defp valid_app?(app) do
+    ReportFilter.app_list(app) |> Enum.all?(&(&1 in AthenaConfig.get_log_apps()))
+  end
 
-  defp apply_app(where, app) when app in [nil, ""], do: where
-  defp apply_app(where, app), do: where ++ ["log.app = '#{app}'"]
+  defp apply_app(where, app) do
+    case ReportFilter.app_list(app) do
+      [] -> where
+      apps -> where ++ ["log.app IN #{ReportUtils.string_list_to_single_quoted_in(apps)}"]
+    end
+  end
 
   defp apply_date_range(where, start_date, end_date) do
     start_date = normalize_date(start_date)

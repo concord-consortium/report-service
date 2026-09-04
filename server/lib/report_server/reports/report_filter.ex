@@ -36,6 +36,17 @@ defmodule ReportServer.Reports.ReportFilter do
     |> Map.put(:app, form.params["app"])
   end
 
+  @doc """
+  The selected applications as a list, empty when the filter is unset.
+
+  The control is a multiple select, so it submits a list, no key at all when nothing is chosen, and
+  a bare string only for a run stored before the filter accepted more than one.
+  """
+  def app_list(nil), do: []
+  def app_list(""), do: []
+  def app_list(app) when is_binary(app), do: [app]
+  def app_list(apps) when is_list(apps), do: Enum.reject(apps, &(&1 == ""))
+
   def get_filter_values(report_filter = %ReportFilter{}, user = %User{}) do
     sql = Enum.reduce(@filter_type_atoms, [], fn filter_type, acc ->
       ids = Map.get(report_filter, filter_type) || []

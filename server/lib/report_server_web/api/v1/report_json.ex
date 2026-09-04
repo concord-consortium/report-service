@@ -40,7 +40,7 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
     base = %{
       filters: Enum.map(report_filter.filters, &to_string/1),
       state: report_filter.state,
-      app: presence(report_filter.app),
+      app: ReportFilter.app_list(report_filter.app),
       start_date: presence(report_filter.start_date),
       end_date: presence(report_filter.end_date),
       hide_names: !!report_filter.hide_names,

@@ -32,8 +32,19 @@ produces exactly the query the server produced before, so no existing report cha
 - Blank (`nil` or `""`) means the pre-change behavior. The generated SQL must be byte-identical to
   the pre-change output for the same filter, verified against a captured baseline rather than
   asserted by shape.
-- Set, it adds exactly one predicate, `log.app = '<value>'`, to the `where` list in
-  `get_athena_query/3`. Nothing else changes.
+- Set, it adds exactly one predicate, `log.app IN (...)`, to the `where` list in
+  `get_athena_query/3`. Nothing else changes. The control is a multiple select, because one
+  assignment's logs can span applications: measured on production, ten learners on a Dataflow
+  assignment produced 1,053 CLUE events and 148 Dataflow events, so a single-valued filter would
+  have silently dropped an eighth of that cohort's data.
+- Every shape of "unset" is normalized in one place, `ReportFilter.app_list/1`, which returns `[]`
+  for `nil`, `""` and `[]`, wraps a bare string, and drops empty entries. Guards cannot call a
+  remote function, so without it the blank check is rewritten in each of the four modules that need
+  it. It is identity on its own `[]`, and wrapping a bare string is what lets a run stored before
+  the filter accepted several applications still load and render.
+- The values are emitted through `ReportUtils.string_list_to_single_quoted_in/1`, the same helper
+  the adjacent `secure_key IN (...)` clause uses, which escapes single quotes. The allowlist is
+  still the primary defense; this is the second one.
 - The submitted value must be validated against the allowed-value list in the query builder. A value
   not in the list is an error, not a silently dropped predicate: dropping it would produce the
   timeout the story exists to prevent, while reporting it makes a stale form or a hand-built API
@@ -74,6 +85,9 @@ produces exactly the query the server produced before, so no existing report cha
   rather than a slug check in the template.
 - The control renders in the same block as the date range and hide-names controls, which is shown
   only once a first filter has a value.
+- The control says what selecting does. Because an assignment's logs can span applications and the
+  system cannot cheaply detect that, the control carries text stating that selecting some leaves the
+  rest out, and that selecting none includes everything.
 - The control carries a programmatic label. `.input type="select"` renders a label element bound to
   the input's id, but both `id` and `label` default to `nil`, so the existing filter-type select
   renders an empty label element and no accessible name. The new control passes both rather than
@@ -93,9 +107,9 @@ produces exactly the query the server produced before, so no existing report cha
 ### Surfacing it
 
 - `report_filter_json/1` includes `app`, so it appears on `GET /api/v1/reports/:id` and in the runs
-  list. It is serialized through the same `presence/1` the dates use, so a blank filter reports
-  `null` rather than `""`. An unselected `select` submits `""`, exactly as an untouched date input
-  does, and the two must not disagree about how they report "not set".
+  list. It serializes as a list, empty when unset, the way `filters` already does, so a client never
+  has to handle both a string and an array. Deciding this before the field ships matters: once
+  released, changing its type is a breaking change for cc-data and REPORT-93.
 - The run page's filter summary shows the selected application. `app` needs its own row alongside
   Start Date and End Date, and it must be absent when blank, matching those rows.
 - `report_filter_values` (the resolved-label map) needs no entry: the label is the value, so
@@ -200,6 +214,17 @@ Each test names the mutation it catches.
   `app`, but it is a separate surface, a separate database and a pre-existing condition. It should
   get its own ticket rather than widen this one.
 - **`logs_by_app`.** The third table in the README is not read by any report module in the server.
+- **Telling the researcher which applications their cohort actually used.** Multi-select lets them
+  express the answer; nothing helps them find it. That fact lives only in the partitioned log table
+  this story exists to avoid probing, and the portal cannot answer it because `app` is set by the
+  logging client. Measured on production: the `GROUP BY log.app` query that answers it took 159
+  seconds of engine time for ten learners while scanning zero bytes, and prefixes grow as
+  `learners x 15 x 444`, so at about 150 learners it exceeds Athena's partition limit and cannot run
+  at all. The partition path is `.../${app}/${year}/${month}/${secure_key}/`, so listing S3 by key
+  is not a cheaper route either: `secure_key` is the deepest segment. Probing was close to linear at
+  roughly 2.3 ms per prefix (4,440 prefixes in 10.0 s, 66,600 in 159.4 s), which puts sampling a
+  single learner at about 15 seconds and makes that the only shape worth exploring if this is ever
+  wanted. No ticket is filed; the numbers are here so one can be written from them.
 
 ## Not Yet Implemented
 

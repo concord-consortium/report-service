@@ -6,6 +6,30 @@ defmodule ReportServer.ReportFilterTest do
   defp from_params(params),
     do: ReportFilter.from_form(Phoenix.Component.to_form(params, as: "filter_form"), 0)
 
+  describe "app_list/1" do
+    test "treats every shape of unset as no applications" do
+      for unset <- [nil, "", []] do
+        assert ReportFilter.app_list(unset) == []
+      end
+    end
+
+    test "is identity on its own empty list" do
+      assert ReportFilter.app_list([]) == []
+    end
+
+    test "keeps a selection in order" do
+      assert ReportFilter.app_list(["CLUE", "Dataflow"]) == ["CLUE", "Dataflow"]
+    end
+
+    test "drops the empty entries a select can submit alongside real ones" do
+      assert ReportFilter.app_list(["", "CLUE", ""]) == ["CLUE"]
+    end
+
+    test "wraps a bare string, which is how a run stored before multi-select reads back" do
+      assert ReportFilter.app_list("CLUE") == ["CLUE"]
+    end
+  end
+
   describe "from_form/2" do
     test "carries a selected application across" do
       assert from_params(%{"app" => "CLUE"}).app == "CLUE"

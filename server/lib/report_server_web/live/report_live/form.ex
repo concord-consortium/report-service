@@ -314,8 +314,8 @@ defmodule ReportServerWeb.ReportLive.Form do
     if partitions > threshold do
       "This report covers #{delimit(learner_count)} learners. Athena would need to check " <>
         "#{delimit(learner_count)} learners x #{delimit(apps)} applications x #{delimit(months)} months = " <>
-        "#{delimit(partitions)} partitions, over the #{delimit(threshold)} limit. Selecting an application, " <>
-        "or narrowing the date range, will reduce it. You can run it anyway."
+        "#{delimit(partitions)} partitions, over the #{delimit(threshold)} limit. Selecting fewer " <>
+        "applications, or narrowing the date range, will reduce it. You can run it anyway."
     end
   end
 
@@ -458,11 +458,13 @@ defmodule ReportServerWeb.ReportLive.Form do
     }
   end
 
-  # a blank app is acceptable on every report, so it is answered before the flag is consulted
-  defp check_app_supported(%ReportFilter{app: app}, _form_options) when app in [nil, ""], do: :ok
-  defp check_app_supported(_report_filter, %{enable_app_filter: true}), do: :ok
-  defp check_app_supported(_report_filter, _form_options) do
-    {:error, "This report does not support an application filter."}
+  defp check_app_supported(%ReportFilter{app: app}, form_options) do
+    # a blank app is acceptable on every report, including those with no control
+    if ReportFilter.app_list(app) == [] or form_options.enable_app_filter do
+      :ok
+    else
+      {:error, "This report does not support an application filter."}
+    end
   end
 
   # only allow users with admin and project admin privileges to hide names

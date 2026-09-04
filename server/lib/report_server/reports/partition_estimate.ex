@@ -9,7 +9,7 @@ defmodule ReportServer.Reports.PartitionEstimate do
   """
 
   alias ReportServer.Reports.Athena.AthenaConfig
-  alias ReportServer.Reports.ReportQuery
+  alias ReportServer.Reports.{ReportFilter, ReportQuery}
 
   # Athena refuses a query that could touch more than this many partitions. The warning threshold
   # below is policy and defaults to it by reference, so the number appears once.
@@ -42,11 +42,15 @@ defmodule ReportServer.Reports.PartitionEstimate do
   end
 
   @doc """
-  How many applications a query must probe: every projected one unless the filter names one.
+  How many applications a query must probe: every projected one unless the filter names some.
   """
   # derived from the list, never a literal, so adding an application cannot leave the estimate low
-  def app_count(app) when app in [nil, ""], do: length(AthenaConfig.get_log_apps())
-  def app_count(_app), do: 1
+  def app_count(app) do
+    case ReportFilter.app_list(app) do
+      [] -> length(AthenaConfig.get_log_apps())
+      apps -> length(apps)
+    end
+  end
 
   # an absent or unparseable bound falls back to the projection's edge, so a half-open range runs to it
   defp to_ym(bound, default) do
