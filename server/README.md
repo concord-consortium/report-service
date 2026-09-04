@@ -15,6 +15,8 @@ The server provides several categories of reports:
 - **Student Actions**: Low-level log event stream for learners including model-level interactions
 - **Student Actions with Metadata**: Student actions plus portal metadata (student, teacher, class, school info)
 - **Student Answers**: Complete student answer details for all questions in assignments
+- **Student ID Mapping**: One row per selected learner carrying only identifiers, including the `run_remote_endpoint` that joins a learner to their stored answers, history and attachments. No names.
+- **Student Metadata**: One row per the same learners carrying the human-readable context: name, username, class, school, teachers and permission forms. Anonymized when hide-names is on.
 
 ### Teacher Reports
 - **Teacher Actions**: Log events for teacher actions in activities and dashboards
@@ -25,6 +27,34 @@ The server provides several categories of reports:
 
 ### Subject Area Reports
 - **Summary Metrics by Subject Area**: Subject area data including countries, states, schools, teachers, classes, students, and grade levels
+
+### Student ID Mapping and Student Metadata column contracts
+
+These two run against the portal database rather than Athena, so they return in seconds, and they are
+the pair a consumer joins locally. Four things about them are not inferable from the column names.
+
+**The grain is one row per learner, not per student.** A `learner_id` is one student's participation
+in one offering, so a student who did N assignments appears in N rows. Group back to a student with
+`user_id`, or with `primary_user_id` when the portal has merged accounts. The two reports emit the
+same learners in the same order for the same filter, so they join 1:1 on `learner_id`.
+
+**`run_remote_endpoint` is the join key to stored work.** It is byte-identical to the
+`remote_endpoint` recorded against a learner's answers, history and attachments, which is what makes
+a local join possible without running an Athena query first. A learner whose portal record has no
+`secure_key` yields the trailing-slash form of the URL, which is emitted rather than dropped and
+joins to nothing; `runnable_url` is what identifies those rows.
+
+**The five teacher columns are aligned by index.** `teacher_user_ids`, `teacher_names`,
+`teacher_emails`, `teacher_districts` and `teacher_states` each carry one entry per teacher on the
+class, in the same order, so entry *i* is the same teacher in all five. A teacher who belongs to more
+than one school contributes one district and one state, both read from the same school (the one with
+the lowest portal school id), so the pair is always a real school rather than two schools' halves. A
+teacher with no school at all still occupies its position, as an empty entry.
+
+**Every list column separates on a bare comma**, with no space: the five teacher columns and
+`permission_forms`. The portal stores some of them with `", "`, and the reports normalize so the file
+has one splitting rule. Values containing commas are not a concern because the portal replaces a
+comma inside a value with a space before joining.
 
 ## Development Setup
 
