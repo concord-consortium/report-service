@@ -208,7 +208,8 @@ full suite, then removed them:
   carries `role="status"`, polite rather than assertive because the failure is not time-critical and
   the block runs to several lines. The container must be present in the DOM before the reason
   arrives, since a live region that appears at the same moment as its content is not reliably
-  announced. This is the part of the story written for a reader who cannot use AWS, so leaving it
+  announced. The reason element wraps on `break-words`: it can run to the full 4,000-byte bound and
+  can be a single unbroken token, an S3 url among them, which would otherwise push the page sideways. This is the part of the story written for a reader who cannot use AWS, so leaving it
   silent defeats its purpose. The suggestion leads because it is the only part written for the reader: the
   ticket's own framing is that these researchers cannot use AWS, and `HIVE_EXCEEDED_PARTITION_LIMIT`
   is not a sentence they can act on. The raw reason stays visible and unmodified directly beneath it,
@@ -317,7 +318,9 @@ Each test below names the mutation it catches.
   and would stay green whether or not a state gate existed. It is a pass-through check, kept for the
   first two cases, not a guard on state handling.
 - A run whose reason is absent from the AWS payload persists `nil` rather than raising. Catches a
-  pattern match that assumes the key is present.
+  pattern match that assumes the key is present. Asserted at the stub boundary rather than by feeding
+  a key-less payload through `get_query_info/1`, which builds its AWS client inline and has no test
+  seam.
 - The reason survives a round trip through the changeset. Catches `athena_query_error` being added
   to the schema but not to the `cast/3` list, which silently drops it with no error.
 - Runs created before the migration return `nil` for both new fields and do not error, through both

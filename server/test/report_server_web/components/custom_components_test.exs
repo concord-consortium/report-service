@@ -114,6 +114,14 @@ defmodule ReportServerWeb.CustomComponentsTest do
       assert render_header(athena_report(enable_app_filter: true), run) =~ "one or more applications"
     end
 
+    test "the reason wraps, so an unbroken S3 url cannot overflow the page" do
+      reason = "CONSTRAINT_VIOLATION: s3://" <> String.duplicate("a", 500)
+
+      html = render_header(athena_report(), athena_run(%{athena_query_error: reason}))
+
+      assert html =~ ~s(class="mt-1 font-mono text-sm break-words")
+    end
+
     test "the live region wraps the block and is present before a reason arrives" do
       with_reason = render_header(athena_report(), athena_run(%{athena_query_error: "HIVE_MYSTERY: x"}))
       without_reason = render_header(athena_report(), athena_run(%{athena_query_error: nil}))

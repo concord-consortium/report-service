@@ -158,7 +158,7 @@ defmodule ReportServerWeb.CustomComponents do
             <div :if={guidance = AthenaFailure.guidance_for(@report, @report_run.athena_query_error)} class="font-bold">
               <%= guidance %>
             </div>
-            <div class="mt-1 font-mono text-sm"><%= @report_run.athena_query_error %></div>
+            <div class="mt-1 font-mono text-sm break-words"><%= @report_run.athena_query_error %></div>
             <div :if={@report_run.athena_query_id} class="mt-1 text-xs text-gray-600">
               Athena query id: <%= @report_run.athena_query_id %>
             </div>

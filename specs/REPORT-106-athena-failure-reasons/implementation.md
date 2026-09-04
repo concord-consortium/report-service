@@ -25,7 +25,7 @@ anything stores, logs or renders a reason. It comes first because the next two s
 - `server/lib/report_server/reports/athena_failure.ex` — new
 - `server/test/report_server/reports/athena_failure_test.exs` — new
 
-**Estimated diff size**: ~150 lines
+**Diff size**: 287 lines as built
 
 Two properties carry the correctness here, and they are coupled: matching is **case-insensitive**,
 and the table is **an ordered list matched first-to-last, not a map**.
@@ -194,7 +194,7 @@ It depends only on `AthenaFailure.truncate/1` from the previous step.
 - `server/lib/report_server/reports/report_run.ex` — field and cast
 - `server/test/report_server/reports/report_run_test.exs` — new
 
-**Estimated diff size**: ~60 lines
+**Diff size**: 91 lines as built
 
 ```elixir
 def change do
@@ -256,7 +256,7 @@ that makes the data exist.
 - `server/lib/report_server/reports/athena_run_ops.ex` — persist it
 - four existing tests, listed below
 
-**Estimated diff size**: ~90 lines
+**Diff size**: 126 lines as built
 
 `athena_db.ex`: `result` is already bound to the `QueryExecution` map (`athena_db.ex:26`), so the
 reason is one line and needs no restructuring:
@@ -324,11 +324,21 @@ the suite rather than by grepping (several other `get_query_info` stub sites are
 
 `test/support/athena_db_stub.ex` needs no change: it applies whatever function the test supplies.
 
+A sixth stub site needs updating and does not announce itself: the `echo` map behind the
+non-succeeded download cases in `report_controller_test.exs`. A three-element tuple no longer matches
+the `with` clause, so those cases fall through to the error branch, which leaves the run untouched,
+which is exactly what the test then asserts. It stays green while exercising the wrong path, so it
+has to be found by reading rather than by running the suite.
+
 New tests:
 
 - a `failed` response persists the reason; a `cancelled` response persists the reason; a `succeeded`
   response persists `nil`
-- a response with no `StateChangeReason` key persists `nil` rather than raising
+- a response with no `StateChangeReason` key persists `nil` rather than raising. Covered at the stub
+  boundary, with `nil` as the fourth element, rather than by feeding a key-less payload through
+  `get_query_info/1`: `AthenaDB` builds its AWS client inline and has no seam, so the extraction
+  itself is not reachable from a test. What the extraction relies on is that indexing a map with a
+  missing key yields `nil`, which is language behavior rather than ours
 - a terminal run's stored reason is unchanged by a subsequent `refresh_query_state/1` call
 - **a `failed` response carrying a reason past the byte ceiling leaves the run at
   `athena_query_state: "failed"` with `non_terminal?/1` false.** This is the assertion the truncation
@@ -346,7 +356,7 @@ New tests:
 - `server/lib/report_server_web/api/v1/report_controller.ex` — the `NOT_READY` context
 - `server/test/report_server_web/api/v1/report_controller_test.exs`
 
-**Estimated diff size**: ~50 lines
+**Diff size**: 72 lines as built
 
 `run_json/1` (`report_json.ex:24-36`) gains `athena_query_id` and `athena_query_error`.
 `report_controller.ex:84` gains both in its context map:
@@ -381,8 +391,9 @@ except an explicit assertion on its value:
 **Files affected**:
 - `server/lib/report_server_web/components/custom_components.ex` — `report_header/1`
 - `server/test/report_server_web/live/report_run_show_live_test.exs`
+- `server/test/report_server_web/components/custom_components_test.exs`
 
-**Estimated diff size**: ~70 lines
+**Diff size**: 122 lines as built
 
 `custom_components.ex` carries a single alias today (`:6`), so this step also adds
 `alias ReportServer.Reports.AthenaFailure`. No new assign is needed: `report_header/1`
@@ -398,6 +409,9 @@ directly, always present and unmodified, since it is what makes a support conver
 is the only content available when a reason is unmapped. The query id is last and visually quiet: it
 is for whoever has AWS access, not for the researcher.
 
+The reason carries `break-words`. It can run to the bound of 4,000 bytes and can contain a single
+unbroken token, an S3 url among them, which would otherwise push the page sideways.
+
 ```heex
 <div>
   Report status: <span class="font-bold capitalize"><%= @report_run.athena_query_state || "gathering information..." %></span>
@@ -407,13 +421,22 @@ is for whoever has AWS access, not for the researcher.
     <div :if={guidance = AthenaFailure.guidance_for(@report, @report_run.athena_query_error)} class="font-bold">
       <%= guidance %>
     </div>
-    <div class="mt-1 font-mono text-sm"><%= @report_run.athena_query_error %></div>
+    <div class="mt-1 font-mono text-sm break-words"><%= @report_run.athena_query_error %></div>
     <div :if={@report_run.athena_query_id} class="mt-1 text-xs text-gray-600">
       Athena query id: <%= @report_run.athena_query_id %>
     </div>
   </div>
 </div>
 ```
+
+The conditional application clause is covered in `custom_components_test.exs` through
+`render_component/2` rather than through the LiveView. `ReportRunLive.Show` resolves its report with
+a direct `Tree.find_report/1` call (`show.ex:33`) rather than through the `:report_tree` seam the
+rest of the app uses, so putting a stub tree in the application env does not change the report the
+page renders, and only a component call can supply one that offers the filter. Written against the
+LiveView the assertion passes vacuously in one direction and cannot pass at all in the other. The
+same file covers the live region's presence and the wrapping class, since both are properties of the
+markup rather than of the page.
 
 Tests, against the existing LiveView harness (`log_in_conn/2`, `test/support/conn_case.ex:56`):
 
@@ -426,8 +449,13 @@ Tests, against the existing LiveView harness (`log_in_conn/2`, `test/support/con
 - the query id appears for a failed run
 - an admin who is not the owner sees the reason here, matching the page's owner-or-admin gate
   (`show.ex:36`), which is the opposite of the API's owner-only rule
+In `custom_components_test.exs`, through `render_component/2`:
+
 - a failed run on a report that offers the application filter renders the application clause, and one
   on a report that does not renders the same suggestion without it
+- the reason element carries `break-words`
+- a succeeded run renders the download control and no live region, which pins the block to the branch
+  it belongs in
 - a run predating the migration, with both new fields `nil`, renders without error and shows neither
   a suggestion, a reason nor a query id. The API half of this is covered in the previous step; this
   is the run page half, and it is the state every existing failed run is in on the day this deploys,
