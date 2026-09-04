@@ -12,6 +12,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   @filter_keys ~w(filters state app start_date end_date hide_names exclude_internal cohort school
                   teacher assignment class student permission_form country subject_area)
 
+  @run_keys ~w(id report_slug report_type execution report_filter report_filter_values
+               athena_query_id athena_query_state athena_query_error inserted_at updated_at)
+
   defmodule TreeStub do
     def find_report(_slug), do: Application.get_env(:report_server, :test_tree_report)
   end
@@ -255,6 +258,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert body["athena_query_state"] == "succeeded"
       assert body["report_filter_values"] == %{"cohort" => %{"1" => "Cohort One"}}
       refute Map.has_key?(body, "athena_result_url")
+      assert Enum.sort(Map.keys(body)) == Enum.sort(@run_keys)
 
       filter = body["report_filter"]
       assert Enum.sort(Map.keys(filter)) == Enum.sort(@filter_keys)

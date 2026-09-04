@@ -27,7 +27,7 @@ All requirements were implemented. Grouped as they were specified.
 - `run_json/1` and the `NOT_READY` download body gain `athena_query_id` and `athena_query_error`, as ordinary top-level context keys.
 - The run page renders, in order: the mapped suggestion, the raw reason, then the query id. The suggestion leads because it is the only part written for the reader; the raw reason is always present and unmodified.
 - The failure block sits in a `role="status"` container that renders whether or not there is a reason, because the page patches it in live and a region created with its content is not reliably announced. The reason carries `break-words`.
-- The reason inherits each surface's existing gate. The API is owner-only with no admin exemption; the run page is owner-or-admin. That asymmetry is pre-existing and both halves are pinned by tests.
+- The reason inherits each surface's existing gate. The API is owner-only with no admin exemption; the run page is owner-or-admin. That asymmetry is pre-existing and both surfaces are pinned on both halves: the API denies a non-owner and a non-owning admin alike, and the page admits a non-owning admin while redirecting a non-owning non-admin.
 
 **Map known reasons to guidance**
 
@@ -140,6 +140,6 @@ The assertion message carries the value: an empty list on its own would send the
 ### Minor spec corrections made during review
 - The shared partition suggestion was written out twice in the guidance table and was extracted to one binding, so the sharing is deliberate and visible.
 - The run-page step referenced `AthenaFailure` with no mention of adding an alias; named in the step.
-- The API step claimed key-set assertions would guard the run body. They do not: adding a field to `run_json/1` and running the full suite left every test passing, so by-value assertions are the only protection rather than a second layer.
+- The API step claimed key-set assertions would guard the run body. They did not: adding a field to `run_json/1` and running the full suite left every test passing, so by-value assertions were the only protection. Closed during the pre-PR review by giving the run object a `@run_keys` guard matching the `@filter_keys` pattern already used one level down for the filter object. Mutation-tested: the pre-existing `refute Map.has_key?(body, "athena_result_url")` catches only a field someone thought to name, while the guard also catches an arbitrary new one.
 - Whether a stale reason could survive was left to be re-derived. It cannot: `start_query/1` matches only `athena_query_id: nil` and `ensure_current/1`'s claiming clause requires both the id and the state to be nil, so nothing needs clearing.
 - Two candidate findings were dropped after verification: that adding a column risks a long lock (the migration that added the three existing Athena columns did the same thing to the same table, and a trailing nullable column is an in-place metadata change on MySQL 8), and that a run failing before Athena accepts the query gets no reason (true but not a defect; recorded in Out of Scope).

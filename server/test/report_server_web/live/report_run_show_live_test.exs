@@ -138,6 +138,16 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
       refute html =~ "Narrow it with"
     end
 
+    test "a non-owner who is not an admin is redirected away from it", %{conn: conn} do
+      owner = user_fixture()
+      run = failed_run(owner, %{athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many"})
+      stranger = user_fixture()
+
+      conn = log_in_conn(conn, stranger)
+
+      assert {:error, {:redirect, %{to: "/reports"}}} = live(conn, ~p"/reports/runs/#{run.id}")
+    end
+
     test "an admin who does not own the run still sees the reason", %{conn: conn} do
       owner = user_fixture()
       run = failed_run(owner, %{athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many"})
