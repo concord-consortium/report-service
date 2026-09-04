@@ -5,14 +5,15 @@ import Config
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
+mysql = [username: "root", password: "xyzzy", hostname: "localhost", port: 3406]
+
 config :report_server, ReportServer.Repo,
-  username: "root",
-  password: "xyzzy",
-  hostname: "localhost",
-  port: 3406,
-  database: "portal_server_test#{System.get_env("MIX_TEST_PARTITION")}",
-  pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+  mysql ++
+    [
+      database: "portal_server_test#{System.get_env("MIX_TEST_PARTITION")}",
+      pool: Ecto.Adapters.SQL.Sandbox,
+      pool_size: System.schedulers_online() * 2
+    ]
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
@@ -43,3 +44,10 @@ config :report_server, :output,
 config :report_server, :token_service,
   url: "https://token-service-test.example/api/v1/resources",
   private_bucket: "token-service-files-private-test"
+
+# the fixture portal server the portal-report tests query, on the same MySQL the Repo uses
+System.put_env(
+  "PORTAL_TEST_EXAMPLE_COM_DB",
+  System.get_env("PORTAL_TEST_EXAMPLE_COM_DB") ||
+    "mysql://#{mysql[:username]}:#{mysql[:password]}@#{mysql[:hostname]}:#{mysql[:port]}"
+)
