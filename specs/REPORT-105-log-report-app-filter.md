@@ -126,9 +126,14 @@ produces exactly the query the server produced before, so no existing report cha
   `name LIKE '%Dataflow%'`: `COUNT(DISTINCT rl.learner_id)` gives 814 while
   `ReportQuery.get_count_sql/1` gives 4,971, a 6.11x fan-out. At that factor a cohort of roughly 150
   real learners would project past the partition limit and warn on a run that is fine.
-- The projected partition count is `learners x apps x period_months`, where `apps` is 1 when the
-  application filter is set and 15 otherwise, and `period_months` is **the number of `(year, month)`
-  pairs the emitted date predicate admits**, not `years x months`.
+- The projected partition count is `learners x apps x period_months`, where `apps` is the number of
+  applications selected, or all 15 when none are, and `period_months` is **the number of
+  `(year, month)` pairs the emitted date predicate admits**, not `years x months`.
+- `period_months` counts only pairs the projection declares. A bound outside the projected range is
+  clamped to it, so a start of 2000 counts from 2014 rather than inventing 168 months that no
+  partition exists for, and a range lying entirely outside the projection admits nothing.
+- The configurable threshold can only lower the warning. Above Athena's own limit it would suppress
+  warnings for runs Athena is certain to reject, so it is capped at that limit.
 - `period_months` must be derived the same way `apply_date_range/3` emits its bounds, because the
   ticket's `years x months` reading is wrong for any range that does not start in January and end in
   December. For 2024-09-01 to 2025-06-30 the predicate admits 10 pairs while `years x months`
@@ -171,8 +176,9 @@ Each test names the mutation it catches.
   alone cannot distinguish the correct count from `years x months`, since both give 444.
 - `from_form/2` populates `app` from the submitted params. Catches the field being added to the
   struct, the JSON and the query builder while the form silently never sets it.
-- The serialized `app` is `null` for a filter carrying `""`, asserted on a filter built with `""`
-  rather than on a default-built struct. Catches the omission of `presence/1`.
+- The serialized `app` is `[]` for every shape of unset, asserted for `nil`, `""` and `[]` rather
+  than only on a default-built struct. Catches the field reaching the API in whatever shape the
+  form last happened to submit.
 - A filter carrying `app` submitted against a report without the application filter creates no run.
   Catches validation that only ever runs inside the query builder.
 - A submit whose partition count succeeds leaves the form alive. Catches the message plumbing around
@@ -231,9 +237,10 @@ Each test names the mutation it catches.
 Every requirement above was implemented. These are the adjacent improvements the spec explicitly
 declined to make, each recorded so the next engineer does not have to rediscover the reasoning:
 
-- **Normalizing the optional scalars to `nil` at the source.** `from_form/2` stores `start_date`,
-  `end_date` and `app` as the raw `""` the form submits, and `presence/1` converts them at
-  serialization. Normalizing all of them on the way in is a real improvement, but it changes existing
+- **Normalizing the date scalars to `nil` at the source.** `from_form/2` stores `start_date` and
+  `end_date` as the raw `""` the form submits, and `presence/1` converts them at serialization.
+  (`app` no longer takes this route: it is normalized by `ReportFilter.app_list/1` and serialized as
+  a list.) Normalizing all of them on the way in is a real improvement, but it changes existing
   date behavior and belongs to its own ticket. Doing it for `app` alone was rejected: it would make
   `app` the only scalar normalized on the way in while still needing the `[nil, ""]` guards for
   values arriving from the API.
@@ -494,6 +501,10 @@ assertion passes only because it builds a default struct whose `app` is already 
 fail. B was rejected because `from_form/2` stores the dates raw too, so it would make `app` the only
 scalar normalized on the way in while still needing the `[nil, ""]` guards for values arriving from
 the API. C is a real improvement and belongs to its own ticket.
+
+**Superseded** when the filter became multi-valued: `app` is normalized by
+`ReportFilter.app_list/1` and serialized as a list, empty when unset, so it no longer goes through
+`presence/1` at all. The dates still do, and option C still stands for them.
 
 ---
 

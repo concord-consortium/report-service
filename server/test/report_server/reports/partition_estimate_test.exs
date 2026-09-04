@@ -43,6 +43,22 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
       assert PartitionEstimate.period_months(nil, "2025-06-30") == 138
     end
 
+    test "a start before the projection is clamped to it" do
+      assert PartitionEstimate.period_months("2000-01-01", "2050-12-31") == 444
+    end
+
+    test "bounds outside the projection on both ends are clamped to it" do
+      assert PartitionEstimate.period_months("1990-01-01", "2060-12-31") == 444
+    end
+
+    test "a range entirely before the projection admits nothing" do
+      assert PartitionEstimate.period_months("2000-01-01", "2013-12-31") == 0
+    end
+
+    test "a range entirely after the projection admits nothing" do
+      assert PartitionEstimate.period_months("2051-01-01", "2060-12-31") == 0
+    end
+
     test "an unparseable bound is treated as no bound" do
       assert PartitionEstimate.period_months("not-a-date", "also-not-a-date") == 444
     end
@@ -98,6 +114,14 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
   describe "warning_threshold/0" do
     test "defaults to the Athena limit when nothing is configured" do
       assert PartitionEstimate.warning_threshold() == PartitionEstimate.athena_partition_limit()
+    end
+
+    test "a configured threshold above the Athena limit is capped at it" do
+      Application.put_env(:report_server, :partition_warning_threshold, 2_000_000)
+
+      # otherwise a run Athena is certain to reject would produce no warning at all
+      assert PartitionEstimate.warning_threshold() == PartitionEstimate.athena_partition_limit()
+      assert 1_500_000 > PartitionEstimate.warning_threshold()
     end
 
     test "a configured threshold lowers the warning without moving the Athena limit" do

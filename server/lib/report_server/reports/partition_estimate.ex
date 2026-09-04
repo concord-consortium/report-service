@@ -17,8 +17,12 @@ defmodule ReportServer.Reports.PartitionEstimate do
 
   def athena_partition_limit, do: @athena_partition_limit
 
+  # the configured value can only lower the warning: above Athena's own limit it would suppress
+  # warnings for runs Athena is certain to reject
   def warning_threshold do
-    Application.get_env(:report_server, :partition_warning_threshold) || @athena_partition_limit
+    configured = Application.get_env(:report_server, :partition_warning_threshold)
+
+    min(configured || @athena_partition_limit, @athena_partition_limit)
   end
 
   @doc """
@@ -31,10 +35,12 @@ defmodule ReportServer.Reports.PartitionEstimate do
     years = AthenaConfig.get_log_projection_years()
     months = AthenaConfig.get_log_projection_months()
 
-    {start_year, start_month} = to_ym(start_date, {years.first, months.first})
-    {end_year, end_month} = to_ym(end_date, {years.last, months.last})
+    first = ordinal(years.first, months.first)
+    last = ordinal(years.last, months.last)
 
-    max(end_year * 12 + end_month - (start_year * 12 + start_month) + 1, 0)
+    # a bound outside the projection is clamped to it: the predicate can only admit pairs the
+    # projection declares, so counting past them invents partitions Athena would never probe
+    max(min(bound(end_date, last), last) - max(bound(start_date, first), first) + 1, 0)
   end
 
   def projected_partitions(learner_count, app, start_date, end_date) do
@@ -52,10 +58,12 @@ defmodule ReportServer.Reports.PartitionEstimate do
     end
   end
 
+  defp ordinal(year, month), do: year * 12 + month
+
   # an absent or unparseable bound falls back to the projection's edge, so a half-open range runs to it
-  defp to_ym(bound, default) do
-    case ReportQuery.normalize_date(bound) do
-      {:ok, date} -> {date.year, date.month}
+  defp bound(date, default) do
+    case ReportQuery.normalize_date(date) do
+      {:ok, parsed} -> ordinal(parsed.year, parsed.month)
       _ -> default
     end
   end

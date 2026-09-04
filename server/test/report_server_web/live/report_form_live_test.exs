@@ -70,7 +70,13 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       assert html =~ "none (no application recorded)"
       assert html =~ ~s(name="filter_form[app][]")
       assert html =~ "multiple=\"multiple\""
-      assert html =~ "logs can span more than one"
+      # collapse whitespace so the assertions test the copy rather than where it wraps
+      text = String.replace(html, ~r/\s+/, " ")
+      assert text =~ "Leave this empty to include every application"
+      assert text =~ "logs can span more than one application"
+      # the list contains an option literally labelled "none", so the help text must never say
+      # "select none" to mean "select nothing"
+      refute text =~ "Select none"
     end
 
     test "renders on student-actions-with-metadata", %{conn: conn} do
