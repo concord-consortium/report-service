@@ -206,7 +206,12 @@ This production policy has been created under the name `report-server-prod` and 
 Here is the DDL to create the two tables.  Note that the S3 bucket for production is `log-ingester-production` and for staging it is `log-ingester-qa`.
 The DDL below is for production, to use on staging you'll need to change the bucket in `LOCATION` and in `storage.location.template`.
 
-NOTE: when new applications are added these tables need to be recreated on AWS.
+NOTE: when new applications are added these tables need to be recreated on AWS, and the projected
+values also have to be updated in `ReportServer.Reports.Athena.AthenaConfig`, which is what the
+report form offers and what the log report SQL validates against. The same applies to the year and
+month ranges, which the partition estimate is derived from. `athena_config_test.exs` asserts the
+Elixir values against every declaration in the DDL below, so forgetting either fails the test
+suite rather than silently narrowing a report.
 
 ```
 CREATE EXTERNAL TABLE `logs_by_app_and_secure_key`(
