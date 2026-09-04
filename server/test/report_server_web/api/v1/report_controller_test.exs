@@ -590,6 +590,27 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert entry.report_run_id == run.id
     end
 
+    test "a student-id-mapping run streams through the same Portal path", %{} do
+      user = user_fixture(%{portal_is_admin: true})
+      {token, _} = api_token_fixture(user)
+
+      run =
+        run_fixture(user, %{
+          report_slug: "student-id-mapping",
+          report_filter: %ReportFilter{filters: [:class], class: [601], exclude_internal: false}
+        })
+
+      cols = ["learner_id", "run_remote_endpoint"]
+      start_portal_stub(drive([myxql_result(cols, []), myxql_result(cols, [])]))
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+
+      assert response(conn, 200) == Csv.header_row(cols)
+
+      assert get_resp_header(conn, "content-disposition") ==
+               [~s(attachment; filename="student-id-mapping-run-#{run.id}.csv")]
+    end
+
     test "an empty result streams a header-only 200 body", %{} do
       {token, run} = portal_admin_run()
       cols = ["a", "b"]

@@ -5,6 +5,7 @@ defmodule ReportServer.Reports.Tree do
     # TBDReport
   }
   alias ReportServer.Reports.Portal.{
+    StudentIdMappingReport,
     TeacherStatusReport,
     ResourceMetricsSummaryReport,
     ResourceMetricsDetailsReport,
@@ -187,6 +188,12 @@ defmodule ReportServer.Reports.Tree do
           subtitle: "Includes everything from the Assignment Usage by Student report plus details about student answers to all questions in the resource(s) in your query.",
           include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
           form_options: [enable_hide_names: true]
+        }),
+        StudentIdMappingReport.new(%Report{
+          slug: "student-id-mapping",
+          title: "Student ID Mapping",
+          subtitle: "One row per selected learner with the portal ids and the run_remote_endpoint that joins them to the answers, history and attachments stored for those learners. No names.",
+          include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form]
         }),
       ]},
       %ReportGroup{slug: "teacher-reports", title: "Teacher Reports", subtitle: "Reports about teachers", children: [
