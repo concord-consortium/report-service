@@ -55,7 +55,19 @@ All requirements were implemented. Grouped as they were specified.
 
 ## Not Yet Implemented
 
-- **A test asserting that at least one Athena report in the real tree offers the application filter.** It cannot be written until REPORT-105 merges, because it fails on this branch today, where no report carries the key. Without it, a rename of `:enable_app_filter` during that story's review would leave this story's conditional reading `false` forever, silently. Add it when REPORT-105 lands.
+**A test asserting that at least one Athena report in the real tree offers the application filter.** It cannot be written until REPORT-105 merges, because it fails today, where no report carries the key. Without it, a rename of `:enable_app_filter` during that story's review leaves this story's conditional reading `false` forever and the application clause silently absent from every suggestion. Every existing test constructs its own `%Report{}`, so none of them touch the real tree.
+
+It belongs in `athena_failure_test.exs`, where `@athena_slugs` is already defined:
+
+```elixir
+test "the application filter option is spelled the way the report tree spells it" do
+  offering = Enum.filter(@athena_slugs, &AthenaFailure.offers_app_filter?(Tree.find_report(&1)))
+
+  assert offering != [], "no Athena report offers :enable_app_filter; has the option been renamed?"
+end
+```
+
+The assertion message carries the value: an empty list on its own would send the next reader looking in the wrong place. Check at the same time that the sibling test `no Athena report in the tree that lacks the filter yields advice mentioning one` is still green; it is phrased against reports that do not offer the filter precisely so REPORT-105 merging cannot turn it red.
 
 ## Decisions
 
