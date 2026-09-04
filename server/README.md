@@ -42,7 +42,12 @@ same learners in the same order for the same filter, so they join 1:1 on `learne
 `remote_endpoint` recorded against a learner's answers, history and attachments, which is what makes
 a local join possible without running an Athena query first. A learner whose portal record has no
 `secure_key` yields the trailing-slash form of the URL, which is emitted rather than dropped and
-joins to nothing; `runnable_url` is what identifies those rows.
+joins to nothing; the trailing slash is how you spot those rows.
+
+`runnable_url` answers a different question. The bulk endpoints (`/answers`, `/history` and
+`POST /attachments`) derive each learner's storage `source` from it, and skip any learner whose
+source cannot be derived as a single usable path segment, so a row present in this report can be
+absent from those endpoints. `runnable_url` is what identifies the rows that affects.
 
 **The five teacher columns are aligned by index.** `teacher_user_ids`, `teacher_names`,
 `teacher_emails`, `teacher_districts` and `teacher_states` each carry one entry per teacher on the
