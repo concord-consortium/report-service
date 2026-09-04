@@ -337,7 +337,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
     test "refreshes a running run to succeeded and persists both fields", %{raw_token: raw_token, user: user} do
       run = run_fixture(user, %{athena_query_id: "qid-run", athena_query_state: "running"})
       Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
-      start_athena_stub(%{get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv"} end})
+      start_athena_stub(%{get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv", nil} end})
 
       conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}")
       assert json_response(conn, 200)["athena_query_state"] == "succeeded"
@@ -428,9 +428,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
     test "returns 409 with the state for every non-succeeded state and writes no audit row",
          %{raw_token: raw_token, user: user} do
       echo = %{
-        "qid-queued" => {:ok, "queued", nil},
-        "qid-running" => {:ok, "running", nil},
-        "qid-null" => {:ok, nil, nil}
+        "qid-queued" => {:ok, "queued", nil, nil},
+        "qid-running" => {:ok, "running", nil, nil},
+        "qid-null" => {:ok, nil, nil, nil}
       }
 
       Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
@@ -460,7 +460,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
       Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
       start_athena_stub(%{
-        get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv"} end,
+        get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv", nil} end,
         get_download_url: fn _url, _filename -> {:ok, "https://presigned"} end
       })
 

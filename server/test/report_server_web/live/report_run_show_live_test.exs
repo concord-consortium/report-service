@@ -53,7 +53,7 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
 
     start_athena_stub(%{
       query: fn _sql, _id, _user -> {:ok, "qid-teacher", "queued"} end,
-      get_query_info: fn _ -> {:ok, "succeeded", "s3://bucket/out.csv"} end
+      get_query_info: fn _ -> {:ok, "succeeded", "s3://bucket/out.csv", nil} end
     })
 
     conn = log_in_conn(conn, user)
@@ -78,7 +78,7 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
       })
 
     Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
-    start_athena_stub(%{get_query_info: fn "qid-existing" -> {:ok, "succeeded", "s3://bucket/done.csv"} end})
+    start_athena_stub(%{get_query_info: fn "qid-existing" -> {:ok, "succeeded", "s3://bucket/done.csv", nil} end})
 
     conn = log_in_conn(conn, user)
     {:ok, view, _html} = live(conn, ~p"/reports/runs/#{run.id}")
