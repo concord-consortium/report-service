@@ -100,6 +100,17 @@
         </div>
       </div>
 
+      <div :if={@form_options.enable_app_filter} class="mt-4">
+        <.input
+          type="select"
+          id="app"
+          label="Application"
+          prompt="All applications"
+          field={@form["app"]}
+          options={@app_options}
+        />
+      </div>
+
       <div class="mt-4">
         <.button type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
         <%= if @dev do %>

@@ -15,6 +15,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
+  alias ReportServer.Reports.Athena.AthenaConfig
 
   @filter_types %{
     :school => "Schools",
@@ -57,6 +58,7 @@ defmodule ReportServerWeb.ReportLive.Form do
     |> assign(:filter_type_options, [filter_type_options])
     |> assign(:filter_options, [[]])
     |> assign(:form_options, get_form_options(report, user))
+    |> assign(:app_options, AthenaConfig.app_options())
     |> assign(:placeholder_text, [""])
     |> assign(:dev, @dev)
     |> assign(:allowed_project_ids, PortalDbs.get_allowed_project_ids(user))
@@ -211,9 +213,20 @@ defmodule ReportServerWeb.ReportLive.Form do
   end
 
   @impl true
-  def handle_event("submit_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do
+  def handle_event("submit_form", _unsigned_params, %{assigns: %{form: form, num_filters: num_filters, user: user, form_options: form_options}} = socket) do
     report_filter = ReportFilter.from_form(form, num_filters)
       |> maybe_enforce_hide_names(user)
+
+    case check_app_supported(report_filter, form_options) do
+      :ok ->
+        {:noreply, create_run(socket, report_filter)}
+
+      {:error, message} ->
+        {:noreply, assign(socket, :error, message)}
+    end
+  end
+
+  defp create_run(%{assigns: %{report: %Report{} = report, user: user}} = socket, report_filter = %ReportFilter{}) do
     report_filter_values = ReportFilter.get_filter_values(report_filter, user)
 
     report_run_attrs = %{
@@ -223,7 +236,7 @@ defmodule ReportServerWeb.ReportLive.Form do
       user_id: user.id,
     }
 
-    socket = case Reports.create_report_run(report_run_attrs) do
+    case Reports.create_report_run(report_run_attrs) do
       {:ok, report_run} ->
         socket
           |> redirect(to: ~p"/reports/runs/#{report_run.id}")
@@ -233,8 +246,6 @@ defmodule ReportServerWeb.ReportLive.Form do
         socket
           |> assign(:error, "Unable to create report run!")
     end
-
-    {:noreply, socket}
   end
 
   # Query for the set of options for one of the filters in the form and send an update to the LiveSelect component.
@@ -338,8 +349,16 @@ defmodule ReportServerWeb.ReportLive.Form do
 
   defp get_form_options(%Report{form_options: form_options}, user = %User{}) do
     %{
-      enable_hide_names: allow_hide_names?(user) && Keyword.get(form_options, :enable_hide_names, false)
+      enable_hide_names: allow_hide_names?(user) && Keyword.get(form_options, :enable_hide_names, false),
+      enable_app_filter: Keyword.get(form_options, :enable_app_filter, false)
     }
+  end
+
+  # a blank app is acceptable on every report, so it is answered before the flag is consulted
+  defp check_app_supported(%ReportFilter{app: app}, _form_options) when app in [nil, ""], do: :ok
+  defp check_app_supported(_report_filter, %{enable_app_filter: true}), do: :ok
+  defp check_app_supported(_report_filter, _form_options) do
+    {:error, "This report does not support an application filter."}
   end
 
   # only allow users with admin and project admin privileges to hide names

@@ -286,7 +286,7 @@ end
 date range and hide-names controls:
 
 ```heex
-<div class="mt-4 flex items-center gap-4" :if={@form_options.enable_app_filter}>
+<div :if={@form_options.enable_app_filter} class="mt-4">
   <.input
     type="select"
     id="app"
@@ -304,6 +304,10 @@ Passing `id` and `label` is what gives the control an accessible name: `.input t
 emits an empty label. `prompt` renders the blank option through the component's own
 `<option :if={@prompt} value="">` branch, keeping "All applications" visibly distinct from the `none`
 value.
+
+The wrapper carries `mt-4` only. The date row above it uses `flex items-center gap-4` because it
+lays out four siblings on one line; `.input type="select"` renders a single element that already
+stacks its own label above its select, so the flex classes would have nothing to act on.
 
 `@app_options` is assigned once in `handle_params/3` from `AthenaConfig.app_options/0`, defined in the
 first step. The LiveView holds no label logic of its own.
@@ -373,7 +377,6 @@ date predicate admits, not `years x months`. It must be derived the same way `ap
 # The projection bounds come from AthenaConfig, which holds every DDL-derived fact and has the
 # test asserting they still match the README. Restating them here would put the number that
 # produces 444 in two places.
-@athena_partition_limit 1_000_000
 
 # Athena refuses a query that could touch more than this many partitions. This is a fact
 # about Athena; the warning threshold below is policy and defaults to it by reference, so
