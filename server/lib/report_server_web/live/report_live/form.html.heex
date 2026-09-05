@@ -66,7 +66,12 @@
             tag_class="flex px-2 py-1 rounded-full bg-teal text-white text-sm"
             container_extra_class="grow"
             options={Enum.at(@filter_options, i - 1)}
-          />
+          >
+            <:clear_button>
+              <span class="sr-only">Remove</span>
+              <.icon name="hero-x-mark-solid" class="h-4 w-4" />
+            </:clear_button>
+          </.live_select>
           <div class="flex items-end flex-1">
             <.button :if={i > 1 && last_filter} type="button" class="whitespace-nowrap" phx-click="remove_filter">
               <.icon name="hero-trash" />
@@ -113,7 +118,12 @@
           tag_class="flex px-2 py-1 rounded-full bg-teal text-white text-sm"
           container_extra_class="grow"
           options={@app_options}
-        />
+        >
+          <:clear_button>
+            <span class="sr-only">Remove</span>
+            <.icon name="hero-x-mark-solid" class="h-4 w-4" />
+          </:clear_button>
+        </.live_select>
         <p class="mt-1 text-sm text-gray-600">
           Leave this empty to include every application. One assignment's logs can span more than
           one application, so anything you do not select is left out of the report.
