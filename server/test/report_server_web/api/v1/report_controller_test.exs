@@ -9,7 +9,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   alias ReportServer.Reports.{Report, ReportFilter, ReportQuery, Tree}
   alias ReportServer.Reports.Portal.Csv
 
-  @filter_keys ~w(filters state start_date end_date hide_names exclude_internal cohort school
+  @filter_keys ~w(filters state app start_date end_date hide_names exclude_internal cohort school
                   teacher assignment class student permission_form country subject_area)
 
   defmodule TreeStub do
@@ -237,7 +237,8 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
             school: [3],
             start_date: "",
             end_date: "2024-01-01",
-            hide_names: true
+            hide_names: true,
+            app: ["CLUE", "Dataflow"]
           },
           report_filter_values: %{"cohort" => %{"1" => "Cohort One"}},
           athena_query_id: "qid",
@@ -264,6 +265,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert filter["end_date"] == "2024-01-01"
       assert filter["hide_names"] == true
       assert filter["exclude_internal"] == false
+      assert filter["app"] == ["CLUE", "Dataflow"]
     end
 
     test "serializes a nil report_filter as the empty-filter object", %{raw_token: raw_token, user: user} do
@@ -285,6 +287,27 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert filter["state"] == nil
       assert filter["hide_names"] == false
       assert filter["exclude_internal"] == false
+      assert filter["app"] == []
+    end
+
+    test "reports an unset application as an empty list, whatever shape the form submitted",
+         %{raw_token: raw_token, user: user} do
+      for unset <- [nil, "", []] do
+        run =
+          run_fixture(user, %{
+            report_slug: "student-actions",
+            report_filter: %ReportFilter{app: unset, start_date: "", end_date: ""},
+            athena_query_id: "qid",
+            athena_query_state: "succeeded"
+          })
+
+        conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}")
+        filter = json_response(conn, 200)["report_filter"]
+
+        assert filter["app"] == []
+        assert filter["start_date"] == nil
+        assert filter["end_date"] == nil
+      end
     end
 
     test "buckets every non-resolving id into an identical 404", %{raw_token: raw_token} do

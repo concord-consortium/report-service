@@ -88,45 +88,52 @@ defmodule ReportServer.Reports.ReportQuery do
       |> Enum.map(&(hide_learner_student_name(&1, hide_names)))
   end
 
-  def get_athena_query(report_filter = %ReportFilter{start_date: start_date, end_date: end_date}, learner_data, learner_cols) do
+  def get_athena_query(report_filter = %ReportFilter{start_date: start_date, end_date: end_date, app: app}, learner_data, learner_cols) do
     query_ids = learner_data |> Enum.map(&(&1.query_id))
 
-    if !Enum.empty?(query_ids) do
-      hide_names = report_filter.hide_names
+    cond do
+      # checked before the data-dependent outcome so a bad value is not reported as no learners
+      !valid_app?(app) ->
+        {:error, "Unknown application filter: #{inspect(app)}"}
 
-      log_cols = ReportQuery.get_log_cols(hide_names: hide_names, remove_username: true)
-      cols = List.flatten([log_cols | learner_cols])
+      Enum.empty?(query_ids) ->
+        {:error, "No learners found to match the requested filter(s)."}
 
-      from = "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_app_and_secure_key\" log"
+      true ->
+        hide_names = report_filter.hide_names
 
-      secure_keys = learner_data
-        |> Enum.flat_map(fn %{learners: learners} -> learners end)
-        |> Enum.map(& &1.run_remote_endpoint)
-        |> Enum.uniq()
-        |> Enum.map(&List.last(String.split(&1, "/")))
+        log_cols = ReportQuery.get_log_cols(hide_names: hide_names, remove_username: true)
+        cols = List.flatten([log_cols | learner_cols])
 
-      join = [
-        """
-        INNER JOIN "report-service"."learners" learner
-        ON
-          (
-            learner.query_id IN #{ReportUtils.string_list_to_single_quoted_in(query_ids)}
-            AND
-            learner.run_remote_endpoint = log.run_remote_endpoint
-          )
-        """
-      ]
+        from = "\"#{ReportQuery.get_log_db_name()}\".\"logs_by_app_and_secure_key\" log"
 
-      where = [
-        "log.secure_key IN #{ReportUtils.string_list_to_single_quoted_in(secure_keys)}"
-      ]
+        secure_keys = learner_data
+          |> Enum.flat_map(fn %{learners: learners} -> learners end)
+          |> Enum.map(& &1.run_remote_endpoint)
+          |> Enum.uniq()
+          |> Enum.map(&List.last(String.split(&1, "/")))
 
-      where = where
-        |> apply_date_range(start_date, end_date)
+        join = [
+          """
+          INNER JOIN "report-service"."learners" learner
+          ON
+            (
+              learner.query_id IN #{ReportUtils.string_list_to_single_quoted_in(query_ids)}
+              AND
+              learner.run_remote_endpoint = log.run_remote_endpoint
+            )
+          """
+        ]
 
-      {:ok, %ReportQuery{cols: cols, from: from, join: join, where: where }}
-    else
-      {:error, "No learners found to match the requested filter(s)."}
+        where = [
+          "log.secure_key IN #{ReportUtils.string_list_to_single_quoted_in(secure_keys)}"
+        ]
+
+        where = where
+          |> apply_app(app)
+          |> apply_date_range(start_date, end_date)
+
+        {:ok, %ReportQuery{cols: cols, from: from, join: join, where: where }}
     end
   end
 
@@ -152,6 +159,17 @@ defmodule ReportServer.Reports.ReportQuery do
     {"\"learner\".\"student_id\"", "student_name"}
   end
   defp hide_learner_student_name(tuple, _), do: tuple
+
+  defp valid_app?(app) do
+    ReportFilter.app_list(app) |> Enum.all?(&(&1 in AthenaConfig.get_log_apps()))
+  end
+
+  defp apply_app(where, app) do
+    case ReportFilter.app_list(app) do
+      [] -> where
+      apps -> where ++ ["log.app IN #{ReportUtils.string_list_to_single_quoted_in(apps)}"]
+    end
+  end
 
   defp apply_date_range(where, start_date, end_date) do
     start_date = normalize_date(start_date)
@@ -188,7 +206,8 @@ defmodule ReportServer.Reports.ReportQuery do
     where ++ start_clauses ++ end_clauses ++ Enum.filter([start_ts_clause, end_ts_clause], & &1)
   end
 
-  defp normalize_date(nil), do: nil
-  defp normalize_date(""), do: nil
-  defp normalize_date(date_str), do: Date.from_iso8601(date_str)
+  # public so PartitionEstimate bounds a range exactly as apply_date_range/3 does
+  def normalize_date(nil), do: nil
+  def normalize_date(""), do: nil
+  def normalize_date(date_str), do: Date.from_iso8601(date_str)
 end

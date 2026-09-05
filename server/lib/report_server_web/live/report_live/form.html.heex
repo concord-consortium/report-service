@@ -100,8 +100,38 @@
         </div>
       </div>
 
+      <div :if={@form_options.enable_app_filter} class="mt-4">
+        <.input
+          type="select"
+          id="app"
+          label="Applications"
+          multiple
+          field={@form["app"]}
+          options={@app_options}
+        />
+        <p class="mt-1 text-sm text-gray-600">
+          Leave this empty to include every application. One assignment's logs can span more than
+          one application, so anything you do not select is left out of the report.
+        </p>
+      </div>
+
+      <div :if={@partition_warning} role="alert" class="mt-4 text-red-500">
+        <%= @partition_warning %>
+        <div class="mt-2">
+          <.button type="button" phx-click="submit_form_confirmed">Run it anyway</.button>
+        </div>
+      </div>
+
       <div class="mt-4">
-        <.button type="button" phx-click="submit_form"><.icon name="hero-bolt" /> Run Report</.button>
+        <.button
+          type="button"
+          phx-click="submit_form"
+          disabled={@checking_partitions}
+          aria-busy={to_string(@checking_partitions)}
+          class="disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-orange"
+        >
+          <.icon name="hero-bolt" /> <%= if @checking_partitions, do: "Checking...", else: "Run Report" %>
+        </.button>
         <%= if @dev do %>
           <.button type="button" phx-click="debug_form"><.icon name="hero-bug-ant" /> Debug Report</.button>
         <% end %>

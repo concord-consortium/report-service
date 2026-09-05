@@ -1,0 +1,70 @@
+defmodule ReportServer.Reports.PartitionEstimate do
+  @moduledoc """
+  Projects how many Athena partitions a log report would need to probe.
+
+  A log query is constrained by the `app`, `year`, `month` and `secure_key` partitions, so every
+  learner expands across each combination the remaining partitions still admit. Left unconstrained
+  that is 15 applications over 444 (year, month) pairs, or 6,660 prefixes per learner, which reaches
+  Athena's limit at 151 learners.
+  """
+
+  alias ReportServer.Reports.Athena.AthenaConfig
+  alias ReportServer.Reports.{ReportFilter, ReportQuery}
+
+  # Athena refuses a query that could touch more than this many partitions. The warning threshold
+  # below is policy and defaults to it by reference, so the number appears once.
+  @athena_partition_limit 1_000_000
+
+  def athena_partition_limit, do: @athena_partition_limit
+
+  # the configured value can only lower the warning: above Athena's own limit it would suppress
+  # warnings for runs Athena is certain to reject
+  def warning_threshold do
+    configured = Application.get_env(:report_server, :partition_warning_threshold)
+
+    min(configured || @athena_partition_limit, @athena_partition_limit)
+  end
+
+  @doc """
+  The number of (year, month) pairs the emitted date predicate admits.
+
+  This is not `years * months`: a range that does not start in January and end in December admits
+  fewer pairs than that product, and for a multi-year range the product is negative.
+  """
+  def period_months(start_date, end_date) do
+    years = AthenaConfig.get_log_projection_years()
+    months = AthenaConfig.get_log_projection_months()
+
+    first = ordinal(years.first, months.first)
+    last = ordinal(years.last, months.last)
+
+    # a bound outside the projection is clamped to it: the predicate can only admit pairs the
+    # projection declares, so counting past them invents partitions Athena would never probe
+    max(min(bound(end_date, last), last) - max(bound(start_date, first), first) + 1, 0)
+  end
+
+  def projected_partitions(learner_count, app, start_date, end_date) do
+    learner_count * app_count(app) * period_months(start_date, end_date)
+  end
+
+  @doc """
+  How many applications a query must probe: every projected one unless the filter names some.
+  """
+  # derived from the list, never a literal, so adding an application cannot leave the estimate low
+  def app_count(app) do
+    case ReportFilter.app_list(app) do
+      [] -> length(AthenaConfig.get_log_apps())
+      apps -> length(apps)
+    end
+  end
+
+  defp ordinal(year, month), do: year * 12 + month
+
+  # an absent or unparseable bound falls back to the projection's edge, so a half-open range runs to it
+  defp bound(date, default) do
+    case ReportQuery.normalize_date(date) do
+      {:ok, parsed} -> ordinal(parsed.year, parsed.month)
+      _ -> default
+    end
+  end
+end
