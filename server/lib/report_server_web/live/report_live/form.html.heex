@@ -101,12 +101,17 @@
       </div>
 
       <div :if={@form_options.enable_app_filter} class="mt-4">
-        <.input
-          type="select"
-          id="app"
-          label="Applications"
-          multiple
+        <label for={"#{@form["app"].id}_text_input"} class="font-bold">Applications</label>
+        <.live_select
+          id={@app_live_select_id}
           field={@form["app"]}
+          mode={:tags}
+          debounce={250}
+          update_min_len={0}
+          placeholder="All applications"
+          dropdown_extra_class="max-h-60 overflow-y-scroll"
+          tag_class="flex px-2 py-1 rounded-full bg-teal text-white text-sm"
+          container_extra_class="grow"
           options={@app_options}
         />
         <p class="mt-1 text-sm text-gray-600">

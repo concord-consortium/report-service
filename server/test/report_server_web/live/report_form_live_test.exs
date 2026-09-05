@@ -91,10 +91,8 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       html = choose_first_filter(view)
 
-      assert html =~ ~s(<option value="CLUE">CLUE</option>)
-      assert html =~ "none (no application recorded)"
-      assert html =~ ~s(name="filter_form[app][]")
-      assert html =~ "multiple=\"multiple\""
+      assert html =~ ~s(id="live_select_app")
+      assert html =~ ~s(name="filter_form[app_text_input]")
       # collapse whitespace so the assertions test the copy rather than where it wraps
       text = String.replace(html, ~r/\s+/, " ")
       assert text =~ "Leave this empty to include every application"
@@ -107,7 +105,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
     test "renders on student-actions-with-metadata", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions-with-metadata")
 
-      assert choose_first_filter(view) =~ ~s(<option value="CLUE">CLUE</option>)
+      assert choose_first_filter(view) =~ ~s(id="live_select_app")
     end
 
     test "does not render on teacher-actions, which reads a table with no app partition",
@@ -116,14 +114,32 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       html = choose_first_filter(view)
 
-      refute html =~ ~s(<option value="CLUE">CLUE</option>)
+      refute html =~ ~s(id="live_select_app")
       assert html =~ "Earliest date:"
     end
 
     test "carries a programmatic label rather than an empty one", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions")
 
-      assert choose_first_filter(view) =~ ~s(<label for="app")
+      html = choose_first_filter(view)
+
+      assert html =~ ~s(<label for="filter_form_app_text_input")
+      assert html =~ ~s(id="filter_form_app_text_input")
+    end
+
+    # the hook sends the form-qualified field name, which carries none of the trailing index the
+    # numbered filters are found by, so this event must never reach the filter lookup
+    test "typing offers the matching applications rather than crashing the view", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+      choose_first_filter(view)
+
+      render_hook(view, "live_select_change", %{
+        "field" => "filter_form_app",
+        "id" => "live_select_app",
+        "text" => "data"
+      })
+
+      assert render(view) =~ ~s(id="live_select_app")
     end
   end
 
