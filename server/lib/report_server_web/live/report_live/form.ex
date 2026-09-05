@@ -32,7 +32,6 @@ defmodule ReportServerWeb.ReportLive.Form do
   }
 
   @max_auto_options_length 200
-  # also the template's id for the control, so the change event can be told apart by it
   @app_live_select_id "live_select_app"
 
   @dev Application.compile_env(:report_server, :dev_routes)
@@ -76,11 +75,11 @@ defmodule ReportServerWeb.ReportLive.Form do
   end
 
   ## Called when the text in the application search box changes. The application list is static, so
-  ## it is filtered here rather than queried. Matching on the id keeps this clause off the numbered
-  ## filters, whose field names carry the index this one does not have.
+  ## it is filtered in memory rather than queried. Matching on the id keeps this clause off the
+  ## numbered filters, whose field names carry the index this one does not have.
   @impl true
   def handle_event("live_select_change", %{"id" => @app_live_select_id, "text" => text}, socket) do
-    send_update(LiveSelect.Component, id: @app_live_select_id, options: matching_app_options(text))
+    send_update(LiveSelect.Component, id: @app_live_select_id, options: AthenaConfig.app_options(text))
     {:noreply, socket}
   end
 
@@ -472,12 +471,6 @@ defmodule ReportServerWeb.ReportLive.Form do
   defp get_report_info(user, slug, report = %Report{}) do
     report_runs = Reports.list_user_report_runs(user, slug)
     %{title: report.title, subtitle: report.subtitle, report_runs: report_runs}
-  end
-
-  defp matching_app_options(text) do
-    text = String.downcase(text)
-    AthenaConfig.app_options()
-      |> Enum.filter(fn {label, _value} -> String.contains?(String.downcase(label), text) end)
   end
 
   defp get_filter_index(s), do: Regex.run(~r/(\d+)$/, s) |> List.last() |> String.to_integer()

@@ -19,13 +19,23 @@ defmodule ReportServer.Reports.Athena.AthenaConfig do
 
   def get_log_projection_months(), do: @log_projection_months
 
-  # {label, value} pairs for Phoenix.HTML.Form.options_for_select/2. The wording lives here so the
-  # form and every API client render the vocabulary from one definition.
+  # {label, value} pairs for the application control. The wording lives here so the form and every
+  # API client render the vocabulary from one definition.
   def app_options() do
     Enum.map(get_log_apps(), fn
       "none" -> {"none (no application recorded)", "none"}
       app -> {app, app}
     end)
+  end
+
+  @doc """
+  The `app_options/0` pairs whose label contains `text`, matched case-insensitively. Blank text
+  matches everything, so the search box opens on the full list.
+  """
+  def app_options(text) do
+    text = String.downcase(text)
+    app_options()
+      |> Enum.filter(fn {label, _value} -> String.contains?(String.downcase(label), text) end)
   end
 
   def get_output_bucket() do

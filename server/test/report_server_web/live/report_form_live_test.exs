@@ -129,7 +129,8 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
     # the hook sends the form-qualified field name, which carries none of the trailing index the
     # numbered filters are found by, so this event must never reach the filter lookup
-    test "typing offers the matching applications rather than crashing the view", %{conn: conn} do
+    test "a change event from the application box never reaches the numbered-filter lookup",
+         %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions")
       choose_first_filter(view)
 
