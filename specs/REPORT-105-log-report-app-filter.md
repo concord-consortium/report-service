@@ -97,12 +97,12 @@ produces exactly the query the server produced before, so no existing report cha
   existing error area is a plain div with no `role` and no `aria-live`, so reusing it unchanged would
   leave a screen reader user with no announcement that the submit did not happen and none that the
   button is disabled. WCAG 2.2 SC 4.1.3.
-- The blank option and the `none` value must read as different things. `none` is a real application
-  value meaning "the log rows recorded no application", and a bare `none` sitting next to an
-  unlabeled blank option reads as a second way to say "no filter", which would silently return the
-  wrong rows. The component's `prompt` attribute carries wording that names the effect ("All
-  applications"), and the enum value is labeled "none (no application recorded)". The submitted
-  values stay the raw enum strings; only the display labels differ.
+- Selecting nothing and selecting `none` must read as different things. `none` is a real application
+  value meaning "the log rows recorded no application", so a bare `none` in a list a researcher can
+  leave empty reads as a second way to say "no filter", which would silently return the wrong rows.
+  The enum value is labeled "none (no application recorded)", and help text under the control states
+  that leaving it empty includes every application. The submitted values stay the raw enum strings;
+  only the display labels differ.
 
 ### Surfacing it
 
@@ -356,11 +356,15 @@ The component already supports it. The existing control's own gap is left alone 
 **Context**: `none` is a real projected application value meaning the log rows recorded no
 application, not an absence of filtering.
 
-**Decision**: Use the component's `prompt` attribute for the blank option with wording that names the
-effect ("All applications"), and label the enum value "none (no application recorded)". Presented as
-a bare `none` next to an unlabeled blank option it reads as a second way to say "no filter", and
-choosing it would quietly return a different and much smaller set of rows than the researcher
+**Decision**: Label the enum value "none (no application recorded)" and put the effect of selecting
+nothing into help text under the control. Left bare, `none` reads as a second way to say "no filter",
+and choosing it would quietly return a different and much smaller set of rows than the researcher
 intended. Display labels only; the submitted values stay the raw enum strings the DDL uses.
+
+The first implementation carried the wording in the component's `prompt` attribute, which is right
+for a single select and wrong for the multiple select this became: a `prompt` renders as a selectable
+blank row in the list, which is a third thing to choose beside `none` and the real applications. Help
+text says the same thing without adding an option.
 
 ---
 

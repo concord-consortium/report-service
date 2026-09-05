@@ -43,6 +43,31 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
   defp stub_count(result), do: stub_learner_count(fn _filter, _user -> result end)
 
+  # a count that blocks until released, so the form can be edited while one is genuinely in flight
+  defp stub_blocking_count do
+    test = self()
+
+    stub_learner_count(fn _filter, _user ->
+      send(test, {:counting, self()})
+
+      receive do
+        {:release, result} -> result
+      after
+        5_000 -> {:error, "the count was never released"}
+      end
+    end)
+  end
+
+  defp await_counting do
+    receive do
+      {:counting, pid} -> pid
+    after
+      5_000 -> flunk("the count task never started")
+    end
+  end
+
+  defp release_count(pid, result), do: send(pid, {:release, result})
+
   # the count runs as a task, so its result reaches the view after the click has been answered
   defp wait_for(view, needle, attempts \\ 100) do
     html = render(view)
@@ -182,9 +207,50 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       render_click(view, "submit_form")
       wait_for(view, "Run it anyway")
 
-      # the form keeps changing while the warning is up, and the run must not pick that up
-      choose_first_filter(view, %{"app" => ["Dataflow"]})
       render_click(view, "submit_form_confirmed")
+      assert_redirect(view)
+
+      assert [run] = Reports.list_user_report_runs(user, "student-actions")
+      assert run.report_filter.app == ["CLUE"]
+    end
+
+    test "an unknown application is refused at the form, before any portal or S3 work", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      # the count is what a submit reaching the run would call; refusing first means it never does
+      stub_count({:ok, 1})
+      choose_first_filter(view, %{"app" => ["CLUE", "NotAnApp"]})
+
+      html = render_click(view, "submit_form")
+
+      assert html =~ "Unknown application: NotAnApp"
+      assert Reports.list_user_report_runs(user, "student-actions") == []
+    end
+
+    test "editing the form drops a warning it no longer describes", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      stub_count({:ok, 3_000})
+      choose_first_filter(view, %{"app" => ["CLUE"]})
+      render_click(view, "submit_form")
+      wait_for(view, "Run it anyway")
+
+      html = choose_first_filter(view, %{"app" => ["Dataflow"]})
+      refute html =~ "Run it anyway"
+
+      # the confirm the researcher can no longer see must not run the filter it was counted for
+      render_click(view, "submit_form_confirmed")
+      assert Reports.list_user_report_runs(user, "student-actions") == []
+    end
+
+    test "a count still in flight keeps the filter it was started on", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-actions")
+      stub_blocking_count()
+      choose_first_filter(view, %{"app" => ["CLUE"]})
+      render_click(view, "submit_form")
+      counting = await_counting()
+
+      # the select stays enabled while the count runs, so this is an ordinary interaction
+      choose_first_filter(view, %{"app" => ["Dataflow"]})
+      release_count(counting, {:ok, 1})
       assert_redirect(view)
 
       assert [run] = Reports.list_user_report_runs(user, "student-actions")

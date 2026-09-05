@@ -150,7 +150,7 @@ defmodule ReportServerWeb.ReportLive.Form do
       end
 
     end
-    {:noreply, socket}
+    {:noreply, clear_stale_warning(socket)}
   end
 
   def handle_event("add_filter", _unsigned_params, socket) do
@@ -171,7 +171,7 @@ defmodule ReportServerWeb.ReportLive.Form do
       |> assign(:placeholder_text, socket.assigns.placeholder_text ++ [""])
       |> assign(:filter_type_options, filter_type_options ++ [new_filter_type_options])
 
-    {:noreply, socket}
+    {:noreply, clear_stale_warning(socket)}
   end
 
   def handle_event("remove_filter", _unsigned_params, socket) do
@@ -195,7 +195,7 @@ defmodule ReportServerWeb.ReportLive.Form do
       |> assign(:filter_type_options, new_filter_type_options)
       |> assign(:form, new_form)
 
-    {:noreply, socket}
+    {:noreply, clear_stale_warning(socket)}
   end
 
   @impl true
@@ -299,6 +299,18 @@ defmodule ReportServerWeb.ReportLive.Form do
     {:noreply, create_run(socket, socket.assigns.pending_report_filter)}
   end
 
+  # the warning describes the filter the count was made against, so an edited form invalidates it.
+  # An in-flight count keeps its snapshot: the completion handlers pattern match %ReportFilter{},
+  # so clearing it mid-count would crash the view. Nothing is shielded once a warning is on screen,
+  # because count_finished/1 runs before the warning is assigned.
+  defp clear_stale_warning(%{assigns: %{checking_partitions: true}} = socket), do: socket
+
+  defp clear_stale_warning(socket) do
+    socket
+      |> assign(:partition_warning, nil)
+      |> assign(:pending_report_filter, nil)
+  end
+
   defp count_finished(socket) do
     socket
       |> assign(:checking_partitions, false)
@@ -348,6 +360,8 @@ defmodule ReportServerWeb.ReportLive.Form do
       {:error, changeset} ->
         Logger.error(changeset)
         socket
+          |> assign(:partition_warning, nil)
+          |> assign(:pending_report_filter, nil)
           |> assign(:error, "Unable to create report run!")
     end
   end
@@ -459,11 +473,22 @@ defmodule ReportServerWeb.ReportLive.Form do
   end
 
   defp check_app_supported(%ReportFilter{app: app}, form_options) do
-    # a blank app is acceptable on every report, including those with no control
-    if ReportFilter.app_list(app) == [] or form_options.enable_app_filter do
-      :ok
-    else
-      {:error, "This report does not support an application filter."}
+    apps = ReportFilter.app_list(app)
+
+    cond do
+      # a blank app is acceptable on every report, including those with no control
+      apps == [] -> :ok
+      !form_options.enable_app_filter -> {:error, "This report does not support an application filter."}
+      true -> check_apps_known(apps)
+    end
+  end
+
+  # get_athena_query/3 rejects an unknown value too, but only after the report has run the portal
+  # join and uploaded the learner data, so the researcher sees a failed run instead of a form error
+  defp check_apps_known(apps) do
+    case Enum.reject(apps, &(&1 in AthenaConfig.get_log_apps())) do
+      [] -> :ok
+      unknown -> {:error, "Unknown application#{if length(unknown) > 1, do: "s"}: #{Enum.join(unknown, ", ")}"}
     end
   end
 

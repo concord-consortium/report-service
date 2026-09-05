@@ -123,7 +123,13 @@
       </div>
 
       <div class="mt-4">
-        <.button type="button" phx-click="submit_form" disabled={@checking_partitions} aria-busy={to_string(@checking_partitions)}>
+        <.button
+          type="button"
+          phx-click="submit_form"
+          disabled={@checking_partitions}
+          aria-busy={to_string(@checking_partitions)}
+          class="disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-orange"
+        >
           <.icon name="hero-bolt" /> <%= if @checking_partitions, do: "Checking...", else: "Run Report" %>
         </.button>
         <%= if @dev do %>
