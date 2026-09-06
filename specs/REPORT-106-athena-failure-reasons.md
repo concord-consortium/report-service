@@ -36,6 +36,7 @@ All requirements were implemented. Grouped as they were specified.
 - Two patterns match message wording rather than an error code: `injected projected partition column`, because the `CONSTRAINT_VIOLATION` code carrying it also covers failures a smaller cohort would not fix, and `query timeout`, which has no code. AWS rewording either one costs the suggestion, not the raw reason.
 - The injected-column failure is advised to narrow the cohort, not the date range: it is rejected during planning, so neither a date range nor an application changes it.
 - The application half of the narrowing advice appears only when the run's report offers that filter. The date-range half is unconditional.
+- One test reaches the real report tree through `offers_app_filter?/1` rather than a constructed `%Report{}`, asserting that some Athena report still offers the filter and that its advice names an application. Renaming `:enable_app_filter` would otherwise leave the condition reading `false` forever and the clause silently absent from every suggestion.
 - `Slowdown` ships REPORT-33's text verbatim and must never suggest narrowing.
 
 ## Technical Notes
@@ -56,20 +57,6 @@ All requirements were implemented. Grouped as they were specified.
 - **Changing how `athena_query_state` is presented.**
 
 ## Not Yet Implemented
-
-**A test asserting that at least one Athena report in the real tree offers the application filter.** It cannot be written until REPORT-105 merges, because it fails today, where no report carries the key. Without it, a rename of `:enable_app_filter` during that story's review leaves this story's conditional reading `false` forever and the application clause silently absent from every suggestion. Every existing test constructs its own `%Report{}`, so none of them touch the real tree.
-
-It belongs in `athena_failure_test.exs`, where `@athena_slugs` is already defined:
-
-```elixir
-test "the application filter option is spelled the way the report tree spells it" do
-  offering = Enum.filter(@athena_slugs, &AthenaFailure.offers_app_filter?(Tree.find_report(&1)))
-
-  assert offering != [], "no Athena report offers :enable_app_filter; has the option been renamed?"
-end
-```
-
-The assertion message carries the value: an empty list on its own would send the next reader looking in the wrong place. Check at the same time that the sibling test `no Athena report in the tree that lacks the filter yields advice mentioning one` is still green; it is phrased against reports that do not offer the filter precisely so REPORT-105 merging cannot turn it red.
 
 **A shape guarantee for `AthenaFailure.error_code/1`.** It splits on the first colon, so a reason carrying none is returned whole and only the 60-character bound keeps message text out of the log. AWS does not guarantee the `CODE: message` shape. Tightening it means accepting a recognized code format plus a short allowlist of known code-less reasons (`Query timeout`, `Query cancelled by user`, `Slowdown`) and returning a fixed placeholder otherwise; an uppercase-code-only rule would throw away those known cases, which are the useful ones. Left out here because it is a behavior change with its own tests rather than part of surfacing the reason.
 
@@ -108,7 +95,7 @@ The assertion message carries the value: an empty list on its own would send the
 ### Should the guidance name the application filter?
 **Context**: Three of five suggestions said "select an application", but most Athena reports never offer that control.
 **Options considered**: sequence behind REPORT-105 and make the clause conditional; drop the clause; ship as written.
-**Decision**: make the clause conditional on the run's report offering the filter, and take no dependency on REPORT-105's branch. Only `student-actions` and `student-actions-with-metadata` query the partitioned log table, and only they gain the filter; the other three Athena reports never do. The condition is `Keyword.get(form_options, :enable_app_filter, false)`, which reads `false` on a report without the key, so no code from that branch is needed and the two stories merge in either order. Rebasing onto `REPORT-105-log-report-app-filter` was considered and rejected: PR #417 is open at 13 commits ahead, so it would mean a stacked PR re-rebased on every force-push, and the only gain is exercising the `true` path against the real tree, which a constructed `%Report{}` already covers.
+**Decision**: make the clause conditional on the run's report offering the filter, and take no dependency on REPORT-105's branch. Only `student-actions` and `student-actions-with-metadata` query the partitioned log table, and only they gain the filter; the other three Athena reports never do. The condition is `Keyword.get(form_options, :enable_app_filter, false)`, which reads `false` on a report without the key, so no code from that branch is needed and the two stories merge in either order. Stacking on `REPORT-105-log-report-app-filter` while its PR was open was rejected, since it would have meant re-rebasing on every force-push for a `true` path a constructed `%Report{}` already covered. REPORT-105 merged on 2026-09-05 and this branch was rebased onto it, so the tree assertion that was deferred on that reasoning is now in place.
 
 ### Is the poller's log line an acceptable third disclosure surface?
 **Context**: The spec analyzed the API and run page gates carefully but added a `Logger.error` with no analysis. SQL is logged nowhere else today, and the CLUE query embeds secure keys and full `run_remote_endpoint` URLs.

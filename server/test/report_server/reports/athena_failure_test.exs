@@ -195,6 +195,20 @@ defmodule ReportServer.Reports.AthenaFailureTest do
       end
     end
 
+    test "an Athena report in the tree yields advice naming the application filter" do
+      offering =
+        Enum.filter(@athena_slugs, &AthenaFailure.offers_app_filter?(Tree.find_report(&1)))
+
+      assert offering != [],
+             "no Athena report offers :enable_app_filter; has the option been renamed?"
+
+      for slug <- offering do
+        advice = AthenaFailure.guidance_for(Tree.find_report(slug), "Query timeout: x")
+
+        assert advice =~ "one or more applications", "#{slug} names no application"
+      end
+    end
+
     test "no Athena report in the tree that lacks the filter yields advice mentioning one" do
       reports = Enum.map(@athena_slugs, &Tree.find_report/1)
 
