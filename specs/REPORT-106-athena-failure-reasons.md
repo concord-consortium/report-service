@@ -33,6 +33,8 @@ All requirements were implemented. Grouped as they were specified.
 
 - An ordered, first-match-wins table from reason pattern to a one-line suggestion. The raw reason is always shown; an unrecognized reason gets no suggestion rather than a generic one.
 - Matching is case-insensitive and unanchored. Both properties are load-bearing (see Decisions).
+- Two patterns match message wording rather than an error code: `injected projected partition column`, because the `CONSTRAINT_VIOLATION` code carrying it also covers failures a smaller cohort would not fix, and `query timeout`, which has no code. AWS rewording either one costs the suggestion, not the raw reason.
+- The injected-column failure is advised to narrow the cohort, not the date range: it is rejected during planning, so neither a date range nor an application changes it.
 - The application half of the narrowing advice appears only when the run's report offers that filter. The date-range half is unconditional.
 - `Slowdown` ships REPORT-33's text verbatim and must never suggest narrowing.
 
@@ -115,7 +117,12 @@ The assertion message carries the value: an empty list on its own would send the
 
 ### How should the reason-to-suggestion mapping be asserted?
 **Context**: Both specs originally required "each of the five reasons maps to a distinct suggestion".
-**Decision**: assert each by exact value, not all-distinct. Partition limit and `CONSTRAINT_VIOLATION` are the same problem with the same fix and share one string by design, so five reasons yield four distinct suggestions and an all-distinct test would fail against a correct implementation.
+**Decision**: assert each by exact value, and separately that the five are distinct. Exact values are what catch a suggestion drifting onto the wrong reason; the distinctness assertion catches two entries collapsing onto one string, which is how the injected-column advice would silently revert to the partition-limit wording.
+
+### Does the partition-limit advice fit `CONSTRAINT_VIOLATION`?
+**Context**: The story grouped `CONSTRAINT_VIOLATION` with `HIVE_EXCEEDED_PARTITION_LIMIT` as "the same problem with the same fix", and the first implementation gave both the same "narrow it with a date range" string.
+**Options considered**: keep the pairing; match the message rather than the code; drop the entry.
+**Decision**: match the message, and give it its own advice. Athena's wording, from the production runs, is `For the injected projected partition column secure_key, the WHERE clause must contain only static equality conditions, and at least one such condition must be present. Predicates provided cannot be converted to a valid partition.` That is the secure-key `IN` list outgrowing what Athena will expand into injected partition values, and it is rejected during planning: runs 2287, 2283 and 2281 carried 2,130, 3,493 and 3,669 learners and failed in one to two seconds, before any data was read. Neither a date range nor an application shortens that list, so the partition-limit advice would have sent the researcher somewhere that cannot help; only a smaller cohort can. The pattern is `injected projected partition column` rather than `constraint_violation` because the code covers unrelated failures whose fix is not a smaller cohort, and an unrecognized one showing the raw reason with no suggestion is the better outcome. `HIVE_EXCEEDED_PARTITION_LIMIT` keeps the narrowing advice, which is right for it: a date range cut 6,660 prefix combinations per learner to 735 and lifted that ceiling from about 150 learners to about 1,360.
 
 ### Does the ordering test actually catch a reversed table?
 **Context**: The test feeds a reason carrying both `HIVE_S3_THROTTLING` and `SlowDown`.

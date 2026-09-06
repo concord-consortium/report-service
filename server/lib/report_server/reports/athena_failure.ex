@@ -17,6 +17,12 @@ defmodule ReportServer.Reports.AthenaFailure do
   # Slowdown is an internal Athena condition that neither the researcher nor this server can act on.
   @slowdown "Your query was delayed due to high traffic in AWS Athena. Please try again in a few moments. This is a temporary issue caused by heavy usage."
 
+  # `secure_key` is an injected projection column, so Athena expands the query's IN list into
+  # partition values during planning and rejects the query outright once that list is too long.
+  # Rejection happens before any data is read, which is why the advice here names the cohort alone:
+  # a date range and an application both leave the IN list exactly as long as it was.
+  @too_many_students "This report covers too many students for Athena to plan the query. Narrow the cohort, for example to fewer classes or assignments, and run it again."
+
   def max_reason_bytes, do: @max_reason_bytes
 
   @doc "Bounds a reason for storage or for a log line."
@@ -75,16 +81,19 @@ defmodule ReportServer.Reports.AthenaFailure do
   Patterns are lowercase because `guidance_for/2` downcases the reason: S3 spells its throttling code
   `SlowDown` while Athena spells the generic condition `Slowdown`. `hive_s3_throttling` must precede
   `slowdown`, which its reason also carries, because the two have deliberately opposite advice.
+
+  Two patterns match message wording rather than an error code. `injected projected partition column`
+  is matched instead of the `CONSTRAINT_VIOLATION` code that carries it, because that code covers
+  unrelated failures whose fix is not a smaller cohort, and `query timeout` has no code at all. AWS
+  rewording either one costs the suggestion, not the raw reason, which is always shown.
   """
   def guidance(app_filter?) do
     narrowing = narrowing(app_filter?)
 
-    too_many_partitions =
-      "This query covers too many Athena partitions. Narrow it with #{narrowing} and run it again."
-
     [
-      {"hive_exceeded_partition_limit", too_many_partitions},
-      {"constraint_violation", too_many_partitions},
+      {"hive_exceeded_partition_limit",
+       "This query covers too many Athena partitions. Narrow it with #{narrowing} and run it again."},
+      {"injected projected partition column", @too_many_students},
       {"hive_s3_throttling",
        "AWS throttled this query. Narrowing it with #{narrowing} will help, and running it outside peak hours will too."},
       {"query timeout",

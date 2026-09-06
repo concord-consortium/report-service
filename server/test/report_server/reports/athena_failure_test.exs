@@ -11,13 +11,31 @@ defmodule ReportServer.Reports.AthenaFailureTest do
   @throttling_reason "HIVE_S3_THROTTLING: Amazon S3 error: Please reduce your request rate. " <>
                        "(Service: Amazon S3; Status Code: 503; Error Code: SlowDown; Request ID: A1B2C3D4)"
 
+  # Athena's wording, verbatim, for the failure production runs 2281, 2283 and 2287 hit: each carried
+  # thousands of learners and was rejected in about a second, the secure-key IN list having outgrown
+  # what Athena will expand into values for the injected partition column.
+  @injected_column_reason "CONSTRAINT_VIOLATION: For the injected projected partition column " <>
+                            "secure_key, the WHERE clause must contain only static equality " <>
+                            "conditions, and at least one such condition must be present. " <>
+                            "Predicates provided cannot be converted to a valid partition."
+
   @observed_reasons [
     "HIVE_EXCEEDED_PARTITION_LIMIT: too many",
-    "CONSTRAINT_VIOLATION: injected column",
+    @injected_column_reason,
     @throttling_reason,
     "Query timeout: exhausted resources",
     "Slowdown"
   ]
+
+  # The three whose advice is "narrow it", which is the half of the wording the application filter
+  # changes. The cohort and slowdown suggestions name neither a date range nor an application.
+  @narrowing_reasons [
+    "HIVE_EXCEEDED_PARTITION_LIMIT: too many",
+    @throttling_reason,
+    "Query timeout: exhausted resources"
+  ]
+
+  @too_many_students "This report covers too many students for Athena to plan the query. Narrow the cohort, for example to fewer classes or assignments, and run it again."
 
   @slowdown_text "Your query was delayed due to high traffic in AWS Athena. Please try again in a few moments. This is a temporary issue caused by heavy usage."
 
@@ -94,8 +112,7 @@ defmodule ReportServer.Reports.AthenaFailureTest do
       assert AthenaFailure.error_code("HIVE_EXCEEDED_PARTITION_LIMIT: too many") ==
                "HIVE_EXCEEDED_PARTITION_LIMIT"
 
-      assert AthenaFailure.error_code("CONSTRAINT_VIOLATION: injected column") ==
-               "CONSTRAINT_VIOLATION"
+      assert AthenaFailure.error_code(@injected_column_reason) == "CONSTRAINT_VIOLATION"
 
       assert AthenaFailure.error_code("Query timeout: exhausted resources") == "Query timeout"
     end
@@ -108,8 +125,7 @@ defmodule ReportServer.Reports.AthenaFailureTest do
       assert AthenaFailure.guidance_for(report, "HIVE_EXCEEDED_PARTITION_LIMIT: too many") ==
                "This query covers too many Athena partitions. Narrow it with a date range and run it again."
 
-      assert AthenaFailure.guidance_for(report, "CONSTRAINT_VIOLATION: injected column") ==
-               "This query covers too many Athena partitions. Narrow it with a date range and run it again."
+      assert AthenaFailure.guidance_for(report, @injected_column_reason) == @too_many_students
 
       assert AthenaFailure.guidance_for(report, @throttling_reason) ==
                "AWS throttled this query. Narrowing it with a date range will help, and running it outside peak hours will too."
@@ -126,8 +142,7 @@ defmodule ReportServer.Reports.AthenaFailureTest do
       assert AthenaFailure.guidance_for(report, "HIVE_EXCEEDED_PARTITION_LIMIT: too many") ==
                "This query covers too many Athena partitions. Narrow it with a date range or one or more applications and run it again."
 
-      assert AthenaFailure.guidance_for(report, "CONSTRAINT_VIOLATION: injected column") ==
-               "This query covers too many Athena partitions. Narrow it with a date range or one or more applications and run it again."
+      assert AthenaFailure.guidance_for(report, @injected_column_reason) == @too_many_students
 
       assert AthenaFailure.guidance_for(report, @throttling_reason) ==
                "AWS throttled this query. Narrowing it with a date range or one or more applications will help, and running it outside peak hours will too."
@@ -138,13 +153,18 @@ defmodule ReportServer.Reports.AthenaFailureTest do
       assert AthenaFailure.guidance_for(report, "Slowdown") == @slowdown_text
     end
 
-    test "the five reasons yield four distinct suggestions, the partition pair sharing one" do
+    test "the five reasons yield five distinct suggestions" do
       for report <- [with_app_filter(), without_app_filter()] do
         suggestions = Enum.map(@observed_reasons, &AthenaFailure.guidance_for(report, &1))
 
         refute Enum.any?(suggestions, &is_nil/1)
-        assert Enum.at(suggestions, 0) == Enum.at(suggestions, 1)
-        assert length(Enum.uniq(suggestions)) == 4
+        assert length(Enum.uniq(suggestions)) == 5
+      end
+    end
+
+    test "a CONSTRAINT_VIOLATION that is not the injected column gets no suggestion" do
+      for report <- [with_app_filter(), without_app_filter()] do
+        assert AthenaFailure.guidance_for(report, "CONSTRAINT_VIOLATION: something else") == nil
       end
     end
 
@@ -170,7 +190,7 @@ defmodule ReportServer.Reports.AthenaFailureTest do
     test "the narrowing suggestions mention applications when the report offers the filter" do
       report = with_app_filter()
 
-      for reason <- @observed_reasons -- ["Slowdown"] do
+      for reason <- @narrowing_reasons do
         assert AthenaFailure.guidance_for(report, reason) =~ "one or more applications"
       end
     end
