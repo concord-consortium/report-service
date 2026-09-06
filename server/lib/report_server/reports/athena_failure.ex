@@ -36,11 +36,14 @@ defmodule ReportServer.Reports.AthenaFailure do
   end
 
   @doc """
-  The leading error code of a reason, bounded, for use in logs.
+  The part of a reason before its first colon, bounded, for use in logs.
 
-  Only the code, never the message after it: Athena's message can echo the query, and the queries
-  this server generates embed secure keys and learner endpoint urls. The code is the part an
-  operator acts on, and the query id logged beside it retrieves the full reason from Athena.
+  Athena's message can echo the query, and the queries this server generates embed secure keys and
+  learner endpoint urls, so the message must not reach the logs. The code is the part an operator
+  acts on, and the query id logged beside it retrieves the full reason from Athena.
+
+  AWS does not guarantee the `CODE: message` shape, so a reason carrying no colon is returned whole
+  and the 60-character bound is what limits the exposure rather than the split.
   """
   def error_code(nil), do: nil
 
