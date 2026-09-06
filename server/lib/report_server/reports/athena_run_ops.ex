@@ -36,8 +36,8 @@ defmodule ReportServer.Reports.AthenaRunOps do
 
   def refresh_query_state(report_run = %ReportRun{athena_query_id: athena_query_id}) when is_binary(athena_query_id) do
     if non_terminal?(report_run) do
-      with {:ok, athena_query_state, athena_result_url} <- athena_db().get_query_info(athena_query_id),
-           {:ok, report_run} <- Reports.update_report_run(report_run, %{athena_query_state: athena_query_state, athena_result_url: athena_result_url}) do
+      with {:ok, athena_query_state, athena_result_url, athena_query_error} <- athena_db().get_query_info(athena_query_id),
+           {:ok, report_run} <- Reports.update_report_run(report_run, %{athena_query_state: athena_query_state, athena_result_url: athena_result_url, athena_query_error: athena_query_error}) do
         {:ok, report_run}
       else
         {:error, error} -> {:error, error}

@@ -4,7 +4,16 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
   import ReportServer.AccountsFixtures
 
   alias ReportServer.Reports
-  alias ReportServer.Reports.{AthenaRunOps, Report, ReportFilter, ReportQuery, ReportRun, Tree}
+
+  alias ReportServer.Reports.{
+    AthenaFailure,
+    AthenaRunOps,
+    Report,
+    ReportFilter,
+    ReportQuery,
+    ReportRun,
+    Tree
+  }
 
   defmodule TreeStub do
     def find_report(_slug), do: Application.get_env(:report_server, :test_tree_report)
@@ -44,7 +53,10 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
     test "persists both athena_query_state and athena_result_url for a non-terminal run" do
       user = user_fixture()
       run = run_fixture(user, %{athena_query_id: "qid-1", athena_query_state: "running"})
-      start_athena_stub(%{get_query_info: fn "qid-1" -> {:ok, "succeeded", "s3://bucket/out.csv"} end})
+
+      start_athena_stub(%{
+        get_query_info: fn "qid-1" -> {:ok, "succeeded", "s3://bucket/out.csv", nil} end
+      })
 
       assert {:ok, refreshed} = AthenaRunOps.refresh_query_state(run)
       assert refreshed.athena_query_state == "succeeded"
@@ -63,6 +75,82 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
       assert {:ok, unchanged} = AthenaRunOps.refresh_query_state(run)
       assert unchanged.athena_query_state == "succeeded"
       assert unchanged.athena_result_url == "s3://existing"
+    end
+
+    test "persists the reason for a failed run" do
+      user = user_fixture()
+      run = run_fixture(user, %{athena_query_id: "qid-failed", athena_query_state: "running"})
+
+      start_athena_stub(%{
+        get_query_info: fn "qid-failed" ->
+          {:ok, "failed", nil, "HIVE_EXCEEDED_PARTITION_LIMIT: too many"}
+        end
+      })
+
+      assert {:ok, refreshed} = AthenaRunOps.refresh_query_state(run)
+      assert refreshed.athena_query_error == "HIVE_EXCEEDED_PARTITION_LIMIT: too many"
+
+      assert Reports.get_report_run!(run.id).athena_query_error ==
+               "HIVE_EXCEEDED_PARTITION_LIMIT: too many"
+    end
+
+    test "persists the reason for a cancelled run" do
+      user = user_fixture()
+      run = run_fixture(user, %{athena_query_id: "qid-cancelled", athena_query_state: "running"})
+
+      start_athena_stub(%{
+        get_query_info: fn "qid-cancelled" ->
+          {:ok, "cancelled", nil, "Query cancelled by user"}
+        end
+      })
+
+      assert {:ok, refreshed} = AthenaRunOps.refresh_query_state(run)
+      assert refreshed.athena_query_error == "Query cancelled by user"
+      assert Reports.get_report_run!(run.id).athena_query_error == "Query cancelled by user"
+    end
+
+    test "persists nil when Athena reports no reason" do
+      user = user_fixture()
+      run = run_fixture(user, %{athena_query_id: "qid-ok", athena_query_state: "running"})
+
+      start_athena_stub(%{
+        get_query_info: fn "qid-ok" -> {:ok, "succeeded", "s3://bucket/out.csv", nil} end
+      })
+
+      assert {:ok, refreshed} = AthenaRunOps.refresh_query_state(run)
+      assert refreshed.athena_query_error == nil
+      assert Reports.get_report_run!(run.id).athena_query_error == nil
+    end
+
+    test "a reason past the column ceiling still leaves the run terminal" do
+      user = user_fixture()
+      run = run_fixture(user, %{athena_query_id: "qid-big", athena_query_state: "running"})
+      oversized = String.duplicate("x", 70_000)
+      start_athena_stub(%{get_query_info: fn "qid-big" -> {:ok, "failed", nil, oversized} end})
+
+      assert {:ok, _} = AthenaRunOps.refresh_query_state(run)
+
+      reloaded = Reports.get_report_run!(run.id)
+      assert reloaded.athena_query_state == "failed"
+      refute AthenaRunOps.non_terminal?(reloaded)
+      assert byte_size(reloaded.athena_query_error) <= AthenaFailure.max_reason_bytes()
+    end
+
+    test "does not overwrite a terminal run's stored reason on a later poll" do
+      user = user_fixture()
+
+      run =
+        run_fixture(user, %{
+          athena_query_id: "qid-terminal",
+          athena_query_state: "failed",
+          athena_query_error: "HIVE_S3_THROTTLING: original"
+        })
+
+      start_athena_stub(%{get_query_info: fn _ -> raise "should not be called" end})
+
+      assert {:ok, unchanged} = AthenaRunOps.refresh_query_state(run)
+      assert unchanged.athena_query_error == "HIVE_S3_THROTTLING: original"
+      assert Reports.get_report_run!(run.id).athena_query_error == "HIVE_S3_THROTTLING: original"
     end
 
     test "returns the error and leaves stored fields untouched when Athena fails" do

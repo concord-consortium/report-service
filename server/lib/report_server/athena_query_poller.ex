@@ -1,5 +1,8 @@
 defmodule ReportServer.AthenaQueryPoller do
+  require Logger
+
   alias ReportServer.AthenaDB
+  alias ReportServer.Reports.AthenaFailure
 
   @poll_interval 5_000  # 5 seconds
 
@@ -15,13 +18,15 @@ defmodule ReportServer.AthenaQueryPoller do
 
   defp poll_query_status(query_id) do
     case athena_db().get_query_info(query_id) do
-      {:ok, "succeeded", output_location} ->
+      {:ok, "succeeded", output_location, _reason} ->
         {:ok, output_location}
-      {:ok, "failed", _output_location} ->
+      {:ok, "failed", _output_location, reason} ->
+        Logger.error("Athena query #{query_id} failed: #{inspect(AthenaFailure.error_code(reason))}")
         {:error, "Query failed"}
-      {:ok, "cancelled", _output_location} ->
+      {:ok, "cancelled", _output_location, reason} ->
+        Logger.error("Athena query #{query_id} cancelled: #{inspect(AthenaFailure.error_code(reason))}")
         {:error, "Query cancelled"}
-      {:ok, _status, _output_location} ->
+      {:ok, _status, _output_location, _reason} ->
         ## Queued or Running
         :timer.sleep(@poll_interval)  # Wait before polling again
         poll_query_status(query_id)
