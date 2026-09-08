@@ -238,8 +238,25 @@ nothing to run against until this lands.
 Added: `portal_clazzes (id, name, class_word)`, `portal_students (id, user_id)`,
 `portal_permission_forms (id, name, project_id)`, `admin_projects (id, name)`,
 `portal_countries (id, name)`, `admin_tags (id, tag, scope)` and `taggings (tag_id, context,
-taggable_type, taggable_id)`; a `name` column on `admin_cohorts` and a `country_id` on
-`portal_schools`; and the tied-label class rows the walk needs.
+taggable_type, taggable_id)`; a `name` column on `admin_cohorts`, a `country_id` on
+`portal_schools` and a `clazz_id` on `portal_offerings`; and the tied-label class rows the walk
+needs, one of which has no class word so its label is NULL and the coalesced ordering has something
+to prove.
+
+`portal_offerings.clazz_id` was not in the original list and was found by sweeping every dimension
+against every secondary filter: a dozen join patterns route through `po.clazz_id`, so without it the
+whole cascade half of the fixture is unusable while the unnarrowed queries all pass.
+
+**Three of the ninety pairs cannot generate legal SQL, and the cause is the builder, not the
+fixture.** `assignment` narrowed by `cohort` emits the `aci_cohort` alias twice for a **scoped**
+caller: `allowed_projects_assignment` and `cohort_items_assignment_ref` are the same join except
+that one is a `LEFT JOIN`, so `get_join_where_sql/2`'s `Enum.uniq/1` cannot collapse them and MySQL
+rejects the duplicate alias. It works as `:all`, which is why nobody has reported it, and it means a
+project admin cannot filter assignments by cohort in the web form today. `country` narrowed by
+`teacher` and by `subject_area` reference a table their join lists never add. All three predate this
+story and fixing them is shared-builder surgery that would change the form, so they are recorded
+here and pinned by a sweep test that asserts exactly these three fail; a fix or a new break both
+turn it red.
 
 **New rows stay out of the existing tests' way.** Those tests either filter by class 601 or assert
 `length(...) == 4` over `report_learners`, so seeded ids are chosen outside the existing 601/602,
