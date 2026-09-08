@@ -22,14 +22,6 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
     subject_area: [1]
   ]
 
-  # Pairs the builder cannot generate legal SQL for, independent of the fixture, and predating this
-  # work. assignment/cohort emits the aci_cohort alias twice for a scoped caller, because the
-  # scoping join and the secondary join differ only by LEFT and so survive Enum.uniq/1; it succeeds
-  # as :all, so the web form breaks on it for project admins and researchers but not super admins.
-  # The two country pairs reference a table their join list never adds, and are unreachable from the
-  # only two reports that offer the country filter.
-  @known_broken [{:assignment, :cohort}, {:country, :teacher}, {:country, :subject_area}]
-
   defp options(dimension, report_filter \\ %ReportFilter{}) do
     filter = %{report_filter | filters: [dimension]}
     {query, params} = ReportFilterQuery.get_query_and_params(filter, [@project], "", @server)
@@ -63,7 +55,30 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
           match?({:error, _}, run_narrowed(dimension, secondary, value)),
           do: {dimension, secondary}
 
-    assert Enum.sort(broken) == Enum.sort(@known_broken)
+    assert broken == []
+  end
+
+  test "a scoped caller can narrow assignments by cohort" do
+    filter = %ReportFilter{filters: [:assignment], cohort: [1]}
+    {query, params} = ReportFilterQuery.get_query_and_params(filter, [@project], "", @server)
+    {:ok, result} = PortalDbs.query(@server, ReportFilterQuery.get_options_sql(query), params)
+
+    assert result.rows == [[801, "Activity One"]]
+  end
+
+  test "a country narrowed by its schools' subject areas resolves through the offering chain" do
+    assert narrowed_options(:country, :subject_area, [1]) == [{"1", "United States"}]
+    assert narrowed_options(:country, :subject_area, [2]) == []
+  end
+
+  test "a country narrowed by teacher resolves through its own schools" do
+    assert narrowed_options(:country, :teacher, [31]) == [{"1", "United States"}]
+    assert narrowed_options(:country, :teacher, [35]) == [{"1", "United States"}]
+  end
+
+  defp narrowed_options(dimension, secondary, value) do
+    {:ok, result} = run_narrowed(dimension, secondary, value)
+    Enum.map(result.rows, fn [id, label] -> {to_string(id), label} end)
   end
 
   test "the class dimension carries a tie and a null label for the paging tests" do

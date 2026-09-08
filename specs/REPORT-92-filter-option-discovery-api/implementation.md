@@ -247,16 +247,34 @@ to prove.
 against every secondary filter: a dozen join patterns route through `po.clazz_id`, so without it the
 whole cascade half of the fixture is unusable while the unnarrowed queries all pass.
 
-**Three of the ninety pairs cannot generate legal SQL, and the cause is the builder, not the
-fixture.** `assignment` narrowed by `cohort` emits the `aci_cohort` alias twice for a **scoped**
-caller: `allowed_projects_assignment` and `cohort_items_assignment_ref` are the same join except
-that one is a `LEFT JOIN`, so `get_join_where_sql/2`'s `Enum.uniq/1` cannot collapse them and MySQL
-rejects the duplicate alias. It works as `:all`, which is why nobody has reported it, and it means a
-project admin cannot filter assignments by cohort in the web form today. `country` narrowed by
-`teacher` and by `subject_area` reference a table their join lists never add. All three predate this
-story and fixing them is shared-builder surgery that would change the form, so they are recorded
-here and pinned by a sweep test that asserts exactly these three fail; a fix or a new break both
-turn it red.
+**Three of the ninety pairs could not generate legal SQL, and the cause was the builder, not the
+fixture.** All three predate this story, and the sweep that found them is now a test asserting that
+none of the ninety fails.
+
+- `assignment` narrowed by `cohort` emitted the `aci_cohort` alias twice for a **scoped** caller.
+  `allowed_projects_assignment` and `cohort_items_assignment_ref` were the same join written twice,
+  differing only by `LEFT`, so `get_join_where_sql/2`'s `Enum.uniq/1` could not collapse them. It
+  worked as `:all`, which is why nobody reported it, and it meant a project admin or researcher
+  could not filter assignments by cohort in the web form. The duplication was the defect, so the
+  fix is one definition: the scoping list references `:cohort_items_assignment_ref` by name and that
+  pattern becomes the `LEFT JOIN`. `LEFT` is equivalent here because the secondary filter's
+  `aci_cohort.admin_cohort_id IN (…)` predicate discards the unmatched rows anyway, verified by
+  running the before and after statements against the fixture and getting the same row.
+- `country` narrowed by `teacher` and by `subject_area` reused `:school_member_from_school`, whose
+  `psm.school_id = portal_schools.id` is correct for the `school` and `state` primaries but not for
+  `country`, which reaches schools as `ps_country`. `country`'s `subject_area` chain additionally
+  hung `po` off an unjoined `pc` and `t` off an unjoined `ea`. The `state` primary already has the
+  correct form of the same chain, so `country` now mirrors it with a `ps_country`-keyed membership
+  join rather than inventing one.
+
+**`resolve_join_patterns/1` had to learn to recurse** for the shared reference to work: its atom
+clause returned `[value]`, so a pattern naming another pattern emitted the atom into the SQL. It now
+resolves what it looks up. Existing entries are unaffected, since a string still yields one string
+and a list of strings still flattens to the same list.
+
+Measured, so the form is provably untouched elsewhere: of the 180 statements the ten dimensions
+generate against every secondary filter under both `:all` and a scoped caller, **exactly these six
+changed and the other 174 are byte-identical**.
 
 **New rows stay out of the existing tests' way.** Those tests either filter by class 601 or assert
 `length(...) == 4` over `report_learners`, so seeded ids are chosen outside the existing 601/602,
