@@ -32,6 +32,8 @@ defmodule ReportServerWeb.ReportLive.Form do
   }
 
   @max_auto_options_length 200
+  @app_live_select_id "live_select_app"
+
   @dev Application.compile_env(:report_server, :dev_routes)
 
   @impl true
@@ -60,6 +62,7 @@ defmodule ReportServerWeb.ReportLive.Form do
     |> assign(:filter_options, [[]])
     |> assign(:form_options, get_form_options(report, user))
     |> assign(:app_options, AthenaConfig.app_options())
+    |> assign(:app_live_select_id, @app_live_select_id)
     |> assign(:checking_partitions, false)
     |> assign(:count_task_ref, nil)
     |> assign(:pending_report_filter, nil)
@@ -68,6 +71,15 @@ defmodule ReportServerWeb.ReportLive.Form do
     |> assign(:dev, @dev)
     |> assign(:allowed_project_ids, PortalDbs.get_allowed_project_ids(user))
 
+    {:noreply, socket}
+  end
+
+  ## Called when the text in the application search box changes. The application list is static, so
+  ## it is filtered in memory rather than queried. Matching on the id keeps this clause off the
+  ## numbered filters, whose field names carry the index this one does not have.
+  @impl true
+  def handle_event("live_select_change", %{"id" => @app_live_select_id, "text" => text}, socket) do
+    send_update(LiveSelect.Component, id: @app_live_select_id, options: AthenaConfig.app_options(text))
     {:noreply, socket}
   end
 

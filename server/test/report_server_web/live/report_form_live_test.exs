@@ -91,10 +91,8 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       html = choose_first_filter(view)
 
-      assert html =~ ~s(<option value="CLUE">CLUE</option>)
-      assert html =~ "none (no application recorded)"
-      assert html =~ ~s(name="filter_form[app][]")
-      assert html =~ "multiple=\"multiple\""
+      assert html =~ ~s(id="live_select_app")
+      assert html =~ ~s(name="filter_form[app_text_input]")
       # collapse whitespace so the assertions test the copy rather than where it wraps
       text = String.replace(html, ~r/\s+/, " ")
       assert text =~ "Leave this empty to include every application"
@@ -107,7 +105,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
     test "renders on student-actions-with-metadata", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions-with-metadata")
 
-      assert choose_first_filter(view) =~ ~s(<option value="CLUE">CLUE</option>)
+      assert choose_first_filter(view) =~ ~s(id="live_select_app")
     end
 
     test "does not render on teacher-actions, which reads a table with no app partition",
@@ -116,14 +114,70 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       html = choose_first_filter(view)
 
-      refute html =~ ~s(<option value="CLUE">CLUE</option>)
+      refute html =~ ~s(id="live_select_app")
       assert html =~ "Earliest date:"
     end
 
     test "carries a programmatic label rather than an empty one", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions")
 
-      assert choose_first_filter(view) =~ ~s(<label for="app")
+      html = choose_first_filter(view)
+
+      assert html =~ ~s(<label for="filter_form_app_text_input")
+      assert html =~ ~s(id="filter_form_app_text_input")
+    end
+
+    # LiveSelect renders each tag's removal control as a button whose only content is the
+    # clear_button slot, so without this text the button announces as an unnamed "button"
+    test "a selected application's removal button carries hidden text naming the action",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+
+      html = choose_first_filter(view, %{"app" => ["CLUE"]})
+
+      assert html =~ "CLUE"
+
+      # sr-only rather than a bare span: the name has to reach a screen reader without adding
+      # visible text beside the glyph
+      assert Floki.find(html, ~s(#live_select_app button span.sr-only))
+             |> Enum.any?(&(Floki.text(&1) |> String.trim() == "Remove"))
+    end
+
+    test "a selected numbered filter's removal button carries the same hidden text",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+
+      html = choose_first_filter(view)
+
+      assert Floki.find(html, ~s(#live_select1 button span.sr-only))
+             |> Enum.any?(&(Floki.text(&1) |> String.trim() == "Remove"))
+    end
+
+    test "the search box is not labelled as if nothing were selected", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+
+      html = choose_first_filter(view, %{"app" => ["CLUE"]})
+
+      # LiveSelect leaves the tags-mode text input empty whatever is selected, so a placeholder
+      # describing the empty filter would sit on screen next to a CLUE tag contradicting it
+      [input] = Floki.find(html, ~s(input[name="filter_form[app_text_input]"]))
+      assert Floki.attribute(input, "placeholder") == ["Search applications"]
+    end
+
+    # the hook sends the form-qualified field name, which carries none of the trailing index the
+    # numbered filters are found by, so this event must never reach the filter lookup
+    test "a change event from the application box never reaches the numbered-filter lookup",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+      choose_first_filter(view)
+
+      render_hook(view, "live_select_change", %{
+        "field" => "filter_form_app",
+        "id" => "live_select_app",
+        "text" => "data"
+      })
+
+      assert render(view) =~ ~s(id="live_select_app")
     end
   end
 
@@ -177,20 +231,20 @@ defmodule ReportServerWeb.ReportFormLiveTest do
   describe "the partition warning" do
     test "warns and creates nothing when the projection crosses the limit", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
-      stub_count({:ok, 151})
+      stub_count({:ok, 141})
       choose_first_filter(view)
 
       render_click(view, "submit_form")
-      html = wait_for(view, "151 learners")
+      html = wait_for(view, "141 learners")
 
-      assert html =~ "1,005,660 partitions"
+      assert html =~ "1,001,664 partitions"
       assert html =~ "over the 1,000,000 limit"
       assert Reports.list_user_report_runs(user, "student-actions") == []
     end
 
     test "does not warn just under the limit", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
-      stub_count({:ok, 150})
+      stub_count({:ok, 140})
       choose_first_filter(view)
 
       render_click(view, "submit_form")
@@ -356,7 +410,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
     test "the warning is announced and offers the confirm", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions")
-      stub_count({:ok, 151})
+      stub_count({:ok, 141})
       choose_first_filter(view)
 
       render_click(view, "submit_form")

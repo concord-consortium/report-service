@@ -98,4 +98,26 @@ defmodule ReportServer.Reports.Athena.AthenaConfigTest do
       assert relabeled == [{"none (no application recorded)", "none"}]
     end
   end
+
+  describe "app_options/1" do
+    test "keeps only the options whose label contains the text" do
+      assert AthenaConfig.app_options("data") == [{"Dataflow", "Dataflow"}]
+    end
+
+    test "matches without regard to case" do
+      assert AthenaConfig.app_options("clue") == [{"CLUE", "CLUE"}]
+    end
+
+    test "reaches the none entry through the wording of its label" do
+      assert AthenaConfig.app_options("recorded") == [{"none (no application recorded)", "none"}]
+    end
+
+    test "blank text keeps every option, so the search box opens on the full list" do
+      assert AthenaConfig.app_options("") == AthenaConfig.app_options()
+    end
+
+    test "text matching nothing returns nothing" do
+      assert AthenaConfig.app_options("no-such-application") == []
+    end
+  end
 end
