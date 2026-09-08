@@ -128,7 +128,7 @@ defmodule ReportServer.Reports.FilterOptionsStaticTest do
   end
 
   test "no name is both a static and a portal dimension" do
-    static = FilterOptions.static_dimensions() |> Map.keys() |> Enum.map(&String.to_atom/1)
+    static = FilterOptions.static_dimensions() |> Map.keys()
 
     assert static != []
     assert static -- ReportFilter.dimensions() == static

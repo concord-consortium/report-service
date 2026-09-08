@@ -751,6 +751,12 @@ ever substring-matches English to tell "too expensive" from "you did not ask".
 cc-data's language, so the one consumer that exists would read "we did not count" as "there are
 none".
 
+**A count that errors degrades to skipped rather than failing the response.** `count/4` distinguishes
+a broken query from a refusal, and the controller logs the former at error level, but it still
+returns the page with `count_skipped: true`: the page and the count run the same inner statement, so
+a count that breaks after a page succeeded is a transient the caller cannot act on, and failing a
+page that worked would be worse for the client than handing it the rows without a total.
+
 **`Params.parse_limit/1` needs extending, carefully.** It accepts only a binary today and returns
 `{:error, "limit must be an integer"}` for a JSON-numeric `25`, which is the shape a JSON client
 naturally sends and a confusing thing to tell it. The added clause must not change what the existing

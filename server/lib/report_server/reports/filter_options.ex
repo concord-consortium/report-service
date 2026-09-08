@@ -12,7 +12,8 @@ defmodule ReportServer.Reports.FilterOptions do
   alias ReportServer.Reports.{AllowedProjectsLookupError, HideNames, OptionLabel, ReportFilter, ReportFilterQuery}
   alias ReportServer.Reports.FilterOptions.AppDimension
 
-  @static_dimensions %{"app" => AppDimension}
+  @static_dimensions %{app: AppDimension}
+  @static_names Map.new(@static_dimensions, fn {name, _module} -> {to_string(name), name} end)
 
   # Both the page and the count are bounded well under PortalDbs' five-minute module default: a
   # request a client calls interactively has no business holding one of five shared connections for
@@ -22,11 +23,19 @@ defmodule ReportServer.Reports.FilterOptions do
   # :limit is required rather than defaulted so Api.V1.Params stays the only definition of the
   # paging default and maximum.
 
-  @doc "The static dimensions, keyed by the name a caller sends."
+  @doc "The static dimensions, keyed by the dimension name."
   def static_dimensions, do: @static_dimensions
 
   @doc "The module serving `dimension`, or `:error` when it is not a static dimension."
-  def static_dimension(dimension), do: Map.fetch(@static_dimensions, to_string(dimension))
+  def static_dimension(dimension), do: Map.fetch(@static_dimensions, dimension)
+
+  @doc """
+  Resolves a caller-supplied static dimension name to its atom.
+
+  The registry hands back the atom it already holds, so no caller-supplied string is ever converted.
+  """
+  def dimension_from_string(raw) when is_binary(raw), do: Map.fetch(@static_names, raw)
+  def dimension_from_string(_raw), do: :error
 
   @doc "One page of options for `dimension`, narrowed by the rest of `report_filter`."
   def page(dimension, report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
