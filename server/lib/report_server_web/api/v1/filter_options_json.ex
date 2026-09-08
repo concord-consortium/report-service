@@ -10,10 +10,7 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsJSON do
   because an absent JSON number decodes to zero in Go.
   """
   def index(options, cursor, count) do
-    %{
-      items: Enum.map(options, &%{id: &1.id, label: &1.label}),
-      next_page_token: Params.encode_cursor(cursor)
-    }
+    %{items: options, next_page_token: Params.encode_cursor(cursor)}
     |> Map.merge(count_json(count))
   end
 

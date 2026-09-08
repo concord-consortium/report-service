@@ -75,6 +75,31 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsControllerTest do
       assert length(body_for(conn, %{"dimension" => "class", "limit" => "2"})["items"]) == 2
     end
 
+    test "paging parameters are read from the query string as well as the body", %{conn: conn} do
+      conn = admin_conn(conn)
+      body = %{"dimension" => "class"}
+
+      unpaged = body_for(conn, body)
+      assert length(unpaged["items"]) == 9
+      assert unpaged["next_page_token"] == nil
+
+      first =
+        conn
+        |> post(~p"/api/v1/reports/filter-options?limit=2", body)
+        |> json_response(200)
+
+      assert length(first["items"]) == 2
+      assert is_binary(first["next_page_token"])
+
+      second =
+        conn
+        |> post(~p"/api/v1/reports/filter-options?limit=2&page_token=#{first["next_page_token"]}", body)
+        |> json_response(200)
+
+      assert length(second["items"]) == 2
+      assert second["items"] == Enum.slice(unpaged["items"], 2, 2)
+    end
+
     test "a malformed page token is a client error", %{conn: conn} do
       body = admin_conn(conn) |> post_options(%{"dimension" => "class", "page_token" => "!!"}) |> json_response(400)
 
@@ -189,6 +214,21 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsControllerTest do
       assert body["message"] =~ "does not filter on student"
     end
 
+    test "a wrong-typed field is a client error naming it, not a crash", %{conn: conn} do
+      conn = admin_conn(conn)
+
+      cases = [
+        {%{"dimension" => "class", "report_filter" => "not-an-object"}, "report_filter must be an object"},
+        {%{"dimension" => "student", "report_filter" => %{"class" => 5}}, "class must be a list or null"},
+        {%{"dimension" => "class", "report_slug" => 5}, "report_slug must be a string"},
+        {%{"dimension" => "class", "search" => 5}, "search must be a string"}
+      ]
+
+      for {body, message} <- cases do
+        assert conn |> post_options(body) |> json_response(400) |> Map.get("message") == message
+      end
+    end
+
     test "a dimension the report does filter on is accepted", %{conn: conn} do
       assert %{"items" => _} =
                body_for(admin_conn(conn), %{"dimension" => "class", "report_slug" => "student-actions"})
@@ -268,6 +308,14 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsControllerTest do
   end
 
   describe "static dimensions" do
+    test "every caller who may use it at all sees the same options", %{conn: conn} do
+      as_admin = labels(admin_conn(conn), %{"dimension" => "app"})
+      as_researcher = labels(researcher_conn(conn), %{"dimension" => "app"})
+
+      assert as_admin == as_researcher
+      assert as_admin != []
+    end
+
     test "app answers with the same envelope as a portal dimension", %{conn: conn} do
       body = body_for(admin_conn(conn), %{"dimension" => "app"})
 

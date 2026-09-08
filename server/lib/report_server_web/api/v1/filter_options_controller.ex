@@ -1,4 +1,21 @@
 defmodule ReportServerWeb.Api.V1.FilterOptionsController do
+  @moduledoc """
+  `POST /api/v1/reports/filter-options`, the values a report filter dimension offers a caller.
+
+  What narrows a dimension's options: the other dimensions in `report_filter`, the `search` text,
+  and `exclude_internal` on the `teacher` dimension, which costs a second portal query to resolve
+  Concord's own teacher ids. `start_date`, `end_date` and `hide_names` are accepted and ignored,
+  because `GET /api/v1/reports/:id` emits them on every run and a caller adjusting a run's filter
+  must not be rejected for sending them back; `hide_names` is decided by the caller's role instead.
+  A static dimension ignores all narrowing, having no cascade to narrow through.
+
+  Within `report_filter`, `null` and `[]` mean different things. `null` is "not selected". `[]` is
+  "selected nothing", which narrows to nothing, so the response is an empty `items` with `count` 0
+  and no field explaining why: zero is the true answer and the caller has the `[]` it sent.
+
+  Paging parameters, `limit` and `page_token`, are read from the body or the query string.
+  """
+
   use ReportServerWeb, :controller
 
   require Logger

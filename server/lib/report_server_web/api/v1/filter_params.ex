@@ -25,9 +25,9 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
     end)
   end
 
-  # start_date, end_date and hide_names are accepted and ignored: the API emits them on every run,
-  # so a caller adjusting a run's filter must not be rejected for sending them back. hide_names is
-  # then overridden by the caller's role. exclude_internal is not inert and does narrow.
+  # The API emits start_date, end_date and hide_names on every run, so a caller adjusting a run's
+  # filter must not be rejected for sending them back. The dates are carried but narrow nothing
+  # here; hide_names is dropped because the caller's role decides it. exclude_internal does narrow.
   defp base(filter) do
     %ReportFilter{
       exclude_internal: filter["exclude_internal"] == true,
