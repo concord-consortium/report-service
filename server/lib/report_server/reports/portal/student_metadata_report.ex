@@ -49,10 +49,14 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
   #     row, out of the list entirely and misaligns every later index. COALESCE keeps the position.
   #   * The school is chosen once, and both the district and the state are read from that row.
   #     Choosing each field independently pairs one school's district with another school's state.
+  #   * A comma inside a value is replaced with a space before it is joined on commas. The portal
+  #     does this to the fields it saves on report_learners, but these two are read from
+  #     portal_districts here, so a district named "District A, Region B" would otherwise occupy
+  #     two positions and shift every teacher after it.
   defp teacher_school_field(field) do
     """
     (SELECT GROUP_CONCAT(COALESCE(
-              (SELECT pd.#{field}
+              (SELECT REPLACE(pd.#{field}, ',', ' ')
                  FROM portal_school_memberships psm
                  JOIN portal_schools ps ON (ps.id = psm.school_id)
                  LEFT JOIN portal_districts pd ON (pd.id = ps.district_id)

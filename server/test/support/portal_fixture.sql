@@ -48,7 +48,8 @@ INSERT INTO users VALUES
   (131,'ann','Ann','Teach','ann@e.org',NULL),
   (132,'bob','Bob','Teach','bob@e.org',NULL),
   (133,'cid','Cid','Teach','cid@e.org',NULL);
-INSERT INTO portal_districts VALUES (41,'Dist W','NH'), (42,'Dist Y','MA');
+-- Dist Y's comma is deliberate: the report joins district names on commas and must scrub them
+INSERT INTO portal_districts VALUES (41,'Dist W','NH'), (42,'Dist Y, Region 2','MA');
 INSERT INTO portal_schools VALUES (51,'School W',41,'NH'), (52,'School Y',42,'MA');
 INSERT INTO portal_school_memberships VALUES
   (1,31,'Portal::Teacher',51), (2,31,'Portal::Teacher',52), (3,32,'Portal::Teacher',52);

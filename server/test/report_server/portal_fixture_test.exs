@@ -46,11 +46,11 @@ defmodule ReportServer.PortalFixtureTest do
       """)
 
     assert length(schools) == 2
-    assert Enum.map(schools, & &1.district) == ["Dist W", "Dist Y"]
+    assert Enum.map(schools, & &1.district) == ["Dist W", "Dist Y, Region 2"]
     assert Enum.map(schools, & &1.state) == ["NH", "MA"]
 
     assert Enum.min_by(schools, & &1.district).state == "NH"
-    assert Enum.min_by(schools, & &1.state).district == "Dist Y"
+    assert Enum.min_by(schools, & &1.state).district == "Dist Y, Region 2"
   end
 
   test "learner 903 names a teacher with no school and a teacher id with no teacher row" do

@@ -40,9 +40,23 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportDbTest do
              ["31", "32"],
              ["Ann Teach", "Bob Teach"],
              ["ann@e.org", "bob@e.org"],
-             ["Dist W", "Dist Y"],
+             ["Dist W", "Dist Y  Region 2"],
              ["NH", "MA"]
            ]
+  end
+
+  test "a comma inside a district name does not become a second position" do
+    {_result, rows} = run()
+    row = by_learner(rows)[901]
+
+    # the fixture stores "Dist Y, Region 2"; joined raw it would split into three entries against
+    # two teachers, shifting the district and state of every teacher after it
+    assert split(row.teacher_districts) == ["Dist W", "Dist Y  Region 2"]
+    refute row.teacher_districts =~ "Dist Y,"
+
+    for column <- @teacher_columns do
+      assert length(split(row[column])) == 2, "#{column} lost or gained a position"
+    end
   end
 
   test "the district and the state at each index come from the same school" do
@@ -51,7 +65,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportDbTest do
 
     pairs = Enum.zip(split(row.teacher_districts), split(row.teacher_states))
 
-    assert pairs == [{"Dist W", "NH"}, {"Dist Y", "MA"}],
+    assert pairs == [{"Dist W", "NH"}, {"Dist Y  Region 2", "MA"}],
            "Dist W is in NH and Dist Y in MA; a crossed pair means the two columns chose different schools"
   end
 
@@ -89,7 +103,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportDbTest do
     assert cut.num_warnings > 0, "a tiny ceiling must truncate, or this guard proves nothing"
 
     assert by_learner(PortalDbs.map_columns_on_rows(generous))[901].teacher_districts ==
-             "Dist W,Dist Y"
+             "Dist W,Dist Y  Region 2"
 
     assert by_learner(PortalDbs.map_columns_on_rows(cut))[901].teacher_districts == "Dist W,D"
   end
