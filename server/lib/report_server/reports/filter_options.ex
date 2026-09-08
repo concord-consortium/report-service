@@ -9,7 +9,10 @@ defmodule ReportServer.Reports.FilterOptions do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{AllowedProjectsLookupError, HideNames, ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{AllowedProjectsLookupError, HideNames, OptionLabel, ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.FilterOptions.AppDimension
+
+  @static_dimensions %{"app" => AppDimension}
 
   # Both the page and the count are bounded well under PortalDbs' five-minute module default: a
   # request a client calls interactively has no business holding one of five shared connections for
@@ -19,13 +22,26 @@ defmodule ReportServer.Reports.FilterOptions do
   # :limit is required rather than defaulted so Api.V1.Params stays the only definition of the
   # paging default and maximum.
 
+  @doc "The static dimensions, keyed by the name a caller sends."
+  def static_dimensions, do: @static_dimensions
+
+  @doc "The module serving `dimension`, or `:error` when it is not a static dimension."
+  def static_dimension(dimension), do: Map.fetch(@static_dimensions, to_string(dimension))
+
   @doc "One page of options for `dimension`, narrowed by the rest of `report_filter`."
   def page(dimension, report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
     limit = Keyword.fetch!(opts, :limit)
-    # limit is interpolated into the statement below and drives the arithmetic in next_cursor/2, so
-    # the guard is what makes both safe rather than trusting the caller to have validated it.
+    # limit is interpolated into the portal statement and drives the arithmetic in cursor_after/2,
+    # so the guard is what makes both safe rather than trusting the caller to have validated it.
     true = is_integer(limit) and limit > 0
 
+    case static_dimension(dimension) do
+      {:ok, module} -> static_page(module, limit, opts)
+      :error -> portal_page(dimension, report_filter, user, limit, opts)
+    end
+  end
+
+  defp portal_page(dimension, report_filter, user, limit, opts) do
     case query_and_params(dimension, report_filter, user, opts) do
       {nil, _params} ->
         {:ok, [], nil}
@@ -45,7 +61,8 @@ defmodule ReportServer.Reports.FilterOptions do
                timeout: @portal_timeout_ms
              ) do
           {:ok, result} ->
-            {:ok, rows_to_options(result.rows, limit), next_cursor(result.rows, limit)}
+            rows = Enum.map(result.rows, fn [id, label] -> {id, label} end)
+            {:ok, take_options(rows, limit), cursor_after(rows, limit)}
 
           error ->
             error
@@ -60,6 +77,13 @@ defmodule ReportServer.Reports.FilterOptions do
   to hand out a connection. Only the last is a genuine failure.
   """
   def count(dimension, report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
+    case static_dimension(dimension) do
+      {:ok, module} -> {:ok, length(static_rows(module, opts))}
+      :error -> portal_count(dimension, report_filter, user, opts)
+    end
+  end
+
+  defp portal_count(dimension, report_filter, user, opts) do
     if unbounded?(dimension, report_filter, Keyword.get(opts, :like_text, "")) do
       {:skipped, "counting every student without a narrowing selection is unbounded"}
     else
@@ -86,6 +110,28 @@ defmodule ReportServer.Reports.FilterOptions do
           end
       end
     end
+  end
+
+  # A static dimension owns the narrowing and this module owns the ordering, cursor and page
+  # mechanics, which is the split that keeps a caller from telling the two kinds apart.
+  defp static_page(module, limit, opts) do
+    rows = module |> static_rows(opts) |> drop_through_cursor(Keyword.get(opts, :cursor))
+
+    {:ok, take_options(rows, limit), cursor_after(rows, limit)}
+  end
+
+  defp static_rows(module, opts) do
+    opts
+    |> Keyword.get(:like_text, "")
+    |> module.options()
+    |> Enum.sort_by(&OptionLabel.sort_key/1)
+  end
+
+  defp drop_through_cursor(rows, nil), do: rows
+
+  defp drop_through_cursor(rows, {label, id}) do
+    cursor_key = OptionLabel.sort_key({id, label})
+    Enum.drop_while(rows, &(OptionLabel.sort_key(&1) <= cursor_key))
   end
 
   defp query_and_params(dimension, report_filter, user, opts) do
@@ -135,14 +181,16 @@ defmodule ReportServer.Reports.FilterOptions do
   defp cursor_clause({label, id}),
     do: {"WHERE (COALESCE(o.opt_label, ''), o.opt_id) > (?, ?)", [label, id]}
 
-  defp rows_to_options(rows, limit) do
-    rows |> Enum.take(limit) |> Enum.map(fn [id, label] -> %{id: to_string(id), label: label} end)
+  # Both kinds reach here as {id, label} tuples, so the wire shape has one definition rather than
+  # two that happen to agree.
+  defp take_options(rows, limit) do
+    rows |> Enum.take(limit) |> Enum.map(fn {id, label} -> %{id: to_string(id), label: label} end)
   end
 
   # A row beyond the page is how the next cursor is known without a second query.
-  defp next_cursor(rows, limit) do
+  defp cursor_after(rows, limit) do
     if length(rows) > limit do
-      [id, label] = Enum.at(rows, limit - 1)
+      {id, label} = Enum.at(rows, limit - 1)
       {label, to_string(id)}
     end
   end

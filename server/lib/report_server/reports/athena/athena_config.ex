@@ -1,5 +1,7 @@
 defmodule ReportServer.Reports.Athena.AthenaConfig do
 
+  alias ReportServer.Reports.OptionLabel
+
   # Projected values of the `app` partition on logs_by_app_and_secure_key; must match
   # 'projection.app.values' in the DDL in server/README.md. Adding one means recreating the tables.
   @log_apps ~w(Activity_Player CEASAR CLUE CODAP CollabSpace Dataflow DEVOPS GeniStarDev GRASP
@@ -33,9 +35,8 @@ defmodule ReportServer.Reports.Athena.AthenaConfig do
   matches everything, so the search box opens on the full list.
   """
   def app_options(text) do
-    text = String.downcase(text)
     app_options()
-      |> Enum.filter(fn {label, _value} -> String.contains?(String.downcase(label), text) end)
+      |> Enum.filter(fn {label, _value} -> OptionLabel.matches?(label, text) end)
   end
 
   def get_output_bucket() do
