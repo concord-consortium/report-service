@@ -74,11 +74,12 @@ defmodule ReportServer.PortalFixtureTest do
 
     assert [] = rows("SELECT project_id FROM admin_project_users WHERE user_id = 556")
 
-    assert [%{item_id: 31}] =
+    assert [%{item_id: 31}, %{item_id: 35}] =
              rows("""
              SELECT aci.item_id FROM admin_cohort_items aci
                JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)
               WHERE ac.project_id = 900 AND aci.item_type = 'Portal::Teacher'
+              ORDER BY aci.item_id
              """)
   end
 end

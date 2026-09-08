@@ -70,8 +70,8 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
     labels = options(:class) |> Enum.map(&elem(&1, 1))
 
     assert Enum.count(labels, &(&1 == "Lincoln High (sec)")) == 3
-    assert Enum.count(labels, &is_nil/1) == 1
-    assert length(labels) == 8
+    assert Enum.count(labels, &is_nil/1) == 2
+    assert length(labels) == 9
   end
 
   test "scoping keeps another project's cohort out" do

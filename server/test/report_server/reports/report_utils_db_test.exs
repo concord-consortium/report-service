@@ -11,7 +11,7 @@ defmodule ReportServer.Reports.ReportUtilsDbTest do
   defp states_matching(values) do
     sql = "SELECT state FROM portal_schools WHERE state IN #{ReportUtils.mysql_string_list_to_in(values)}"
     {:ok, result} = PortalDbs.query(@server, sql)
-    result.rows |> List.flatten() |> Enum.sort()
+    result.rows |> List.flatten() |> Enum.uniq() |> Enum.sort()
   end
 
   # What MySQL reads back out of the literal the escape produced for a single value.
@@ -37,7 +37,7 @@ defmodule ReportServer.Reports.ReportUtilsDbTest do
     sql = "SELECT state FROM portal_schools WHERE state IN #{unsafe}"
     {:ok, result} = PortalDbs.query(@server, sql)
 
-    assert result.rows |> List.flatten() |> Enum.sort() == ["MA", "NH"]
+    assert result.rows |> List.flatten() |> Enum.uniq() |> Enum.sort() == ["MA", "NH"]
   end
 
   test "benign values still match their rows" do

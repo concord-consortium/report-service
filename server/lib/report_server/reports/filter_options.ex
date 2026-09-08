@@ -1,0 +1,149 @@
+defmodule ReportServer.Reports.FilterOptions do
+  @moduledoc """
+  Paged, keyset-ordered access to the report form's cascading filter-option lookup.
+
+  Wraps `ReportFilterQuery.get_options_sql/1` rather than changing it, so the form keeps
+  calling the unwrapped builder and its SQL cannot drift. The wrap names its own columns
+  because an unaliased value expression's derived column is named with the expression text.
+  """
+
+  alias ReportServer.Accounts.User
+  alias ReportServer.PortalDbs
+  alias ReportServer.Reports.{AllowedProjectsLookupError, HideNames, ReportFilter, ReportFilterQuery}
+
+  # Both the page and the count are bounded well under PortalDbs' five-minute module default: a
+  # request a client calls interactively has no business holding one of five shared connections for
+  # minutes, and the wrap materializes the dimension's whole distinct option set per page.
+  @portal_timeout_ms 5_000
+
+  # :limit is required rather than defaulted so Api.V1.Params stays the only definition of the
+  # paging default and maximum.
+
+  @doc "One page of options for `dimension`, narrowed by the rest of `report_filter`."
+  def page(dimension, report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
+    limit = Keyword.fetch!(opts, :limit)
+    # limit is interpolated into the statement below and drives the arithmetic in next_cursor/2, so
+    # the guard is what makes both safe rather than trusting the caller to have validated it.
+    true = is_integer(limit) and limit > 0
+
+    case query_and_params(dimension, report_filter, user, opts) do
+      {nil, _params} ->
+        {:ok, [], nil}
+
+      {query, params} ->
+        {where, cursor_params} = cursor_clause(Keyword.get(opts, :cursor))
+
+        sql = """
+        SELECT o.opt_id, COALESCE(o.opt_label, '') AS opt_label
+        FROM (#{ReportFilterQuery.get_options_sql(query)}) AS o (opt_id, opt_label)
+        #{where}
+        ORDER BY COALESCE(o.opt_label, ''), o.opt_id
+        LIMIT #{limit + 1}
+        """
+
+        case PortalDbs.query(user.portal_server, sql, params ++ cursor_params,
+               timeout: @portal_timeout_ms
+             ) do
+          {:ok, result} ->
+            {:ok, rows_to_options(result.rows, limit), next_cursor(result.rows, limit)}
+
+          error ->
+            error
+        end
+    end
+  end
+
+  @doc """
+  The total, `:skipped` with an accurate reason when one could not be produced, or `{:error, _}`
+  when the query itself is broken. Three shapes get a count skipped rather than one: the unbounded
+  student request, which never runs; a count that consumed its whole budget; and a portal too busy
+  to hand out a connection. Only the last is a genuine failure.
+  """
+  def count(dimension, report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
+    if unbounded?(dimension, report_filter, Keyword.get(opts, :like_text, "")) do
+      {:skipped, "counting every student without a narrowing selection is unbounded"}
+    else
+      case query_and_params(dimension, report_filter, user, opts) do
+        {nil, _params} ->
+          {:ok, 0}
+
+        {query, params} ->
+          sql = "SELECT COUNT(*) FROM (#{ReportFilterQuery.get_options_sql(query)}) AS o (opt_id, opt_label)"
+
+          # query_with_reason, not query: query/4 flattens every failure to a message string and the
+          # driver's timeout text is itself ambiguous, so a real error would otherwise be reported
+          # to the caller as a comforting "we ran out of time".
+          case PortalDbs.query_with_reason(user.portal_server, sql, params,
+                 timeout: @portal_timeout_ms
+               ) do
+            {:ok, result} -> {:ok, result.rows |> List.first() |> List.first()}
+            {:error, :timeout, _} -> {:skipped, "the count did not complete within the time budget"}
+            {:error, :busy, _} -> {:skipped, "the portal database was too busy to answer the count"}
+            {:error, :db, message} -> {:error, message}
+            # get_or_start_pool/1 fails before MyXQL is reached and returns a two element tuple,
+            # which query_with_reason/4 passes straight through.
+            {:error, message} -> {:error, message}
+          end
+      end
+    end
+  end
+
+  defp query_and_params(dimension, report_filter, user, opts) do
+    filter = prepare(dimension, report_filter, user)
+    like = Keyword.get(opts, :like_text, "")
+
+    ReportFilterQuery.get_query_and_params(filter, allowed_project_ids(user), like, user.portal_server)
+  end
+
+  # The target dimension is the primary filter: get_query_and_params/4 takes hd(filters), an empty
+  # filters list short-circuits to no options, and the tail is never read. Narrowing comes from the
+  # struct's own values, so the caller's filters list is replaced rather than merged with. Clearing
+  # the target dimension's own value is what makes "show me the other schools" work rather than
+  # narrowing the answer to what is already picked.
+  defp prepare(dimension, report_filter, user) do
+    report_filter
+    |> HideNames.enforce(user)
+    |> Map.put(:filters, [dimension])
+    |> Map.put(dimension, nil)
+  end
+
+  defp unbounded?(:student, %ReportFilter{} = filter, ""), do: no_narrowing?(filter)
+  defp unbounded?(_dimension, _filter, _like), do: false
+
+  @narrowing ~w(cohort school teacher assignment class permission_form)a
+  # `nil` is "not selected"; `[]` is a selection of nothing, which short-circuits the query to no
+  # options, so it is narrowing and the count is the free, exact zero the query builder already
+  # gives. The taxonomy dimensions are absent because none of them narrows the student query.
+  defp no_narrowing?(filter), do: Enum.all?(@narrowing, &(Map.get(filter, &1) == nil))
+
+  # A failed permission lookup is not "no projects": passing the {:error, _} tuple on reaches
+  # list_to_in/1, which raises Protocol.UndefinedError from inside the query builder. Raise the
+  # exception the report path already raises for this, so the failure is legible in the logs and
+  # the response is the contract's SERVER_ERROR either way.
+  defp allowed_project_ids(user) do
+    case PortalDbs.get_allowed_project_ids(user) do
+      {:error, reason} ->
+        raise AllowedProjectsLookupError, message: "allowed-projects lookup failed: #{inspect(reason)}"
+
+      allowed ->
+        allowed
+    end
+  end
+
+  defp cursor_clause(nil), do: {"", []}
+
+  defp cursor_clause({label, id}),
+    do: {"WHERE (COALESCE(o.opt_label, ''), o.opt_id) > (?, ?)", [label, id]}
+
+  defp rows_to_options(rows, limit) do
+    rows |> Enum.take(limit) |> Enum.map(fn [id, label] -> %{id: to_string(id), label: label} end)
+  end
+
+  # A row beyond the page is how the next cursor is known without a second query.
+  defp next_cursor(rows, limit) do
+    if length(rows) > limit do
+      [id, label] = Enum.at(rows, limit - 1)
+      {label, to_string(id)}
+    end
+  end
+end
