@@ -18,7 +18,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     cohort_items_teacher_ref: "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = portal_teachers.id)",
     cohort_items_teacher_via_member: "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id)",
     cohort_items_assignment: "JOIN admin_cohort_items aci_assignment ON (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.admin_cohort_id = admin_cohorts.id)",
-    cohort_items_assignment_ref: "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
+    cohort_items_assignment_ref: "LEFT JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
     cohort_via_items: "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)",
     cohort_via_items_ref: "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
 
@@ -83,7 +83,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
     ],
     allowed_projects_assignment: [
-      "LEFT JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
+      :cohort_items_assignment_ref,
       "LEFT JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
       "LEFT JOIN admin_project_materials apm ON (apm.material_type = 'ExternalActivity' AND apm.material_id = external_activities.id)"
     ],
@@ -109,6 +109,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     # Country patterns
     country_via_school: "JOIN portal_schools ps_country ON (ps_country.country_id = portal_countries.id)",
     school_via_country: "JOIN portal_schools ps_country ON (ps_country.country_id = portal_countries.id)",
+    school_member_via_country_school: "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = ps_country.id)",
     country_from_school: "JOIN portal_countries pc_country ON (pc_country.id = portal_schools.id)",
 
     # State patterns
@@ -448,16 +449,17 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       teacher: %{
         join: [
           :school_via_country,
-          :school_member_from_school
+          :school_member_via_country_school
         ],
         where: "psm.member_id IN"
       },
       subject_area: %{
         join: [
           :school_via_country,
-          :school_member_from_school,
+          :school_member_via_country_school,
           :teacher_class_via_member,
-          :offering_from_class,
+          :offering_from_teacher_class,
+          :external_activity_via_offering,
           :subject_via_external_activity
         ],
         where: "t.tag_id IN"
@@ -571,7 +573,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   end
 
   def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, allowed_project_ids, like_text, portal_server) do
-    if allowed_project_ids == :none do
+    if allowed_project_ids in [:none, []] do
       {nil, []}
     else
       query = get_filter_query(primary_filter, report_filter, allowed_project_ids, like_text, portal_server)
@@ -619,7 +621,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   defp resolve_join_patterns(pattern) when is_atom(pattern) do
     case Map.get(@join_patterns, pattern) do
       nil -> []
-      sql_string -> [sql_string]
+      resolved -> resolve_join_patterns(resolved)
     end
   end
   defp resolve_join_patterns(patterns) when is_list(patterns) do
@@ -643,7 +645,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         join = resolve_join_patterns(config.join)
         # State filters use string values, others use integer IDs
         in_clause = if filter_name == :state do
-          string_list_to_single_quoted_in(filter_value)
+          mysql_string_list_to_in(filter_value)
         else
           list_to_in(filter_value)
         end
@@ -767,10 +769,10 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     else
       query = build_base_query(%{
         id: "ppf.id",
-        value: "CONCAT(ap.name, ': ', ppf.name)",
+        value: "CONCAT(ap.name, ': ', ppf.name) AS fullname",
         from: "portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id",
         where: maybe_add_like(like_text, ["ppf.name LIKE ? or ap.name LIKE ?"]),
-        order_by: "ppf.name",
+        order_by: "fullname",
         num_params: 2
       })
 

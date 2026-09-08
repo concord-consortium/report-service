@@ -15,6 +15,11 @@ defmodule ReportServer.Reports.ReportUtils do
     "(#{list |> Enum.map(&("'#{escape_single_quote(&1)}'")) |> Enum.join(",")})"
   end
 
+  def mysql_string_list_to_in(nil), do: "()"
+  def mysql_string_list_to_in(list) do
+    "(#{list |> Enum.map(&("'#{escape_mysql_literal(&1)}'")) |> Enum.join(",")})"
+  end
+
   def have_filter?(nil), do: false
   def have_filter?(filter_list), do: !Enum.empty?(filter_list)
 
@@ -81,6 +86,12 @@ defmodule ReportServer.Reports.ReportUtils do
 
   def escape_single_quote(str) do
     String.replace(str, "'", "''")
+  end
+
+  # MySQL treats a backslash inside a string literal as an escape character and Presto does not, so
+  # only MySQL literals may double them. Presto callers must keep using escape_single_quote/1.
+  def escape_mysql_literal(str) do
+    str |> String.replace("\\", "\\\\") |> escape_single_quote()
   end
 
   def escape_url_for_filename(url) do

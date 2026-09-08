@@ -12,30 +12,58 @@ defmodule ReportServer.PortalDbs do
     defstruct id: nil, login: nil, first_name: nil, last_name: nil, email: nil, is_admin: false, is_project_admin: false, is_project_researcher: false, server: nil
   end
 
-  def query(server, statement, params \\ [], options \\ []) do
+  @doc """
+  Like `query/4` but preserves *why* a failure happened, as
+  `{:error, :timeout | :busy | :db, message}`.
+
+  The kind is decided by what is observable, not by the exception type.
+  `DBConnection.ConnectionError` covers a query that blew its budget, a pool that could not hand
+  out a connection, and a database that is down, so the struct alone cannot tell a timeout from an
+  outage any more than its message can.
+  """
+  def query_with_reason(server, statement, params \\ [], options \\ []) do
     with {:ok, pool_name} <- get_or_start_pool(server) do
       # Merge user options with default timeout
       query_options = Keyword.merge([timeout: @query_timeout], options)
+      budget = Keyword.fetch!(query_options, :timeout)
+      started = System.monotonic_time(:millisecond)
 
       case MyXQL.query(pool_name, statement, params, query_options) do
         {:ok, result} ->
           {:ok, result}
 
+        {:error, %DBConnection.ConnectionError{reason: :queue_timeout} = error} ->
+          Logger.error("Portal pool exhausted on #{server}: #{error.message}")
+          {:error, :busy, error.message}
+
         {:error, %DBConnection.ConnectionError{} = error} ->
           Logger.error("Error connecting to #{server}: #{error.message}")
-          {:error, error.message}
+          {:error, kind_by_elapsed(started, budget), error.message}
 
         {:error, %MyXQL.Error{} = error} ->
           Logger.error("Error executing query on #{server}: #{error.message}")
-          {:error, error.message}
+          {:error, :db, error.message}
 
         _ ->
           Logger.error("Unknown error query on #{server}")
-          {:error, "Unknown error query on #{server}"}
+          {:error, :db, "Unknown error query on #{server}"}
       end
     else
       error -> error
     end
+  end
+
+  def query(server, statement, params \\ [], options \\ []) do
+    case query_with_reason(server, statement, params, options) do
+      {:ok, result} -> {:ok, result}
+      {:error, _kind, message} -> {:error, message}
+      error -> error
+    end
+  end
+
+  # only a call that actually consumed its budget is a timeout
+  defp kind_by_elapsed(started, budget) do
+    if System.monotonic_time(:millisecond) - started >= budget, do: :timeout, else: :db
   end
 
   @doc """
@@ -158,19 +186,19 @@ defmodule ReportServer.PortalDbs do
     end
   end
 
-  def get_allowed_project_ids(user = %User{}) do
+  def get_allowed_project_ids(user = %User{}, options \\ []) do
     cond do
       user.portal_is_admin -> :all
-      user.portal_is_project_admin -> get_project_ids(user, "is_admin")
-      user.portal_is_project_researcher -> get_project_ids(user, "is_researcher")
+      user.portal_is_project_admin -> get_project_ids(user, "is_admin", options)
+      user.portal_is_project_researcher -> get_project_ids(user, "is_researcher", options)
       true -> :none
     end
   end
 
-  defp get_project_ids(user = %User{}, is_column) do
+  defp get_project_ids(user = %User{}, is_column, options) do
     sql = "SELECT DISTINCT project_id FROM admin_project_users WHERE user_id = ? AND #{is_column} = 1"
 
-    case query(user.portal_server, sql, [user.portal_user_id]) do
+    case query(user.portal_server, sql, [user.portal_user_id], options) do
       {:ok, result} ->
         result
         |> map_columns_on_rows()
