@@ -38,6 +38,20 @@ defmodule ReportServer.Reports.Athena.AthenaConfigTest do
     end
   end
 
+  describe "get_hide_username_hash_salt/0" do
+    test "falls back to a random salt when :athena is unset, rather than raising" do
+      Application.delete_env(:report_server, :athena)
+
+      assert is_binary(AthenaConfig.get_hide_username_hash_salt())
+    end
+
+    test "a configured salt wins" do
+      Application.put_env(:report_server, :athena, hide_username_hash_salt: "configured.salt")
+
+      assert AthenaConfig.get_hide_username_hash_salt() == "configured.salt"
+    end
+  end
+
   describe "agreement with the DDL in the README" do
     test "the app list agrees with every projection.app.values declaration" do
       matches =
