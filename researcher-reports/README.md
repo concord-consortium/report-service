@@ -11,7 +11,6 @@
 ### Building
 
 If you want to build a local version run `npm build`, it will create the files in the `dist` folder.
-You *do not* need to build to deploy the code, that is automatic.  See more info in the Deployment section below.
 
 ### Notes
 
@@ -21,26 +20,11 @@ You *do not* need to build to deploy the code, that is automatic.  See more info
 
 ## Deployment
 
-Production releases to S3 are based on the contents of the /dist folder and are built automatically by GitHub Actions
-for each branch pushed to GitHub and each merge into production.
-
-Merges into production are deployed to http://researcher-reports.concord.org.
-
-Other branches are deployed to http://researcher-reports.concord.org/branch/<name>.
-
-To deploy a production release:
-
-1. Increment version number in package.json
-2. Create new entry in CHANGELOG.md
-3. Run `git log --pretty=oneline --reverse <last release tag>...HEAD | grep '#' | grep -v Merge` and add contents (after edits if needed to CHANGELOG.md)
-4. Run `npm run build`
-5. Copy asset size markdown table from previous release and change sizes to match new sizes in `dist`
-6. Create `release-<version>` branch and commit changes, push to GitHub, create PR and merge
-7. Test the master build at: https://researcher-reports.concord.org/index-master.html
-8. Push a version tag to GitHub and/or use https://github.com/concord-consortium/researcher-reports/releases to create a new GitHub release
-9. Stage the release by running the [Release Staging Workflow](https://github.com/concord-consortium/researcher-reports/actions/workflows/release-staging.yml) and entering the version tag you just pushed.
-10. Test the staged release at https://researcher-reports.concord.org/index-staging.html
-11. Update production by running the [Release Workflow](https://github.com/concord-consortium/researcher-reports/actions/workflows/release.yml) and entering the release version tag.
+**This app is retired.** It was replaced by the Elixir/Phoenix report server in `server/`, and nothing reads what
+its deploy publishes. The deploy still works if the app is ever revived: the `s3-deploy` job in
+[`researcher-reports.yml`](../.github/workflows/researcher-reports.yml) runs by hand only, and building is part of
+that job. The release procedure that used to live here has been removed; it referred to workflows that no longer
+exist. See [doc/deploy.md](../doc/deploy.md) for the full story.
 
 ### Testing
 
