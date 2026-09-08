@@ -50,8 +50,9 @@ The only S3 deploy is the retired Researcher-Reports app, which was replaced by 
 ## Notes on inter-app environment variables, query parameters, and staging/production versions
 
 There are two deployed versions of the Query Creator, one for staging (deployed under the AdminConcordQA account) and
-one for production. The Query Creator app requires a `RESEARCHER_REPORTS_URL`. By default, the SAM template that
-is used on deployment sets this to `researcher-reports.concord.org/` on production and `.../branch/master/` on staging.
+one for production. The Query Creator app requires a `RESEARCHER_REPORTS_URL`, which is a stack parameter rather than a
+template default. Production is currently set to `https://report-server.concord.org/old-reports`, which is the report
+server in `server/`. It used to point at the retired Researcher-Reports app (it no longer does).
 
 The Query Creator gets launched with a url that includes two url parameters, `reportServiceSource`, which points to the
 source used for the report service API, and `tokenServiceEnv`, which is the env name for the token-service. This second

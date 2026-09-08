@@ -11,7 +11,6 @@
 ### Building
 
 If you want to build a local version run `npm build`, it will create the files in the `dist` folder.
-You *do not* need to build to deploy the code, that is automatic.  See more info in the Deployment section below.
 
 ### Notes
 
@@ -21,19 +20,11 @@ You *do not* need to build to deploy the code, that is automatic.  See more info
 
 ## Deployment
 
-**This app is retired.** It was replaced by the Elixir/Phoenix report server in `server/`, and its
-last source change was in October 2023. Nothing reads what its deploy publishes. The release
-procedure that used to live here has been removed: it referred to workflows in a
-`concord-consortium/researcher-reports` repository that no longer exists, and to two release
-workflows in this repository that were deleted because they had never been run.
-
-The deploy still works if the app is ever revived. The `s3-deploy` job in
-[`researcher-reports.yml`](../.github/workflows/researcher-reports.yml) publishes to
-`models-resources/researcher-reports/`, and runs only when started by hand via
-`workflow_dispatch`. See [doc/deploy.md](../doc/deploy.md) for the full story.
-
-The site currently served at http://researcher-reports.concord.org is a frozen October 2023 build.
-Its `index.html` points at `version/v1.4.2/` and no workflow updates it.
+**This app is retired.** It was replaced by the Elixir/Phoenix report server in `server/`, and nothing reads what
+its deploy publishes. The deploy still works if the app is ever revived: the `s3-deploy` job in
+[`researcher-reports.yml`](../.github/workflows/researcher-reports.yml) runs by hand only, and building is part of
+that job. The release procedure that used to live here has been removed; it referred to workflows that no longer
+exist. See [doc/deploy.md](../doc/deploy.md) for the full story.
 
 ### Testing
 

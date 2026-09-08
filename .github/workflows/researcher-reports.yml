@@ -1,11 +1,6 @@
 name: Researcher Reports CI
-# This app was replaced by the Elixir/Phoenix report server and is no longer maintained;
-# nothing reads what this workflow publishes. See doc/deploy.md. It is kept runnable by
-# hand rather than deleted, so the deploy path still exists if the app is ever revived.
-#
-# It used to run on `push` filtered to `paths: ['researcher-reports/**']`. That filter is
-# not applied to tag pushes, so every release tag — including server-only tags — rebuilt
-# the unchanged source into a version folder nothing links to.
+# This app is retired; the deploy runs by hand only. Do not restore a `push` trigger
+# without reading doc/deploy.md — `paths` filters do not apply to tag pushes.
 on:
   workflow_dispatch:
 defaults:
@@ -77,7 +72,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      deployments: write
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
