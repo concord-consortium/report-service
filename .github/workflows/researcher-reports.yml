@@ -3,13 +3,6 @@ name: Researcher Reports CI
 # without reading doc/deploy.md — `paths` filters do not apply to tag pushes.
 on:
   workflow_dispatch:
-  # ⚠️ TEMPORARY — REVERT BEFORE MERGING THIS PR. ⚠️
-  # Proves the OIDC deploy works before merge, since `workflow_dispatch` cannot be
-  # started until it is on the default branch. Scoped to this one branch, which is
-  # not in `topBranches`, so the deploy writes only to
-  # branch/oidc-auth-for-s3-deployment/ and touches nothing at the top level.
-  push:
-    branches: [DEV-185-oidc-auth-for-s3-deployment]
 defaults:
   run:
     working-directory: researcher-reports
