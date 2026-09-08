@@ -466,6 +466,4 @@ defmodule ReportServerWeb.ReportLive.Form do
       {:error, "This report does not support an application filter."}
     end
   end
-
-
 end

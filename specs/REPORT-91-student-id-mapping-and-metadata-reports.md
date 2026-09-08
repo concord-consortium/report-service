@@ -154,12 +154,14 @@ consumes these reports (REPORT-94) and the guidance that documents them (REPORT-
     families joins and compares.
 - Anonymization is applied in the report's SQL, so it cannot be bypassed by any download path
   (web CSV, web JSON, or the API stream).
-- Non-admin, non-project-admin callers have `hide_names` forced on at run creation. That
-  enforcement currently exists only inside the report form's private `maybe_enforce_hide_names/2`,
-  with no check at the persistence layer, so this report must not be the only thing standing between
-  a researcher and a student name: the invariant is called out as a precondition REPORT-93's
-  create-run endpoint has to satisfy, and the enforcement is made reachable from outside the
-  LiveView rather than left private to it.
+- Non-admin, non-project-admin callers have `hide_names` forced on at run creation. That enforcement
+  now lives in `ReportServer.Reports.HideNames`, extracted from the report form's private
+  `maybe_enforce_hide_names/2`: the form calls `HideNames.enforce/2` on every path that builds a
+  filter, and any other caller can. There is still no check at the persistence layer, so a run saved
+  with `hide_names: false` stays that way, and this report must not be the only thing standing
+  between a researcher and a student name. **REPORT-93's create-run endpoint has to call
+  `HideNames.enforce/2` itself**; the extraction is what makes that possible rather than what makes
+  it automatic.
 
 ### Shared query
 
@@ -288,8 +290,11 @@ Compressed to what a future reader needs; the source spec carries the probes beh
 - **`run_remote_endpoint` in SQL** is `CONCAT('https://<portal>/dataservice/external_activity_data/',
   COALESCE(pl.secure_key, ''))`, byte-identical to the Elixir construction including the
   trailing-slash form for a learner with no `secure_key`.
-- **No LiveView work.** `tree.ex` is the only place a report is declared; the form, run and download
-  views are generic over `%Report{}`. Registering the two reports is the whole of the wiring.
+- **No new views.** `tree.ex` is the only place a report is declared, and the form, run and download
+  views are generic over `%Report{}`, so registering the two reports is the whole of the wiring for
+  them. The form is edited all the same, for a different reason: it drops its private
+  `maybe_enforce_hide_names/2` and `allow_hide_names?/1` and calls `HideNames` instead, so the rule
+  has one definition rather than one that only a LiveView can reach.
 - **REPORT-105 and REPORT-106 interactions.** REPORT-105 split the learner query out of `fetch/3`
   into `build_query/2` and added `count/2` plus a partition estimate that calls it, so the extraction
   has three callers to keep working. Neither new report declares `enable_app_filter`, so a filter
