@@ -29,7 +29,9 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
       execution: execution(report_run.report_slug),
       report_filter: report_filter_json(report_run.report_filter),
       report_filter_values: report_run.report_filter_values || %{},
+      athena_query_id: report_run.athena_query_id,
       athena_query_state: report_run.athena_query_state,
+      athena_query_error: report_run.athena_query_error,
       inserted_at: DateTime.to_iso8601(report_run.inserted_at),
       updated_at: DateTime.to_iso8601(report_run.updated_at)
     }

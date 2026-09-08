@@ -25,7 +25,8 @@ defmodule ReportServer.AthenaDB do
     case AWS.Athena.get_query_execution(client, %{"QueryExecutionId" => athena_query_id}) do
       {:ok, %{"QueryExecution" => %{"Status" => %{"State" => state}} = result}, _} ->
         output_location = (result["ResultConfiguration"] && result["ResultConfiguration"]["OutputLocation"]) || nil
-        {:ok, String.downcase(state), output_location}
+        reason = result["Status"]["StateChangeReason"]
+        {:ok, String.downcase(state), output_location, reason}
       error ->
         transform_aws_error(error)
     end

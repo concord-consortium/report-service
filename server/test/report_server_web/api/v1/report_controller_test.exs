@@ -12,6 +12,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   @filter_keys ~w(filters state app start_date end_date hide_names exclude_internal cohort school
                   teacher assignment class student permission_form country subject_area)
 
+  @run_keys ~w(id report_slug report_type execution report_filter report_filter_values
+               athena_query_id athena_query_state athena_query_error inserted_at updated_at)
+
   defmodule TreeStub do
     def find_report(_slug), do: Application.get_env(:report_server, :test_tree_report)
   end
@@ -255,6 +258,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert body["athena_query_state"] == "succeeded"
       assert body["report_filter_values"] == %{"cohort" => %{"1" => "Cohort One"}}
       refute Map.has_key?(body, "athena_result_url")
+      assert Enum.sort(Map.keys(body)) == Enum.sort(@run_keys)
 
       filter = body["report_filter"]
       assert Enum.sort(Map.keys(filter)) == Enum.sort(@filter_keys)
@@ -329,6 +333,54 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
         assert json_response(conn, 404) == not_found
       end
     end
+
+    test "returns the failure reason and the query id for a failed run", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          athena_query_id: "qid-failed",
+          athena_query_state: "failed",
+          athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many partitions"
+        })
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}"), 200)
+
+      assert body["athena_query_id"] == "qid-failed"
+      assert body["athena_query_error"] == "HIVE_EXCEEDED_PARTITION_LIMIT: too many partitions"
+      assert body["athena_query_state"] == "failed"
+    end
+
+    test "returns nil for a terminal run written before the reason column existed", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          athena_query_id: "qid-old",
+          athena_query_state: "failed",
+          athena_query_error: nil
+        })
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}"), 200)
+
+      assert Map.has_key?(body, "athena_query_error")
+      assert body["athena_query_error"] == nil
+      assert body["athena_query_id"] == "qid-old"
+      assert body["athena_query_state"] == "failed"
+    end
+
+    test "an admin who does not own the run gets the same 404, not the reason" do
+      owner = user_fixture()
+
+      owners_run =
+        run_fixture(owner, %{
+          athena_query_state: "failed",
+          athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many partitions"
+        })
+
+      admin = user_fixture(%{portal_is_admin: true})
+      {admin_token, _} = api_token_fixture(admin)
+
+      conn = get(authed_conn(admin_token), ~p"/api/v1/reports/#{owners_run.id}")
+
+      assert json_response(conn, 404) == %{"error" => "NOT_FOUND", "message" => "Not found."}
+    end
   end
 
   describe "GET /api/v1/reports/:id (show freshness and self-start)" do
@@ -337,7 +389,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
     test "refreshes a running run to succeeded and persists both fields", %{raw_token: raw_token, user: user} do
       run = run_fixture(user, %{athena_query_id: "qid-run", athena_query_state: "running"})
       Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
-      start_athena_stub(%{get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv"} end})
+      start_athena_stub(%{get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv", nil} end})
 
       conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}")
       assert json_response(conn, 200)["athena_query_state"] == "succeeded"
@@ -428,9 +480,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
     test "returns 409 with the state for every non-succeeded state and writes no audit row",
          %{raw_token: raw_token, user: user} do
       echo = %{
-        "qid-queued" => {:ok, "queued", nil},
-        "qid-running" => {:ok, "running", nil},
-        "qid-null" => {:ok, nil, nil}
+        "qid-queued" => {:ok, "queued", nil, nil},
+        "qid-running" => {:ok, "running", nil, nil},
+        "qid-null" => {:ok, nil, nil, nil}
       }
 
       Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
@@ -455,12 +507,28 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert entry_count() == 0
     end
 
+    test "the NOT_READY body carries the state, the query id and the reason", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          athena_query_id: "qid-failed",
+          athena_query_state: "failed",
+          athena_query_error: "HIVE_S3_THROTTLING: Error Code: SlowDown"
+        })
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download"), 409)
+
+      assert body["error"] == "NOT_READY"
+      assert body["athena_query_state"] == "failed"
+      assert body["athena_query_id"] == "qid-failed"
+      assert body["athena_query_error"] == "HIVE_S3_THROTTLING: Error Code: SlowDown"
+    end
+
     test "refreshes a running run to succeeded during download", %{raw_token: raw_token, user: user} do
       run = run_fixture(user, %{athena_query_id: "qid-run", athena_query_state: "running"})
 
       Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
       start_athena_stub(%{
-        get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv"} end,
+        get_query_info: fn "qid-run" -> {:ok, "succeeded", "s3://out.csv", nil} end,
         get_download_url: fn _url, _filename -> {:ok, "https://presigned"} end
       })
 
@@ -588,6 +656,27 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert entry.source == "api"
       assert entry.data_type == "run_csv"
       assert entry.report_run_id == run.id
+    end
+
+    test "a student-id-mapping run streams through the same Portal path", %{} do
+      user = user_fixture(%{portal_is_admin: true})
+      {token, _} = api_token_fixture(user)
+
+      run =
+        run_fixture(user, %{
+          report_slug: "student-id-mapping",
+          report_filter: %ReportFilter{filters: [:class], class: [601], exclude_internal: false}
+        })
+
+      cols = ["learner_id", "run_remote_endpoint"]
+      start_portal_stub(drive([myxql_result(cols, []), myxql_result(cols, [])]))
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+
+      assert response(conn, 200) == Csv.header_row(cols)
+
+      assert get_resp_header(conn, "content-disposition") ==
+               [~s(attachment; filename="student-id-mapping-run-#{run.id}.csv")]
     end
 
     test "an empty result streams a header-only 200 body", %{} do

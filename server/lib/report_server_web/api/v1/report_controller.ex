@@ -81,7 +81,11 @@ defmodule ReportServerWeb.Api.V1.ReportController do
         end
 
       %ReportRun{athena_query_state: athena_query_state} ->
-        ErrorHelpers.render_error(conn, "NOT_READY", "The report is not ready to download.", %{athena_query_state: athena_query_state})
+        ErrorHelpers.render_error(conn, "NOT_READY", "The report is not ready to download.", %{
+          athena_query_state: athena_query_state,
+          athena_query_id: report_run.athena_query_id,
+          athena_query_error: report_run.athena_query_error
+        })
     end
   end
 

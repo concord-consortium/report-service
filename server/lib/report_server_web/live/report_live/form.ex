@@ -14,7 +14,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
-  alias ReportServer.Reports.{Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
+  alias ReportServer.Reports.{HideNames, Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
   alias ReportServer.Reports.Athena.{AthenaConfig, LearnerData}
   alias ReportServer.Reports.PartitionEstimate
 
@@ -88,7 +88,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form, user: user, allowed_project_ids: allowed_project_ids}}) do
     filter_index = get_filter_index(field)
     report_filter = ReportFilter.from_form(form, filter_index)
-      |> maybe_enforce_hide_names(user)
+      |> HideNames.enforce(user)
     if String.length(text) >= 3 || has_few_options?(report_filter, filter_index, user, allowed_project_ids, text) do
       case ReportFilterQuery.get_options(report_filter, user, allowed_project_ids, text) do
         {:ok, options, sql, params} ->
@@ -214,7 +214,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   def handle_event("debug_form", _unsigned_params, %{assigns: %{report: %Report{} = report, form: form, num_filters: num_filters, user: user}} = socket) do
     if @dev do
       report_filter = ReportFilter.from_form(form, num_filters)
-        |> maybe_enforce_hide_names(user)
+        |> HideNames.enforce(user)
 
       with {:ok, query} <- report.get_query.(report_filter, user),
           {:ok, sql} <- ReportQuery.get_sql(query) do
@@ -238,7 +238,7 @@ defmodule ReportServerWeb.ReportLive.Form do
 
   def handle_event("submit_form", _unsigned_params, %{assigns: %{form: form, num_filters: num_filters, user: user, form_options: form_options}} = socket) do
     report_filter = ReportFilter.from_form(form, num_filters)
-      |> maybe_enforce_hide_names(user)
+      |> HideNames.enforce(user)
 
     case check_app_supported(report_filter, form_options) do
       :ok ->
@@ -383,7 +383,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   # Returns the new socket structure.
   defp update_options(socket = %{assigns: %{user: user, allowed_project_ids: allowed_project_ids}}, filter_index, form, field, live_select_id) do
     report_filter = ReportFilter.from_form(form, filter_index)
-      |> maybe_enforce_hide_names(user)
+      |> HideNames.enforce(user)
 
     set_options_immediately = has_few_options?(report_filter, filter_index, user, allowed_project_ids)
     if set_options_immediately do
@@ -479,7 +479,7 @@ defmodule ReportServerWeb.ReportLive.Form do
 
   defp get_form_options(%Report{form_options: form_options}, user = %User{}) do
     %{
-      enable_hide_names: allow_hide_names?(user) && Keyword.get(form_options, :enable_hide_names, false),
+      enable_hide_names: HideNames.allowed?(user) && Keyword.get(form_options, :enable_hide_names, false),
       enable_app_filter: Keyword.get(form_options, :enable_app_filter, false)
     }
   end
@@ -503,18 +503,4 @@ defmodule ReportServerWeb.ReportLive.Form do
       unknown -> {:error, "Unknown application#{if length(unknown) > 1, do: "s"}: #{Enum.join(unknown, ", ")}"}
     end
   end
-
-  # only allow users with admin and project admin privileges to hide names
-  defp allow_hide_names?(user = %User{}) do
-    user.portal_is_admin || user.portal_is_project_admin
-  end
-
-  defp maybe_enforce_hide_names(report_filter = %ReportFilter{}, user = %User{}) do
-    if allow_hide_names?(user) do
-      report_filter
-    else
-      report_filter |> Map.put(:hide_names, true)
-    end
-  end
-
 end

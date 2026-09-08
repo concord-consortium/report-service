@@ -44,7 +44,7 @@ defmodule ReportServer.Reports.Athena.AthenaConfig do
   end
 
   def get_hide_username_hash_salt() do
-    Application.get_env(:report_server, :athena)
+    Application.get_env(:report_server, :athena, [])
       |> Keyword.get(:hide_username_hash_salt, get_random_salt())
   end
 
