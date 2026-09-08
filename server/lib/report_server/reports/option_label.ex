@@ -13,4 +13,20 @@ defmodule ReportServer.Reports.OptionLabel do
 
   @doc "The total sort key for an option, matching a portal dimension's `ORDER BY label, id`."
   def sort_key({id, label}), do: {String.downcase(label), id}
+
+  @doc """
+  Escapes a caller's search text so `%` and `_` mean themselves.
+
+  A portal dimension interpolates the text into `LIKE '%…%'`, where those are wildcards, while a
+  static dimension compares it as a substring, where they are not. Unescaped, the same search means
+  two different things depending on the kind, and `%` alone matches every portal row, which defeats
+  the guard that keeps an unnarrowed student count from running. Backslash is MySQL's default
+  `LIKE` escape character, so no `ESCAPE` clause is needed.
+  """
+  def escape_like(text) do
+    text
+    |> String.replace("\\", "\\\\")
+    |> String.replace("%", "\\%")
+    |> String.replace("_", "\\_")
+  end
 end

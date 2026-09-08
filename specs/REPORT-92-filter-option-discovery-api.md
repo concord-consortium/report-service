@@ -164,7 +164,9 @@ carries that forward unchanged rather than inventing a protection the product do
   cursor and the `label` on the wire are all that same never-null value. `country` and `state`
   already coalesce inside the builder, which is the evidence that NULL labels occur in practice.
 - **Every portal query this endpoint makes is bounded** well under `PortalDbs`' five-minute module
-  default, the page as well as the count: the wrap materializes the dimension's whole distinct
+  default: the permission lookup that resolves the caller's allowed projects, the page, and the
+  count. The permission lookup is also resolved once per request and passed to both, rather than run
+  again for the count. The page and the count in particular are bounded because the wrap materializes the dimension's whole distinct
   option set on each page, and a request a client calls interactively must not hold one of five
   shared connections for minutes. On top of that, the count is bounded in two further layers. A `student` request with no narrowing selections is skipped
   outright and never runs, matching the form's own special case; every other count runs under a
@@ -194,6 +196,15 @@ carries that forward unchanged rather than inventing a protection the product do
   `escape_single_quote/1` raises `FunctionClauseError` on anything but a binary.
 - The page size, the page token and the search text are validated and parameter-bound. The keyset
   predicate in particular compares against a label, and labels contain apostrophes.
+- **The search text means the same thing to both kinds of dimension.** A portal dimension
+  interpolates it into `LIKE '%…%'`, where `%` and `_` are wildcards; a static dimension compares it
+  as a substring, where they are not. Unescaped, one search means two things, and `%` alone matches
+  every portal row while matching no static one. It also defeats the count guard: any non-empty
+  search counts as narrowing, so `search: "%"` walked past the guard and ran the unnarrowed student
+  count it exists to prevent. The endpoint escapes `\`, `%` and `_` before the text reaches the
+  builder, using MySQL's default `LIKE` escape character so no `ESCAPE` clause is needed. The web
+  form is untouched, since the escaping is applied on the API's path rather than in the shared
+  `like_params/2`.
 - **`state`'s values are the one thing a caller supplies that reaches SQL as text, and they are
   quoted with a MySQL-safe escape.** `state` narrows `country`, `state` and `subject_area` through
   `string_list_to_single_quoted_in/1`, whose `escape_single_quote/1` doubles `'` and ignores `\`,
@@ -218,10 +229,16 @@ carries that forward unchanged rather than inventing a protection the product do
   would be guarding against nothing this change can do. The paging machinery is added in a wrapper the form never
   calls, so `get_options_sql/1` itself is untouched and the regression risk the ticket flags as
   caveat (d) largely does not arise.
-- The one exception is the `permission_form` builder, whose value expression must gain an alias so
-  the wrap can name it and so its own `ORDER BY` becomes legal (see the defect below). That edit is
-  invisible to the form: `get_options/4` destructures each row positionally as `[id, value]`, so a
-  column's name never reaches a caller.
+- The one exception is the `permission_form` builder, whose value expression gains an alias so its
+  own `ORDER BY` becomes legal (see the defect below). The column *name* is invisible to the form,
+  since `get_options/4` destructures each row positionally as `[id, value]`, but **the ordering is
+  not**: the dropdown sorted by `ppf.name` and now sorts by the `project: form` label, so two forms
+  in different projects can move relative to each other. That is unavoidable rather than incidental.
+  Ordering by a column outside the select list is what makes the old statement illegal under
+  `ONLY_FULL_GROUP_BY`, and the only legal alternatives are to add `ppf.name` to the select list,
+  which changes the positional shape every caller destructures, or to leave the statement illegal.
+  The new order is also the one the user can see, since it matches the label the dropdown renders.
+  Pinned by a test over two forms whose name order and label order disagree.
 
 ### Pre-existing defects this story has to fix
 

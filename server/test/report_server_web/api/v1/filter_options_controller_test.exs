@@ -214,6 +214,15 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsControllerTest do
       assert body["message"] =~ "does not filter on student"
     end
 
+    test "a malformed exclude_internal is a client error, not a silent false", %{conn: conn} do
+      # "true" as a string is the common JSON mistake, and treating it as false quietly hands back
+      # the internal teachers the caller asked to exclude.
+      body = %{"dimension" => "teacher", "report_filter" => %{"exclude_internal" => "true"}}
+
+      assert admin_conn(conn) |> post_options(body) |> json_response(400) |> Map.get("message") ==
+               "exclude_internal must be true or false"
+    end
+
     test "a wrong-typed field is a client error naming it, not a crash", %{conn: conn} do
       conn = admin_conn(conn)
 
@@ -285,13 +294,23 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsControllerTest do
       refute "Eve Internal <eve@concord.org>" in excluded
     end
 
-    test "search narrows and is not a SQL wildcard escape hatch", %{conn: conn} do
+    test "search narrows and is neither an injection nor a wildcard escape hatch", %{conn: conn} do
       conn = admin_conn(conn)
 
       assert labels(conn, %{"dimension" => "class", "search" => "lincoln"}) ==
                ["Lincoln High (sec)", "Lincoln High (sec)", "Lincoln High (sec)"]
 
       assert labels(conn, %{"dimension" => "class", "search" => "' OR '1'='1"}) == []
+      # A portal dimension interpolates the text into LIKE, where these are wildcards; a static one
+      # compares it as a substring, where they are not. The same search has to mean the same thing.
+      for wildcard <- ["%", "%%", "_"] do
+        assert labels(conn, %{"dimension" => "class", "search" => wildcard}) == []
+      end
+
+      # And a literal underscore still matches the one application whose name carries one, which is
+      # what tells "escaped" apart from "stripped".
+      assert labels(conn, %{"dimension" => "app", "search" => "_"}) == ["Activity_Player"]
+      assert labels(conn, %{"dimension" => "app", "search" => "%"}) == []
     end
   end
 

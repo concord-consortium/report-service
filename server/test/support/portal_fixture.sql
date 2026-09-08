@@ -87,12 +87,14 @@ INSERT INTO portal_learners VALUES
   (903,73,703,'SECUREKEY903','2026-04-03 09:00:00'),
   (904,74,703,'SECUREKEY904','2026-04-04 09:00:00');
 INSERT INTO portal_runs VALUES (1,901),(2,901);
-INSERT INTO portal_student_permission_forms VALUES (1,71,11),(2,71,12);
+INSERT INTO portal_student_permission_forms VALUES (1,71,11),(2,71,12),(3,71,13);
 INSERT INTO admin_cohorts VALUES (1,'Cohort One',900),(2,'Cohort Two',901);
 INSERT INTO admin_cohort_items VALUES (1,1,'Portal::Teacher',31),(2,1,'ExternalActivity',801),(3,1,'Portal::Teacher',35);
 INSERT INTO admin_projects VALUES (900,'Proj A'),(901,'Proj B');
 INSERT INTO portal_countries VALUES (1,'United States'),(2,'Canada');
-INSERT INTO portal_permission_forms VALUES (11,'Form 1',900),(12,'Form 2',901);
+-- Form 13's name sorts before the others while its project sorts after, so ordering by the form
+-- name and ordering by the displayed "project: form" label give different answers.
+INSERT INTO portal_permission_forms VALUES (11,'Form 1',900),(12,'Form 2',901),(13,'Aardvark Form',901);
 INSERT INTO portal_students VALUES (71,101),(72,102),(73,103),(74,104);
 INSERT INTO admin_tags VALUES (1,'Science','subject_areas'),(2,'Math','subject_areas'),(3,'Not A Subject','other');
 INSERT INTO taggings VALUES (1,1,'subject_areas','ExternalActivity',801);

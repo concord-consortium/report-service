@@ -17,23 +17,32 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
   def parse(filter) when not is_map(filter), do: {:error, "report_filter must be an object"}
 
   def parse(filter) do
-    Enum.reduce_while(ReportFilter.dimensions(), {:ok, base(filter)}, fn dimension, {:ok, acc} ->
-      case parse_dimension(filter, dimension) do
-        {:ok, values} -> {:cont, {:ok, Map.put(acc, dimension, values)}}
-        {:error, message} -> {:halt, {:error, message}}
-      end
-    end)
+    with {:ok, base} <- base(filter) do
+      Enum.reduce_while(ReportFilter.dimensions(), {:ok, base}, fn dimension, {:ok, acc} ->
+        case parse_dimension(filter, dimension) do
+          {:ok, values} -> {:cont, {:ok, Map.put(acc, dimension, values)}}
+          {:error, message} -> {:halt, {:error, message}}
+        end
+      end)
+    end
   end
 
   # The API emits start_date, end_date and hide_names on every run, so a caller adjusting a run's
   # filter must not be rejected for sending them back. The dates are carried but narrow nothing
   # here; hide_names is dropped because the caller's role decides it. exclude_internal does narrow.
   defp base(filter) do
-    %ReportFilter{
-      exclude_internal: filter["exclude_internal"] == true,
-      start_date: filter["start_date"],
-      end_date: filter["end_date"]
-    }
+    case Map.get(filter, "exclude_internal", false) do
+      exclude when is_boolean(exclude) ->
+        {:ok,
+         %ReportFilter{
+           exclude_internal: exclude,
+           start_date: filter["start_date"],
+           end_date: filter["end_date"]
+         }}
+
+      _ ->
+        {:error, "exclude_internal must be true or false"}
+    end
   end
 
   # nil means "not selected" and [] means "select nothing", which short-circuits the query to no
@@ -55,12 +64,17 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
   end
 
   defp parse_values(values, dimension) do
-    Enum.reduce_while(values, {:ok, []}, fn value, {:ok, acc} ->
-      case to_id(value) do
-        {:ok, id} -> {:cont, {:ok, acc ++ [id]}}
-        :error -> {:halt, {:error, "#{dimension} values must be integer ids"}}
-      end
-    end)
+    case Enum.reduce_while(values, {:ok, []}, &collect_id(&1, &2, dimension)) do
+      {:ok, ids} -> {:ok, Enum.reverse(ids)}
+      error -> error
+    end
+  end
+
+  defp collect_id(value, {:ok, acc}, dimension) do
+    case to_id(value) do
+      {:ok, id} -> {:cont, {:ok, [id | acc]}}
+      :error -> {:halt, {:error, "#{dimension} values must be integer ids"}}
+    end
   end
 
   defp to_id(value) when is_integer(value) and value > 0 do

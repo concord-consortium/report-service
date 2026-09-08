@@ -186,19 +186,19 @@ defmodule ReportServer.PortalDbs do
     end
   end
 
-  def get_allowed_project_ids(user = %User{}) do
+  def get_allowed_project_ids(user = %User{}, options \\ []) do
     cond do
       user.portal_is_admin -> :all
-      user.portal_is_project_admin -> get_project_ids(user, "is_admin")
-      user.portal_is_project_researcher -> get_project_ids(user, "is_researcher")
+      user.portal_is_project_admin -> get_project_ids(user, "is_admin", options)
+      user.portal_is_project_researcher -> get_project_ids(user, "is_researcher", options)
       true -> :none
     end
   end
 
-  defp get_project_ids(user = %User{}, is_column) do
+  defp get_project_ids(user = %User{}, is_column, options) do
     sql = "SELECT DISTINCT project_id FROM admin_project_users WHERE user_id = ? AND #{is_column} = 1"
 
-    case query(user.portal_server, sql, [user.portal_user_id]) do
+    case query(user.portal_server, sql, [user.portal_user_id], options) do
       {:ok, result} ->
         result
         |> map_columns_on_rows()

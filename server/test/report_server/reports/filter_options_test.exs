@@ -93,6 +93,27 @@ defmodule ReportServer.Reports.FilterOptionsTest do
       assert length(Enum.uniq(cursors)) == length(cursors)
     end
 
+    test "a wildcard in the search text means itself, for both kinds of dimension" do
+      # Unescaped, `%` matches every portal row while a static dimension compares it literally, so
+      # one search would mean two things and `%` alone would narrow nothing at all.
+      assert labels(:class, %ReportFilter{}, nil, limit: 100, like_text: "%") == []
+      assert labels(:class, %ReportFilter{}, nil, limit: 100, like_text: "_") == []
+
+      admin = project_admin()
+      {:ok, apps, _} = FilterOptions.page(:app, %ReportFilter{}, admin, limit: 100, like_text: "%")
+      assert apps == []
+    end
+
+    test "a wildcard-only search narrows to nothing rather than to everything" do
+      admin = project_admin()
+
+      # The guard reads any non-empty search as narrowing, so an unescaped `%`, which matches every
+      # row, would walk past it and count every student in the portal while claiming to be narrowed.
+      assert FilterOptions.count(:student, %ReportFilter{}, admin, like_text: "%") == {:ok, 0}
+      assert {:skipped, _} = FilterOptions.count(:student, %ReportFilter{}, admin)
+      assert {:ok, 4} = FilterOptions.count(:student, %ReportFilter{}, admin, like_text: "Stu")
+    end
+
     test "text search narrows the page" do
       assert labels(:class, %ReportFilter{}, nil, limit: 100, like_text: "lincoln") ==
                ["Lincoln High (sec)", "Lincoln High (sec)", "Lincoln High (sec)"]
@@ -190,6 +211,15 @@ defmodule ReportServer.Reports.FilterOptionsTest do
       {visited, _} = walk(:class, %ReportFilter{}, project_admin(), 3)
 
       assert count == length(visited)
+    end
+
+    # count/4 tells a refusal apart from a failure, and only the failure is an error. The controller
+    # propagates that to a 500 rather than folding it into count_skipped, which would hide a query
+    # regression behind a 200.
+    test "a broken count is an error, not a skipped count" do
+      unreachable = %User{portal_server: "no.such.host.example", portal_is_admin: true}
+
+      assert {:error, _} = FilterOptions.count(:class, %ReportFilter{}, unreachable)
     end
 
     test "a caller with no allowed projects counts zero" do

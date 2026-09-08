@@ -36,13 +36,17 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
          {:ok, cursor} <- Params.parse_cursor(params),
          {:ok, search} <- parse_search(params),
          {:ok, count?} <- parse_include_count(params, cursor) do
-      opts = [limit: limit, cursor: cursor, like_text: search]
+      opts = [
+        limit: limit,
+        cursor: cursor,
+        like_text: search,
+        allowed: FilterOptions.allowed_projects(user)
+      ]
 
-      case FilterOptions.page(dimension, report_filter, user, opts) do
-        {:ok, options, next_cursor} ->
-          count = maybe_count(dimension, report_filter, user, opts, count?)
-          json(conn, FilterOptionsJSON.index(options, next_cursor, count))
-
+      with {:ok, options, next_cursor} <- FilterOptions.page(dimension, report_filter, user, opts),
+           {:ok, count} <- maybe_count(dimension, report_filter, user, opts, count?) do
+        json(conn, FilterOptionsJSON.index(options, next_cursor, count))
+      else
         {:error, reason} ->
           Logger.error("Filter options failed for #{dimension}: #{inspect(reason)}")
           ErrorHelpers.server_error(conn)
@@ -122,16 +126,16 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
     end
   end
 
-  defp maybe_count(_dimension, _report_filter, _user, _opts, false), do: :not_requested
+  defp maybe_count(_dimension, _report_filter, _user, _opts, false), do: {:ok, :not_requested}
 
+  # A broken count query is a server error, not a skipped count: count_skipped means the count was
+  # refused for a reason the caller can act on, and folding a query regression into it would hide
+  # the regression behind a 200.
   defp maybe_count(dimension, report_filter, user, opts, true) do
     case FilterOptions.count(dimension, report_filter, user, opts) do
-      {:error, reason} ->
-        Logger.error("Filter option count failed for #{dimension}: #{inspect(reason)}")
-        {:skipped, "the count could not be produced"}
-
-      result ->
-        result
+      {:ok, count} -> {:ok, {:ok, count}}
+      {:skipped, reason} -> {:ok, {:skipped, reason}}
+      {:error, reason} -> {:error, reason}
     end
   end
 end

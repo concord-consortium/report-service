@@ -20,9 +20,6 @@ defmodule ReportServer.Reports.FilterOptions do
   # minutes, and the wrap materializes the dimension's whole distinct option set per page.
   @portal_timeout_ms 5_000
 
-  # :limit is required rather than defaulted so Api.V1.Params stays the only definition of the
-  # paging default and maximum.
-
   @doc "The static dimensions, keyed by the dimension name."
   def static_dimensions, do: @static_dimensions
 
@@ -37,8 +34,13 @@ defmodule ReportServer.Reports.FilterOptions do
   def dimension_from_string(raw) when is_binary(raw), do: Map.fetch(@static_names, raw)
   def dimension_from_string(_raw), do: :error
 
-  @doc "One page of options for `dimension`, narrowed by the rest of `report_filter`."
-  def page(dimension, report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
+  @doc """
+  One page of options for `dimension`, narrowed by the rest of `report_filter`.
+
+  `:limit` is required rather than defaulted so `Api.V1.Params` stays the only definition of the
+  paging default and maximum, which is why there is no `page/3`.
+  """
+  def page(dimension, report_filter = %ReportFilter{}, user = %User{}, opts) do
     limit = Keyword.fetch!(opts, :limit)
     # limit is interpolated into the portal statement and drives the arithmetic in cursor_after/2,
     # so the guard is what makes both safe rather than trusting the caller to have validated it.
@@ -93,7 +95,7 @@ defmodule ReportServer.Reports.FilterOptions do
   end
 
   defp portal_count(dimension, report_filter, user, opts) do
-    if unbounded?(dimension, report_filter, Keyword.get(opts, :like_text, "")) do
+    if unbounded?(dimension, report_filter, search_text(opts)) do
       {:skipped, "counting every student without a narrowing selection is unbounded"}
     else
       case query_and_params(dimension, report_filter, user, opts) do
@@ -131,7 +133,7 @@ defmodule ReportServer.Reports.FilterOptions do
 
   defp static_rows(module, opts) do
     opts
-    |> Keyword.get(:like_text, "")
+    |> search_text()
     |> module.options()
     |> Enum.sort_by(&OptionLabel.sort_key/1)
   end
@@ -145,10 +147,16 @@ defmodule ReportServer.Reports.FilterOptions do
 
   defp query_and_params(dimension, report_filter, user, opts) do
     filter = prepare(dimension, report_filter, user)
-    like = Keyword.get(opts, :like_text, "")
 
-    ReportFilterQuery.get_query_and_params(filter, allowed_project_ids(user), like, user.portal_server)
+    ReportFilterQuery.get_query_and_params(
+      filter,
+      allowed_projects(user, opts),
+      OptionLabel.escape_like(search_text(opts)),
+      user.portal_server
+    )
   end
+
+  defp search_text(opts), do: Keyword.get(opts, :like_text, "")
 
   # The target dimension is the primary filter: get_query_and_params/4 takes hd(filters), an empty
   # filters list short-circuits to no options, and the tail is never read. Narrowing comes from the
@@ -171,12 +179,22 @@ defmodule ReportServer.Reports.FilterOptions do
   # gives. The taxonomy dimensions are absent because none of them narrows the student query.
   defp no_narrowing?(filter), do: Enum.all?(@narrowing, &(Map.get(filter, &1) == nil))
 
+  @doc """
+  The caller's allowed projects, bounded like every other portal query this endpoint makes.
+
+  The controller resolves this once and passes it to `page/4` and `count/4` through `:allowed`, so a
+  counted request does not run the same permission query twice.
+  """
+  def allowed_projects(user = %User{}, opts \\ []) do
+    Keyword.get_lazy(opts, :allowed, fn -> allowed_project_ids(user) end)
+  end
+
   # A failed permission lookup is not "no projects": passing the {:error, _} tuple on reaches
   # list_to_in/1, which raises Protocol.UndefinedError from inside the query builder. Raise the
   # exception the report path already raises for this, so the failure is legible in the logs and
   # the response is the contract's SERVER_ERROR either way.
   defp allowed_project_ids(user) do
-    case PortalDbs.get_allowed_project_ids(user) do
+    case PortalDbs.get_allowed_project_ids(user, timeout: @portal_timeout_ms) do
       {:error, reason} ->
         raise AllowedProjectsLookupError, message: "allowed-projects lookup failed: #{inspect(reason)}"
 

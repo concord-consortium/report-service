@@ -89,6 +89,16 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
     assert length(labels) == 9
   end
 
+  # Ordering by ppf.name was illegal under ONLY_FULL_GROUP_BY, so the builder now orders by the
+  # aliased label. That is a real change to the web form's dropdown order, pinned here.
+  test "permission forms sort by the label the user sees, not by the form name alone" do
+    assert options(:permission_form) == [
+             {"11", "Proj A: Form 1"},
+             {"13", "Proj B: Aardvark Form"},
+             {"12", "Proj B: Form 2"}
+           ]
+  end
+
   test "scoping keeps another project's cohort out" do
     assert options(:cohort) == [{"1", "Cohort One"}]
   end
