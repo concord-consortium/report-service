@@ -4,8 +4,8 @@ defmodule ReportServer.Reports.PartitionEstimate do
 
   A log query is constrained by the `app`, `year`, `month` and `secure_key` partitions, so every
   learner expands across each combination the remaining partitions still admit. Left unconstrained
-  that is 15 applications over 444 (year, month) pairs, or 6,660 prefixes per learner, which reaches
-  Athena's limit at 151 learners.
+  that is 16 applications over 444 (year, month) pairs, or 7,104 prefixes per learner, which reaches
+  Athena's limit at 141 learners.
   """
 
   alias ReportServer.Reports.Athena.AthenaConfig
