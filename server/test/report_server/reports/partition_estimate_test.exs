@@ -66,7 +66,7 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
 
   describe "projected_partitions/4" do
     test "an unfiltered learner expands across every application and pair" do
-      assert PartitionEstimate.projected_partitions(1, nil, nil, nil) == 6_660
+      assert PartitionEstimate.projected_partitions(1, nil, nil, nil) == 7_104
     end
 
     test "setting the application divides by the length of the list, not by a literal" do
@@ -92,13 +92,13 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
                PartitionEstimate.projected_partitions(100, nil, nil, nil)
     end
 
-    test "the unfiltered learner ceiling sits between 150 and 151" do
-      assert PartitionEstimate.projected_partitions(150, nil, nil, nil) == 999_000
+    test "the unfiltered learner ceiling sits between 140 and 141" do
+      assert PartitionEstimate.projected_partitions(140, nil, nil, nil) == 994_560
 
-      assert PartitionEstimate.projected_partitions(150, nil, nil, nil) <
+      assert PartitionEstimate.projected_partitions(140, nil, nil, nil) <
                PartitionEstimate.athena_partition_limit()
 
-      assert PartitionEstimate.projected_partitions(151, nil, nil, nil) >
+      assert PartitionEstimate.projected_partitions(141, nil, nil, nil) >
                PartitionEstimate.athena_partition_limit()
     end
 

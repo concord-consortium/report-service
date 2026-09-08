@@ -277,7 +277,7 @@ LOCATION
   's3://log-ingester-production/logs_by_app_and_secure_key'
 TBLPROPERTIES (
   'projection.app.type'='enum',
-  'projection.app.values'='Activity_Player,CEASAR,CLUE,CODAP,CollabSpace,Dataflow,DEVOPS,GeniStarDev,GRASP,HASBot-Dashboard,IS,LARA-log-poc,none,portal-report,rigse-log',
+  'projection.app.values'='Activity_Player,CEASAR,CLUE,CODAP,CODAPV3,CollabSpace,Dataflow,DEVOPS,GeniStarDev,GRASP,HASBot-Dashboard,IS,LARA-log-poc,none,portal-report,rigse-log',
   'projection.enabled'='true',
 
   'projection.year.type'='integer',
@@ -321,7 +321,7 @@ LOCATION
   's3://log-ingester-production/logs_by_app_and_secure_key'
 TBLPROPERTIES (
   'projection.app.type'='enum',
-  'projection.app.values'='Activity_Player,CEASAR,CLUE,CODAP,CollabSpace,Dataflow,DEVOPS,GeniStarDev,GRASP,HASBot-Dashboard,IS,LARA-log-poc,none,portal-report,rigse-log',
+  'projection.app.values'='Activity_Player,CEASAR,CLUE,CODAP,CODAPV3,CollabSpace,Dataflow,DEVOPS,GeniStarDev,GRASP,HASBot-Dashboard,IS,LARA-log-poc,none,portal-report,rigse-log',
   'projection.enabled'='true',
 
   'projection.year.type'='integer',

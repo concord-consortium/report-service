@@ -4,8 +4,8 @@ defmodule ReportServer.Reports.Athena.AthenaConfig do
 
   # Projected values of the `app` partition on logs_by_app_and_secure_key; must match
   # 'projection.app.values' in the DDL in server/README.md. Adding one means recreating the tables.
-  @log_apps ~w(Activity_Player CEASAR CLUE CODAP CollabSpace Dataflow DEVOPS GeniStarDev GRASP
-               HASBot-Dashboard IS LARA-log-poc none portal-report rigse-log)
+  @log_apps ~w(Activity_Player CEASAR CLUE CODAP CODAPV3 CollabSpace Dataflow DEVOPS GeniStarDev
+               GRASP HASBot-Dashboard IS LARA-log-poc none portal-report rigse-log)
 
   # 'projection.year.range' and 'projection.month.range' from the same DDL. Together they set the
   # number of (year, month) partition prefixes an unbounded query admits.

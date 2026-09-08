@@ -524,13 +524,17 @@ that every estimate is built on.
 
 ---
 
-### "A ceiling of 150 learners" is off by one, and the boundary test inherits it
+### The learner ceiling is off by one from any round number, and the boundary tests pin it
 
-**Context**: Verified by running: 150 learners unfiltered with no date range projects 999,000
-partitions, under the 1,000,000 limit. 151 is the first count that exceeds it, at 1,005,660.
+**Context**: The ceiling is the partition limit divided by `applications x 444`, so it moves whenever
+the projected application list does. With sixteen applications, 140 learners unfiltered with no date
+range projects 994,560 partitions, under the 1,000,000 limit, and 141 is the first count that exceeds
+it, at 1,001,664. With the fifteen the story shipped against it was 150 and 151.
 
-**Decision**: Keep "about 150" as prose and pin the measured edge in the test. The threshold test uses
-150 and 151 so it pins the real boundary rather than a rounded one.
+**Decision**: Pin the measured edge rather than a rounded one, in `partition_estimate_test.exs` and in
+the `report_form_live_test.exs` warning pair. Both carry literals, so adding an application to
+`@log_apps` means recomputing them; the estimate itself derives the count from the list and needs no
+edit.
 
 ---
 

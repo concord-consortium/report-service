@@ -194,20 +194,20 @@ defmodule ReportServerWeb.ReportFormLiveTest do
   describe "the partition warning" do
     test "warns and creates nothing when the projection crosses the limit", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
-      stub_count({:ok, 151})
+      stub_count({:ok, 141})
       choose_first_filter(view)
 
       render_click(view, "submit_form")
-      html = wait_for(view, "151 learners")
+      html = wait_for(view, "141 learners")
 
-      assert html =~ "1,005,660 partitions"
+      assert html =~ "1,001,664 partitions"
       assert html =~ "over the 1,000,000 limit"
       assert Reports.list_user_report_runs(user, "student-actions") == []
     end
 
     test "does not warn just under the limit", %{conn: conn} do
       {view, user} = mount_form(conn, "student-actions")
-      stub_count({:ok, 150})
+      stub_count({:ok, 140})
       choose_first_filter(view)
 
       render_click(view, "submit_form")
@@ -373,7 +373,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
     test "the warning is announced and offers the confirm", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-actions")
-      stub_count({:ok, 151})
+      stub_count({:ok, 141})
       choose_first_filter(view)
 
       render_click(view, "submit_form")
