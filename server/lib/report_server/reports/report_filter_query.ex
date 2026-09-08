@@ -571,7 +571,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   end
 
   def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, allowed_project_ids, like_text, portal_server) do
-    if allowed_project_ids == :none do
+    if allowed_project_ids in [:none, []] do
       {nil, []}
     else
       query = get_filter_query(primary_filter, report_filter, allowed_project_ids, like_text, portal_server)
@@ -643,7 +643,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         join = resolve_join_patterns(config.join)
         # State filters use string values, others use integer IDs
         in_clause = if filter_name == :state do
-          string_list_to_single_quoted_in(filter_value)
+          mysql_string_list_to_in(filter_value)
         else
           list_to_in(filter_value)
         end
@@ -767,10 +767,10 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     else
       query = build_base_query(%{
         id: "ppf.id",
-        value: "CONCAT(ap.name, ': ', ppf.name)",
+        value: "CONCAT(ap.name, ': ', ppf.name) AS fullname",
         from: "portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id",
         where: maybe_add_like(like_text, ["ppf.name LIKE ? or ap.name LIKE ?"]),
-        order_by: "ppf.name",
+        order_by: "fullname",
         num_params: 2
       })
 

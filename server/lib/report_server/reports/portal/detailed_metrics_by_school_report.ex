@@ -76,12 +76,12 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReport do
         # "(Unknown)" represents NULL state
         other_states = Enum.reject(state, fn s -> s == "(Unknown)" end)
         if length(other_states) > 0 do
-          "(ps.state IS NULL OR ps.state IN #{string_list_to_single_quoted_in(other_states)})"
+          "(ps.state IS NULL OR ps.state IN #{mysql_string_list_to_in(other_states)})"
         else
           "ps.state IS NULL"
         end
       else
-        "ps.state IN #{string_list_to_single_quoted_in(state)}"
+        "ps.state IN #{mysql_string_list_to_in(state)}"
       end
       {join, [where_clause | where]}
     else

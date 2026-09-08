@@ -12,6 +12,21 @@ defmodule ReportServer.Reports.ReportFilter do
   @valid_filter_types ~w"cohort school teacher assignment class student permission_form country state subject_area"
   @filter_type_atoms Enum.map(@valid_filter_types, &String.to_atom/1)
 
+  @doc "The portal-backed filter dimensions, in declaration order."
+  def dimensions, do: @filter_type_atoms
+
+  @doc """
+  Resolves a caller-supplied dimension name against the allowlist.
+
+  The allowlist is what makes the `String.to_atom/1` safe: atoms are never garbage collected, so
+  converting caller-supplied strings without one is an exhaustion vector.
+  """
+  def dimension_from_string(raw) when is_binary(raw) do
+    if raw in @valid_filter_types, do: {:ok, String.to_atom(raw)}, else: :error
+  end
+
+  def dimension_from_string(_raw), do: :error
+
   def from_form(form, filter_index) do
     if (filter_index < 1) do
       %ReportFilter{}
@@ -103,11 +118,13 @@ defmodule ReportServer.Reports.ReportFilter do
 
   defp get_filter_type!(form, i) do
     filter_type = form.params["filter#{i}_type"]
-    cond do
-      filter_type == "" -> nil
-      Enum.member?(@valid_filter_types, filter_type) ->
-        String.to_atom(filter_type)
-      true -> raise "Invalid filter type: #{filter_type}"
+    if filter_type == "" do
+      nil
+    else
+      case dimension_from_string(filter_type) do
+        {:ok, dimension} -> dimension
+        :error -> raise "Invalid filter type: #{filter_type}"
+      end
     end
   end
 

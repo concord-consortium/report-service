@@ -1,6 +1,6 @@
 defmodule ReportServer.ReportFilterQueryTest do
   use ExUnit.Case, async: true
-  alias ReportServer.Reports.{ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{ReportFilter, ReportFilterQuery, ReportUtils}
 
   describe "cohorts" do
     test "basic cohort query" do
@@ -352,11 +352,11 @@ defmodule ReportServer.ReportFilterQueryTest do
       assert query ==
         %ReportFilterQuery{
           id: "ppf.id",
-          value: "CONCAT(ap.name, ': ', ppf.name)",
+          value: "CONCAT(ap.name, ': ', ppf.name) AS fullname",
           from: "portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id",
           join: [],
           where: ["ppf.name LIKE ? or ap.name LIKE ?"],
-          order_by: "ppf.name",
+          order_by: "fullname",
           num_params: 2
         }
 
@@ -367,7 +367,7 @@ defmodule ReportServer.ReportFilterQueryTest do
       |> String.trim()
 
       assert normalized ==
-        "SELECT DISTINCT ppf.id, CONCAT(ap.name, ': ', ppf.name) FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id WHERE (ppf.name LIKE ? or ap.name LIKE ?) ORDER BY ppf.name"
+        "SELECT DISTINCT ppf.id, CONCAT(ap.name, ': ', ppf.name) AS fullname FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id WHERE (ppf.name LIKE ? or ap.name LIKE ?) ORDER BY fullname"
     end
 
     test "fancy permission forms query" do
@@ -385,7 +385,7 @@ defmodule ReportServer.ReportFilterQueryTest do
       assert query ==
         %ReportFilterQuery{
           id: "ppf.id",
-          value: "CONCAT(ap.name, ': ', ppf.name)",
+          value: "CONCAT(ap.name, ': ', ppf.name) AS fullname",
           from: "portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id",
           join: [
             ["JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id", "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id", "JOIN portal_offerings po ON (po.clazz_id = psc.clazz_id AND po.runnable_type = 'ExternalActivity')"],
@@ -400,7 +400,7 @@ defmodule ReportServer.ReportFilterQueryTest do
             "aci.admin_cohort_id IN (1)",
             "ppf.name LIKE ? or ap.name LIKE ?"
           ],
-          order_by: "ppf.name",
+          order_by: "fullname",
           num_params: 2
         }
 
@@ -411,7 +411,7 @@ defmodule ReportServer.ReportFilterQueryTest do
       |> String.trim()
 
       assert normalized ==
-        "SELECT DISTINCT ppf.id, CONCAT(ap.name, ': ', ppf.name) FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id) JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id) JOIN portal_school_memberships psm ON (psm.member_id = ptc.teacher_id AND psm.member_type = 'Portal::Teacher') JOIN portal_offerings po ON (po.clazz_id = psc.clazz_id AND po.runnable_type = 'ExternalActivity') WHERE (ppf.name LIKE ? or ap.name LIKE ?) AND (aci.admin_cohort_id IN (1)) AND (psm.school_id IN (2)) AND (ptc.teacher_id IN (3)) AND (po.runnable_id IN (4)) ORDER BY ppf.name"
+        "SELECT DISTINCT ppf.id, CONCAT(ap.name, ': ', ppf.name) AS fullname FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id) JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id) JOIN portal_school_memberships psm ON (psm.member_id = ptc.teacher_id AND psm.member_type = 'Portal::Teacher') JOIN portal_offerings po ON (po.clazz_id = psc.clazz_id AND po.runnable_type = 'ExternalActivity') WHERE (ppf.name LIKE ? or ap.name LIKE ?) AND (aci.admin_cohort_id IN (1)) AND (psm.school_id IN (2)) AND (ptc.teacher_id IN (3)) AND (po.runnable_id IN (4)) ORDER BY fullname"
     end
 
     test "permission form query returns nil for empty filter" do
@@ -845,7 +845,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "",
         "portal.example.com")
 
-      assert query.value == "CONCAT(ap.name, ': ', ppf.name)"
+      assert query.value == "CONCAT(ap.name, ': ', ppf.name) AS fullname"
       assert query.num_params == 2
     end
 
@@ -1221,4 +1221,151 @@ defmodule ReportServer.ReportFilterQueryTest do
     end
   end
 
+  describe "every dimension" do
+    # A scoped user, not :all, so the statements record which dimensions apply project scoping.
+    @scoped_project_ids [7, 8]
+
+    @expected_sql %{
+      cohort:
+        "SELECT DISTINCT admin_cohorts.id, admin_cohorts.name FROM admin_cohorts " <>
+          "WHERE (admin_cohorts.project_id IN (7,8)) ORDER BY admin_cohorts.name",
+      school:
+        "SELECT DISTINCT portal_schools.id, portal_schools.name FROM portal_schools " <>
+          "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id) " <>
+          "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id) " <>
+          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id) " <>
+          "WHERE (ac.project_id IN (7,8)) ORDER BY portal_schools.name",
+      teacher:
+        "SELECT DISTINCT portal_teachers.id, CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') AS fullname " <>
+          "FROM portal_teachers JOIN users u ON u.id = portal_teachers.user_id " <>
+          "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = portal_teachers.id) " <>
+          "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id) " <>
+          "WHERE (ac.project_id IN (7,8)) ORDER BY fullname",
+      assignment:
+        "SELECT DISTINCT external_activities.id, external_activities.name FROM external_activities " <>
+          "LEFT JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id) " <>
+          "LEFT JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id) " <>
+          "LEFT JOIN admin_project_materials apm ON (apm.material_type = 'ExternalActivity' AND apm.material_id = external_activities.id) " <>
+          "WHERE ((ac.project_id IN (7,8)) OR (apm.project_id IN (7,8))) ORDER BY external_activities.name",
+      permission_form:
+        "SELECT DISTINCT ppf.id, CONCAT(ap.name, ': ', ppf.name) AS fullname " <>
+          "FROM portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id " <>
+          "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id " <>
+          "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id " <>
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id) " <>
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id) " <>
+          "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id) " <>
+          "WHERE (ac.project_id IN (7,8)) ORDER BY fullname",
+      class:
+        "SELECT DISTINCT pc.id, CONCAT(pc.name, ' (', pc.class_word, ')') AS fullname FROM portal_clazzes pc " <>
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = pc.id) " <>
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id) " <>
+          "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id) " <>
+          "WHERE (ac.project_id IN (7,8)) ORDER BY fullname",
+      student:
+        "SELECT DISTINCT ps.id, CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') AS fullname " <>
+          "FROM portal_students ps JOIN users u ON u.id = ps.user_id " <>
+          "JOIN portal_student_clazzes psc ON psc.student_id = ps.id " <>
+          "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id) " <>
+          "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id) " <>
+          "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id) " <>
+          "WHERE (ac.project_id IN (7,8)) ORDER BY fullname",
+      country:
+        "SELECT DISTINCT portal_countries.id, COALESCE(portal_countries.name, '(Unknown)') AS country_name " <>
+          "FROM portal_countries ORDER BY country_name",
+      state:
+        "SELECT DISTINCT COALESCE(portal_schools.state, '(Unknown)') AS state_code, " <>
+          "COALESCE(portal_schools.state, '(Unknown)') AS state_name FROM portal_schools ORDER BY state_name",
+      subject_area:
+        "SELECT DISTINCT admin_tags.id, admin_tags.tag FROM admin_tags " <>
+          "WHERE (admin_tags.scope = 'subject_areas') ORDER BY admin_tags.tag"
+    }
+
+    defp options_sql(dimension, allowed_project_ids) do
+      {query, _params} =
+        ReportFilterQuery.get_query_and_params(
+          %ReportFilter{filters: [dimension]},
+          allowed_project_ids,
+          "",
+          "portal.example.com"
+        )
+
+      query
+      |> ReportFilterQuery.get_options_sql()
+      |> String.replace(~r/\s+/, " ")
+      |> String.trim()
+    end
+
+    test "the builder serves every dimension the API accepts" do
+      assert Enum.sort(Map.keys(@expected_sql)) == Enum.sort(ReportFilter.dimensions())
+
+      for dimension <- ReportFilter.dimensions() do
+        assert options_sql(dimension, @scoped_project_ids) == @expected_sql[dimension],
+               "generated SQL changed for #{dimension}"
+      end
+    end
+
+    test "only the seven person- and assignment-bearing dimensions apply project scoping" do
+      scoped =
+        Enum.filter(ReportFilter.dimensions(), fn dimension ->
+          String.contains?(options_sql(dimension, @scoped_project_ids), "project_id IN (7,8)")
+        end)
+
+      assert scoped == [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form]
+    end
+
+    test "no allowed projects yields no query rather than an empty IN list" do
+      for dimension <- ReportFilter.dimensions() do
+        assert ReportFilterQuery.get_query_and_params(
+                 %ReportFilter{filters: [dimension]},
+                 [],
+                 "",
+                 "portal.example.com"
+               ) == {nil, []},
+               "#{dimension} built a query for a caller with no allowed projects"
+      end
+    end
+
+    test "an empty allowed-projects list behaves as :none does" do
+      filter = %ReportFilter{filters: [:cohort]}
+
+      assert ReportFilterQuery.get_query_and_params(filter, [], "", "portal.example.com") ==
+               ReportFilterQuery.get_query_and_params(filter, :none, "", "portal.example.com")
+    end
+  end
+
+  describe "state values in secondary filters" do
+    defp country_sql(states) do
+      {query, _params} =
+        ReportFilterQuery.get_query_and_params(
+          %ReportFilter{filters: [:country], state: states},
+          :all,
+          "",
+          "portal.example.com"
+        )
+
+      ReportFilterQuery.get_options_sql(query)
+    end
+
+    test "a value ending in a backslash cannot escape its own literal" do
+      sql = country_sql(["x\\", ") OR (1=1) #"])
+
+      assert String.contains?(sql, "IN ('x\\\\',') OR (1=1) #')")
+      refute String.contains?(sql, "IN ('x\\',")
+    end
+
+    test "quotes and backslashes survive round trip" do
+      assert String.contains?(country_sql(["O'Fallon"]), "IN ('O''Fallon')")
+      assert String.contains?(country_sql(["C:\\x"]), "IN ('C:\\\\x')")
+    end
+
+    test "a list without a backslash renders exactly what it rendered before" do
+      states = ["CA", "NY", "(Unknown)", "O'Fallon"]
+
+      assert String.contains?(
+               country_sql(states),
+               "IN #{ReportUtils.string_list_to_single_quoted_in(states)}"
+             )
+    end
+  end
 end

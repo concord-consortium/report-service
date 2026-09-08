@@ -331,7 +331,7 @@ defmodule ReportServer.PostProcessing.Job do
     SELECT pl.secure_key, pl.offering_id, ps.user_id, po.clazz_id FROM portal_learners pl
     JOIN portal_offerings po ON (po.id = pl.offering_id)
     JOIN portal_students ps ON (ps.id = pl.student_id)
-    where pl.secure_key in #{ReportUtils.string_list_to_single_quoted_in(secure_keys)}
+    where pl.secure_key in #{ReportUtils.mysql_string_list_to_in(secure_keys)}
     """
 
     # generate a map of run_remote_endpoint to offering_id and class_id
