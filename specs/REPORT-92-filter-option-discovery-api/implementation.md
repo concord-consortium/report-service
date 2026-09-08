@@ -675,7 +675,9 @@ envelope, and the route.
 **Files affected**:
 - `server/lib/report_server_web/api/v1/filter_options_controller.ex` — new
 - `server/lib/report_server_web/api/v1/filter_options_json.ex` — new
-- `server/lib/report_server_web/api/v1/params.ex` — accept a JSON-numeric `limit`
+- `server/lib/report_server_web/api/v1/filter_params.ex` — new, the `report_filter` object parser,
+  its own module because REPORT-93's create and duplicate take the same object
+- `server/lib/report_server_web/api/v1/params.ex` — accept a JSON-numeric `limit`, and the cursor codec
 - `server/lib/report_server_web/router.ex` — the route
 - `server/test/report_server_web/api/v1/filter_options_controller_test.exs` — new
 
@@ -863,15 +865,20 @@ carries a number, the same request with a `page_token` carries `count: null` wit
 shape is fixed.
 
 **Files affected**:
-- `internal/api/endpoints.go` — a `FilterOptions` client method
-- `internal/api/pagination.go` — a `POST` paging helper carrying the repeated-token guard
+- `internal/api/endpoints.go` — `FilterOptions`, `DrainFilterOptions` (carrying the repeated-token
+  guard) and `FilterOptionsFor`, which holds the page-or-drain choice so neither caller repeats it
 - `internal/api/types.go` — `FilterOptionsPage` and `FilterOption`, alongside `BulkPage`
-- `cmd/reports.go` — `cc-data reports filter-options`
-- `internal/mcpserver/tools.go`, `types.go` — the MCP tool, named `reports_filter_options` to match
-  `reports_list` and `reports_jobs`, its `include_count` field described as the one to set when the
-  user asks how many there are
+- `internal/reportview/reportview.go` — the payload the CLI and the MCP tool both render
+- `cmd/reports.go`, `cmd/reports_test.go` — `cc-data reports filter-options`
+- `internal/mcpserver/tools.go`, `types.go`, `server_test.go` — the MCP tool, named
+  `reports_filter_options` to match `reports_list` and `reports_jobs`, its `include_count` field
+  described as the one to set when the user asks how many there are
 - `internal/guidance/src/tools.md` — the tool's catalog entry (REPORT-104's guard requires it)
-- `internal/api/endpoints_test.go` — fake-server tests pinned to a wire capture
+- `README.md` — the command listing
+- `internal/api/filter_options_test.go` — fake-server tests pinned to a wire capture
+
+The helpers live in `endpoints.go` beside the method they serve rather than in `pagination.go`,
+which holds the `GET` helpers generic over `Page[T]`; these are neither generic nor `GET`.
 
 **Estimated diff size**: ~260 lines
 
@@ -890,7 +897,8 @@ type FilterOptionsPage struct {
 	CountSkippedReason *string        `json:"count_skipped_reason"`
 }
 
-func FetchFilterOptionsPage(ctx context.Context, c *Client, body map[string]any) (FilterOptionsPage, error)
+func (c *Client) FilterOptions(ctx context.Context, req FilterOptionsReq) (FilterOptionsPage, error)
+func (c *Client) DrainFilterOptions(ctx context.Context, req FilterOptionsReq) ([]FilterOption, *int, error)
 ```
 
 `Count` is a pointer so the wire's explicit `null` stays distinguishable from a real zero, which is
