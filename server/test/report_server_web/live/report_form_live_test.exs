@@ -127,6 +127,43 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       assert html =~ ~s(id="filter_form_app_text_input")
     end
 
+    # LiveSelect renders each tag's removal control as a button whose only content is the
+    # clear_button slot, so without this text the button announces as an unnamed "button"
+    test "a selected application's removal button carries hidden text naming the action",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+
+      html = choose_first_filter(view, %{"app" => ["CLUE"]})
+
+      assert html =~ "CLUE"
+
+      # sr-only rather than a bare span: the name has to reach a screen reader without adding
+      # visible text beside the glyph
+      assert Floki.find(html, ~s(#live_select_app button span.sr-only))
+             |> Enum.any?(&(Floki.text(&1) |> String.trim() == "Remove"))
+    end
+
+    test "a selected numbered filter's removal button carries the same hidden text",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+
+      html = choose_first_filter(view)
+
+      assert Floki.find(html, ~s(#live_select1 button span.sr-only))
+             |> Enum.any?(&(Floki.text(&1) |> String.trim() == "Remove"))
+    end
+
+    test "the search box is not labelled as if nothing were selected", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+
+      html = choose_first_filter(view, %{"app" => ["CLUE"]})
+
+      # LiveSelect leaves the tags-mode text input empty whatever is selected, so a placeholder
+      # describing the empty filter would sit on screen next to a CLUE tag contradicting it
+      [input] = Floki.find(html, ~s(input[name="filter_form[app_text_input]"]))
+      assert Floki.attribute(input, "placeholder") == ["Search applications"]
+    end
+
     # the hook sends the form-qualified field name, which carries none of the trailing index the
     # numbered filters are found by, so this event must never reach the filter lookup
     test "a change event from the application box never reaches the numbered-filter lookup",

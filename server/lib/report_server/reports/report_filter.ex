@@ -54,8 +54,8 @@ defmodule ReportServer.Reports.ReportFilter do
   @doc """
   The selected applications as a list, empty when the filter is unset.
 
-  The control is a multiple select, so it submits a list, no key at all when nothing is chosen, and
-  a bare string only for a run stored before the filter accepted more than one.
+  The application control submits a list, no key at all when nothing is chosen, and a bare string
+  only for a run stored before the filter accepted more than one.
   """
   def app_list(nil), do: []
   def app_list(""), do: []
