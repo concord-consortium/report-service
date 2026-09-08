@@ -163,10 +163,15 @@ carries that forward unchanged rather than inventing a protection the product do
   coalesces the label once, in its own projection, and the sort key, the keyset predicate, the
   cursor and the `label` on the wire are all that same never-null value. `country` and `state`
   already coalesce inside the builder, which is the evidence that NULL labels occur in practice.
-- **Every portal query this endpoint makes is bounded** well under `PortalDbs`' five-minute module
+- **Every portal query this endpoint owns is bounded** well under `PortalDbs`' five-minute module
   default: the permission lookup that resolves the caller's allowed projects, the page, and the
-  count. The permission lookup is also resolved once per request and passed to both, rather than run
-  again for the count. The page and the count in particular are bounded because the wrap materializes the dimension's whole distinct
+  count. The one exception is stated above and is deliberate: `get_internal_teacher_ids/1`, reached
+  only when `exclude_internal` narrows the `teacher` dimension, is shared with the form and the
+  report path and keeps the module default, because bounding it would turn a timeout there into a
+  silently ignored flag for those callers too. "Owns" rather than "makes" is the accurate word.
+  The permission lookup is resolved once per request and passed to both the page and the count
+  rather than run again, and for a static dimension it is not resolved at all, since a fixed
+  vocabulary needs no scoping and a portal outage must not take one down. The page and the count in particular are bounded because the wrap materializes the dimension's whole distinct
   option set on each page, and a request a client calls interactively must not hold one of five
   shared connections for minutes. On top of that, the count is bounded in two further layers. A `student` request with no narrowing selections is skipped
   outright and never runs, matching the form's own special case; every other count runs under a

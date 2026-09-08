@@ -9,6 +9,13 @@ defmodule ReportServer.Reports.FilterOptions.StaticDimension do
   `ReportServer.Reports.OptionLabel.matches?/2` rather than rolling their own comparison: the rule
   is substring, case-insensitive, over the label, matching what the portal dimensions get from
   `LIKE` under a `_ci` collation.
+
+  **Ids must not be numeric strings.** It is the one place a client could tell the two kinds apart.
+  A portal dimension breaks a label tie in SQL on `o.opt_id`, an integer column, so equal labels
+  order numerically; a static dimension breaks it in `OptionLabel.sort_key/1`, which returns
+  `{downcased_label, id}` with `id` a string, so equal labels order lexically. Sorting string ids
+  numerically would be the wrong fix, since a later vocabulary could hold ids that merely look like
+  numbers, so the constraint sits here instead.
   """
 
   @callback options(search :: String.t()) :: [{id :: String.t(), label :: String.t()}]

@@ -36,12 +36,8 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
          {:ok, cursor} <- Params.parse_cursor(params),
          {:ok, search} <- parse_search(params),
          {:ok, count?} <- parse_include_count(params, cursor) do
-      opts = [
-        limit: limit,
-        cursor: cursor,
-        like_text: search,
-        allowed: FilterOptions.allowed_projects(user)
-      ]
+      opts =
+        [limit: limit, cursor: cursor, like_text: search] ++ allowed_opt(dimension, user)
 
       with {:ok, options, next_cursor} <- FilterOptions.page(dimension, report_filter, user, opts),
            {:ok, count} <- maybe_count(dimension, report_filter, user, opts, count?) do
@@ -54,6 +50,17 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
     else
       {:error, :not_found} -> ErrorHelpers.not_found(conn)
       {:error, message} -> ErrorHelpers.bad_request(conn, message)
+    end
+  end
+
+  # A static dimension does no project scoping, so resolving the caller's allowed projects for one
+  # would spend a portal query nothing reads, and would fail the whole request when the portal is
+  # down for a vocabulary this application holds in its own code. Resolved here rather than lazily
+  # inside FilterOptions so a counted request still resolves exactly once.
+  defp allowed_opt(dimension, user) do
+    case FilterOptions.static_dimension(dimension) do
+      {:ok, _module} -> []
+      :error -> [allowed: FilterOptions.allowed_projects(user)]
     end
   end
 

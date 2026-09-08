@@ -335,6 +335,18 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsControllerTest do
       assert as_admin != []
     end
 
+    # A static vocabulary lives in this application's own code and needs no scoping, so a portal
+    # outage must not take it down. The pair is the assertion: the permission lookup raises on an
+    # unreachable portal, so a portal dimension is a 500 and a static one must not be.
+    test "app is served when the portal is unreachable, and a portal dimension is not", %{conn: conn} do
+      conn = conn_for(conn, %{portal_server: "portal-unreachable.example.com", portal_user_id: 559, portal_is_project_admin: true})
+
+      body = conn |> post_options(%{"dimension" => "app"}) |> json_response(200)
+      assert %{"id" => "none", "label" => "none (no application recorded)"} in body["items"]
+
+      assert_error_sent 500, fn -> post_options(conn, %{"dimension" => "cohort"}) end
+    end
+
     test "app answers with the same envelope as a portal dimension", %{conn: conn} do
       body = body_for(admin_conn(conn), %{"dimension" => "app"})
 
