@@ -109,12 +109,17 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReportDbTest do
     end
   end
 
-  # the web run page reads through query/4 and the API download through stream_query/4, and the
-  # grouping that satisfies ONLY_FULL_GROUP_BY has to hold for both
+  # the web run page reads through query/4 and counts through get_count_sql/1, and the API download
+  # reads through stream_query/4; the grouping that satisfies ONLY_FULL_GROUP_BY has to hold for all
+  # three, and scoping a caller with no projects must render a false predicate rather than an empty
+  # `IN ()`, which is a MySQL syntax error
   defp assert_zero_rows(user) do
-    {:ok, sql} = ReportQuery.get_sql(query_for(user))
+    query = query_for(user)
+    {:ok, sql} = ReportQuery.get_sql(query)
+    {:ok, count_sql} = ReportQuery.get_count_sql(query)
 
     assert {:ok, %{rows: []}} = PortalDbs.query(@server, sql)
+    assert {:ok, %{rows: [[0]]}} = PortalDbs.query(@server, count_sql)
 
     assert {:ok, 0} =
              PortalDbs.stream_query(@server, sql, [],
