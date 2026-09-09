@@ -3,7 +3,7 @@ defmodule ReportServer.Reports.ReportFilter do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{DimensionScope, FilterOptions, ReportFilter}
+  alias ReportServer.Reports.{AllowedProjectsLookupError, DimensionScope, FilterOptions, ReportFilter}
 
   defstruct filters: [], cohort: nil, school: nil, teacher: nil, assignment: nil, class: nil, student: nil,
     permission_form: nil, country: nil, state: nil, subject_area: nil, start_date: nil, end_date: nil,
@@ -87,8 +87,22 @@ defmodule ReportServer.Reports.ReportFilter do
   end
 
   defp resolve_values(dimensions, report_filter, user) do
-    allowed = FilterOptions.allowed_projects(user)
+    case allowed_projects(user) do
+      {:ok, allowed} -> query_values(dimensions, report_filter, user, allowed)
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
+  # The lookup raises rather than answering "no projects", which is right for a query builder that
+  # would otherwise scope to nothing, but this function has an error channel and both its callers
+  # already use it.
+  defp allowed_projects(user) do
+    {:ok, FilterOptions.allowed_projects(user)}
+  rescue
+    error in AllowedProjectsLookupError -> {:error, error.message}
+  end
+
+  defp query_values(dimensions, report_filter, user, allowed) do
     sql =
       dimensions
       |> Enum.map(&value_select(&1, report_filter, allowed))

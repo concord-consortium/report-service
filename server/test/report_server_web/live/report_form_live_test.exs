@@ -20,7 +20,10 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
   # a super admin resolves allowed projects without a portal round trip
   defp mount_form(conn, slug) do
-    user = user_fixture(%{portal_is_admin: true})
+    mount_form_as(conn, slug, user_fixture(%{portal_is_admin: true}))
+  end
+
+  defp mount_form_as(conn, slug, user) do
     {:ok, view, _html} = live(log_in_conn(conn, user), ~p"/reports/new/#{slug}")
     {view, user}
   end
@@ -219,6 +222,21 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       assert html =~ "must be an ISO 8601 date"
       assert Reports.list_user_report_runs(user, "teacher-actions") == []
       assert ReportUtils.apply_start_date([], payload) == ["run.start_time >= '#{payload}'"]
+    end
+
+    # the label lookup resolves the user's projects against the portal, and a project-scoped user
+    # is the one whose lookup can fail
+    test "creates the run when the labels cannot be derived", %{conn: conn} do
+      researcher = user_fixture(%{portal_is_project_researcher: true})
+      {view, _user} = mount_form_as(conn, "teacher-actions", researcher)
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      assert_redirect(view)
+
+      assert [run] = Reports.list_user_report_runs(researcher, "teacher-actions")
+      assert run.report_filter_values == %{}
+      assert run.report_filter.cohort == [1]
     end
 
     test "refuses an application on a report that does not support one", %{conn: conn} do
