@@ -16,7 +16,7 @@ Three commits. The first is the fix and its two tests, the second makes a blown 
 
 **Files affected**:
 - `server/lib/report_server/portal_dbs.ex` — `:timeout` becomes `:transaction_timeout`, the inert `timeout:` on `MyXQL.stream/4` goes, the `@doc` is rewritten.
-- `server/lib/report_server_web/api/v1/report_controller.ex` — `@portal_download_batch_timeout_ms` and the `min/2` go, the budget is bound once, the block comment is replaced.
+- `server/lib/report_server_web/api/v1/report_controller.ex` — `@portal_download_batch_timeout_ms` and the `min/2` go, along with the blank line the attribute leaves behind inside the alias block, the budget is bound once, and the block comment is replaced.
 - `server/test/report_server/portal_dbs_test.exs` — a `stream_query/4` describe block.
 - `server/test/report_server_web/api/v1/report_controller_test.exs` — one test pinning what the controller hands down.
 
@@ -62,9 +62,8 @@ The default stays `@query_timeout`, so the two existing `:portal_db` callers (`s
         sent = :atomics.new(1, signed: false)
         acc0 = %{conn: conn, state: :header_pending, deadline: deadline, filename: filename, sent: sent}
 
-        # One budget bounds this download twice over: `deadline` is checked between batches in the
-        # reducer, and the same value is the transaction's checkout deadline, which is what bounds a
-        # fetch. MyXQL cursor fetches take no timeout of their own, so there is nothing tighter.
+        # The budget is both the reducer's wall-clock deadline and the transaction's checkout
+        # deadline, which is the only thing bounding a fetch: MyXQL fetches take no timeout.
         result =
           try do
             case portal_db().stream_query(server, sql, [],
@@ -74,15 +73,12 @@ The default stays `@query_timeout`, so the two existing `:portal_db` callers (`s
 
 Binding `budget` is not cosmetic: the old code read `portal_download_timeout_ms()` twice for two purposes that have to agree, which is what let them drift apart in the first place.
 
-The `stream_query/4` block for `portal_dbs_test.exs`, with the helper at module level beside the existing ones:
+The `stream_query/4` block goes at the end of `portal_dbs_test.exs`, after the `query/4` describe, so the file keeps mirroring the order the functions are defined in `portal_dbs.ex`:
 
 ```elixir
   defp stream_sleep(opts) do
-    PortalDbs.stream_query(@server, "SELECT SLEEP(2)", [],
-      Keyword.merge(
-        [acc: 0, max_rows: 500, reducer: fn result, acc -> acc + length(result.rows) end],
-        opts
-      ))
+    defaults = [acc: 0, max_rows: 500, reducer: fn result, acc -> acc + length(result.rows) end]
+    PortalDbs.stream_query(@server, "SELECT SLEEP(2)", [], Keyword.merge(defaults, opts))
   end
 
   describe "stream_query/4" do
@@ -91,10 +87,14 @@ The `stream_query/4` block for `portal_dbs_test.exs`, with the helper at module 
     end
 
     test "a transaction budget below the query time ends the stream" do
-      assert_raise DBConnection.ConnectionError, fn -> stream_sleep(transaction_timeout: 1_000) end
+      assert_raise DBConnection.ConnectionError, fn ->
+        stream_sleep(transaction_timeout: 1_000)
+      end
     end
   end
 ```
+
+That shape keeps the file passing `mix format --check-formatted`, which it does on master. The repo as a whole does not: 138 files fail it, and CI runs only `mix compile --warnings-as-errors` and `mix test`, so the rule is to leave an already-clean file clean rather than to format anything.
 
 Measured at 3.0 seconds for the pair, against the fixture database, before this plan was written. The failing half logs a MyXQL disconnect at `[error]`, which is expected: aborting a checkout kills the connection. The file's existing `query_with_reason/4` timeout test already does the same thing, so this is the established idiom here rather than a new hazard.
 
@@ -110,7 +110,8 @@ The controller half, in the `GET /api/v1/reports/:id/download (Portal)` describe
         {:ok, opts[:reducer].(myxql_result(["a"], []), opts[:acc])}
       end)
 
-      get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      assert response(conn, 200)
 
       budget = Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:timeout_ms)
       assert_receive {:stream_opts, opts}
@@ -141,21 +142,18 @@ Classifying by elapsed time rather than by exception type is deliberate, and it 
 ```
 
 ```elixir
-  # A failure at or past the deadline is the budget running out, whatever exception carried it: the
-  # reducer's PortalDownloadTimeout and the pool's terminal "socket closed" are the same event seen
-  # from two places. Anything earlier is a real failure and keeps the generic message.
+  # At or past the deadline the budget ran out, whatever exception carried it; the reducer's
+  # PortalDownloadTimeout and the pool's terminal "socket closed" are the same event.
   defp log_pre_stream_failure(report_run, deadline, budget, reason) do
     if System.monotonic_time(:millisecond) >= deadline do
-      Logger.error(
-        "Portal download for run #{report_run.id} exceeded its #{budget} ms budget: #{inspect(reason)}"
-      )
+      Logger.error("Portal download for run #{report_run.id} exceeded its #{budget} ms budget: #{inspect(reason)}")
     else
-      Logger.error(
-        "Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}"
-      )
+      Logger.error("Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}")
     end
   end
 ```
+
+Both calls stay on one line, matching the six existing `Logger.error` calls in the module; collapsed they are 114 and 106 characters, inside the file's existing maximum of 122.
 
 The classification is sound in both directions for the reason recorded in the requirements: the checkout deadline starts strictly later than `deadline`, because `deadline` is computed before `get_or_start_pool/1` runs, so a pool-side kill always lands after `deadline` has passed. A pool-start failure or a malformed-SQL `MyXQL.Error` arrives long before it.
 
@@ -163,9 +161,7 @@ The test drives the stub past a small budget rather than using a negative one, s
 
 ```elixir
     test "a download that runs past its budget says so", %{} do
-      original = Application.get_env(:report_server, :portal_download)
-      on_exit(fn -> Application.put_env(:report_server, :portal_download, original) end)
-      Application.put_env(:report_server, :portal_download, Keyword.put(original, :timeout_ms, 50))
+      put_download_timeout_ms(50)
 
       {token, run} = portal_admin_run()
 
@@ -184,7 +180,7 @@ The test drives the stub past a small budget rather than using a negative one, s
     end
 ```
 
-`import ExUnit.CaptureLog` is added to the test module; `athena_query_poller_test.exs` is the precedent for it in this suite. The 80 ms sleep against a 50 ms budget has 30 ms of margin and costs the suite 80 ms. Deleting `log_pre_stream_failure/4` and restoring the single `Logger.error` call fails this test, since the generic message contains neither the budget nor the word.
+`import ExUnit.CaptureLog` is added to the test module; `athena_query_poller_test.exs` is the precedent for it in this suite. The three-line config override becomes a `put_download_timeout_ms/1` helper rather than a second copy, and the existing "a deadline in the past" test moves onto it, so the restore path has one definition. The 80 ms sleep against a 50 ms budget has 30 ms of margin and costs the suite 80 ms. Deleting `log_pre_stream_failure/4` and restoring the single `Logger.error` call fails this test, since the generic message contains neither the budget nor the word.
 
 ---
 
@@ -197,7 +193,7 @@ The test drives the stub past a small budget rather than using a negative one, s
 
 **Estimated diff size**: ~10 lines.
 
-The Timeout / pool bullet loses "(since `MyXQL.stream`'s `:timeout` only bounds each per-batch fetch)" and "plus a per-batch fetch timeout", and gains a sentence saying the wall-clock deadline and the transaction's checkout deadline are the two bounds, and that MyXQL cursor fetches take no timeout. Q2's context sentence and decision drop the per-batch fetch timeout the same way. Q2's actual decision, an API-specific configurable budget rather than the portal DB's five minutes, is unchanged and stays; only the mechanism described under it was wrong.
+The corrected claim also gets a pointer to where it was established, matching the file's existing cross-reference to REPORT-76 at `:56`, so a reader who finds a surprising statement about a dependency can check it instead of re-litigating it. The Timeout / pool bullet loses "(since `MyXQL.stream`'s `:timeout` only bounds each per-batch fetch)" and "plus a per-batch fetch timeout", and gains a sentence saying the wall-clock deadline and the transaction's checkout deadline are the two bounds, and that MyXQL cursor fetches take no timeout. Q2's context sentence and decision drop the per-batch fetch timeout the same way. Q2's actual decision, an API-specific configurable budget rather than the portal DB's five minutes, is unchanged and stays; only the mechanism described under it was wrong.
 
 The three comments inside the server that say the same thing are corrected in the first step, where the code they describe changes.
 
@@ -213,7 +209,7 @@ None. Q1 in the requirements spec settled the only design decision, and the thre
 
 ## Self-Review
 
-Roles: whoever reviews the three commits, whoever has to run the tests, and whoever operates the result. The plan was **built for real** on this branch and then reverted, so the claims below are measured rather than reasoned. Nothing survived as a defect; what follows is the evidence, which is the part worth keeping.
+Roles: whoever reviews the three commits, whoever has to run the tests, and whoever operates the result. Every claim below was **measured against a working build** of this plan rather than reasoned about, which is why the numbers are exact. Nothing survived as a defect; what follows is the evidence, which is the part worth keeping.
 
 ### Whoever reviews the commits
 
