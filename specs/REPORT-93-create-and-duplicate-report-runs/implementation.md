@@ -359,7 +359,7 @@ Tests: an injection payload in `start_date` is rejected rather than stored, and 
   end
 ```
 
-Failures are tagged by kind, not left as bare messages: `FilterValidation.validate/2` returns `{:error, :invalid, message}` and `derive_values/2` wraps a portal failure as `{:error, :derivation_failed, reason}`, so the controller can render one as a 400 carrying the message and the other as a 500 that logs the reason rather than returning it. Both are binaries otherwise, and the Self-Review records what that costs.
+Failures are tagged by kind, not left as bare messages: `FilterValidation.validate/2` returns `{:error, :invalid, message}` and `derive_values/2` wraps a portal failure as `{:error, :derivation_failed, reason}`, so the controller can render one as a 400 carrying the message and the other as a 500 that logs the reason rather than returning it. `AllowedProjectsLookupError` is rescued into the same tag: the permission lookup raises rather than answering "no projects", which is right, but an exception is not one of the three shapes this function's callers handle, and the runs UI's duplicate button would die on it rather than render the flash it renders for everything else. Both are binaries otherwise, and the Self-Review records what that costs.
 
 `duplicate_api_report_run/3` takes the source run, coalesces a `nil` stored filter to `%ReportFilter{}` (a stored run can have one; `custom_components.ex:264-266` and `report_controller.ex:105` both defend against it), normalizes any `[]` dimension to `nil`, and calls the same function, which applies `check_dates/1` to the stored filter (a duplicate whose dates do not parse is refused rather than repaired: dropping a date bound would return more data than the source run did, where normalizing `[]` provably cannot move a row), so the clone is built from the source's slug and filter rather than from its struct.
 
@@ -686,7 +686,7 @@ Every requirement in `requirements.md`, and the step that implements it. Checked
 | The `state` injection is fixed | escape and tuple step |
 | Ids outside the caller's allowed projects are refused, naming them | one scoped source, escape and tuple step |
 | The scoping is expressed once rather than per dimension | one scoped source, then re-point ReportFilterQuery |
-| `start_date` and `end_date` are validated as ISO dates, on both endpoints | FilterParams step, FilterValidation step, context step |
+| `start_date` and `end_date` are validated as ISO dates, on both endpoints | FilterParams step, FilterValidation step, context step; the web form applies the same check, since it is where an unvalidated date enters |
 | Athena duplicate free, Portal duplicate needs `force` | duplicate endpoint step |
 | 409 with its own code, `code_for_status/1` unchanged | ErrorHelpers step |
 | The 409 body's keys are pinned and asserted | duplicate endpoint step |

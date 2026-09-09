@@ -332,6 +332,8 @@ Log reports turned out to be safer than the learner and Portal ones, which is wo
 
 The check has one definition, `FilterValidation.check_dates/1`, called from the parser (so `filter-options` keeps being tightened as the plan intends) and from the context function (so duplicate is covered), rather than a second copy on the duplicate path.
 
+The form's submit calls it too, which this entry originally left alone on the grounds that the stored population of unparseable dates is probably empty. That reasoning covers the runs that exist and not the ones a caller can still make: `handle_event("form_updated", ...)` assigns whatever the event carries, so the date control constrains a browser and not a crafted event, and the payload reaches `apply_start_date/3` from there. The validator is one call away at that point, so the origin is closed rather than left for the duplicate path to refuse later.
+
 Two neighboring risks checked and deliberately left alone. Duplicate also re-runs `FilterValidation.validate/2`, so a stored run could become non-duplicable if its report stopped offering a dimension or an application were retired; the git history says neither has ever happened, as every `include_filters` change in `tree.ex` is a commit adding a report and `@log_apps` only grows. And a run whose ids fall outside the caller's projects after a membership change is refused, which is the scoping decision working rather than a regression.
 
 ### QA Engineer
