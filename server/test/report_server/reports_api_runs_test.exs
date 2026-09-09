@@ -4,6 +4,7 @@ defmodule ReportServer.ReportsApiRunsTest do
   @moduletag :portal_db
 
   alias ReportServer.{PortalDbs, PortalFixture, Reports}
+  alias ReportServer.Accounts.User
   alias ReportServer.Reports.{ReportFilter, ReportQuery, ReportRun, Tree}
 
   import ReportServer.AccountsFixtures
@@ -34,7 +35,7 @@ defmodule ReportServer.ReportsApiRunsTest do
 
   defp record_starts do
     test = self()
-    Application.put_env(:report_server, :athena_run_starter, fn run -> send(test, {:started, run.id}) end)
+    Application.put_env(:report_server, :athena_run_starter, fn run -> send(test, {:started, run}) end)
     on_exit(fn -> Application.delete_env(:report_server, :athena_run_starter) end)
   end
 
@@ -79,14 +80,17 @@ defmodule ReportServer.ReportsApiRunsTest do
 
       assert run.athena_query_id == nil
       assert run.athena_query_state == nil
-      assert run.user.id
-      assert_receive {:started, id} when id == run.id
+
+      # start_query/1 reads report_run.user to pick the portal database and build the query, so a
+      # run handed to the starter without it fails inside the task.
+      run_id = run.id
+      assert_receive {:started, %ReportRun{id: ^run_id, user: %User{}}}
     end
 
     test "a Portal run starts no query" do
       {:ok, run} = create(admin(), portal_report(), %ReportFilter{cohort: [1]})
 
-      refute_receive {:started, _id}
+      refute_receive {:started, _run}
       assert run.report_slug == "resource-metrics-summary"
     end
 
@@ -178,7 +182,9 @@ defmodule ReportServer.ReportsApiRunsTest do
       assert copy.report_filter.cohort == [1]
       assert copy.athena_query_id == nil
       assert copy.athena_result_url == nil
-      assert_receive {:started, id} when id == copy.id
+
+      copy_id = copy.id
+      assert_receive {:started, %ReportRun{id: ^copy_id, user: %User{}}}
     end
 
     test "derives filters rather than copying the strings a round trip left behind" do
