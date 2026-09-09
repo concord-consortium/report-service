@@ -366,6 +366,7 @@ defmodule ReportServerWeb.CustomComponents do
         class="whitespace-nowrap rounded bg-zinc-100 px-2 py-1 hover:bg-zinc-300"
         phx-click="duplicate"
         phx-value-id={@report_run.id}
+        aria-label={"Duplicate run #{@report_run.id}"}
       >
         Duplicate
       </button>
