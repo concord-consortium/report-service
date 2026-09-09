@@ -355,7 +355,17 @@ defmodule ReportServerWeb.ReportLive.Form do
   end
 
   defp create_run(%{assigns: %{report: %Report{} = report, user: user}} = socket, report_filter = %ReportFilter{}) do
-    report_filter_values = ReportFilter.get_filter_values(report_filter, user)
+    # a failed lookup degrades the display and not the run, whose filter still runs, so the form
+    # creates it either way
+    report_filter_values =
+      case ReportFilter.get_filter_values(report_filter, user) do
+        {:ok, values} ->
+          values
+
+        error ->
+          Logger.error("Unable to derive filter values: #{inspect(error)}")
+          %{}
+      end
 
     report_run_attrs = %{
       report_slug: report.slug,
