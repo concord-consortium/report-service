@@ -5,7 +5,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{DimensionScope, ReportFilter, ReportFilterQuery}
 
   defstruct id: nil, value: nil, from: nil, join: [], where: [], order_by: nil, num_params: 1
 
@@ -67,44 +67,6 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     offering_assignment_only: "JOIN portal_offerings po_assignment ON (po_assignment.runnable_type = 'ExternalActivity')",
     offering_assignment_via_teacher: "JOIN portal_offerings po_assignment ON (po_assignment.clazz_id = ptc.clazz_id AND po_assignment.runnable_type = 'ExternalActivity')",
     offering_teacher_filter: "JOIN portal_offerings po_teacher ON (po_teacher.runnable_type = 'ExternalActivity' AND po_teacher.runnable_id = external_activities.id)",
-
-    # User relationships
-    user_via_teacher: "JOIN users u ON u.id = portal_teachers.user_id",
-
-    # Special allowed_project_ids patterns
-    allowed_projects_cohort: "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
-    allowed_projects_school: [
-      "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)",
-      "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id)",
-      "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
-    ],
-    allowed_projects_teacher: [
-      "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = portal_teachers.id)",
-      "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
-    ],
-    allowed_projects_assignment: [
-      :cohort_items_assignment_ref,
-      "LEFT JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
-      "LEFT JOIN admin_project_materials apm ON (apm.material_type = 'ExternalActivity' AND apm.material_id = external_activities.id)"
-    ],
-    allowed_projects_permission_form: [
-      "JOIN portal_student_permission_forms pspf ON pspf.portal_permission_form_id = ppf.id",
-      "JOIN portal_student_clazzes psc ON psc.student_id = pspf.portal_student_id",
-      "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
-      "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
-      "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
-    ],
-    allowed_projects_class: [
-      "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = pc.id)",
-      "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
-      "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
-    ],
-    allowed_projects_student: [
-      "JOIN portal_student_clazzes psc ON psc.student_id = ps.id",
-      "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id)",
-      "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
-      "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
-    ],
 
     # Country patterns
     country_via_school: "JOIN portal_schools ps_country ON (ps_country.country_id = portal_countries.id)",
@@ -643,11 +605,9 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       config = get_in(@secondary_filter_config, [primary_filter, filter_name])
       if config do
         join = resolve_join_patterns(config.join)
-        # State filters use string values, others use integer IDs
-        in_clause = if filter_name == :state do
-          mysql_string_list_to_in(filter_value)
-        else
-          list_to_in(filter_value)
+        in_clause = case DimensionScope.id_type(filter_name) do
+          :string -> mysql_string_list_to_in(filter_value)
+          :integer -> list_to_in(filter_value)
         end
         where = "#{config.where} #{in_clause}"
         secondary_filter_query(query, join, where)
@@ -665,19 +625,14 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       nil
     else
       query = build_base_query(%{
-        id: "admin_cohorts.id",
+        id: DimensionScope.id_expr(:cohort),
         value: "admin_cohorts.name",
-        from: "admin_cohorts",
+        from: DimensionScope.from(:cohort),
         where: maybe_add_like(like_text, ["admin_cohorts.name LIKE ?"]),
         order_by: "admin_cohorts.name"
       })
 
-      query = if allowed_project_ids == :all do
-        query
-      else
-        where = "admin_cohorts.project_id IN #{list_to_in(allowed_project_ids)}"
-        %{query | where: [ where | query.where ]}
-      end
+      query = apply_scope(query, :cohort, allowed_project_ids)
 
       apply_secondary_filters(query, :cohort, report_filter, [:school, :teacher, :assignment, :permission_form, :class, :student])
     end
@@ -689,20 +644,14 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       nil
     else
       query = build_base_query(%{
-        id: "portal_schools.id",
+        id: DimensionScope.id_expr(:school),
         value: "portal_schools.name",
-        from: "portal_schools",
+        from: DimensionScope.from(:school),
         where: maybe_add_like(like_text, ["portal_schools.name LIKE ?"]),
         order_by: "portal_schools.name"
       })
 
-      query = if allowed_project_ids == :all do
-        query
-      else
-        join = resolve_join_patterns(:allowed_projects_school)
-        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
-        secondary_filter_query(query, join, where)
-      end
+      query = apply_scope(query, :school, allowed_project_ids)
 
       apply_secondary_filters(query, :school, report_filter, [:cohort, :teacher, :assignment, :permission_form, :class, :student])
     end
@@ -714,10 +663,10 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       nil
     else
       query = build_base_query(%{
-        id: "portal_teachers.id",
+        id: DimensionScope.id_expr(:teacher),
         value: "CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') AS fullname",
-        from: "portal_teachers",
-        join: resolve_join_patterns(:user_via_teacher),
+        from: DimensionScope.from(:teacher),
+        join: DimensionScope.join(:teacher),
         where: maybe_add_like(like_text, ["CONCAT(u.first_name, ' ', u.last_name, ' <', u.email, '>') LIKE ?"]),
         order_by: "fullname",
         num_params: 1
@@ -725,13 +674,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = %{query | where: exclude_internal_accounts(exclude_internal, query.where, portal_server, "portal_teachers")}
 
-      query = if allowed_project_ids == :all do
-        query
-      else
-        join = resolve_join_patterns(:allowed_projects_teacher)
-        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
-        secondary_filter_query(query, join, where)
-      end
+      query = apply_scope(query, :teacher, allowed_project_ids)
 
       apply_secondary_filters(query, :teacher, report_filter, [:cohort, :school, :assignment, :permission_form, :class, :student])
     end
@@ -743,20 +686,14 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       nil
     else
       query = build_base_query(%{
-        id: "external_activities.id",
+        id: DimensionScope.id_expr(:assignment),
         value: "external_activities.name",
-        from: "external_activities",
+        from: DimensionScope.from(:assignment),
         where: maybe_add_like(like_text, ["external_activities.name LIKE ?"]),
         order_by: "external_activities.name"
       })
 
-      query = if allowed_project_ids == :all do
-        query
-      else
-        join = resolve_join_patterns(:allowed_projects_assignment)
-        where = "(ac.project_id IN #{list_to_in(allowed_project_ids)}) OR (apm.project_id IN #{list_to_in(allowed_project_ids)})"
-        secondary_filter_query(query, join, where)
-      end
+      query = apply_scope(query, :assignment, allowed_project_ids)
 
       apply_secondary_filters(query, :assignment, report_filter, [:cohort, :school, :teacher, :permission_form, :class, :student])
     end
@@ -768,9 +705,9 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       nil
     else
       query = build_base_query(%{
-        id: "ppf.id",
+        id: DimensionScope.id_expr(:permission_form),
         value: "CONCAT(ap.name, ': ', ppf.name) AS fullname",
-        from: "portal_permission_forms ppf JOIN admin_projects ap ON ap.id = ppf.project_id",
+        from: DimensionScope.from(:permission_form),
         where: maybe_add_like(like_text, ["ppf.name LIKE ? or ap.name LIKE ?"]),
         order_by: "fullname",
         num_params: 2
@@ -780,13 +717,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       ## That's ok since the later processing will remove duplicates.
       ## Just make sure that they are truly identical if they use the same table alias.
 
-      query = if allowed_project_ids == :all do
-        query
-      else
-        join = resolve_join_patterns(:allowed_projects_permission_form)
-        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
-        secondary_filter_query(query, join, where)
-      end
+      query = apply_scope(query, :permission_form, allowed_project_ids)
 
       apply_secondary_filters(query, :permission_form, report_filter, [:cohort, :school, :teacher, :assignment, :class, :student])
     end
@@ -798,21 +729,15 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       nil
     else
       query = build_base_query(%{
-        id: "pc.id",
+        id: DimensionScope.id_expr(:class),
         value: "CONCAT(pc.name, ' (', pc.class_word, ')') AS fullname",
-        from: "portal_clazzes pc",
+        from: DimensionScope.from(:class),
         where: maybe_add_like(like_text, ["pc.name LIKE ? OR pc.class_word LIKE ?"]),
         order_by: "fullname",
         num_params: 2
       })
 
-      query = if allowed_project_ids == :all do
-        query
-      else
-        join = resolve_join_patterns(:allowed_projects_class)
-        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
-        secondary_filter_query(query, join, where)
-      end
+      query = apply_scope(query, :class, allowed_project_ids)
 
       apply_secondary_filters(query, :class, report_filter, [:cohort, :school, :teacher, :assignment, :permission_form, :student])
     end
@@ -835,67 +760,64 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       end
 
       query = build_base_query(%{
-        id: "ps.id",
+        id: DimensionScope.id_expr(:student),
         value: value,
-        from: "portal_students ps JOIN users u ON u.id = ps.user_id",
+        from: DimensionScope.from(:student),
         where: where,
         order_by: "fullname",
         num_params: 1
       })
 
-      query = if allowed_project_ids == :all do
-        query
-      else
-        join = resolve_join_patterns(:allowed_projects_student)
-        where = "ac.project_id IN #{list_to_in(allowed_project_ids)}"
-        secondary_filter_query(query, join, where)
-      end
+      query = apply_scope(query, :student, allowed_project_ids)
 
       apply_secondary_filters(query, :student, report_filter, [:cohort, :school, :teacher, :assignment, :permission_form, :class])
     end
   end
 
-  defp get_filter_query(:country, report_filter = %ReportFilter{}, _allowed_project_ids, like_text, _portal_server) do
+  defp get_filter_query(:country, report_filter = %ReportFilter{}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if has_empty_dependent_filters?(report_filter, :country) do
       nil
     else
       query = build_base_query(%{
-        id: "portal_countries.id",
+        id: DimensionScope.id_expr(:country),
         value: "COALESCE(portal_countries.name, '(Unknown)') AS country_name",
-        from: "portal_countries",
+        from: DimensionScope.from(:country),
         where: maybe_add_like(like_text, ["portal_countries.name LIKE ?"]),
         order_by: "country_name"
       })
+
+      query = apply_scope(query, :country, allowed_project_ids)
 
       apply_secondary_filters(query, :country, report_filter, [:state, :school, :teacher, :subject_area])
     end
   end
 
-  defp get_filter_query(:state, report_filter = %ReportFilter{}, _allowed_project_ids, like_text, _portal_server) do
+  defp get_filter_query(:state, report_filter = %ReportFilter{}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if has_empty_dependent_filters?(report_filter, :state) do
       nil
     else
       query = build_base_query(%{
-        id: "COALESCE(portal_schools.state, '(Unknown)') AS state_code",
-        value: "COALESCE(portal_schools.state, '(Unknown)') AS state_name",
-        from: "portal_schools",
+        id: "#{DimensionScope.id_expr(:state)} AS state_code",
+        value: "#{DimensionScope.id_expr(:state)} AS state_name",
+        from: DimensionScope.from(:state),
         where: maybe_add_like(like_text, ["portal_schools.state LIKE ?"]),
         order_by: "state_name"
       })
+
+      query = apply_scope(query, :state, allowed_project_ids)
 
       apply_secondary_filters(query, :state, report_filter, [:country, :school, :teacher, :subject_area])
     end
   end
 
-  defp get_filter_query(:subject_area, report_filter = %ReportFilter{}, _allowed_project_ids, like_text, _portal_server) do
+  defp get_filter_query(:subject_area, report_filter = %ReportFilter{}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
     if has_empty_dependent_filters?(report_filter, :subject_area) do
       nil
     else
-      # Always include scope filter, optionally add LIKE filter
-      base_where = ["admin_tags.scope = 'subject_areas'"]
+      base_where = DimensionScope.where(:subject_area)
       where_clauses = if like_text != "" do
         ["admin_tags.tag LIKE ?" | base_where]
       else
@@ -903,15 +825,25 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       end
 
       query = build_base_query(%{
-        id: "admin_tags.id",
+        id: DimensionScope.id_expr(:subject_area),
         value: "admin_tags.tag",
-        from: "admin_tags",
+        from: DimensionScope.from(:subject_area),
         where: where_clauses,
         order_by: "admin_tags.tag",
         num_params: if(like_text != "", do: 1, else: 0)
       })
 
+      query = apply_scope(query, :subject_area, allowed_project_ids)
+
       apply_secondary_filters(query, :subject_area, report_filter, [:country, :state, :school, :teacher])
+    end
+  end
+
+  defp apply_scope(query, dimension, allowed_project_ids) do
+    case DimensionScope.scope(dimension, allowed_project_ids) do
+      {[], [where]} -> %{query | where: [ where | query.where ]}
+      {join, [where]} -> secondary_filter_query(query, join, where)
+      _unscoped -> query
     end
   end
 
