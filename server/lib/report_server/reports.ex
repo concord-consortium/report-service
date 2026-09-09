@@ -190,10 +190,9 @@ defmodule ReportServer.Reports do
   copied from a snapshot taken when the source was created.
   """
   def duplicate_api_report_run(user = %User{}, report = %Report{}, source = %ReportRun{}) do
-    source.report_filter
-    |> Kernel.||(%ReportFilter{})
-    |> drop_empty_selections()
-    |> then(&create_api_report_run(user, report, &1))
+    report_filter = source.report_filter || %ReportFilter{}
+
+    create_api_report_run(user, report, drop_empty_selections(report_filter))
   end
 
   # A stored run carrying [] on a dimension is already unconstrained: cohort: [] and cohort: nil

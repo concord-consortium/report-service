@@ -17,6 +17,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   alias ReportServer.Reports.{AthenaFailure, FilterValidation, HideNames, Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
   alias ReportServer.Reports.Athena.{AthenaConfig, LearnerData}
   alias ReportServer.Reports.PartitionEstimate
+  alias ReportServerWeb.ReportRunLive.Duplicate
 
   @filter_types %{
     :school => "Schools",
@@ -251,6 +252,12 @@ defmodule ReportServerWeb.ReportLive.Form do
       {:error, :invalid, message} ->
         {:noreply, assign(socket, :error, message)}
     end
+  end
+
+  # the form renders the shared runs table for this report, so its duplicate action lands here too
+  @impl true
+  def handle_event("duplicate", %{"id" => id}, %{assigns: %{user: user}} = socket) do
+    {:noreply, Duplicate.duplicate(socket, user, id)}
   end
 
   @impl true

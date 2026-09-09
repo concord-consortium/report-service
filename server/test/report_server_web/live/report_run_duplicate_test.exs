@@ -114,6 +114,21 @@ defmodule ReportServerWeb.ReportRunDuplicateTest do
     end
   end
 
+  describe "the report form" do
+    test "duplicates a run from the runs table it renders", %{conn: conn} do
+      user = admin()
+      source = run_fixture(user)
+
+      {:ok, view, html} = live(log_in_conn(conn, user), ~p"/reports/new/student-answers")
+      assert html =~ "Duplicate"
+
+      assert {:error, {:redirect, %{to: to}}} =
+               view |> element("button[phx-value-id='#{source.id}']") |> render_click()
+
+      assert to == "/reports/runs/#{newest_run().id}"
+    end
+  end
+
   describe "the run page" do
     test "duplicates the run it is showing", %{conn: conn} do
       user = admin()
