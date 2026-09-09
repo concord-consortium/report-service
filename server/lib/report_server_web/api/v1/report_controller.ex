@@ -258,9 +258,19 @@ defmodule ReportServerWeb.Api.V1.ReportController do
             streamed
 
           {:pre_stream, reason} ->
-            Logger.error("Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}")
+            log_pre_stream_failure(report_run, deadline, budget, reason)
             ErrorHelpers.server_error(conn)
         end
+    end
+  end
+
+  # At or past the deadline the budget ran out, whatever exception carried it; the reducer's
+  # PortalDownloadTimeout and the pool's terminal "socket closed" are the same event.
+  defp log_pre_stream_failure(report_run, deadline, budget, reason) do
+    if System.monotonic_time(:millisecond) >= deadline do
+      Logger.error("Portal download for run #{report_run.id} exceeded its #{budget} ms budget: #{inspect(reason)}")
+    else
+      Logger.error("Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}")
     end
   end
 
