@@ -68,7 +68,8 @@ defmodule ReportServer.Reports.ReportFilter do
   `{:ok, %{}}` is a filter with no ids to resolve, which is a legitimate run: a log report can be
   filtered by application and a date range alone. `{:error, :out_of_scope, missing}` names the
   dimensions and ids that did not resolve, which for the seven scoped dimensions means the caller
-  cannot see them.
+  cannot see them. `{:error, reason}` is the portal: the label query failed, or the caller's
+  projects could not be resolved.
   """
   def get_filter_values(report_filter = %ReportFilter{}, user = %User{}) do
     case selected_dimensions(report_filter) do
