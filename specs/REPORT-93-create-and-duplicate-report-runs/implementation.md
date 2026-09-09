@@ -589,7 +589,11 @@ The filter expression is the JSON object the API emits, taken from `--report-fil
 
 The same helper backs `filter-options`, which is what makes the two commands agree by construction rather than by review. That closes the gap REPORT-92 recorded (`specs/REPORT-92-filter-option-discovery-api.md:358`), and `follow-ups.md`'s entry for it is deleted in this step.
 
-A transport failure on either command reports that the run may have been created and points at `reports list`, rather than suggesting a retry. `Client.do` already refuses to retry a non-idempotent request for exactly this reason (`internal/api/client.go:116-121`); the CLI's job is to say what that means.
+A failure that the server did not answer reports that the run may have been created and points at `reports list`, rather than suggesting a retry. `Client.do` already refuses to retry a non-idempotent request for exactly this reason (`internal/api/client.go:116-121`); the client's job is to say what that means. The rule is `api.AsWriteCLIError/2` rather than a CLI helper, because the MCP tools need it more: an agent whose `reports_create` died in transport has no reason not to call it again. Only a 4xx proves the write did not happen, since a 5xx can come from a proxy in front of the server.
+
+Both commands carry the flags-to-request and call steps on a struct, as `filterOptionsFlags` already does, because a step reached only through `RunE` needs a stored credential and so cannot be tested at all. Verified by mutation: before the seam, dropping `--report-filter` from the create body, ignoring `--force`, ignoring `--json` and dropping the possibly-created advice each left the suite green.
+
+Residual, accepted: a transport failure on a write exits 1 (`INTERNAL`) rather than 6 (`TRANSIENT`), because a non-idempotent request is never retried and so never becomes a `TransientError`. That is the shipped behavior of `reports filter-options`, which is also a POST, and changing the exit-code contract is its own decision.
 
 Tests: `--report-filter` and `--report-filter-file` produce identical request bodies; passing both is a usage error; malformed JSON is a usage error and makes no request; the Portal guard's message reaches stdout with the run id in it; a transport error's text names `reports list`; `filter-options --report-filter` narrows the request body the fake server receives.
 
