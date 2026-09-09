@@ -211,7 +211,9 @@ The three comments inside the server that say the same thing are corrected in th
 
   The ticket recorded run 206 failing at 15,004 ms before the fix; that old behaviour was not re-run here, so the comparison is against the ticket's figure rather than a fresh one. Run 206's CSV was also compared byte for byte against the buffered path the web run page uses, rebuilt from the same run through `PortalDbs.query/4` and the same encoder: both are 63,657 bytes with the same SHA-256, which settles the "matches what the web UI produces" criterion on real data rather than on the shared-encoder argument alone.
 
-- **The one thing the check turned up that the spec had wrong**: the unfiltered run takes 71.5 s, not the roughly 30 s the margin was reasoned from, and an aggregate is silent for essentially its whole download: first byte against total is 29.96 s of 30.17 s for run 206 and 70.71 s of 71.55 s for run 201. Seventy seconds of silence exceeds a 60-second idle timeout, which is a common proxy default. The budget still covers the work, but whether the edge does is now the open question, and it is the check to make before relying on this in production.
+- **The one thing the check turned up that the spec had wrong**: the unfiltered run takes 71.5 s, not the roughly 30 s the margin was reasoned from, and an aggregate is silent for essentially its whole download: first byte against total is 29.96 s of 30.17 s for run 206 and 70.71 s of 71.55 s for run 201.
+
+- **The edge was then read from the deployed stacks and is not a constraint.** Both environments front the service with a shared `fargate-public-cluster` ALB whose `idle_timeout.timeout_seconds` is **600**, in production (`app/farga-Publi-1R328TZK4E1PC`, account 612297603577) and in QA (`app/farga-Publi-VIQR22PP0CN3`, 816253370536). Seventy seconds of silence is well inside that, and 600 exceeds `portal_download_timeout_ms`, so the server's own budget is always what cuts a download. The number is not owned by this stack, though: the ALB is shared, so the invariant worth keeping is 600 staying above the download budget.
 
 ## Open Questions
 
