@@ -7,7 +7,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
   alias ReportServer.LearnerDataStub
   alias ReportServer.Reports
-  alias ReportServer.Reports.ReportFilter
+  alias ReportServer.Reports.{ReportFilter, ReportUtils}
 
   setup do
     on_exit(fn ->
@@ -205,6 +205,20 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       assert [run] = Reports.list_user_report_runs(user, "student-actions")
       # deselecting everything sends no key at all, so the stored value is nil rather than []
       assert ReportFilter.app_list(run.report_filter.app) == []
+    end
+
+    # the date control constrains a browser and not a crafted event, and apply_start_date/3
+    # interpolates its argument into the portal statement
+    test "refuses a date the portal statement would carry verbatim", %{conn: conn} do
+      {view, user} = mount_form(conn, "teacher-actions")
+      payload = "2026-01-01' OR '1'='1"
+      choose_first_filter(view, %{"start_date" => payload})
+
+      html = render_click(view, "submit_form")
+
+      assert html =~ "must be an ISO 8601 date"
+      assert Reports.list_user_report_runs(user, "teacher-actions") == []
+      assert ReportUtils.apply_start_date([], payload) == ["run.start_time >= '#{payload}'"]
     end
 
     test "refuses an application on a report that does not support one", %{conn: conn} do

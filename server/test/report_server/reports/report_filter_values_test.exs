@@ -128,6 +128,6 @@ defmodule ReportServer.Reports.ReportFilterValuesTest do
     unreachable = %User{portal_server: "no.such.host.example", portal_is_admin: true}
 
     assert {:error, error} = values(%ReportFilter{cohort: [1]}, unreachable)
-    refute match?({:out_of_scope, _}, error)
+    assert is_binary(error)
   end
 end

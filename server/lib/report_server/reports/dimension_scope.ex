@@ -5,7 +5,8 @@ defmodule ReportServer.Reports.DimensionScope do
   projects a caller may see.
 
   Option discovery (`ReportFilterQuery`) and label resolution (`ReportFilter.get_filter_values/2`)
-  both read it, so an id resolves to a label exactly when `filter-options` would have offered it.
+  both read it, so an id `filter-options` offers always resolves to a label. Resolution is the more
+  permissive of the two: it applies no `exclude_internal`, which the teacher option query does.
 
   Membership is against the unnarrowed option set. The cascade is not expressed here: a caller may
   name a cohort and a school that do not intersect, which is an empty report rather than a filter

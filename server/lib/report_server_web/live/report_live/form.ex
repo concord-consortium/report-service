@@ -241,14 +241,16 @@ defmodule ReportServerWeb.ReportLive.Form do
     report_filter = ReportFilter.from_form(form, num_filters)
       |> HideNames.enforce(user)
 
-    case FilterValidation.check_app_supported(report_filter, report) do
-      :ok ->
-        if warning_applicable?(form_options) do
-          {:noreply, start_count_task(socket, report_filter)}
-        else
-          {:noreply, create_run(socket, report_filter)}
-        end
-
+    # the date controls constrain a browser and not a crafted event, and a date reaches the portal
+    # statement by raw interpolation, so the value is checked before a run can carry it
+    with :ok <- FilterValidation.check_app_supported(report_filter, report),
+         :ok <- FilterValidation.check_dates(report_filter) do
+      if warning_applicable?(form_options) do
+        {:noreply, start_count_task(socket, report_filter)}
+      else
+        {:noreply, create_run(socket, report_filter)}
+      end
+    else
       {:error, :invalid, message} ->
         {:noreply, assign(socket, :error, message)}
     end
@@ -362,8 +364,8 @@ defmodule ReportServerWeb.ReportLive.Form do
   end
 
   defp create_run(%{assigns: %{report: %Report{} = report, user: user}} = socket, report_filter = %ReportFilter{}) do
-    # a failed lookup degrades the display and not the run, whose filter still runs, so the form
-    # creates it either way
+    # a lookup that fails on any one dimension returns no labels at all, which leaves the run's
+    # filters displaying blank; the run itself is unaffected, so the form creates it either way
     report_filter_values =
       case ReportFilter.get_filter_values(report_filter, user) do
         {:ok, values} ->

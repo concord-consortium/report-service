@@ -1,10 +1,12 @@
 defmodule ReportServer.Reports do
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias ReportServer.Pagination
   alias ReportServer.Repo
   alias ReportServer.Accounts.User
-  alias ReportServer.Reports.{AthenaRunOps, FilterValidation, HideNames, Report, ReportFilter, ReportRun, Tree}
+  alias ReportServer.Reports.{AllowedProjectsLookupError, AthenaRunOps, FilterValidation, HideNames, Report, ReportFilter, ReportRun, Tree}
 
   @root_slug "new-reports"
 
@@ -163,8 +165,14 @@ defmodule ReportServer.Reports do
   `{:error, :derivation_failed, reason}` is the portal, whose reason is not the caller's to read.
   """
   def create_api_report_run(user = %User{}, report = %Report{}, report_filter = %ReportFilter{}) do
-    report_filter = HideNames.enforce(report_filter, user)
+    build_api_report_run(user, report, HideNames.enforce(report_filter, user))
+  rescue
+    # The permission lookup raises rather than answering "no projects", which is right, but a
+    # transient portal failure is a derivation failure like any other and both callers handle it.
+    error in AllowedProjectsLookupError -> {:error, :derivation_failed, error.message}
+  end
 
+  defp build_api_report_run(user, report, report_filter) do
     with :ok <- FilterValidation.validate(report_filter, report),
          :ok <- FilterValidation.check_dates(report_filter),
          :ok <- FilterValidation.check_no_empty_selections(report_filter),
@@ -266,9 +274,19 @@ defmodule ReportServer.Reports do
     do: Application.get_env(:report_server, :athena_run_starter, &start_athena_query_task/1)
 
   defp start_athena_query_task(report_run) do
-    Task.Supervisor.start_child(ReportServer.PostProcessingTaskSupervisor, fn ->
-      AthenaRunOps.ensure_current(report_run)
-    end)
+    task =
+      Task.Supervisor.start_child(ReportServer.PostProcessingTaskSupervisor, fn ->
+        AthenaRunOps.ensure_current(report_run)
+      end)
+
+    with {:ok, _pid} <- task do
+      :ok
+    else
+      error ->
+        # The first read starts the query instead, so this costs time rather than the run, but a
+        # kickoff that never happened is otherwise indistinguishable from one still in flight.
+        Logger.error("Unable to start the Athena query for report run #{report_run.id}: #{inspect(error)}")
+    end
   end
 
   @doc """

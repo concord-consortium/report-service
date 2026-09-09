@@ -97,7 +97,9 @@ defmodule ReportServerWeb.ReportRunDuplicateTest do
       assert {:error, {:redirect, _}} =
                view |> element("button[phx-value-id='#{source.id}']") |> render_click()
 
-      assert newest_run().report_slug == "school-metrics"
+      copy = newest_run()
+      assert copy.id != source.id
+      assert copy.report_slug == "school-metrics"
     end
 
     test "a run whose filter no longer validates flashes and leaves the view alive", %{conn: conn} do

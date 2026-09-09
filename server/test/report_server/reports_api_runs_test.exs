@@ -152,6 +152,25 @@ defmodule ReportServer.ReportsApiRunsTest do
       assert run_count() == before
     end
 
+    test "a failed permission lookup is a derivation failure, not an exception" do
+      unreachable =
+        user_fixture(%{
+          portal_server: "no.such.host.example",
+          portal_user_id: 557,
+          portal_is_project_researcher: true
+        })
+
+      before = run_count()
+
+      assert {:error, :derivation_failed, _reason} =
+               create(unreachable, athena_report(), %ReportFilter{cohort: [1]})
+
+      assert {:error, :derivation_failed, _reason} =
+               create(unreachable, portal_report(), %ReportFilter{cohort: [1]})
+
+      assert run_count() == before
+    end
+
     test "a failed label derivation fails the create and inserts nothing" do
       unreachable = user_fixture(%{portal_server: "no.such.host.example", portal_is_admin: true})
       before = run_count()
