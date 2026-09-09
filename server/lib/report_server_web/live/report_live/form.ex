@@ -14,7 +14,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
   alias ReportServer.Reports
-  alias ReportServer.Reports.{HideNames, Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
+  alias ReportServer.Reports.{AthenaFailure, FilterValidation, HideNames, Report, Tree, ReportFilter, ReportQuery, ReportFilterQuery}
   alias ReportServer.Reports.Athena.{AthenaConfig, LearnerData}
   alias ReportServer.Reports.PartitionEstimate
 
@@ -236,11 +236,11 @@ defmodule ReportServerWeb.ReportLive.Form do
     {:noreply, socket}
   end
 
-  def handle_event("submit_form", _unsigned_params, %{assigns: %{form: form, num_filters: num_filters, user: user, form_options: form_options}} = socket) do
+  def handle_event("submit_form", _unsigned_params, %{assigns: %{form: form, num_filters: num_filters, user: user, report: report, form_options: form_options}} = socket) do
     report_filter = ReportFilter.from_form(form, num_filters)
       |> HideNames.enforce(user)
 
-    case check_app_supported(report_filter, form_options) do
+    case FilterValidation.check_app_supported(report_filter, report) do
       :ok ->
         if warning_applicable?(form_options) do
           {:noreply, start_count_task(socket, report_filter)}
@@ -248,7 +248,7 @@ defmodule ReportServerWeb.ReportLive.Form do
           {:noreply, create_run(socket, report_filter)}
         end
 
-      {:error, message} ->
+      {:error, :invalid, message} ->
         {:noreply, assign(socket, :error, message)}
     end
   end
@@ -487,30 +487,11 @@ defmodule ReportServerWeb.ReportLive.Form do
 
   defp debug_filter(sql, params), do: "#{sql} (#{params |> Enum.map(&("'#{&1}'")) |> Enum.join(", ")})"
 
-  defp get_form_options(%Report{form_options: form_options}, user = %User{}) do
+  defp get_form_options(report = %Report{form_options: form_options}, user = %User{}) do
     %{
       enable_hide_names: HideNames.allowed?(user) && Keyword.get(form_options, :enable_hide_names, false),
-      enable_app_filter: Keyword.get(form_options, :enable_app_filter, false)
+      enable_app_filter: AthenaFailure.offers_app_filter?(report)
     }
   end
 
-  defp check_app_supported(%ReportFilter{app: app}, form_options) do
-    apps = ReportFilter.app_list(app)
-
-    cond do
-      # a blank app is acceptable on every report, including those with no control
-      apps == [] -> :ok
-      !form_options.enable_app_filter -> {:error, "This report does not support an application filter."}
-      true -> check_apps_known(apps)
-    end
-  end
-
-  # get_athena_query/3 rejects an unknown value too, but only after the report has run the portal
-  # join and uploaded the learner data, so the researcher sees a failed run instead of a form error
-  defp check_apps_known(apps) do
-    case Enum.reject(apps, &(&1 in AthenaConfig.get_log_apps())) do
-      [] -> :ok
-      unknown -> {:error, "Unknown application#{if length(unknown) > 1, do: "s"}: #{Enum.join(unknown, ", ")}"}
-    end
-  end
 end

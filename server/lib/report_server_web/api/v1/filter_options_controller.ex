@@ -20,7 +20,7 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
 
   require Logger
 
-  alias ReportServer.Reports.{FilterOptions, Report, ReportFilter, Tree}
+  alias ReportServer.Reports.{FilterOptions, FilterValidation, Report, ReportFilter, Tree}
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{FilterOptionsJSON, FilterParams, Params}
 
@@ -105,13 +105,11 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
   end
 
   defp check_dimension_offered(report, dimension, slug) do
-    offered? =
-      case FilterOptions.static_dimension(dimension) do
-        {:ok, module} -> module.enabled_for_report?(report)
-        :error -> dimension in report.include_filters
-      end
-
-    if offered?, do: :ok, else: {:error, "#{slug} does not filter on #{dimension}"}
+    if FilterValidation.offered?(dimension, report) do
+      :ok
+    else
+      {:error, "#{slug} does not filter on #{dimension}"}
+    end
   end
 
   defp parse_search(params) do
