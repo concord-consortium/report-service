@@ -102,6 +102,20 @@ defmodule ReportServerWeb.ReportRunDuplicateTest do
       assert copy.report_slug == "school-metrics"
     end
 
+    # all-runs lists every portal's runs, so the Duplicate button is reachable on a source whose
+    # stored ids name entities the clicking admin's portal knows nothing about.
+    test "an admin duplicating a run from another portal is refused", %{conn: conn} do
+      owner = user_fixture(%{portal_server: "other.portal.example.com"})
+      source = run_fixture(owner)
+
+      {:ok, view, _html} = live(log_in_conn(conn, admin()), ~p"/reports/all-runs")
+
+      html = view |> element("button[phx-value-id='#{source.id}']") |> render_click()
+
+      assert html =~ "other.portal.example.com"
+      assert Repo.aggregate(ReportRun, :count) == 1
+    end
+
     test "a run whose filter no longer validates flashes and leaves the view alive", %{conn: conn} do
       user = admin()
       source = run_fixture(user, "student-answers", %ReportFilter{cohort: [1], start_date: "nope"})

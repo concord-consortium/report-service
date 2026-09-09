@@ -261,6 +261,20 @@ defmodule ReportServer.ReportsApiRunsTest do
       assert {:error, :invalid, message} = Reports.duplicate_api_report_run(user, athena_report(), source)
       assert message =~ "ISO 8601"
     end
+
+    # An admin's runs list spans every portal, so a source whose ids mean something else here has
+    # to be refused rather than resolved against this portal and stored as a run over other data.
+    test "a source from another portal is refused rather than resolved against this one's ids" do
+      owner = user_fixture(%{portal_server: "other.portal.example.com"})
+      {:ok, source} = Reports.create_report_run(%{user_id: owner.id, report_slug: "student-answers", report_filter: %ReportFilter{cohort: [1]}, report_filter_values: %{}})
+      source = Reports.get_report_run_with_user!(source.id)
+      before = run_count()
+
+      assert {:error, :invalid, message} = Reports.duplicate_api_report_run(admin(), athena_report(), source)
+
+      assert message =~ "other.portal.example.com"
+      assert run_count() == before
+    end
   end
 
   # The run page and the Portal download both build a query straight from the stored filter, so a

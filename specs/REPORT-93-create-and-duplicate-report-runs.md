@@ -57,6 +57,7 @@ Two repositories: `report-service` for the endpoints, the shared validation and 
 
 - The runs table and the run detail page gain a duplicate action that creates a new run and takes the user to it. *(Landed on three surfaces: the report form renders the same runs table as Previous Runs — see Decisions.)*
 - The action appears on `/reports/all-runs` as well as `/reports/runs`; the duplicate is owned by the clicking user and its filter passes through `HideNames.enforce/2`.
+- A source run from a portal other than the duplicating user's is refused, because a stored filter holds portal ids and the copy resolves them against the copying user's portal. *(Added in review: `/reports/all-runs` spans every portal, so the button reaches such a source.)*
 - The UI duplicates Portal runs freely; the guard is a server concern.
 
 ### cc-data client, CLI and MCP

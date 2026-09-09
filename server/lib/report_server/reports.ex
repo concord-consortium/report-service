@@ -196,11 +196,22 @@ defmodule ReportServer.Reports do
   The clone carries the slug and the filter and nothing else, so it starts its own Athena query
   rather than reporting the source's finished one, and its labels are derived again rather than
   copied from a snapshot taken when the source was created.
-  """
-  def duplicate_api_report_run(user = %User{}, report = %Report{}, source = %ReportRun{}) do
-    report_filter = source.report_filter || %ReportFilter{}
 
-    create_api_report_run(user, report, drop_empty_selections(report_filter))
+  A source from another portal is refused. A stored filter holds portal ids and the copy resolves
+  them against the copying user's portal, so cohort 1 over there would silently become cohort 1
+  over here. The runs an admin can act on span every portal, which is where such a source comes
+  from. The source's user is matched in the head because that is where the source's portal lives.
+  """
+  def duplicate_api_report_run(user = %User{}, report = %Report{}, source = %ReportRun{user: %User{portal_server: source_portal}}) do
+    if source_portal == user.portal_server do
+      report_filter = source.report_filter || %ReportFilter{}
+
+      create_api_report_run(user, report, drop_empty_selections(report_filter))
+    else
+      {:error, :invalid,
+       "Run #{source.id} was created on #{source_portal}, and the ids its filter names are not the " <>
+         "same entities on #{user.portal_server}. Duplicate it while signed in to #{source_portal}."}
+    end
   end
 
   # A stored run carrying [] on a dimension is already unconstrained: cohort: [] and cohort: nil
