@@ -931,8 +931,11 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     "SELECT COUNT(DISTINCT #{count_id}) AS the_count FROM #{from} #{join_sql} #{where_sql}"
   end
 
-  defp strip_alias(expression) do
-    # Remove " AS alias" from the expression (case insensitive)
+  @doc """
+  An id or value expression with any trailing `AS alias` removed, which is the form that can be
+  counted, compared or used in a predicate.
+  """
+  def strip_alias(expression) do
     expression
     |> String.replace(~r/\s+AS\s+\w+$/i, "")
   end

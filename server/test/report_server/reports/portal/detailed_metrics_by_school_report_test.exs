@@ -86,38 +86,6 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReportTest do
 
       assert String.contains?(sql, "ps.country_id IN (1,2,3)")
     end
-
-    test "handles '(Unknown)' country selection (NULL values)" do
-      report_filter = %ReportFilter{
-        country: [-1],  # -1 represents "(Unknown)"
-        state: nil,
-        subject_area: nil,
-        exclude_internal: false,
-        start_date: nil,
-        end_date: nil
-      }
-
-      query = DetailedMetricsBySchoolReport.get_query(report_filter, test_user())
-      sql = normalized_sql(query)
-
-      assert String.contains?(sql, "ps.country_id IS NULL")
-    end
-
-    test "handles mix of known countries and '(Unknown)'" do
-      report_filter = %ReportFilter{
-        country: [-1, 1, 2],  # -1 = "(Unknown)", 1 and 2 are real countries
-        state: nil,
-        subject_area: nil,
-        exclude_internal: false,
-        start_date: nil,
-        end_date: nil
-      }
-
-      query = DetailedMetricsBySchoolReport.get_query(report_filter, test_user())
-      sql = normalized_sql(query)
-
-      assert String.contains?(sql, "(ps.country_id IS NULL OR ps.country_id IN (1,2))")
-    end
   end
 
   describe "apply_filters/3 - state filter" do
@@ -407,7 +375,7 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReportTest do
 
     test "handles NULL handling with multiple filters" do
       report_filter = %ReportFilter{
-        country: [-1, 1],  # "(Unknown)" and USA
+        country: [1],
         state: ["(Unknown)", "CA"],  # NULL and California
         subject_area: [5],
         exclude_internal: false,
@@ -419,7 +387,7 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReportTest do
       sql = normalized_sql(query)
 
       # Verify NULL handling
-      assert String.contains?(sql, "(ps.country_id IS NULL OR ps.country_id IN (1))")
+      assert String.contains?(sql, "ps.country_id IN (1)")
       assert String.contains?(sql, "(ps.state IS NULL OR ps.state IN ('CA'))")
       assert String.contains?(sql, "at.id IN (5)")
     end

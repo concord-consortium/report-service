@@ -64,13 +64,16 @@ INSERT INTO users VALUES
   (131,'ann','Ann','Teach','ann@e.org',NULL),
   (135,'eve','Eve','Internal','eve@concord.org',NULL),
   (132,'bob','Bob','Teach','bob@e.org',NULL),
-  (133,'cid','Cid','Teach','cid@e.org',NULL);
+  (133,'cid','Cid','Teach','cid@e.org',NULL),
+  (105,'stu.five','Stu','Five','stu.five@e.org',NULL);
 -- Dist Y's comma is deliberate: the report joins district names on commas and must scrub them
 INSERT INTO portal_districts VALUES (41,'Dist W','NH'), (42,'Dist Y, Region 2','MA');
 -- get_internal_teacher_ids/1 matches schools named like '%concord consortium%', so school 53 is
 -- what makes the exclude_internal flag observable.
+-- School 54 belongs to no project and has no state, so it is both the entity a scoped caller
+-- must not see and the row that makes '(Unknown)' a real state option.
 INSERT INTO portal_schools VALUES (51,'School W',41,'NH',1), (52,'School Y',42,'MA',1),
-  (53,'Concord Consortium',41,'NH',1);
+  (53,'Concord Consortium',41,'NH',1), (54,'School No State',41,NULL,1);
 INSERT INTO portal_school_memberships VALUES
   (1,31,'Portal::Teacher',51), (2,31,'Portal::Teacher',52), (3,32,'Portal::Teacher',52),
   (4,35,'Portal::Teacher',53);
@@ -78,9 +81,12 @@ INSERT INTO portal_teachers VALUES (31,131),(32,132),(33,133),(35,135);
 INSERT INTO portal_teacher_clazzes VALUES (1,601,31),(2,601,32),(3,602,31),(4,602,33),(5,602,34);
 INSERT INTO portal_student_clazzes VALUES (1,601,71),(2,601,72),(3,602,73),(4,602,74);
 INSERT INTO portal_offerings VALUES (701,'ExternalActivity',801,601),(702,'ExternalActivity',802,601),(703,'ExternalActivity',801,602);
+-- Activity 803 reaches project 900 through its materials and through no cohort, which is the
+-- shape the assignment scope's disjunction admits and a conjunction would drop.
 INSERT INTO external_activities VALUES
   (801,'Activity One','https://activity.example.org/a?answersSourceKey=src.example.org'),
-  (802,'Activity Two',NULL);
+  (802,'Activity Two',NULL),
+  (803,'Activity Three',NULL);
 INSERT INTO portal_learners VALUES
   (901,71,701,'SECUREKEY123','2026-04-01 09:00:00'),
   (902,72,702,NULL,'2026-04-02 09:00:00'),
@@ -94,21 +100,25 @@ INSERT INTO admin_projects VALUES (900,'Proj A'),(901,'Proj B');
 INSERT INTO portal_countries VALUES (1,'United States'),(2,'Canada');
 -- Form 13's name sorts before the others while its project sorts after, so ordering by the form
 -- name and ordering by the displayed "project: form" label give different answers.
-INSERT INTO portal_permission_forms VALUES (11,'Form 1',900),(12,'Form 2',901),(13,'Aardvark Form',901);
-INSERT INTO portal_students VALUES (71,101),(72,102),(73,103),(74,104);
+-- Form 14 has no signed students, so no teacher and no project reach it.
+INSERT INTO portal_permission_forms VALUES (11,'Form 1',900),(12,'Form 2',901),(13,'Aardvark Form',901),
+  (14,'Unreachable Form',901);
+-- Student 75 is in no class, so no teacher and no project reach them.
+INSERT INTO portal_students VALUES (71,101),(72,102),(73,103),(74,104),(75,105);
 INSERT INTO admin_tags VALUES (1,'Science','subject_areas'),(2,'Math','subject_areas'),(3,'Not A Subject','other');
 INSERT INTO taggings VALUES (1,1,'subject_areas','ExternalActivity',801);
 -- Three classes share a label so a page boundary can fall inside the tie, and their ids disagree
 -- numerically and lexicographically. Two classes have no class word, so CONCAT yields a NULL label
 -- for each. Two rather than one, so a page of size one ends on a NULL cursor with another NULL
 -- still to visit, which is the only shape that catches an ordering that is not null safe.
+-- Class 603 has no teacher, so no project reaches it.
 INSERT INTO portal_clazzes VALUES
   (2,'Adams','a'),(3,'No Word',NULL),(4,'No Word Two',NULL),(5,'Lincoln High','sec'),
   (9,'Lincoln High','sec'),(40,'Lincoln High','sec'),(77,'Zed','z'),
-  (601,'Class 601','c'),(602,'Class 602','c');
+  (601,'Class 601','c'),(602,'Class 602','c'),(603,'Class 603','c');
 INSERT INTO portal_teacher_clazzes VALUES
   (10,2,31),(11,3,31),(12,5,31),(13,9,31),(14,40,31),(15,77,31),(16,4,31);
-INSERT INTO admin_project_materials VALUES (1,900,'ExternalActivity',801);
+INSERT INTO admin_project_materials VALUES (1,900,'ExternalActivity',801),(2,900,'ExternalActivity',803);
 INSERT INTO admin_project_users VALUES (1,900,555,1,0),(2,900,557,0,1);
 INSERT INTO report_learners
   (learner_id,student_id,user_id,offering_id,class_id,last_run,teachers_name,student_name,username,

@@ -37,7 +37,7 @@ defmodule ReportServer.Reports.ReportUtilsDbTest do
     sql = "SELECT state FROM portal_schools WHERE state IN #{unsafe}"
     {:ok, result} = PortalDbs.query(@server, sql)
 
-    assert result.rows |> List.flatten() |> Enum.uniq() |> Enum.sort() == ["MA", "NH"]
+    assert result.rows |> List.flatten() |> Enum.uniq() |> Enum.sort() == [nil, "MA", "NH"]
   end
 
   test "benign values still match their rows" do

@@ -107,20 +107,8 @@ defmodule ReportServer.Reports.Portal.SummaryMetricsBySubjectAreaReport do
 
     where = exclude_internal_accounts(exclude_internal, where, portal_server)
 
-    # Country filter - convert "(Unknown)" back to NULL
     {join, where} = if have_filter?(country) do
-      where_clause = if Enum.member?(country, -1) do
-        # -1 represents "(Unknown)" - check for NULL
-        other_countries = Enum.reject(country, fn c -> c == -1 end)
-        if length(other_countries) > 0 do
-          "(ps.country_id IS NULL OR ps.country_id IN #{list_to_in(other_countries)})"
-        else
-          "ps.country_id IS NULL"
-        end
-      else
-        "ps.country_id IN #{list_to_in(country)}"
-      end
-      {join, [where_clause | where]}
+      {join, ["ps.country_id IN #{list_to_in(country)}" | where]}
     else
       {join, where}
     end
