@@ -544,7 +544,9 @@ Tests: an Athena duplicate returns 201 and a new id; the new run's `report_filte
 
 **Estimated diff size**: ~220 lines
 
-The component gains a column rather than a caller-supplied slot: both call sites want the same action, and a slot would let them drift.
+The component gains a column rather than a caller-supplied slot: every call site wants the same action, and a slot would let them drift.
+
+There are three call sites, not the two this step assumed. The report form renders the same table as **Previous Runs**, the caller's own runs of the report being authored, so the action lands there too and that LiveView delegates to the same shared module. Kept rather than suppressed with an opt-in flag: the form is the one surface where the source run and the report about to be run are guaranteed to be the same, and the redirect to the new run is the navigation that page already produces on submit. The cost is that a click there leaves a half-assembled filter behind.
 
 The handler is one shared module, `ReportRunLive.Duplicate`, rather than a copy per LiveView, and the message naming out-of-scope ids lives on `FilterValidation` so the controller and the LiveView render the same refusal.
 
