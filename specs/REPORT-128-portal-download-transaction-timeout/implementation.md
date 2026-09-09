@@ -207,11 +207,11 @@ The three comments inside the server that say the same thing are corrected in th
 |---|---|---|
 | 206 | `school-metrics`, state CA | 200 in 30.2 s, 643 rows, 63,657 bytes, chunked `text/csv` |
 | 200 | `summary-metrics-by-subject-area`, state MA | 200 in 7.6 s, 7 rows |
-| 201 | `school-metrics`, unfiltered | 200 in 71.4 s, 4,051 rows, 334,768 bytes |
+| 201 | `school-metrics`, unfiltered | 200 in 71.5 s, 4,051 rows, 334,768 bytes |
 
-  Run 206 previously returned a 500 at about 15 s, so this is the fix doing what it was written to do. Its CSV was also compared byte for byte against the buffered path the web run page uses, rebuilt from the same run through `PortalDbs.query/4` and the same encoder: both are 63,657 bytes with the same SHA-256, which settles the "matches what the web UI produces" criterion on real data rather than on the shared-encoder argument alone.
+  The ticket recorded run 206 failing at 15,004 ms before the fix; that old behaviour was not re-run here, so the comparison is against the ticket's figure rather than a fresh one. Run 206's CSV was also compared byte for byte against the buffered path the web run page uses, rebuilt from the same run through `PortalDbs.query/4` and the same encoder: both are 63,657 bytes with the same SHA-256, which settles the "matches what the web UI produces" criterion on real data rather than on the shared-encoder argument alone.
 
-- **The one thing the check turned up that the spec had wrong**: the unfiltered run takes 71.4 s, not the roughly 30 s the margin was reasoned from, and time to first byte is 29.96 s of run 206's 30.17 s, so an aggregate download is silent for essentially its whole duration. A 71-second silence exceeds the AWS ALB default idle timeout of 60 seconds. The budget still covers the work, but whether the edge does is now the open question, and it is the check to make before relying on this in production.
+- **The one thing the check turned up that the spec had wrong**: the unfiltered run takes 71.5 s, not the roughly 30 s the margin was reasoned from, and an aggregate is silent for essentially its whole download: first byte against total is 29.96 s of 30.17 s for run 206 and 70.71 s of 71.55 s for run 201. Seventy seconds of silence exceeds a 60-second idle timeout, which is a common proxy default. The budget still covers the work, but whether the edge does is now the open question, and it is the check to make before relying on this in production.
 
 ## Open Questions
 
