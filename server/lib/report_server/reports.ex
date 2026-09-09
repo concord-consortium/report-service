@@ -267,9 +267,7 @@ defmodule ReportServer.Reports do
 
   defp start_athena_query_async(report_run, _report), do: report_run
 
-  # Injectable because a task started from Task.Supervisor owns none of the test sandbox's
-  # connection, so a hard-wired starter dies inside the task and takes every assertion about the
-  # kickoff with it.
+  # Injectable because a task from Task.Supervisor owns none of the test sandbox's connection.
   defp run_starter,
     do: Application.get_env(:report_server, :athena_run_starter, &start_athena_query_task/1)
 

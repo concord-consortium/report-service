@@ -29,8 +29,7 @@ defmodule ReportServer.Reports.FilterValidation do
   end
 
   # The dates are interpolated raw into the portal statement by apply_start_date/3, so nothing
-  # downstream can make an unparseable one safe. Applied by the API parser and again by the context
-  # function, because a duplicate is built from a stored filter and skips the parser.
+  # downstream can make an unparseable one safe.
   def check_dates(report_filter = %ReportFilter{}) do
     dates = [start_date: report_filter.start_date, end_date: report_filter.end_date]
 

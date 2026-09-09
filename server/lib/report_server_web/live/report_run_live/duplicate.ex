@@ -8,6 +8,8 @@ defmodule ReportServerWeb.ReportRunLive.Duplicate do
   path, so it can never widen what its creator may see.
   """
 
+  use ReportServerWeb, :verified_routes
+
   import Phoenix.LiveView, only: [put_flash: 3, redirect: 2]
 
   require Logger
@@ -21,7 +23,7 @@ defmodule ReportServerWeb.ReportRunLive.Duplicate do
          {:ok, source} <- Reports.get_report_run_for_user(user, id),
          %Report{} = report <- Tree.find_report(source.report_slug),
          {:ok, report_run} <- Reports.duplicate_api_report_run(user, report, source) do
-      redirect(socket, to: "/reports/runs/#{report_run.id}")
+      redirect(socket, to: ~p"/reports/runs/#{report_run.id}")
     else
       {:error, :invalid, message} ->
         put_flash(socket, :error, "Unable to duplicate this report run: #{message}")
