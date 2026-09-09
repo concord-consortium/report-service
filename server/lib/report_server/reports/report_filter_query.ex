@@ -836,11 +836,14 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
   end
 
+  # Every shape `DimensionScope.scope/2` can return is named, so a shape it grows later raises here
+  # rather than falling through a catch-all that would quietly drop the restriction.
   defp apply_scope(query, dimension, allowed_project_ids) do
     case DimensionScope.scope(dimension, allowed_project_ids) do
       {[], [where]} -> %{query | where: [ where | query.where ]}
       {join, [where]} -> secondary_filter_query(query, join, where)
-      _unscoped -> query
+      :none -> query
+      {[], []} -> query
     end
   end
 
