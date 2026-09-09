@@ -87,7 +87,11 @@ D was recommended first and then rejected on three grounds, recorded so it is no
 ### Is 120 seconds still the right default budget?
 **Context**: 120,000 ms was chosen in REPORT-88 as a bound below the portal DB's 300,000 ms `@query_timeout`, and had never been in force because the 15-second cap masked it.
 
-**Decision**: **Keep 120,000 ms.** It is `PORTAL_DOWNLOAD_TIMEOUT_MS`, so an operator can move it without a deploy. Measured against production: run 206 at 30.2 s and an unfiltered `school-metrics` run at 71.5 s for 4,051 rows, so the headroom is about 1.7 times rather than the wide margin first assumed on run 206 alone. It covers the heaviest run anyone has produced, but a slower portal or larger corpus would reach it.
+**Decision**: **Keep 120,000 ms.** Measured against production: run 206 at 30.2 s and an unfiltered `school-metrics` run at 71.5 s for 4,051 rows, so the headroom is about 1.7 times rather than the wide margin first assumed on run 206 alone. It covers the heaviest run anyone has produced, but a slower portal or larger corpus would reach it.
+
+Raising it is a real change rather than a toggle. `PORTAL_DOWNLOAD_TIMEOUT_MS` is not in the task definition (`cloud-formation/fargate/report-server.yml`), nor is `PORTAL_DOWNLOAD_MAX_CONCURRENT`, so both environments run the `runtime.exs` defaults of 120,000 ms and 2. Changing either means a `cloud-formation` pull request adding the variable plus a stack update, which produces a new task definition and a rolling restart. No new image build, but not a console change either.
+
+The ALB's 600-second idle timeout is not an argument for raising it. That was only ever a ceiling that might have cut downloads short, and it does not. The binding constraint is the portal pool: `pool_size: 5` shared with auth, authz, the web run page and bulk reads, against `max_concurrent: 2` downloads, so a longer budget is paid for by every other portal query on the box. If more headroom is ever wanted, the honest lever is pool sizing rather than the timeout, and that is out of scope here.
 
 ---
 
