@@ -3,8 +3,9 @@
   <:subtitle><%= @report.subtitle %></:subtitle>
 </.header>
 
-<div class="bg-white p-2 my-2 text-sm">
+<div class="bg-white p-2 my-2 text-sm flex justify-between items-start gap-4">
   <.report_filter_values report_run={@report_run} />
+  <.duplicate_run_button report_run={@report_run} />
 </div>
 
 <.report_header report={@report} report_run={@report_run} row_count={@row_count} row_limit={@row_limit} downloading={@downloading} />

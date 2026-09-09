@@ -99,6 +99,16 @@ defmodule ReportServer.Reports.FilterValidation do
     end
   end
 
+  @doc """
+  The message naming the ids a caller may not use, for the dimensions that lost them.
+  """
+  def out_of_scope_message(dimensions) do
+    detail = Enum.map_join(dimensions, "; ", fn {dimension, ids} -> "#{dimension}: #{Enum.join(ids, ", ")}" end)
+    plural = if length(dimensions) > 1, do: "values", else: "value"
+
+    "no such #{plural} for this report and user (#{detail})"
+  end
+
   @doc "Whether `report` offers `dimension` at all, static dimensions included."
   def offered?(dimension, report = %Report{}) do
     case FilterOptions.static_dimension(dimension) do

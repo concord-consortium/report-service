@@ -9,7 +9,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   # overshoot the overall wall-clock deadline by at most one batch rather than the full budget.
   @portal_download_batch_timeout_ms 15_000
   alias ReportServer.Reports
-  alias ReportServer.Reports.{AthenaRunOps, Report, ReportFilter, ReportQuery, ReportRun, Tree}
+  alias ReportServer.Reports.{AthenaRunOps, FilterValidation, Report, ReportFilter, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.Csv
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{FilterParams, Params, ReportJSON}
@@ -77,7 +77,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   defp render_create_error(conn, {:error, :invalid, message}), do: ErrorHelpers.bad_request(conn, message)
 
   defp render_create_error(conn, {:error, :out_of_scope, dimensions}),
-    do: ErrorHelpers.bad_request(conn, out_of_scope_message(dimensions))
+    do: ErrorHelpers.bad_request(conn, FilterValidation.out_of_scope_message(dimensions))
 
   defp render_create_error(conn, {:error, :derivation_failed, reason}) do
     Logger.error("Unable to derive filter values: #{inspect(reason)}")
@@ -90,15 +90,6 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   defp render_create_error(conn, {:error, reason}) do
     Logger.error("Unable to create report run: #{inspect(reason)}")
     ErrorHelpers.server_error(conn)
-  end
-
-  defp out_of_scope_message(dimensions) do
-    detail =
-      Enum.map_join(dimensions, "; ", fn {dimension, ids} ->
-        "#{dimension}: #{Enum.join(ids, ", ")}"
-      end)
-
-    "no such #{if length(dimensions) > 1, do: "values", else: "value"} for this report and user (#{detail})"
   end
 
   # A slug that exists but is not API-exposed is not found, rather than a report the API does not

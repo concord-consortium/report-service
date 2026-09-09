@@ -102,6 +102,22 @@ defmodule ReportServer.Reports do
   end
 
   @doc """
+  Gets a report run the caller may act on: their own, or any run when they are a portal admin.
+
+  The own-or-admin rule the run page and the runs tables share, in one place, so an action carrying
+  a run id from the DOM is authorized the same way the page that rendered it was.
+  """
+  def get_report_run_for_user(user = %User{}, id) when is_integer(id) do
+    query = from r in ReportRun, where: r.id == ^id, preload: [:user]
+    query = if user.portal_is_admin, do: query, else: from(q in query, where: q.user_id == ^user.id)
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      report_run -> {:ok, report_run}
+    end
+  end
+
+  @doc """
   Gets a single report_run with the user pre-loaded.
 
   Raises `Ecto.NoResultsError` if the Report run does not exist.

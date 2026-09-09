@@ -341,6 +341,7 @@ defmodule ReportServerWeb.CustomComponents do
             <th class="p-2 font-normal border-b" :if={@include_report_titles}>Report</th>
             <th class="p-2 font-normal border-b">Filters</th>
             <th class="p-2 font-normal border-b">Ran</th>
+            <th class="p-2 font-normal border-b"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -350,9 +351,24 @@ defmodule ReportServerWeb.CustomComponents do
             <td class="p-2 font-normal border-b align-top" :if={@include_report_titles}><%= @report_titles[report_run.report_slug] %></td>
             <td class="p-2 font-normal border-b align-top"><.report_filter_values report_run={report_run} /></td>
             <td class="p-2 font-normal border-b align-top"><.relative_time timestamp={report_run.inserted_at} /></td>
+            <td class="p-2 font-normal border-b align-top"><.duplicate_run_button report_run={report_run} /></td>
           </tr>
         </tbody>
       </table>
+    """
+  end
+
+  attr :report_run, :any, required: true
+  def duplicate_run_button(assigns) do
+    ~H"""
+      <button
+        type="button"
+        class="whitespace-nowrap rounded bg-zinc-100 px-2 py-1 hover:bg-zinc-300"
+        phx-click="duplicate"
+        phx-value-id={@report_run.id}
+      >
+        Duplicate
+      </button>
     """
   end
 
