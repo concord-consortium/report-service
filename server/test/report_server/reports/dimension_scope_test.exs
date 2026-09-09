@@ -121,7 +121,7 @@ defmodule ReportServer.Reports.DimensionScopeTest do
     assert 803 in ids(:assignment, [@project])
   end
 
-  test "every id expression is the one option discovery selects" do
+  test "option discovery selects the id expression this module defines" do
     for dimension <- ReportFilter.dimensions() do
       {query, _params} =
         ReportFilterQuery.get_query_and_params(
@@ -131,9 +131,14 @@ defmodule ReportServer.Reports.DimensionScopeTest do
           @server
         )
 
-      assert ReportFilterQuery.strip_alias(query.id) == DimensionScope.id_expr(dimension),
+      assert query.id == DimensionScope.id_expr(dimension),
              "#{dimension} resolves ids by a different expression than it offers them by"
     end
+  end
+
+  test "the state dimension's id is synthesized rather than a key" do
+    assert DimensionScope.id_expr(:state) == "COALESCE(portal_schools.state, '(Unknown)')"
+    assert "(Unknown)" in ids(:state, :all)
   end
 
   test "state is the one dimension whose ids are strings" do

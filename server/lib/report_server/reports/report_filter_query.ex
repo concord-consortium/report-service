@@ -15,12 +15,10 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     # Core connectivity patterns
     cohort_items_teacher: "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' and aci.admin_cohort_id = admin_cohorts.id)",
     cohort_items_teacher_via_id: "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
-    cohort_items_teacher_ref: "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = portal_teachers.id)",
-    cohort_items_teacher_via_member: "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id)",
+    cohort_items_teacher_ref: DimensionScope.cohort_join(:from_teacher),
+    cohort_items_teacher_via_member: DimensionScope.cohort_join(:from_school_member),
     cohort_items_assignment: "JOIN admin_cohort_items aci_assignment ON (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.admin_cohort_id = admin_cohorts.id)",
-    cohort_items_assignment_ref: "LEFT JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
-    cohort_via_items: "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)",
-    cohort_via_items_ref: "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
+    cohort_items_assignment_ref: DimensionScope.cohort_join(:from_assignment),
 
     # Teacher-class relationships
     teacher_class_via_id: "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = portal_teachers.id)",
@@ -799,7 +797,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       nil
     else
       query = build_base_query(%{
-        id: "#{DimensionScope.id_expr(:state)} AS state_code",
+        id: DimensionScope.id_expr(:state),
         value: "#{DimensionScope.id_expr(:state)} AS state_name",
         from: DimensionScope.from(:state),
         where: maybe_add_like(like_text, ["portal_schools.state LIKE ?"]),
@@ -863,11 +861,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     "SELECT COUNT(DISTINCT #{count_id}) AS the_count FROM #{from} #{join_sql} #{where_sql}"
   end
 
-  @doc """
-  An id or value expression with any trailing `AS alias` removed, which is the form that can be
-  counted, compared or used in a predicate.
-  """
-  def strip_alias(expression) do
+  defp strip_alias(expression) do
+    # Remove " AS alias" from the expression (case insensitive)
     expression
     |> String.replace(~r/\s+AS\s+\w+$/i, "")
   end

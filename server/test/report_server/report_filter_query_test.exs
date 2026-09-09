@@ -1046,7 +1046,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "CA",
         "portal.example.com")
 
-      assert query.id == "COALESCE(portal_schools.state, '(Unknown)') AS state_code"
+      assert query.id == "COALESCE(portal_schools.state, '(Unknown)')"
       assert query.value == "COALESCE(portal_schools.state, '(Unknown)') AS state_name"
       assert query.from == "portal_schools"
       assert query.where == ["portal_schools.state LIKE ?"]
@@ -1064,7 +1064,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "",
         "portal.example.com")
 
-      assert query.id == "COALESCE(portal_schools.state, '(Unknown)') AS state_code"
+      assert query.id == "COALESCE(portal_schools.state, '(Unknown)')"
       assert length(query.where) == 1
       assert Enum.at(query.where, 0) =~ "portal_schools.country_id IN"
       assert params == []
@@ -1274,7 +1274,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "SELECT DISTINCT portal_countries.id, COALESCE(portal_countries.name, '(Unknown)') AS country_name " <>
           "FROM portal_countries ORDER BY country_name",
       state:
-        "SELECT DISTINCT COALESCE(portal_schools.state, '(Unknown)') AS state_code, " <>
+        "SELECT DISTINCT COALESCE(portal_schools.state, '(Unknown)'), " <>
           "COALESCE(portal_schools.state, '(Unknown)') AS state_name FROM portal_schools ORDER BY state_name",
       subject_area:
         "SELECT DISTINCT admin_tags.id, admin_tags.tag FROM admin_tags " <>

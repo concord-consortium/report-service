@@ -238,7 +238,9 @@ defmodule ReportServer.ReportsApiRunsTest do
     end
   end
 
-  test "no starter override is configured, so production starts the supervised task" do
+  # The kickoff is injectable so a test can assert it happened at all; nothing may configure one
+  # outside a test, or production would stop starting the supervised task.
+  test "no starter override is configured" do
     refute Application.get_env(:report_server, :athena_run_starter)
   end
 

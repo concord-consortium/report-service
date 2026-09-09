@@ -199,13 +199,16 @@ defmodule ReportServer.Reports.ReportFilter do
   end
 
   defp get_filter_value(form, i) do
-    filter_type = get_filter_type!(form, i)
-    values = form.params["filter#{i}"] || []
+    case get_filter_type!(form, i) do
+      nil -> []
+      filter_type -> parse_filter_values(form.params["filter#{i}"] || [], filter_type)
+    end
+  end
 
-    # State filter uses string values (e.g., "CA", "NY"), all others use integer IDs
-    case filter_type do
-      :state -> values
-      _ -> Enum.map(values, &String.to_integer/1)
+  defp parse_filter_values(values, filter_type) do
+    case DimensionScope.id_type(filter_type) do
+      :string -> values
+      :integer -> Enum.map(values, &String.to_integer/1)
     end
   end
 end

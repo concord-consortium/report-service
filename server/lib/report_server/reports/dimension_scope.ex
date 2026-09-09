@@ -89,6 +89,23 @@ defmodule ReportServer.Reports.DimensionScope do
     }
   }
 
+  # The clauses that reach an entity's cohorts. The option cascade narrows through the same
+  # relationships the scope restricts by and binds the same aci_cohort and ac aliases, so two
+  # spellings of one clause would put two of the same alias into one statement.
+  @cohort_joins %{
+    from_teacher:
+      "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = portal_teachers.id)",
+    from_school_member:
+      "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id)",
+    from_assignment:
+      "LEFT JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
+    cohorts: "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
+    cohorts_left: "LEFT JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+  }
+
+  @doc "One of the cohort-reaching join clauses, which the option cascade shares with the scope."
+  def cohort_join(name), do: Map.fetch!(@cohort_joins, name)
+
   # `country`, `state` and `subject_area` are global vocabularies carrying no per-person data, so
   # they are unscoped by decision rather than by an absent clause. An entity reaches a project
   # through a cohort, except an assignment, which reaches one through a cohort or through the
@@ -98,22 +115,19 @@ defmodule ReportServer.Reports.DimensionScope do
     school: %{
       join: [
         "JOIN portal_school_memberships psm ON (psm.member_type = 'Portal::Teacher' AND psm.school_id = portal_schools.id)",
-        "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = psm.member_id)",
-        "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
+        @cohort_joins.from_school_member,
+        @cohort_joins.cohorts
       ],
       where: ["ac.project_id IN"]
     },
     teacher: %{
-      join: [
-        "JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'Portal::Teacher' AND aci_cohort.item_id = portal_teachers.id)",
-        "JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)"
-      ],
+      join: [@cohort_joins.from_teacher, @cohort_joins.cohorts],
       where: ["ac.project_id IN"]
     },
     assignment: %{
       join: [
-        "LEFT JOIN admin_cohort_items aci_cohort ON (aci_cohort.item_type = 'ExternalActivity' AND aci_cohort.item_id = external_activities.id)",
-        "LEFT JOIN admin_cohorts ac ON (ac.id = aci_cohort.admin_cohort_id)",
+        @cohort_joins.from_assignment,
+        @cohort_joins.cohorts_left,
         "LEFT JOIN admin_project_materials apm ON (apm.material_type = 'ExternalActivity' AND apm.material_id = external_activities.id)"
       ],
       where: ["ac.project_id IN", "apm.project_id IN"]

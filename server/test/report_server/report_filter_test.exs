@@ -3,8 +3,8 @@ defmodule ReportServer.ReportFilterTest do
 
   alias ReportServer.Reports.ReportFilter
 
-  defp from_params(params),
-    do: ReportFilter.from_form(Phoenix.Component.to_form(params, as: "filter_form"), 0)
+  defp from_params(params, filter_index \\ 0),
+    do: ReportFilter.from_form(Phoenix.Component.to_form(params, as: "filter_form"), filter_index)
 
   describe "app_list/1" do
     test "treats every shape of unset as no applications" do
@@ -45,6 +45,20 @@ defmodule ReportServer.ReportFilterTest do
 
     test "the application does not become a numbered filter" do
       assert from_params(%{"app" => "CLUE"}).filters == []
+    end
+
+    test "a filter row with no type chosen is skipped rather than parsed" do
+      filter = from_params(%{"filter1_type" => "cohort", "filter1" => ["1"], "filter2_type" => "", "filter2" => ["2"]}, 2)
+
+      assert filter.cohort == [1]
+      assert filter.filters == [:cohort]
+    end
+
+    test "a state row keeps its codes while an id row is parsed to integers" do
+      filter = from_params(%{"filter1_type" => "state", "filter1" => ["NH"], "filter2_type" => "school", "filter2" => ["51"]}, 2)
+
+      assert filter.state == ["NH"]
+      assert filter.school == [51]
     end
 
     test "the other scalars still cross the bridge" do

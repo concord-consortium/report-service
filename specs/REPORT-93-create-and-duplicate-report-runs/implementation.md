@@ -315,7 +315,7 @@ Verified before writing this step: with `app` and `hide_names` parsed into the s
   end
 ```
 
-This tightens the filter-options endpoint too, which accepts anything there today and ignores it. That is a behavior change to a shipped endpoint and is deliberate: a caller sending a malformed date to `filter-options` and the same date to `create` should not be told it is fine by one and rejected by the other.
+This tightens the filter-options endpoint too, which accepts anything there today and ignores it. That is a behavior change to a shipped endpoint and is deliberate: a caller sending a malformed date to `filter-options` and the same date to `create` should not be told it is fine by one and rejected by the other. The same now holds for a non-boolean `hide_names` and a non-list `app`, which that endpoint also ignored. Round-tripping a run's own filter is unaffected, since `ReportJSON.report_filter_json/1` always emits `app` as a list and `hide_names` as a boolean.
 
 The parser is not the only caller. `FilterValidation.check_dates/1` holds the `Date.from_iso8601` rule and both this parser and `Reports.create_api_report_run/3` call it, because duplicate builds from a stored filter and never reaches a parser. A stored run can carry an unvalidated date: `ReportFilter.from_form/2` copies `form.params["start_date"]` as it arrives, and the template's `<.input type="date">` constrains a browser and not a crafted event.
 
@@ -691,7 +691,7 @@ Every requirement in `requirements.md`, and the step that implements it. Checked
 | Both endpoints start the Athena query, as a supervised task | context step |
 | The response may carry a null `athena_query_state` | POST /api/v1/reports |
 | A clone carries no `athena_query_id`, asserted by test | context step |
-| Duplicating a run with a `nil` stored filter succeeds | context step |
+| Duplicating a run with a `nil` stored filter is read as the empty filter rather than raising | context step |
 | Both endpoints respond 201 | both endpoint steps |
 | Duplicate action on the runs table and the run page | web UI step |
 | Present on all-runs, owned by the clicker, `HideNames` applied | web UI step |
