@@ -4,10 +4,6 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   require Logger
 
   alias ReportServer.{AuditLog, ClientClosedError, PortalDownloadLimiter, PortalDownloadTimeout}
-
-  # Caps a single batch fetch (and the transaction's checkout/BEGIN/COMMIT), so a stuck fetch can
-  # overshoot the overall wall-clock deadline by at most one batch rather than the full budget.
-  @portal_download_batch_timeout_ms 15_000
   alias ReportServer.Reports
   alias ReportServer.Reports.{AthenaRunOps, FilterValidation, Report, ReportFilter, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.Csv
@@ -213,21 +209,19 @@ defmodule ReportServerWeb.Api.V1.ReportController do
         ErrorHelpers.server_error(conn)
 
       {:ok, _} ->
-        deadline = System.monotonic_time(:millisecond) + portal_download_timeout_ms()
+        budget = portal_download_timeout_ms()
+        deadline = System.monotonic_time(:millisecond) + budget
         server = report_run.user.portal_server
         sent = :atomics.new(1, signed: false)
         acc0 = %{conn: conn, state: :header_pending, deadline: deadline, filename: filename, sent: sent}
 
-        # The overall wall-clock bound is `deadline`, checked between batches in the reducer. The
-        # per-batch fetch timeout is capped separately so a single stuck fetch cannot overshoot the
-        # deadline by the full budget (it is also stream_query's transaction/checkout timeout, which
-        # bounds BEGIN/COMMIT, not the transaction lifetime).
-        batch_timeout = min(portal_download_timeout_ms(), @portal_download_batch_timeout_ms)
-
+        # The budget is both the reducer's wall-clock deadline and the transaction's checkout
+        # deadline, which is the only thing bounding a fetch: MyXQL fetches take no timeout.
         result =
           try do
             case portal_db().stream_query(server, sql, [],
-                   acc: acc0, max_rows: 500, timeout: batch_timeout, reducer: &stream_reducer/2) do
+                   acc: acc0, max_rows: 500, transaction_timeout: budget,
+                   reducer: &stream_reducer/2) do
               {:ok, %{conn: streamed}} ->
                 {:ok, streamed}
 

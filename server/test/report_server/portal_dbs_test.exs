@@ -78,4 +78,21 @@ defmodule ReportServer.PortalDbsTest do
                {:error, "Unknown server no.such.host"}
     end
   end
+
+  defp stream_sleep(opts) do
+    defaults = [acc: 0, max_rows: 500, reducer: fn result, acc -> acc + length(result.rows) end]
+    PortalDbs.stream_query(@server, "SELECT SLEEP(2)", [], Keyword.merge(defaults, opts))
+  end
+
+  describe "stream_query/4" do
+    test "a transaction budget above the query time streams it to completion" do
+      assert {:ok, 1} = stream_sleep(transaction_timeout: 6_000)
+    end
+
+    test "a transaction budget below the query time ends the stream" do
+      assert_raise DBConnection.ConnectionError, fn ->
+        stream_sleep(transaction_timeout: 1_000)
+      end
+    end
+  end
 end

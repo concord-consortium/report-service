@@ -771,6 +771,23 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert json_response(conn, 500)["error"] == "SERVER_ERROR"
     end
 
+    test "hands the full configured budget to the streaming seam", %{} do
+      {token, run} = portal_admin_run()
+      test_pid = self()
+
+      start_portal_stub(fn _server, _sql, _params, opts ->
+        send(test_pid, {:stream_opts, opts})
+        {:ok, opts[:reducer].(myxql_result(["a"], []), opts[:acc])}
+      end)
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      assert response(conn, 200)
+
+      budget = Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:timeout_ms)
+      assert_receive {:stream_opts, opts}
+      assert opts[:transaction_timeout] == budget
+    end
+
     test "returns 503 once the concurrency cap is reached", %{} do
       {token, run} = portal_admin_run()
       cap = Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:max_concurrent)
