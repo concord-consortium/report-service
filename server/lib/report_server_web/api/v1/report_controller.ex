@@ -12,7 +12,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   alias ReportServer.Reports.{AthenaRunOps, Report, ReportFilter, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.Csv
   alias ReportServerWeb.Api.ErrorHelpers
-  alias ReportServerWeb.Api.V1.{Params, ReportJSON}
+  alias ReportServerWeb.Api.V1.{FilterParams, Params, ReportJSON}
 
   def index(conn, params) do
     with {:ok, limit} <- Params.parse_limit(params),
@@ -23,6 +23,99 @@ defmodule ReportServerWeb.Api.V1.ReportController do
       {:error, message} -> ErrorHelpers.bad_request(conn, message)
     end
   end
+
+  def create(conn, params) do
+    user = conn.assigns.current_user
+
+    with {:ok, report} <- find_api_report(params["report_slug"]),
+         {:ok, report_filter} <- FilterParams.parse(params["report_filter"]),
+         {:ok, report_run} <- Reports.create_api_report_run(user, report, report_filter) do
+      conn |> put_status(:created) |> json(ReportJSON.show(report_run))
+    else
+      error -> render_create_error(conn, error)
+    end
+  end
+
+  def duplicate(conn, %{"id" => id_param} = params) do
+    user = conn.assigns.current_user
+
+    with {:ok, id} <- Params.parse_id(id_param),
+         {:ok, source} <- Reports.get_api_report_run(user, id),
+         {:ok, report} <- find_api_report(source.report_slug),
+         :ok <- check_duplicate_allowed(report, source, params),
+         {:ok, report_run} <- Reports.duplicate_api_report_run(user, report, source) do
+      conn |> put_status(:created) |> json(ReportJSON.show(report_run))
+    else
+      {:portal_duplicate, run_id} -> render_portal_duplicate(conn, run_id)
+      error -> render_create_error(conn, error)
+    end
+  end
+
+  # A Portal run is computed on request, so a duplicate of one is a new id over identical live
+  # data. The habit comes from Athena, where duplicating is the only way to take a fresh snapshot.
+  defp check_duplicate_allowed(%Report{type: :portal}, source, params) do
+    if params["force"] == true, do: :ok, else: {:portal_duplicate, source.id}
+  end
+
+  defp check_duplicate_allowed(_report, _source, _params), do: :ok
+
+  # The keys of this body are a pinned contract: cc-data copies a coded error's context into the
+  # envelope its CLI prints and into the MCP result, so a field added here is disclosed the day it
+  # ships. The advice names re-reading the run rather than any client's flag.
+  defp render_portal_duplicate(conn, run_id) do
+    ErrorHelpers.render_error(
+      conn,
+      "PORTAL_DUPLICATE_UNNECESSARY",
+      "Run #{run_id} is a Portal report, computed live on every request, so a duplicate returns " <>
+        "the same data under a new id. Re-read run #{run_id} for current data, or pass " <>
+        "force: true to duplicate anyway.",
+      %{run_id: run_id}
+    )
+  end
+
+  defp render_create_error(conn, {:error, :not_found}), do: ErrorHelpers.not_found(conn)
+  defp render_create_error(conn, {:error, :invalid, message}), do: ErrorHelpers.bad_request(conn, message)
+
+  defp render_create_error(conn, {:error, :out_of_scope, dimensions}),
+    do: ErrorHelpers.bad_request(conn, out_of_scope_message(dimensions))
+
+  defp render_create_error(conn, {:error, :derivation_failed, reason}) do
+    Logger.error("Unable to derive filter values: #{inspect(reason)}")
+    ErrorHelpers.server_error(conn)
+  end
+
+  defp render_create_error(conn, {:error, message}) when is_binary(message),
+    do: ErrorHelpers.bad_request(conn, message)
+
+  defp render_create_error(conn, {:error, reason}) do
+    Logger.error("Unable to create report run: #{inspect(reason)}")
+    ErrorHelpers.server_error(conn)
+  end
+
+  defp out_of_scope_message(dimensions) do
+    detail =
+      Enum.map_join(dimensions, "; ", fn {dimension, ids} ->
+        "#{dimension}: #{Enum.join(ids, ", ")}"
+      end)
+
+    "no such #{if length(dimensions) > 1, do: "values", else: "value"} for this report and user (#{detail})"
+  end
+
+  # A slug that exists but is not API-exposed is not found, rather than a report the API does not
+  # otherwise serve.
+  defp find_api_report(nil), do: {:error, :invalid, "report_slug is required"}
+
+  defp find_api_report(slug) when is_binary(slug) do
+    case Tree.find_report(slug) do
+      %Report{slug: ^slug} = report ->
+        if slug in Tree.api_report_slugs(), do: {:ok, report}, else: {:error, :not_found}
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp find_api_report(_slug), do: {:error, :invalid, "report_slug must be a string"}
 
   def show(conn, %{"id" => id_param}) do
     with {:ok, id} <- Params.parse_id(id_param),

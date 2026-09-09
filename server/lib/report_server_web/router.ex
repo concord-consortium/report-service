@@ -61,8 +61,10 @@ defmodule ReportServerWeb.Router do
     pipe_through :api_authenticated
 
     get "/reports", ReportController, :index
+    post "/reports", ReportController, :create
     post "/reports/filter-options", FilterOptionsController, :create
     get "/reports/:id", ReportController, :show
+    post "/reports/:id/duplicate", ReportController, :duplicate
     get "/reports/:id/download", ReportController, :download
     get "/reports/:id/answers", BulkExportController, :answers
     get "/reports/:id/history", BulkExportController, :history
