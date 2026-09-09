@@ -3,8 +3,6 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
   alias ReportServer.Reports.{Report, ReportFilter, ReportRun, Tree}
   alias ReportServerWeb.Api.V1.Params
 
-  @id_dimensions [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form, :country, :subject_area]
-
   def index(report_runs, limit) do
     %{
       items: Enum.map(report_runs, &run_json/1),
@@ -41,7 +39,6 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
   def report_filter_json(report_filter = %ReportFilter{}) do
     base = %{
       filters: Enum.map(report_filter.filters, &to_string/1),
-      state: report_filter.state,
       app: ReportFilter.app_list(report_filter.app),
       start_date: presence(report_filter.start_date),
       end_date: presence(report_filter.end_date),
@@ -49,7 +46,7 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
       exclude_internal: !!report_filter.exclude_internal
     }
 
-    Enum.reduce(@id_dimensions, base, fn dimension, acc ->
+    Enum.reduce(ReportFilter.dimensions(), base, fn dimension, acc ->
       Map.put(acc, dimension, Map.get(report_filter, dimension))
     end)
   end

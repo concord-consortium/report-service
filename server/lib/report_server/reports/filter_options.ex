@@ -191,8 +191,9 @@ defmodule ReportServer.Reports.FilterOptions do
 
   # A failed permission lookup is not "no projects": passing the {:error, _} tuple on reaches
   # list_to_in/1, which raises Protocol.UndefinedError from inside the query builder. Raise the
-  # exception the report path already raises for this, so the failure is legible in the logs and
-  # the response is the contract's SERVER_ERROR either way.
+  # exception the report path already raises for this, so the failure is legible rather than a
+  # zero-row answer. What a caller does with it is the caller's: this endpoint renders the
+  # contract's SERVER_ERROR, and label derivation turns it back into an error tuple.
   defp allowed_project_ids(user) do
     case PortalDbs.get_allowed_project_ids(user, timeout: @portal_timeout_ms) do
       {:error, reason} ->

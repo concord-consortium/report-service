@@ -5,6 +5,7 @@ defmodule ReportServerWeb.ReportRunLive.Index do
 
   alias ReportServer.Pagination
   alias ReportServer.Reports
+  alias ReportServerWeb.ReportRunLive.Duplicate
 
   @impl true
   def mount(_params, _session, %{assigns: %{user: _user, live_action: :my_runs}} = socket) do
@@ -44,6 +45,11 @@ defmodule ReportServerWeb.ReportRunLive.Index do
 
   @impl true
   def handle_params(_params, _url, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("duplicate", %{"id" => id}, %{assigns: %{user: user}} = socket) do
+    {:noreply, Duplicate.duplicate(socket, user, id)}
+  end
 
   defp run_list_path(:my_runs), do: fn
     1 -> ~p"/reports/runs"

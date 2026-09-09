@@ -6,12 +6,15 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
   caller can take a run's filter, adjust it and send it back. Unknown keys are ignored rather than
   rejected, which is what keeps a client holding a cached filter working against a server that has
   since gained a dimension.
+
+  `filters` is the one emitted key not read back: it is derived from the dimensions a filter
+  carries, so accepting it would be a second source of truth for what is already in the struct.
+  `hide_names` is parsed but the caller's role decides it, through `HideNames.enforce/2` on both
+  the option and the run paths.
   """
 
-  alias ReportServer.Reports.ReportFilter
+  alias ReportServer.Reports.{DimensionScope, FilterValidation, ReportFilter}
   alias ReportServerWeb.Api.V1.Params
-
-  @string_dimensions [:state]
 
   def parse(nil), do: {:ok, %ReportFilter{}}
   def parse(filter) when not is_map(filter), do: {:error, "report_filter must be an object"}
@@ -27,21 +30,57 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
     end
   end
 
-  # The API emits start_date, end_date and hide_names on every run, so a caller adjusting a run's
-  # filter must not be rejected for sending them back. The dates are carried but narrow nothing
-  # here; hide_names is dropped because the caller's role decides it. exclude_internal does narrow.
   defp base(filter) do
-    case Map.get(filter, "exclude_internal", false) do
-      exclude when is_boolean(exclude) ->
-        {:ok,
-         %ReportFilter{
-           exclude_internal: exclude,
-           start_date: filter["start_date"],
-           end_date: filter["end_date"]
-         }}
+    with {:ok, exclude_internal} <- boolean(filter, "exclude_internal"),
+         {:ok, hide_names} <- boolean(filter, "hide_names"),
+         {:ok, app} <- app(filter),
+         {:ok, start_date} <- date(filter, "start_date"),
+         {:ok, end_date} <- date(filter, "end_date") do
+      check_dates(%ReportFilter{
+        exclude_internal: exclude_internal,
+        hide_names: hide_names,
+        app: app,
+        start_date: start_date,
+        end_date: end_date
+      })
+    end
+  end
 
-      _ ->
-        {:error, "exclude_internal must be true or false"}
+  defp boolean(filter, key) do
+    case Map.get(filter, key, false) do
+      value when is_boolean(value) -> {:ok, value}
+      _ -> {:error, "#{key} must be true or false"}
+    end
+  end
+
+  defp app(filter) do
+    case Map.get(filter, "app") do
+      nil -> {:ok, nil}
+      apps when is_list(apps) -> app_values(apps)
+      _ -> {:error, "app must be a list or null"}
+    end
+  end
+
+  defp app_values(apps) do
+    if Enum.all?(apps, &is_binary/1), do: {:ok, apps}, else: {:error, "app values must be strings"}
+  end
+
+  # The shape check a JSON body needs on top of the ISO rule, since a number or an object arrives
+  # here where only a binary can arrive at check_dates/1. A blank control submits "", which the
+  # form stores as absent.
+  defp date(filter, key) do
+    case Map.get(filter, key) do
+      nil -> {:ok, nil}
+      "" -> {:ok, nil}
+      value when is_binary(value) -> {:ok, value}
+      _ -> {:error, "#{key} must be a string"}
+    end
+  end
+
+  defp check_dates(report_filter) do
+    case FilterValidation.check_dates(report_filter) do
+      :ok -> {:ok, report_filter}
+      {:error, :invalid, message} -> {:error, message}
     end
   end
 
@@ -55,7 +94,14 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
     end
   end
 
-  defp parse_values(values, dimension) when dimension in @string_dimensions do
+  defp parse_values(values, dimension) do
+    case DimensionScope.id_type(dimension) do
+      :string -> parse_string_values(values, dimension)
+      :integer -> parse_id_values(values, dimension)
+    end
+  end
+
+  defp parse_string_values(values, dimension) do
     if Enum.all?(values, &is_binary/1) do
       {:ok, values}
     else
@@ -63,7 +109,7 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
     end
   end
 
-  defp parse_values(values, dimension) do
+  defp parse_id_values(values, dimension) do
     case Enum.reduce_while(values, {:ok, []}, &collect_id(&1, &2, dimension)) do
       {:ok, ids} -> {:ok, Enum.reverse(ids)}
       error -> error

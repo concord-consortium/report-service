@@ -4,9 +4,11 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
 
   What narrows a dimension's options: the other dimensions in `report_filter`, the `search` text,
   and `exclude_internal` on the `teacher` dimension, which costs a second portal query to resolve
-  Concord's own teacher ids. `start_date`, `end_date` and `hide_names` are accepted and ignored,
-  because `GET /api/v1/reports/:id` emits them on every run and a caller adjusting a run's filter
-  must not be rejected for sending them back; `hide_names` is decided by the caller's role instead.
+  Concord's own teacher ids. `start_date`, `end_date` and `hide_names` narrow nothing here, because
+  `GET /api/v1/reports/:id` emits them on every run and a caller adjusting a run's filter must not
+  be rejected for sending them back. Their types are still checked, so a filter shape this endpoint
+  accepts is one `POST /api/v1/reports` parses too, though that endpoint applies rules this one has
+  no use for; `hide_names` is decided by the caller's role instead.
   A static dimension ignores all narrowing, having no cascade to narrow through.
 
   Within `report_filter`, `null` and `[]` mean different things. `null` is "not selected". `[]` is
@@ -20,7 +22,7 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
 
   require Logger
 
-  alias ReportServer.Reports.{FilterOptions, Report, ReportFilter, Tree}
+  alias ReportServer.Reports.{FilterOptions, FilterValidation, Report, ReportFilter, Tree}
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{FilterOptionsJSON, FilterParams, Params}
 
@@ -105,13 +107,11 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsController do
   end
 
   defp check_dimension_offered(report, dimension, slug) do
-    offered? =
-      case FilterOptions.static_dimension(dimension) do
-        {:ok, module} -> module.enabled_for_report?(report)
-        :error -> dimension in report.include_filters
-      end
-
-    if offered?, do: :ok, else: {:error, "#{slug} does not filter on #{dimension}"}
+    if FilterValidation.offered?(dimension, report) do
+      :ok
+    else
+      {:error, "#{slug} does not filter on #{dimension}"}
+    end
   end
 
   defp parse_search(params) do

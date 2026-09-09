@@ -9,7 +9,9 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServer.Reports
   alias ReportServer.Reports.{AthenaRunOps, Report, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.Csv
+  alias ReportServerWeb.Api.V1.Params
   alias ReportServerWeb.ReportLive.PostProcessingComponent
+  alias ReportServerWeb.ReportRunLive.Duplicate
 
   @row_limit 100
 
@@ -29,31 +31,34 @@ defmodule ReportServerWeb.ReportRunLive.Show do
 
   @impl true
   def handle_params(%{"id" => id}, _url, %{assigns: %{user: user = %User{}}} = socket) do
-    report_run = Reports.get_report_run_with_user!(id)
-    report = Tree.find_report(report_run.report_slug)
-
-    # allow only the report run creator or admins to use run
-    if report_run.user_id == user.id || user.portal_is_admin do
-
+    with {:ok, run_id} <- Params.parse_id(id),
+         {:ok, report_run} <- Reports.get_report_run_for_user(user, run_id) do
+      report = Tree.find_report(report_run.report_slug)
       breadcrumbs = Enum.map(report.parents, fn {_slug, title, path} -> {title, path} end) ++ [{report.title, report.path}]
 
       live_view_pid = self()
 
       socket = socket
-      |> assign(:report, report)
-      |> assign(:page_title, "Run #{id}: #{report.title}")
-      |> assign(:report_run, report_run)
-      |> assign(:breadcrumbs, breadcrumbs)
-      |> assign_async(:row_count, fn -> get_row_count(report, report_run, user) end)
-      |> assign_async(:report_results, fn -> run_report(report, report_run, [], @row_limit, live_view_pid) end)
+        |> assign(:report, report)
+        |> assign(:page_title, "Run #{id}: #{report.title}")
+        |> assign(:report_run, report_run)
+        |> assign(:breadcrumbs, breadcrumbs)
+        |> assign_async(:row_count, fn -> get_row_count(report, report_run, user) end)
+        |> assign_async(:report_results, fn -> run_report(report, report_run, [], @row_limit, live_view_pid) end)
 
       {:noreply, socket}
     else
-      socket = socket
-        |> put_flash(:error, "You are not authorized to access the requested report.")
-        |> redirect(to: "/reports")
-      {:noreply, socket}
+      {:error, :not_found} ->
+        socket = socket
+          |> put_flash(:error, "You are not authorized to access the requested report.")
+          |> redirect(to: "/reports")
+        {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("duplicate", %{"id" => id}, %{assigns: %{user: user}} = socket) do
+    {:noreply, Duplicate.duplicate(socket, user, id)}
   end
 
   @impl true

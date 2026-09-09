@@ -2,6 +2,8 @@ defmodule ReportServer.ReportFilterQueryTest do
   use ExUnit.Case, async: true
   alias ReportServer.Reports.{ReportFilter, ReportFilterQuery, ReportUtils}
 
+  @taxonomies [:country, :state, :subject_area]
+
   describe "cohorts" do
     test "basic cohort query" do
       {query, params} = ReportFilterQuery.get_query_and_params(
@@ -629,7 +631,7 @@ defmodule ReportServer.ReportFilterQueryTest do
       assert params == []
     end
 
-    test "allowed_project_ids :none returns nil query" do
+    test "allowed_project_ids :none restricts a scoped dimension to nothing" do
       {query, params} = ReportFilterQuery.get_query_and_params(
         %ReportFilter{
           filters: [:school]
@@ -638,7 +640,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "",
         "portal.example.com")
 
-      assert query == nil
+      assert ReportFilterQuery.get_options_sql(query) =~ "(1 = 0)"
       assert params == []
     end
 
@@ -1046,7 +1048,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "CA",
         "portal.example.com")
 
-      assert query.id == "COALESCE(portal_schools.state, '(Unknown)') AS state_code"
+      assert query.id == "COALESCE(portal_schools.state, '(Unknown)')"
       assert query.value == "COALESCE(portal_schools.state, '(Unknown)') AS state_name"
       assert query.from == "portal_schools"
       assert query.where == ["portal_schools.state LIKE ?"]
@@ -1064,7 +1066,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "",
         "portal.example.com")
 
-      assert query.id == "COALESCE(portal_schools.state, '(Unknown)') AS state_code"
+      assert query.id == "COALESCE(portal_schools.state, '(Unknown)')"
       assert length(query.where) == 1
       assert Enum.at(query.where, 0) =~ "portal_schools.country_id IN"
       assert params == []
@@ -1274,7 +1276,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         "SELECT DISTINCT portal_countries.id, COALESCE(portal_countries.name, '(Unknown)') AS country_name " <>
           "FROM portal_countries ORDER BY country_name",
       state:
-        "SELECT DISTINCT COALESCE(portal_schools.state, '(Unknown)') AS state_code, " <>
+        "SELECT DISTINCT COALESCE(portal_schools.state, '(Unknown)'), " <>
           "COALESCE(portal_schools.state, '(Unknown)') AS state_name FROM portal_schools ORDER BY state_name",
       subject_area:
         "SELECT DISTINCT admin_tags.id, admin_tags.tag FROM admin_tags " <>
@@ -1314,15 +1316,29 @@ defmodule ReportServer.ReportFilterQueryTest do
       assert scoped == [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form]
     end
 
-    test "no allowed projects yields no query rather than an empty IN list" do
-      for dimension <- ReportFilter.dimensions() do
-        assert ReportFilterQuery.get_query_and_params(
-                 %ReportFilter{filters: [dimension]},
-                 [],
-                 "",
-                 "portal.example.com"
-               ) == {nil, []},
-               "#{dimension} built a query for a caller with no allowed projects"
+    test "no allowed projects restricts every scoped dimension to nothing, without an empty IN list" do
+      for dimension <- ReportFilter.dimensions() -- @taxonomies do
+        {query, _params} =
+          ReportFilterQuery.get_query_and_params(%ReportFilter{filters: [dimension]}, [], "", "portal.example.com")
+
+        sql = ReportFilterQuery.get_options_sql(query)
+
+        assert sql =~ "(1 = 0)", "#{dimension} did not restrict a caller with no allowed projects"
+        refute sql =~ "IN ()", "#{dimension} rendered an empty IN list"
+      end
+    end
+
+    # country, state and subject_area carry no per-person data, so they are offered to whoever can
+    # reach the endpoint. Anything else and an id a caller may create a run with is one the
+    # discovery endpoint refuses to show them.
+    test "no allowed projects leaves the global taxonomies discoverable" do
+      for dimension <- @taxonomies do
+        {query, _params} =
+          ReportFilterQuery.get_query_and_params(%ReportFilter{filters: [dimension]}, [], "", "portal.example.com")
+
+        sql = ReportFilterQuery.get_options_sql(query)
+
+        refute sql =~ "1 = 0", "#{dimension} is a global vocabulary and must not be scoped away"
       end
     end
 
