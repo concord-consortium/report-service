@@ -104,6 +104,8 @@ The return becomes `{:ok, map} | {:error, reason}`, and the empty reduction is r
 
 The `Logger.error` inside the error branch goes: the caller now sees the reason and decides, and a helper that both logs and returns the failure produces two lines per failure at different levels of the stack.
 
+Resolving the caller's projects is part of this function now, and `FilterOptions.allowed_projects/1` raises rather than answering "no projects". That is right where it is, for a query builder that would otherwise scope to nothing, but this function has an error channel and both its callers use it, so the exception becomes `{:error, reason}` here. Without that, the web form's submit would die on a transient portal failure where it used to create the run with no labels.
+
 `ReportLive.Form.create_run/2` is the only existing caller. It unwraps and keeps its current lenient behavior explicitly rather than by accident:
 
 ```elixir
