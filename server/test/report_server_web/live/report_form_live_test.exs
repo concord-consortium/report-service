@@ -221,7 +221,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       assert html =~ "must be an ISO 8601 date"
       assert Reports.list_user_report_runs(user, "teacher-actions") == []
-      assert ReportUtils.apply_start_date([], payload) == ["run.start_time >= '#{payload}'"]
+      assert_raise ArgumentError, fn -> ReportUtils.apply_start_date([], payload) end
     end
 
     # the label lookup resolves the user's projects against the portal, and a project-scoped user

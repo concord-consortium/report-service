@@ -532,14 +532,13 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     {nil, []}
   end
 
+  # A caller with no projects is not short-circuited here: DimensionScope restricts a scoped
+  # dimension to nothing and leaves a global taxonomy alone, so country, state and subject_area
+  # stay discoverable by exactly the callers who can resolve them.
   def get_query_and_params(report_filter = %ReportFilter{filters: [primary_filter | _secondary_filters]}, allowed_project_ids, like_text, portal_server) do
-    if allowed_project_ids in [:none, []] do
-      {nil, []}
-    else
-      query = get_filter_query(primary_filter, report_filter, allowed_project_ids, like_text, portal_server)
-      params = like_params(like_text, query)
-      {query, params}
-    end
+    query = get_filter_query(primary_filter, report_filter, allowed_project_ids, like_text, portal_server)
+    params = like_params(like_text, query)
+    {query, params}
   end
 
   # Helper function to build a base query structure

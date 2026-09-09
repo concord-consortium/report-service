@@ -263,6 +263,26 @@ defmodule ReportServer.ReportsApiRunsTest do
     end
   end
 
+  # The run page and the Portal download both build a query straight from the stored filter, so a
+  # run stored before its dates were validated must not be able to execute one from there either.
+  test "a stored date that is not a date cannot reach the portal statement from a read" do
+    user = admin()
+    payload = "2026-01-01' OR '1'='1"
+    filter = %ReportFilter{filters: [:cohort], cohort: [1], start_date: payload}
+
+    {:ok, run} =
+      Reports.create_report_run(%{
+        user_id: user.id,
+        report_slug: "resource-metrics-summary",
+        report_filter: filter,
+        report_filter_values: %{}
+      })
+
+    run = Reports.get_report_run_with_user!(run.id)
+
+    assert_raise ArgumentError, fn -> portal_report().get_query.(run.report_filter, run.user) end
+  end
+
   # The kickoff is injectable so a test can assert it happened at all; nothing may configure one
   # outside a test, or production would stop starting the supervised task.
   test "no starter override is configured" do

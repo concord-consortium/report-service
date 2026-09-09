@@ -53,10 +53,11 @@ defmodule ReportServerWeb.Api.V1.FilterParamsTest do
     test "a payload that would be interpolated into the portal statement is rejected" do
       payload = "2026-01-01' OR '1'='1"
 
-      assert ReportUtils.apply_start_date([], payload) == ["run.start_time >= '#{payload}'"]
-
       assert {:error, message} = FilterParams.parse(%{"start_date" => payload})
       assert message =~ "start_date must be an ISO 8601 date"
+
+      # and the statement builder refuses it too, so no stored run can carry one into SQL
+      assert_raise ArgumentError, fn -> ReportUtils.apply_start_date([], payload) end
     end
 
     test "a non-string date is rejected" do

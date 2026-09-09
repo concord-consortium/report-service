@@ -35,18 +35,29 @@ defmodule ReportServer.Reports.ReportUtils do
   end
 
   def apply_start_date(where, start_date, table_name \\ "run") do
-    if String.length(start_date || "") > 0 do
-      ["#{table_name}.start_time >= '#{start_date}'" | where]
+    apply_run_date(where, start_date, ">=", table_name)
+  end
+
+  def apply_end_date(where, end_date, table_name \\ "run") do
+    apply_run_date(where, end_date, "<=", table_name)
+  end
+
+  # The bound is interpolated into the portal statement, and a run stored before its filter was
+  # validated can carry anything, so the value is checked here rather than only where it arrives.
+  # Raising rather than dropping the bound: a filter that cannot be honored must not silently
+  # widen the report it was meant to narrow.
+  defp apply_run_date(where, date, cmp, table_name) do
+    if String.length(date || "") > 0 do
+      ["#{table_name}.start_time #{cmp} '#{iso_date!(date)}'" | where]
     else
       where
     end
   end
 
-  def apply_end_date(where, end_date, table_name \\ "run") do
-    if String.length(end_date || "") > 0 do
-      ["#{table_name}.start_time <= '#{end_date}'" | where]
-    else
-      where
+  defp iso_date!(date) do
+    case Date.from_iso8601(date) do
+      {:ok, _} -> date
+      _ -> raise ArgumentError, "report filter date must be an ISO 8601 date (YYYY-MM-DD), got: #{inspect(date)}"
     end
   end
 

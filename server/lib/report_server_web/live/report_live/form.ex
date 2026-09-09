@@ -243,7 +243,7 @@ defmodule ReportServerWeb.ReportLive.Form do
 
     # the date controls constrain a browser and not a crafted event, and a date reaches the portal
     # statement by raw interpolation, so the value is checked before a run can carry it
-    with :ok <- FilterValidation.check_app_supported(report_filter, report),
+    with :ok <- FilterValidation.validate(report_filter, report),
          :ok <- FilterValidation.check_dates(report_filter) do
       if warning_applicable?(form_options) do
         {:noreply, start_count_task(socket, report_filter)}

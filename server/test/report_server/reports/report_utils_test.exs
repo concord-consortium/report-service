@@ -4,6 +4,27 @@ defmodule ReportServer.Reports.ReportUtilsTest do
   alias ReportServer.Reports.AllowedProjectsLookupError
   alias ReportServer.Reports.ReportUtils
 
+  describe "the run date bounds" do
+    test "an ISO date is applied to both ends" do
+      assert ReportUtils.apply_start_date([], "2026-01-01") == ["run.start_time >= '2026-01-01'"]
+      assert ReportUtils.apply_end_date([], "2026-02-01") == ["run.start_time <= '2026-02-01'"]
+    end
+
+    test "an absent bound is not applied" do
+      assert ReportUtils.apply_start_date(["w"], nil) == ["w"]
+      assert ReportUtils.apply_start_date(["w"], "") == ["w"]
+    end
+
+    # The bound is interpolated, and a run stored before its filter was validated can carry
+    # anything, so a value that is not a date must not reach the statement from any path.
+    test "a value that is not a date is refused rather than interpolated" do
+      for payload <- ["2026-01-01' OR '1'='1", "2026-01-01 OR 1=1", "not-a-date", "2026-13-01"] do
+        assert_raise ArgumentError, fn -> ReportUtils.apply_start_date([], payload) end
+        assert_raise ArgumentError, fn -> ReportUtils.apply_end_date([], payload) end
+      end
+    end
+  end
+
   describe "scope_by_allowed_projects/5" do
     test ":all applies no scoping" do
       assert ReportUtils.scope_by_allowed_projects(:all, ["j"], ["w"], "ea.id", "pt.id") == {["j"], ["w"]}
