@@ -4,7 +4,7 @@
 **Requirements Spec**: [requirements.md](requirements.md)
 **Status**: **In Development**
 
-Two repositories. Steps one to ten are `report-service` and land as one PR; steps eleven to thirteen are `cc-data-cli` and land as a second PR that needs the server deployed to be useful. Every requirements question is resolved. The two that shaped this plan: an id is usable exactly when `filter-options` offers it, which is steps two, three and four sharing one per-dimension definition, and the partition warning is not reproduced on the API, which is why no step below computes an estimate.
+Two repositories. Steps one to ten are `report-service` and land as one PR; steps eleven to thirteen are `cc-data-cli` and land as a second PR that needs the server deployed to be useful. The scoped source lands before the label lookup that reads it, so the commits are one, three, two, then four onwards. Every requirements question is resolved. The two that shaped this plan: an id is usable exactly when `filter-options` offers it, which is steps two, three and four sharing one per-dimension definition, and the partition warning is not reproduced on the API, which is why no step below computes an estimate.
 
 ## Implementation Plan
 
@@ -145,7 +145,7 @@ The id expression is nine primary keys and one synthesized value: `state` is `CO
   def scope(dimension, allowed)
 ```
 
-Three cases carry the detail that a rewrite would lose. `:cohort` needs no join at all, just `admin_cohorts.project_id IN (...)`. `:assignment` is the only disjunction, `(ac.project_id IN (...)) OR (apm.project_id IN (...))`, because an activity reaches a project either through a cohort or through `admin_project_materials`, and it is also the only one whose joins are `LEFT` for that reason. `:teacher` anchors on `portal_teachers.id` while the label query aliases that table `pt`, so the anchor is a parameter rather than a literal.
+Three cases carry the detail that a rewrite would lose. `:cohort` needs no join at all, just `admin_cohorts.project_id IN (...)`. `:assignment` is the only disjunction, `(ac.project_id IN (...)) OR (apm.project_id IN (...))`, because an activity reaches a project either through a cohort or through `admin_project_materials`, and it is also the only one whose joins are `LEFT` for that reason. `:teacher` anchors on `portal_teachers.id`, which is why the label select is built from this module's own base rather than keeping the label query's `pt` alias: sharing the base is what lets the scope joins be literals rather than a parameterized anchor.
 
 `:country`, `:state` and `:subject_area` return `:none` (unscoped), which is REPORT-92's recorded decision that the three are global taxonomies carrying no per-person data, and is a decision worth being able to point at rather than infer from a missing clause. They still carry an id expression, so membership for those three is "this id exists" rather than "no check at all".
 
@@ -154,6 +154,8 @@ The module deliberately does **not** expose the cascade. Membership is against t
 The `Enum.member?(country, -1)` branches in `DetailedMetricsBySchoolReport` (`detailed_metrics_by_school_report.ex:57-67`) and `SummaryMetricsBySubjectAreaReport` (`summary_metrics_by_subject_area_report.ex:112`) are deleted here, because this module states what a country id is and `-1` is not one. Verified it never was: the `:country` option query has projected `portal_countries.id` since `89aad07` added the reports and the filter in one commit, with the `COALESCE` on the label only, so no form submission or option response could ever have produced it.
 
 An `{:error, reason}` from the allowed-projects lookup raises `AllowedProjectsLookupError`, matching `ReportUtils.scope_by_allowed_projects/5`'s existing convention that a failed permission lookup must never be swallowed into a zero-row answer.
+
+The portal fixture gains what those tests need and did not have: an entity outside project 900 for each scoped dimension, an activity that reaches a project only through `admin_project_materials`, and a school with no state, so `(Unknown)` is a real option to resolve.
 
 Tests: each of the seven scoped dimensions restricts to a fixture entity inside the caller's projects and excludes one outside it; the three taxonomies are unaffected by `allowed`; `:all` returns everything; an empty list returns nothing rather than everything, which is the mutation that catches the classic inverted-empty-check bug; the assignment disjunction admits an activity reachable only through `admin_project_materials`, which a conjunction would drop; every dimension's id expression is byte-identical to the one `ReportFilterQuery` builds its options with, which is the assertion that fails if the two ever drift apart again.
 
@@ -169,11 +171,11 @@ Tests: each of the seven scoped dimensions restricts to a fixture entity inside 
 
 Held back while REPORT-92's PR was open, because the churn would have landed mid-review on that story's own file. #422 merged as `562bd03`, so the constraint is gone and the consolidation belongs here rather than in a follow-up nobody is tracking.
 
-Each of the ten `build_base_query/1` configs takes its `id:` from the module, and each of the seven branches currently inlines its own scoping: `:cohort` a bare `admin_cohorts.project_id IN (...)`, `:school`, `:teacher`, `:permission_form`, `:class` and `:student` a named join pattern plus `ac.project_id IN (...)`, and `:assignment` the same shape with `LEFT` joins and the disjunction over `admin_project_materials`. Those values moved into `DimensionScope` verbatim precisely so this step is a move rather than a reconciliation: the branches call the module and the `@join_patterns` entries it now owns are deleted from the map.
+Each of the ten `build_base_query/1` configs takes its `id:`, `from:` and base `join:`/`where:` from the module, leaving only the label expression, the `LIKE` and the ordering local, and each of the seven branches currently inlines its own scoping: `:cohort` a bare `admin_cohorts.project_id IN (...)`, `:school`, `:teacher`, `:permission_form`, `:class` and `:student` a named join pattern plus `ac.project_id IN (...)`, and `:assignment` the same shape with `LEFT` joins and the disjunction over `admin_project_materials`. Those values moved into `DimensionScope` verbatim precisely so this step is a move rather than a reconciliation: the branches call the module and the `@join_patterns` entries it now owns are deleted from the map.
 
 The proof is that the existing DB-backed statement tests are untouched and still pass. REPORT-92 established that of the 180 statements the ten dimensions generate against every secondary filter, under both `:all` and a scoped caller, exactly six changed and 174 were byte-identical; that comparison is the harness this step re-runs. A statement that differs after the move is a reconciliation error, which is the whole reason the values were lifted verbatim rather than rewritten.
 
-`:country`, `:state` and `:subject_area` keep applying no scoping, and the module returning `:none` for them is what makes that a stated decision rather than an absent clause. That was REPORT-92's finding, and a reader who goes looking for the missing scoping and adds it would silently change the two aggregate reports.
+`:country`, `:state` and `:subject_area` call the same function and get `:none` back, which is what makes "these three are unscoped" a stated decision rather than an absent clause. That was REPORT-92's finding, and a reader who goes looking for the missing scoping and adds it would silently change the two aggregate reports.
 
 ### Extract the form's filter validation into a shared module
 
@@ -316,6 +318,8 @@ Verified before writing this step: with `app` and `hide_names` parsed into the s
 This tightens the filter-options endpoint too, which accepts anything there today and ignores it. That is a behavior change to a shipped endpoint and is deliberate: a caller sending a malformed date to `filter-options` and the same date to `create` should not be told it is fine by one and rejected by the other.
 
 The parser is not the only caller. `FilterValidation.check_dates/1` holds the `Date.from_iso8601` rule and both this parser and `Reports.create_api_report_run/3` call it, because duplicate builds from a stored filter and never reaches a parser. A stored run can carry an unvalidated date: `ReportFilter.from_form/2` copies `form.params["start_date"]` as it arrives, and the template's `<.input type="date">` constrains a browser and not a crafted event.
+
+`@string_dimensions` goes too: which dimension takes strings is `DimensionScope.id_type/1`'s answer, and this parser was its third copy.
 
 `filters` is ignored here rather than derived here. The parser drops any client-supplied list, and the derivation lives in the context function so that create and duplicate produce it the same way; see that step for why the duplicate path cannot inherit it.
 
@@ -462,7 +466,7 @@ The route goes above `get "/reports/:id"`, since `POST` and `GET` do not collide
   end
 ```
 
-`find_api_report/1` resolves the slug through `Tree.find_report/1` and requires it to be in `Tree.api_report_slugs()`, so a slug that exists but is not API-exposed is `NOT_FOUND` rather than a report the API does not otherwise serve.
+`find_api_report/1` resolves the slug through `Tree.find_report/1` and requires it to be in `Tree.api_report_slugs()`, so a slug that exists but is not API-exposed is `NOT_FOUND` rather than a report the API does not otherwise serve. A missing or non-string `report_slug` is a `BAD_REQUEST` instead, since nothing was named to be not found.
 
 Tests: a create naming a cohort outside the caller's projects returns 400 naming the dimension and the id, and stores no run; an Athena create returns 201 and the run JSON with the id, slug, execution and filter, with `athena_query_state` null, which is the assertion that fails if the kickoff is moved back inside the request; a Portal create returns 201; an unknown slug and a non-API slug both return 404 with the same body; a malformed `report_filter` returns 400 with the parser's message; a missing `report_slug` returns 400; an unauthenticated request returns 401; `hide_names` is true in the response for a non-admin who sent false; the created run appears in `GET /api/v1/reports` for its owner and not for another user.
 
@@ -530,6 +534,7 @@ Tests: an Athena duplicate returns 201 and a new id; the new run's `report_filte
 
 **Files affected**:
 - `server/lib/report_server_web/components/custom_components.ex` — an actions column on `report_runs/1`.
+- `server/lib/report_server_web/live/report_run_live/duplicate.ex` — new, the action both LiveViews call.
 - `server/lib/report_server/reports.ex`: `get_report_run_for_user/2`, the own-or-admin read the show page currently inlines.
 - `server/lib/report_server_web/live/report_run_live/index.ex` — `handle_event("duplicate", ...)`.
 - `server/lib/report_server_web/live/report_run_live/show.ex` — the same, plus the control in its template.
@@ -538,6 +543,8 @@ Tests: an Athena duplicate returns 201 and a new id; the new run's `report_filte
 **Estimated diff size**: ~220 lines
 
 The component gains a column rather than a caller-supplied slot: both call sites want the same action, and a slot would let them drift.
+
+The handler is one shared module, `ReportRunLive.Duplicate`, rather than a copy per LiveView, and the message naming out-of-scope ids lives on `FilterValidation` so the controller and the LiveView render the same refusal.
 
 The handler re-authorizes rather than trusting the event. `ReportRunLive.Index` has no `handle_event/3` at all today, so this is the first write action on that page and the run id arrives from the DOM; a handler that resolved it without an ownership check would let any authenticated user duplicate any run by id. The rule is the one the run page already applies, `report_run.user_id == user.id || user.portal_is_admin` (`report_run_live/show.ex:36`), lifted to `Reports.get_report_run_for_user/2` so both LiveViews and the component call one predicate instead of the show page having its own.
 
@@ -552,14 +559,16 @@ Tests: clicking duplicate on my own run creates a run owned by me and redirects 
 **Summary**: two methods on the API client and the request types they take, over the existing `postJSON`.
 
 **Files affected**:
-- `cc-data-cli/internal/api/reports.go` — `CreateReport`, `DuplicateReport`.
-- `cc-data-cli/internal/api/types.go` — the request structs and the new error code constant.
+- `cc-data-cli/internal/api/reports.go` — `CreateReport`, `DuplicateReport` and `CreateReportReq`, which sits beside its method exactly as `FilterOptionsReq` sits beside `FilterOptions`.
+- `cc-data-cli/internal/api/errors.go` — the new error code constant, beside the rest of the vocabulary.
 - `cc-data-cli/internal/api/reports_test.go` — extend.
 - `cc-data-cli/test/` — wire captures for both endpoints and the guard.
 
 **Estimated diff size**: ~200 lines
 
-`CreateReportReq` carries `ReportSlug string` and `ReportFilter json.RawMessage`, matching `FilterOptionsReq`'s existing decision to pass a filter through as raw JSON so the client never decodes one (`endpoints.go:93-95`). `DuplicateReportReq` carries only `Force bool`, since the run id is in the path.
+`CreateReportReq` carries `ReportSlug string` and `ReportFilter json.RawMessage`, matching `FilterOptionsReq`'s existing decision to pass a filter through as raw JSON so the client never decodes one (`endpoints.go:93-95`). `DuplicateReport` takes a bare `force bool` rather than a request struct, since the run id is in the path and one flag is not a body worth naming.
+
+`reportview.RunPayload` is the single-run shape the two commands and the two tools render, so neither surface invents its own.
 
 `CodePortalDuplicateUnnecessary` joins the existing code constants. No mapping work is needed: `AsCLIError` already forwards an unknown code's code, message and extra to the exit-code contract (`errors.go:74-87`), which is why the server was made to return a coded error rather than prose. That passthrough is also why the server pins the 409 body's keys: `run_id` reaches the printed envelope and the MCP result without either surface naming it.
 
@@ -663,7 +672,7 @@ Every requirement in `requirements.md`, and the step that implements it. Checked
 | `report_filter_values` always server-derived, never accepted | context step |
 | Duplicate re-derives rather than copying labels | context step, rename assertion |
 | "No labels to derive" distinguished from "derivation failed" | escape and tuple step |
-| `filters` derived server-side in reverse declaration order | FilterParams step |
+| `filters` derived server-side in reverse declaration order | context step, since duplicate never reaches the parser |
 | `hide_names` forced by role | context step |
 | `app` only on reports that offer it, and only known values | FilterValidation step |
 | A dimension the report does not offer is a client error | FilterValidation step |
