@@ -5,7 +5,8 @@ defmodule ReportServerWeb.CustomComponentsTest do
 
   alias ReportServerWeb.CustomComponents
   alias ReportServer.Accounts.ApiToken
-  alias ReportServer.Reports.{Report, ReportFilter, ReportRun}
+  alias ReportServer.Reports.{Report, ReportFilter, ReportRun, Tree}
+  alias ReportServerWeb.Api.V1.ReportJSON
 
   test "renders never-used, an accessible caption, scoped headers, and an id-disambiguated revoke name" do
     t1 = %ApiToken{id: 41, label: nil, inserted_at: ~U[2026-07-01 14:22:00Z], last_used_at: nil}
@@ -136,6 +137,21 @@ defmodule ReportServerWeb.CustomComponentsTest do
 
       refute html =~ ~s(role="status")
       assert html =~ "Only CSV download is available"
+    end
+
+    test "the guidance it renders is the string the run JSON returns" do
+      run =
+        athena_run(%{
+          report_slug: "student-actions",
+          athena_query_error: "HIVE_EXCEEDED_PARTITION_LIMIT: too many",
+          inserted_at: ~U[2026-09-10 12:00:00Z],
+          updated_at: ~U[2026-09-10 12:00:00Z]
+        })
+
+      guidance = ReportJSON.show(run)[:athena_query_guidance]
+
+      assert guidance =~ "one or more applications"
+      assert render_header(Tree.find_report("student-actions"), run) =~ guidance
     end
   end
 end
