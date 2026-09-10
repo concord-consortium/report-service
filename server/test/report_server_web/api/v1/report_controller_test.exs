@@ -14,7 +14,15 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
                   teacher assignment class student permission_form country subject_area)
 
   @run_keys ~w(id report_slug report_type execution report_filter report_filter_values
-               athena_query_id athena_query_state athena_query_error inserted_at updated_at)
+               athena_query_id athena_query_state athena_query_error athena_query_guidance
+               inserted_at updated_at)
+
+  # cc-data forwards this body into the error it prints and into its MCP tool result, so a key
+  # added here reaches every API caller.
+  @not_ready_keys ~w(athena_query_error athena_query_guidance athena_query_id athena_query_state
+                     error message)
+
+  @partition_limit_reason "HIVE_EXCEEDED_PARTITION_LIMIT: too many"
 
   defmodule TreeStub do
     def find_report(_slug), do: Application.get_env(:report_server, :test_tree_report)
@@ -509,6 +517,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
         body = json_response(conn, 409)
         assert body["error"] == "NOT_READY"
         assert body["athena_query_state"] == expected_state
+        assert body["athena_query_guidance"] == nil
       end
 
       assert entry_count() == 0
@@ -528,6 +537,67 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert body["athena_query_state"] == "failed"
       assert body["athena_query_id"] == "qid-failed"
       assert body["athena_query_error"] == "HIVE_S3_THROTTLING: Error Code: SlowDown"
+    end
+
+    test "the NOT_READY body carries exactly the caller-visible keys", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{athena_query_id: "qid-failed", athena_query_state: "failed"})
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download"), 409)
+
+      assert Enum.sort(Map.keys(body)) == Enum.sort(@not_ready_keys)
+    end
+
+    test "the guidance names the application filter only for a report that offers it", %{raw_token: raw_token, user: user} do
+      [student, teacher] =
+        for slug <- ["student-actions", "teacher-actions"] do
+          run =
+            run_fixture(user, %{
+              report_slug: slug,
+              athena_query_id: "qid-#{slug}",
+              athena_query_state: "failed",
+              athena_query_error: @partition_limit_reason
+            })
+
+          json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download"), 409)
+        end
+
+      assert student["athena_query_error"] == @partition_limit_reason
+      assert student["athena_query_guidance"] =~ "one or more applications"
+      refute is_nil(teacher["athena_query_guidance"])
+      refute teacher["athena_query_guidance"] =~ "one or more applications"
+    end
+
+    test "the run JSON and the download body give the same guidance", %{raw_token: raw_token, user: user} do
+      run =
+        run_fixture(user, %{
+          report_slug: "student-actions",
+          athena_query_id: "qid-failed",
+          athena_query_state: "failed",
+          athena_query_error: @partition_limit_reason
+        })
+
+      shown = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}"), 200)
+      downloaded = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download"), 409)
+
+      assert shown["athena_query_guidance"] =~ "one or more applications"
+      assert shown["athena_query_guidance"] == downloaded["athena_query_guidance"]
+    end
+
+    test "an unmapped reason returns the raw reason and no guidance", %{raw_token: raw_token, user: user} do
+      reason = "WEIRD_NEW_CODE: something Athena has not said before"
+
+      run =
+        run_fixture(user, %{
+          report_slug: "student-actions",
+          athena_query_id: "qid-failed",
+          athena_query_state: "failed",
+          athena_query_error: reason
+        })
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download"), 409)
+
+      assert body["athena_query_error"] == reason
+      assert body["athena_query_guidance"] == nil
     end
 
     test "refreshes a running run to succeeded during download", %{raw_token: raw_token, user: user} do

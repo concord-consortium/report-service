@@ -1,6 +1,6 @@
 defmodule ReportServerWeb.Api.V1.ReportJSON do
   alias ReportServer.AthenaDB
-  alias ReportServer.Reports.{Report, ReportFilter, ReportRun, Tree}
+  alias ReportServer.Reports.{AthenaFailure, Report, ReportFilter, ReportRun, Tree}
   alias ReportServerWeb.Api.V1.Params
 
   def index(report_runs, limit) do
@@ -20,16 +20,19 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
   defp next_page_token(report_runs, _limit), do: Params.encode_page_token(List.last(report_runs).id)
 
   defp run_json(report_run = %ReportRun{}) do
+    report = Tree.find_report(report_run.report_slug)
+
     %{
       id: report_run.id,
       report_slug: report_run.report_slug,
-      report_type: report_type(report_run.report_slug),
-      execution: execution(report_run.report_slug),
+      report_type: report_type(report),
+      execution: execution(report),
       report_filter: report_filter_json(report_run.report_filter),
       report_filter_values: report_run.report_filter_values || %{},
       athena_query_id: report_run.athena_query_id,
       athena_query_state: report_run.athena_query_state,
       athena_query_error: report_run.athena_query_error,
+      athena_query_guidance: AthenaFailure.guidance_for(report, report_run.athena_query_error),
       inserted_at: DateTime.to_iso8601(report_run.inserted_at),
       updated_at: DateTime.to_iso8601(report_run.updated_at)
     }
@@ -56,19 +59,13 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
 
   # answers | usage | log, declared on Athena report modules. Portal reports declare none, so
   # report_type is null for Portal runs (a documented, expected value, not an error).
-  defp report_type(report_slug) do
-    case Tree.find_report(report_slug) do
-      %Report{api_report_type: api_report_type} when api_report_type != nil -> to_string(api_report_type)
-      _ -> nil
-    end
-  end
+  defp report_type(%Report{api_report_type: api_report_type}) when api_report_type != nil,
+    do: to_string(api_report_type)
+
+  defp report_type(_report), do: nil
 
   # "async" for Athena runs (result fetched later via presigned URL), "sync" for Portal runs
   # (CSV computed and streamed on /download request). Sourced from the report module type.
-  defp execution(report_slug) do
-    case Tree.find_report(report_slug) do
-      %Report{type: :portal} -> "sync"
-      _ -> "async"
-    end
-  end
+  defp execution(%Report{type: :portal}), do: "sync"
+  defp execution(_report), do: "async"
 end

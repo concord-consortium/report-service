@@ -5,7 +5,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
   alias ReportServer.{AuditLog, ClientClosedError, PortalDownloadLimiter, PortalDownloadTimeout}
   alias ReportServer.Reports
-  alias ReportServer.Reports.{AthenaRunOps, FilterValidation, Report, ReportFilter, ReportQuery, ReportRun, Tree}
+  alias ReportServer.Reports.{AthenaFailure, AthenaRunOps, FilterValidation, Report, ReportFilter, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.Csv
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{FilterParams, Params, ReportJSON}
@@ -132,14 +132,14 @@ defmodule ReportServerWeb.Api.V1.ReportController do
          {:ok, report_run} <- Reports.get_api_report_run(user, id) do
       case Tree.find_report(report_run.report_slug) do
         %Report{type: :portal} = report -> portal_download(conn, user, report, report_run)
-        _ -> athena_download(conn, user, report_run)
+        report -> athena_download(conn, user, report, report_run)
       end
     else
       {:error, :not_found} -> ErrorHelpers.not_found(conn)
     end
   end
 
-  defp athena_download(conn, user, report_run) do
+  defp athena_download(conn, user, report, report_run) do
     report_run = AthenaRunOps.ensure_current(report_run)
 
     case report_run do
@@ -168,7 +168,8 @@ defmodule ReportServerWeb.Api.V1.ReportController do
         ErrorHelpers.render_error(conn, "NOT_READY", "The report is not ready to download.", %{
           athena_query_state: athena_query_state,
           athena_query_id: report_run.athena_query_id,
-          athena_query_error: report_run.athena_query_error
+          athena_query_error: report_run.athena_query_error,
+          athena_query_guidance: AthenaFailure.guidance_for(report, report_run.athena_query_error)
         })
     end
   end
