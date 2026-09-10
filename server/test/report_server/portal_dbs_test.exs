@@ -18,6 +18,9 @@ defmodule ReportServer.PortalDbsTest do
   end
 
   describe "query_with_reason/4" do
+    # an expired budget disconnects the pooled connection and DBConnection logs that on its way
+    # out, here and at every other :capture_log tag in this file
+    @tag :capture_log
     test "a query that consumes its budget is a timeout" do
       assert {:error, :timeout, message} =
                PortalDbs.query_with_reason(@server, "SELECT SLEEP(1)", [], timeout: 100)
@@ -56,6 +59,7 @@ defmodule ReportServer.PortalDbsTest do
       assert result.rows == [[1]]
     end
 
+    @tag :capture_log
     test "a failure keeps the driver message the reason tuple carried" do
       for {statement, options} <- [
             {"SELECT SLEEP(1)", [timeout: 100]},
@@ -76,6 +80,24 @@ defmodule ReportServer.PortalDbsTest do
     test "an unknown server still returns its two element tuple" do
       assert PortalDbs.query("no.such.host", "SELECT 1") ==
                {:error, "Unknown server no.such.host"}
+    end
+  end
+
+  defp stream_sleep(opts) do
+    defaults = [acc: 0, max_rows: 500, reducer: fn result, acc -> acc + length(result.rows) end]
+    PortalDbs.stream_query(@server, "SELECT SLEEP(2)", [], Keyword.merge(defaults, opts))
+  end
+
+  describe "stream_query/4" do
+    test "a transaction budget above the query time streams it to completion" do
+      assert {:ok, 1} = stream_sleep(transaction_timeout: 6_000)
+    end
+
+    @tag :capture_log
+    test "a transaction budget below the query time ends the stream" do
+      assert_raise DBConnection.ConnectionError, fn ->
+        stream_sleep(transaction_timeout: 1_000)
+      end
     end
   end
 end

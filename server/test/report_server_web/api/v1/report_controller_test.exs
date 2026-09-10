@@ -1,6 +1,7 @@
 defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   use ReportServerWeb.ConnCase
 
+  import ExUnit.CaptureLog
   import ReportServer.AccountsFixtures
 
   alias ReportServer.AuditLog.DataAccessLogEntry
@@ -75,6 +76,12 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
     fn _server, _sql, _params, opts ->
       {:ok, Enum.reduce(envelopes, opts[:acc], opts[:reducer])}
     end
+  end
+
+  defp put_download_timeout_ms(ms) do
+    original = Application.get_env(:report_server, :portal_download)
+    on_exit(fn -> Application.put_env(:report_server, :portal_download, original) end)
+    Application.put_env(:report_server, :portal_download, Keyword.put(original, :timeout_ms, ms))
   end
 
   defp spawn_limiter_holder() do
@@ -759,9 +766,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
     end
 
     test "a deadline in the past yields a clean pre-first-byte JSON error", %{} do
-      original = Application.get_env(:report_server, :portal_download)
-      on_exit(fn -> Application.put_env(:report_server, :portal_download, original) end)
-      Application.put_env(:report_server, :portal_download, Keyword.put(original, :timeout_ms, -1000))
+      put_download_timeout_ms(-1000)
 
       {token, run} = portal_admin_run()
       cols = ["a", "b"]
@@ -769,6 +774,65 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
       conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
       assert json_response(conn, 500)["error"] == "SERVER_ERROR"
+    end
+
+    test "hands the full configured budget to the streaming seam", %{} do
+      {token, run} = portal_admin_run()
+      test_pid = self()
+
+      start_portal_stub(fn _server, _sql, _params, opts ->
+        send(test_pid, {:stream_opts, opts})
+        {:ok, opts[:reducer].(myxql_result(["a"], []), opts[:acc])}
+      end)
+
+      conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+      assert response(conn, 200)
+
+      budget = Application.get_env(:report_server, :portal_download) |> Keyword.fetch!(:timeout_ms)
+      assert_receive {:stream_opts, opts}
+      assert opts[:transaction_timeout] == budget
+    end
+
+    test "a download that runs past its budget before streaming says so", %{} do
+      put_download_timeout_ms(50)
+
+      {token, run} = portal_admin_run()
+
+      start_portal_stub(fn _server, _sql, _params, _opts ->
+        Process.sleep(80)
+        {:error, %DBConnection.ConnectionError{message: "socket closed"}}
+      end)
+
+      log =
+        capture_log(fn ->
+          conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+          assert json_response(conn, 500)["error"] == "SERVER_ERROR"
+        end)
+
+      assert log =~ "exceeded its 50 ms budget before first byte"
+    end
+
+    test "a download that runs past its budget mid-stream says so before it aborts", %{} do
+      put_download_timeout_ms(50)
+
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+
+      # drive the reducer far enough to send_chunked, then blow the budget the way the pool does
+      start_portal_stub(fn _server, _sql, _params, opts ->
+        _acc = opts[:reducer].(myxql_result(cols, []), opts[:acc])
+        Process.sleep(80)
+        raise %DBConnection.ConnectionError{message: "socket closed"}
+      end)
+
+      log =
+        capture_log(fn ->
+          assert_raise DBConnection.ConnectionError, fn ->
+            get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+          end
+        end)
+
+      assert log =~ "exceeded its 50 ms budget after streaming started"
     end
 
     test "returns 503 once the concurrency cap is reached", %{} do

@@ -4,15 +4,15 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   require Logger
 
   alias ReportServer.{AuditLog, ClientClosedError, PortalDownloadLimiter, PortalDownloadTimeout}
-
-  # Caps a single batch fetch (and the transaction's checkout/BEGIN/COMMIT), so a stuck fetch can
-  # overshoot the overall wall-clock deadline by at most one batch rather than the full budget.
-  @portal_download_batch_timeout_ms 15_000
   alias ReportServer.Reports
   alias ReportServer.Reports.{AthenaRunOps, FilterValidation, Report, ReportFilter, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Portal.Csv
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{FilterParams, Params, ReportJSON}
+
+  # where a failed download stood relative to send_chunked, which decides what the client saw
+  @before_first_byte "before first byte"
+  @after_streaming_started "after streaming started"
 
   def index(conn, params) do
     with {:ok, limit} <- Params.parse_limit(params),
@@ -213,21 +213,19 @@ defmodule ReportServerWeb.Api.V1.ReportController do
         ErrorHelpers.server_error(conn)
 
       {:ok, _} ->
-        deadline = System.monotonic_time(:millisecond) + portal_download_timeout_ms()
+        budget = portal_download_timeout_ms()
+        deadline = System.monotonic_time(:millisecond) + budget
         server = report_run.user.portal_server
         sent = :atomics.new(1, signed: false)
         acc0 = %{conn: conn, state: :header_pending, deadline: deadline, filename: filename, sent: sent}
 
-        # The overall wall-clock bound is `deadline`, checked between batches in the reducer. The
-        # per-batch fetch timeout is capped separately so a single stuck fetch cannot overshoot the
-        # deadline by the full budget (it is also stream_query's transaction/checkout timeout, which
-        # bounds BEGIN/COMMIT, not the transaction lifetime).
-        batch_timeout = min(portal_download_timeout_ms(), @portal_download_batch_timeout_ms)
-
+        # The budget is both the reducer's wall-clock deadline and the transaction's checkout
+        # deadline, which is the only thing bounding a fetch: MyXQL fetches take no timeout.
         result =
           try do
             case portal_db().stream_query(server, sql, [],
-                   acc: acc0, max_rows: 500, timeout: batch_timeout, reducer: &stream_reducer/2) do
+                   acc: acc0, max_rows: 500, transaction_timeout: budget,
+                   reducer: &stream_reducer/2) do
               {:ok, %{conn: streamed}} ->
                 {:ok, streamed}
 
@@ -249,6 +247,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
             e ->
               if :atomics.get(sent, 1) == 1 do
+                log_download_failure(report_run, deadline, budget, e, @after_streaming_started)
                 reraise(e, __STACKTRACE__)
               else
                 {:pre_stream, e}
@@ -264,9 +263,26 @@ defmodule ReportServerWeb.Api.V1.ReportController do
             streamed
 
           {:pre_stream, reason} ->
-            Logger.error("Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}")
+            log_download_failure(report_run, deadline, budget, reason, @before_first_byte)
             ErrorHelpers.server_error(conn)
         end
+    end
+  end
+
+  # At or past the deadline the budget ran out, whatever exception carried it; the reducer's
+  # PortalDownloadTimeout and the pool's terminal "socket closed" are the same event. A mid-stream
+  # failure that is not the budget needs no line here, because the reraise that follows is itself
+  # the record; a pre-stream one is swallowed into a JSON error and would otherwise go unrecorded.
+  defp log_download_failure(report_run, deadline, budget, reason, phase) do
+    cond do
+      System.monotonic_time(:millisecond) >= deadline ->
+        Logger.error("Portal download for run #{report_run.id} exceeded its #{budget} ms budget #{phase}: #{inspect(reason)}")
+
+      phase == @before_first_byte ->
+        Logger.error("Portal download failed #{@before_first_byte} for run #{report_run.id}: #{inspect(reason)}")
+
+      true ->
+        :ok
     end
   end
 
