@@ -16,6 +16,10 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   @run_keys ~w(id report_slug report_type execution report_filter report_filter_values
                athena_query_id athena_query_state athena_query_error inserted_at updated_at)
 
+  # cc-data forwards this body into the error it prints and into its MCP tool result, so a key
+  # added here reaches every API caller.
+  @not_ready_keys ~w(athena_query_error athena_query_id athena_query_state error message)
+
   defmodule TreeStub do
     def find_report(_slug), do: Application.get_env(:report_server, :test_tree_report)
   end
@@ -528,6 +532,14 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert body["athena_query_state"] == "failed"
       assert body["athena_query_id"] == "qid-failed"
       assert body["athena_query_error"] == "HIVE_S3_THROTTLING: Error Code: SlowDown"
+    end
+
+    test "the NOT_READY body carries exactly the caller-visible keys", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{athena_query_id: "qid-failed", athena_query_state: "failed"})
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download"), 409)
+
+      assert Enum.sort(Map.keys(body)) == Enum.sort(@not_ready_keys)
     end
 
     test "refreshes a running run to succeeded during download", %{raw_token: raw_token, user: user} do

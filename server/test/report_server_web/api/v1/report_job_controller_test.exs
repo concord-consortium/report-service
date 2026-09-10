@@ -7,6 +7,10 @@ defmodule ReportServerWeb.Api.V1.ReportJobControllerTest do
   alias ReportServer.Repo
   alias ReportServer.Reports
 
+  # cc-data forwards this body into the error it prints, and a job has no Athena query of its own,
+  # so this set carries no reason.
+  @not_ready_keys ~w(error message status)
+
   setup :clean_env
 
   defp clean_env(_context) do
@@ -157,6 +161,16 @@ defmodule ReportServerWeb.Api.V1.ReportJobControllerTest do
       end
 
       assert entry_count() == 0
+    end
+
+    test "the NOT_READY body carries exactly the caller-visible keys", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{athena_query_id: "qid"})
+      contents = jobs_json([%{"id" => 5, "steps" => [], "status" => "started", "result" => nil}])
+      start_aws_stub(%{fetch_file_contents: fn _url -> {:ok, contents} end})
+
+      body = json_response(get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/jobs/5/download"), 409)
+
+      assert Enum.sort(Map.keys(body)) == Enum.sort(@not_ready_keys)
     end
 
     test "returns 500 when a completed job has no result", %{raw_token: raw_token, user: user} do
