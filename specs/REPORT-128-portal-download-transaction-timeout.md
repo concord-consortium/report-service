@@ -17,7 +17,7 @@
 - Two tests, splitting the regression between the two modules that have to agree. A `:portal_db` test proves `stream_query/4` honors the budget it is handed (`SELECT SLEEP(2)` returns under 6,000 ms and raises `DBConnection.ConnectionError` under 1,000 ms). A controller test proves `stream_portal_csv/5` hands down the full budget, which is the half that catches a reintroduced `min(budget, 15_000)`.
 - The inverted comments at `report_controller.ex:8-9` and `:220-224`, and `stream_query/4`'s `@doc`, are corrected or deleted.
 - `specs/REPORT-88-expose-portal-reports-through-api.md` is corrected where it records the same inverted model (the Timeout / pool bullet and decision Q2).
-- A download that exceeds its budget says so in the log rather than surfacing as a bare `socket closed`. The client-visible response is unchanged.
+- A download that exceeds its budget says so in the log rather than surfacing as a bare `socket closed`, on both sides of the first byte and naming which side it was on. A mid-stream failure that is not the budget gets no line, because the reraise is already the record; a pre-stream one does, because it is swallowed into a JSON 500. The client-visible response is unchanged.
 
 ## Technical Notes
 
@@ -25,13 +25,13 @@
 
 **`MyXQL.transaction/3`'s `:timeout` bounds the whole transaction**, including time spent in the caller's reducer. Measured against MySQL 8.0.39: a 1-second transaction budget killed a `SELECT SLEEP(3)` at 1,005 ms with the production error, "socket closed (the connection was closed by the pool...)", while a 1-second *fetch* cap let the same query through untouched. A 20-second budget cleared an 18-second query with the 15-second "batch cap" still in place.
 
-**Two bounds now exist and neither covers the other's case.** The reducer's wall-clock `deadline` (`report_controller.ex:216`, raised at `:281`) bounds a slow consumer between batches with a named exception; the checkout deadline is the only thing that bounds a fetch that never returns, which the reducer cannot see because no batch arrives. The reducer's clock starts earlier, before `get_or_start_pool/1`, so no explicit margin is needed.
+**Two bounds now exist and neither covers the other's case.** The reducer's wall-clock `deadline` (`report_controller.ex:217`, raised at `:297`) bounds a slow consumer between batches with a named exception; the checkout deadline is the only thing that bounds a fetch that never returns, which the reducer cannot see because no batch arrives. The reducer's clock starts earlier, before `get_or_start_pool/1`, so no explicit margin is needed.
 
 **The web UI was never affected.** `ReportRunLive.Show` reads through buffered `PortalDbs.query/4` (`show.ex:163`, `:204`) at the module default `@query_timeout` of 300,000 ms.
 
 **Pool exposure.** The per-server pool is `pool_size: 5`, shared with auth, authz, the web run page and bulk reads; `PortalDownloadLimiter` admits `max_concurrent: 2`. A download can now hold a connection for two minutes rather than fifteen seconds. The buffered web path already holds one for up to five minutes. Starvation is legible: `query_with_reason/4` classifies `:queue_timeout` as `:busy` (`portal_dbs.ex:35-37`), distinct from timeout and outage.
 
-**An aggregate download is silent for its whole duration.** The header is not chunked until the first batch arrives (`report_controller.ex:295`) and the first cursor fetch runs the entire `GROUP BY`. Measured against production, first byte against total: run 206 at 29.96 s of 30.17 s, run 201 (unfiltered) at 70.71 s of 71.55 s.
+**An aggregate download is silent for its whole duration.** The header is not chunked until the first batch arrives (`report_controller.ex:301`) and the first cursor fetch runs the entire `GROUP BY`. Measured against production, first byte against total: run 206 at 29.96 s of 30.17 s, run 201 (unfiltered) at 70.71 s of 71.55 s.
 
 **The edge is not a constraint.** Both `report-service-prod` (612297603577) and `report-service-qa` (816253370536) sit behind a shared `fargate-public-cluster` ALB with `idle_timeout.timeout_seconds` of 600, declared in the sibling `cloud-formation` repo at `fargate/public-network-stack.yml:163-169`, with `fargate/report-server.yml:8` naming the network stack this service imports from. That is five times the download budget, so `portal_download_timeout_ms` always cuts first. The ALB is shared with the rest of the cluster, so the invariant worth keeping is 600 staying above the download budget.
 
@@ -80,7 +80,7 @@ D was recommended first and then rejected on three grounds, recorded so it is no
 ### Once the transaction gets the full budget, should the reducer's wall-clock deadline check stay?
 **Context**: Both are then `portal_download_timeout_ms`, so they look redundant.
 
-**Decision**: **Keep both, same value, no margin added.** They cover different cases: the reducer bounds a slow consumer between batches with a named exception, the checkout deadline bounds a fetch that never returns. A margin cannot buy determinism, because the reducer only tests the clock when a batch arrives, and cannot buy a client-visible difference, because the controller classifies by whether bytes have been sent rather than by exception type (`report_controller.ex:244-256`).
+**Decision**: **Keep both, same value, no margin added.** They cover different cases: the reducer bounds a slow consumer between batches with a named exception, the checkout deadline bounds a fetch that never returns. A margin cannot buy determinism, because the reducer only tests the clock when a batch arrives, and cannot buy a client-visible difference, because the controller classifies by whether bytes have been sent rather than by exception type (`report_controller.ex:245-253`).
 
 ---
 

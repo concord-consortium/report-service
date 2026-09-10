@@ -10,6 +10,10 @@ defmodule ReportServerWeb.Api.V1.ReportController do
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{FilterParams, Params, ReportJSON}
 
+  # where a failed download stood relative to send_chunked, which decides what the client saw
+  @before_first_byte "before first byte"
+  @after_streaming_started "after streaming started"
+
   def index(conn, params) do
     with {:ok, limit} <- Params.parse_limit(params),
          {:ok, before_id} <- Params.parse_page_token(params) do
@@ -243,6 +247,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
             e ->
               if :atomics.get(sent, 1) == 1 do
+                log_download_failure(report_run, deadline, budget, e, @after_streaming_started)
                 reraise(e, __STACKTRACE__)
               else
                 {:pre_stream, e}
@@ -258,19 +263,26 @@ defmodule ReportServerWeb.Api.V1.ReportController do
             streamed
 
           {:pre_stream, reason} ->
-            log_pre_stream_failure(report_run, deadline, budget, reason)
+            log_download_failure(report_run, deadline, budget, reason, @before_first_byte)
             ErrorHelpers.server_error(conn)
         end
     end
   end
 
   # At or past the deadline the budget ran out, whatever exception carried it; the reducer's
-  # PortalDownloadTimeout and the pool's terminal "socket closed" are the same event.
-  defp log_pre_stream_failure(report_run, deadline, budget, reason) do
-    if System.monotonic_time(:millisecond) >= deadline do
-      Logger.error("Portal download for run #{report_run.id} exceeded its #{budget} ms budget: #{inspect(reason)}")
-    else
-      Logger.error("Portal download failed before first byte for run #{report_run.id}: #{inspect(reason)}")
+  # PortalDownloadTimeout and the pool's terminal "socket closed" are the same event. A mid-stream
+  # failure that is not the budget needs no line here, because the reraise that follows is itself
+  # the record; a pre-stream one is swallowed into a JSON error and would otherwise go unrecorded.
+  defp log_download_failure(report_run, deadline, budget, reason, phase) do
+    cond do
+      System.monotonic_time(:millisecond) >= deadline ->
+        Logger.error("Portal download for run #{report_run.id} exceeded its #{budget} ms budget #{phase}: #{inspect(reason)}")
+
+      phase == @before_first_byte ->
+        Logger.error("Portal download failed #{@before_first_byte} for run #{report_run.id}: #{inspect(reason)}")
+
+      true ->
+        :ok
     end
   end
 

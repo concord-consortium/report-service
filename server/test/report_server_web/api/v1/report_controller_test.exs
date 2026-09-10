@@ -793,7 +793,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert opts[:transaction_timeout] == budget
     end
 
-    test "a download that runs past its budget says so", %{} do
+    test "a download that runs past its budget before streaming says so", %{} do
       put_download_timeout_ms(50)
 
       {token, run} = portal_admin_run()
@@ -809,7 +809,30 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
           assert json_response(conn, 500)["error"] == "SERVER_ERROR"
         end)
 
-      assert log =~ "exceeded its 50 ms budget"
+      assert log =~ "exceeded its 50 ms budget before first byte"
+    end
+
+    test "a download that runs past its budget mid-stream says so before it aborts", %{} do
+      put_download_timeout_ms(50)
+
+      {token, run} = portal_admin_run()
+      cols = ["a", "b"]
+
+      # drive the reducer far enough to send_chunked, then blow the budget the way the pool does
+      start_portal_stub(fn _server, _sql, _params, opts ->
+        _acc = opts[:reducer].(myxql_result(cols, []), opts[:acc])
+        Process.sleep(80)
+        raise %DBConnection.ConnectionError{message: "socket closed"}
+      end)
+
+      log =
+        capture_log(fn ->
+          assert_raise DBConnection.ConnectionError, fn ->
+            get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
+          end
+        end)
+
+      assert log =~ "exceeded its 50 ms budget after streaming started"
     end
 
     test "returns 503 once the concurrency cap is reached", %{} do

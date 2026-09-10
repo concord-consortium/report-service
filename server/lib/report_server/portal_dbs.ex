@@ -68,9 +68,14 @@ defmodule ReportServer.PortalDbs do
 
   @doc """
   Streams a SELECT to a caller-supplied reducer in max_rows batches, inside a transaction.
-  reducer :: (%MyXQL.Result{}, acc -> acc). Returns {:ok, acc} | {:error, reason}.
-  Exceptions from the reducer propagate (the caller classifies them); only setup/DB errors
-  are converted to {:error, reason}.
+  reducer :: (%MyXQL.Result{}, acc -> acc). Returns {:ok, acc}, or {:error, reason} for the
+  failures that never reach the driver or unwind cleanly: a pool that will not start, and a
+  rolled back transaction.
+
+  Everything else raises, so matching {:error, _} alone does not make a caller safe. An expired
+  transaction budget arrives as a DBConnection.ConnectionError, other driver failures as a
+  MyXQL.Error, and a reducer's own exceptions propagate untouched, which is how a reducer that
+  enforces the same budget from the outside raises first and gets to name the failure itself.
 
   opts: :max_rows, :acc (initial accumulator), :reducer, and :transaction_timeout, which is
   DBConnection's checkout deadline and so bounds the whole stream, including time the reducer
