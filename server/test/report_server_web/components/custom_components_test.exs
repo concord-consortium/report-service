@@ -149,9 +149,10 @@ defmodule ReportServerWeb.CustomComponentsTest do
         })
 
       guidance = ReportJSON.show(run)[:athena_query_guidance]
+      escaped = guidance |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
       assert guidance =~ "one or more applications"
-      assert render_header(Tree.find_report("student-actions"), run) =~ guidance
+      assert render_header(Tree.find_report("student-actions"), run) =~ escaped
     end
   end
 end
