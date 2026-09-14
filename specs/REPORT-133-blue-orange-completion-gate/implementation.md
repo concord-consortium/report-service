@@ -144,16 +144,13 @@ value either way. The test is the step's first direct coverage and pins every br
 **Estimated diff size**: ~215 lines
 
 `evaluate-completion.ts`, the constant, exported so the test and any future caller pin the text
-rather than restate it:
+rather than restate it. Declared the way `TELL_TEACHER_MESSAGE` and `RELOAD_MESSAGE` are in
+`portal-api.ts`, with one line naming the rejected alternative:
 
 ```ts
-/**
- * Shown to the student when the button's `min_completed_questions` is absent or is not a positive
- * integer. An authoring fault rather than a student outcome, so the raw value goes to the log at
- * error and the student gets something they can act on. TELL_TEACHER_MESSAGE is not reused: it says
- * "setting up your class", which is wrong for this fault.
- */
-export const CHECK_FAILED_MESSAGE = "Something went wrong checking your answers. Please tell your teacher.";
+// Not TELL_TEACHER_MESSAGE: "setting up your class" is wrong for a misauthored button parameter.
+export const CHECK_FAILED_MESSAGE =
+  "Something went wrong checking your answers. Please tell your teacher.";
 ```
 
 The parameter check, replacing the two `if` blocks between the context-field check and
@@ -196,8 +193,7 @@ jest.mock("firebase-functions", () => ({
   },
 }));
 
-// The client SDK is never initialized here: the step's only Firestore entry point is mocked, and the
-// query builders are stubbed so the filters the step applies are observable.
+// The query builders are stubbed so the filters the step applies are observable.
 const mockCleanup = jest.fn();
 const mockGetClientFirestore = jest.fn();
 jest.mock("../../firebase-client", () => ({
@@ -263,8 +259,7 @@ describe("evaluateCompletion", () => {
   });
 
   describe("a misauthored min_completed_questions", () => {
-    // Absent, and the three shapes a typo in an authored `key=value` line produces. The explicit
-    // table type is required: jest 24's it.each typings flatten an inline tuple table.
+    // The explicit table type is required: jest 24's it.each typings flatten an inline tuple table.
     const MISAUTHORED: Array<[string, Record<string, any>]> = [
       ["absent", {}],
       ["a non-numeric string", { min_completed_questions: "four" }],
@@ -293,8 +288,6 @@ describe("evaluateCompletion", () => {
       expect(mockLoggerError).toHaveBeenCalledWith(expect.stringContaining("(got undefined)"));
     });
 
-    // The student message must not be the log line: the raw value is authored, not secret, but the
-    // message is copy a student reads, and "got undefined" is not copy.
     it("keeps the raw value out of the student message", async () => {
       const result = await evaluateCompletion(makeContext({ min_completed_questions: "four" }));
 
@@ -421,8 +414,7 @@ The record files, replacing the `LAST_ENROLL_FILE` definition; the old name stay
 
 ```js
 // Written by stub-portal.js on every call to the named route, read by run.js after a run. The stub
-// and the driver are separate processes, so a file is the channel available, as .scenario already
-// is. Keyed by the stub's route name so the stub writes them from one place.
+// and the driver are separate processes, so a file is the channel available, as .scenario already is.
 const RECORD_FILES = {
   enroll: `${__dirname}/.last-enroll.json`,
   lock: `${__dirname}/.last-lock.json`,
@@ -439,9 +431,8 @@ destructure, and the record block becomes:
 ```js
     // Record the portal writes run.js asserts on: the enrolment's class, which is the one observation
     // of the class the pipeline actually resolved, and whether a lock or a send reached the stub at
-    // all, which is what a refused-path scenario has to show did NOT happen. Written on every call to
-    // the route, including the failure behaviours, so a stale file from an earlier scenario can never
-    // be mistaken for this run's.
+    // all. Written on every call to the route, including the failure behaviours, so a stale file from
+    // an earlier scenario can never be mistaken for this run's.
     //
     // Non-secret by construction: the same masked fields as the request log below, never the
     // Authorization header or the forwarded token.
@@ -468,10 +459,9 @@ this block, which is right: a dropped connection still reached the route, but no
 and after the enrolment block, before `pass` is computed:
 
 ```js
-  // A failure scenario may declare that the run stopped BEFORE the portal writes. The stub records
-  // each lock and each send the way it records each enrolment, and every record was deleted before
-  // the submit, so a file's absence is evidence that the route was never reached. Opt-in, because the
-  // lock and send failure scenarios reach those routes on purpose.
+  // A failure scenario may declare that the run stopped BEFORE the portal writes. Every record was
+  // deleted before the submit, so a file's absence is evidence that the route was never reached.
+  // Opt-in, because the lock and send failure scenarios reach those routes on purpose.
   let stopOk = true;
   if (expect.status === "failure") {
     for (const [flag, route] of [["noLock", "lock"], ["noEmail", "send"]]) {
