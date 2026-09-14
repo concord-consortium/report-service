@@ -122,7 +122,7 @@ ask before launch. Adding the check later is one entry at the front of the stage
 threshold; the threshold, not the mechanism, is what is missing.
 
 > **Amended by REPORT-133 (2026-09):** the PI set the thresholds on 2026-09-02 and both stages now run
-> `evaluate-completion` first. See `specs/REPORT-133-blue-orange-completion-gate/`.
+> `evaluate-completion` first. See `specs/REPORT-133-blue-orange-completion-gate.md`.
 
 **R5b.** The consequence, recorded as a research-data limitation rather than a defect, because the
 treatment arm's case is sharper than "the roster may be optimistic":
