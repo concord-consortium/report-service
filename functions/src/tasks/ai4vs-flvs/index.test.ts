@@ -113,8 +113,10 @@ describe("PIPELINES table", () => {
       evaluateCompletion, resolveOriginClass, fallRandomAssignment,
       enrollSpecifiedClass, lockCurrentOffering, sendEmail,
     ]],
-    ["fall-2026-blue", [lockCurrentOffering, sendEmail]],
-    ["fall-2026-orange", [resolveOriginClass, lockCurrentOffering, openTargetOffering, sendEmail]],
+    ["fall-2026-blue", [evaluateCompletion, lockCurrentOffering, sendEmail]],
+    ["fall-2026-orange", [
+      evaluateCompletion, resolveOriginClass, lockCurrentOffering, openTargetOffering, sendEmail,
+    ]],
   ];
   it.each(EXPECTED_HANDLERS)("selects the expected ordered handlers for %s", (pilot, handlers) => {
     expect(PIPELINES[pilot].map(step => step.handler)).toEqual(handlers);

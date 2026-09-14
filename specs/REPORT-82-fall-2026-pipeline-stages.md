@@ -121,6 +121,9 @@ a defensible `min_completed_questions` for Blue and Orange is the PI's to set an
 ask before launch. Adding the check later is one entry at the front of the stage array plus an authored
 threshold; the threshold, not the mechanism, is what is missing.
 
+> **Amended by REPORT-133 (2026-09):** the PI set the thresholds on 2026-09-02 and both stages now run
+> `evaluate-completion` first. See `specs/REPORT-133-blue-orange-completion-gate/`.
+
 **R5b.** The consequence, recorded as a research-data limitation rather than a defect, because the
 treatment arm's case is sharper than "the roster may be optimistic":
 
@@ -139,6 +142,9 @@ not been told the button applies no threshold**, which is worth raising with her
 off, alongside the two things O9/O10 already decided without her (a true percentage is not derivable
 from the answers collection, and the missing-activity prompt is authored copy rather than a computed
 list).
+
+> **Amended by REPORT-133 (2026-09):** superseded. With the gate in place the lock records that the
+> student answered at least the authored number of questions, on both stages.
 
 **R6. Post-test stage.** In order: `resolveOriginClass`, `lockCurrentOffering`, `openTargetOffering`,
 `sendEmail`. `resolveOriginClass` is required because `openTargetOffering` reads `originClassWord` from
@@ -211,6 +217,11 @@ they mean:
 `lockCurrentOffering` therefore appears under three different entry names across the three stages,
 which is exactly the latitude REPORT-80 reserved when it kept spring's `lock-activity`.
 
+> **Amended by REPORT-133 (2026-09):** the curriculum stage is now `evaluate-completion`,
+> `lock-curriculum`, `send-email` and the post-test stage `evaluate-completion`, `resolve-origin-class`,
+> `lock-post-test`, `open-curriculum`, `send-email`, so the "First entry" column in the logging table
+> above reads `evaluate-completion` on all three stages.
+
 **R10a.** Each entry carries a `processingMessage`, which is what the student sees while that step runs.
 The pre-test stage reuses spring's wording wherever the step is the same:
 
@@ -267,6 +278,9 @@ response.
 
 `min_completed_questions` is required on the pre-test stage: `evaluateCompletion` fails the run if it
 is absent or not a positive integer.
+
+> **Amended by REPORT-133 (2026-09):** required on the curriculum and post-test stages too, with
+> `min_completed_questions_failure_message` worded for a sequence. See that spec's R11.
 
 `target_class_word` must not be authored on the **pre-test** stage: a button carrying a fixed word *and*
 wired to randomisation would route every student to that one class, silently defeating the study.
