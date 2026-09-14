@@ -2,6 +2,8 @@
 .run-context.json
 .scenario
 .last-enroll.json
+.last-lock.json
+.last-send.json
 
 # These harness scripts are hand-written source, not tsc output, so re-include
 # them against the functions-wide **/*.js ignore.

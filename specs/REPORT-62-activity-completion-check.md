@@ -12,6 +12,8 @@ Replace the stub `evaluate-completion` pipeline step with real completion-check 
 
 - **R1**: The `evaluate-completion` step must read a `min_completed_questions` parameter from `jobDoc.jobInfo.request`.
 - **R2**: `min_completed_questions` must be validated as a positive integer (>= 1). If missing or invalid, the step must fail with a descriptive error message.
+
+  > **Amended by REPORT-133 (2026-09):** the step still fails before any Firestore read, but the descriptive detail (the raw value and the job path) goes to the function log at error, and the student reads `Something went wrong checking your answers. Please tell your teacher.` See `specs/REPORT-133-blue-orange-completion-gate.md` R10.
 - **R3**: The step must query the student's answer documents (existing Firestore query filtering by `platform_id`, `resource_link_id`, `context_id`, `platform_user_id`) and count the number of completed answers.
 - **R4**: An answer document counts as "completed" when its `answer` field contains a meaningful response:
   - `multiple_choice_answer`: `answer.choice_ids` is a non-empty array.

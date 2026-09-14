@@ -140,6 +140,7 @@ const FALL_CONTEXTS = {
   "fall-green-flex": { resource_link_id: "im-done-fall-green-flex", context_id: "im-done-fall-green-flex-ctx" },
   "fall-blue-curriculum": { resource_link_id: "im-done-fall-blue", context_id: "im-done-fall-blue-ctx" },
   "fall-orange-control": { resource_link_id: "im-done-fall-orange", context_id: "im-done-fall-orange-ctx" },
+  "fall-blue-refused": { resource_link_id: "im-done-fall-blue-refused", context_id: "im-done-fall-blue-refused-ctx" },
 };
 
 const REQUEST = {
@@ -201,9 +202,13 @@ const ANSWERS = [
 const RUN_CONTEXT_FILE = `${__dirname}/.run-context.json`;
 // Written by run.js before each submit, read by stub-portal.js per request.
 const SCENARIO_FILE = `${__dirname}/.scenario`;
-// Written by stub-portal.js on every add_to_class, read by run.js after a run. The stub and the
-// driver are separate processes, so a file is the channel available, as .scenario already is.
-const LAST_ENROLL_FILE = `${__dirname}/.last-enroll.json`;
+// Written by stub-portal.js on every call to the named route, read by run.js after a run. The stub
+// and the driver are separate processes, so a file is the channel available, as .scenario already is.
+const RECORD_FILES = {
+  enroll: `${__dirname}/.last-enroll.json`,
+  lock: `${__dirname}/.last-lock.json`,
+  send: `${__dirname}/.last-send.json`,
+};
 
 module.exports = {
   PROJECT_ID,
@@ -230,5 +235,5 @@ module.exports = {
   ANSWERS,
   RUN_CONTEXT_FILE,
   SCENARIO_FILE,
-  LAST_ENROLL_FILE,
+  RECORD_FILES,
 };

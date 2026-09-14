@@ -7,7 +7,7 @@ const fs = require("fs");
 const { createHash } = require("crypto");
 const {
   CONTEXT, REQUEST, FLEX_PROGRAM, assertLoopbackEmulator, PROJECT_ID,
-  SUBMIT_URL, RUN_CONTEXT_FILE, SCENARIO_FILE, LAST_ENROLL_FILE,
+  SUBMIT_URL, RUN_CONTEXT_FILE, SCENARIO_FILE, RECORD_FILES,
 } = require("./config");
 const { SCENARIOS } = require("./scenarios");
 
@@ -68,10 +68,10 @@ const readAssignedArm = async (scenario, context) => {
 // makes a scenario observe that decision; the assignment read-back above only observes the arm, and
 // recomposes the word from harness constants.
 const readEnrolledClassId = () => {
-  if (!fs.existsSync(LAST_ENROLL_FILE)) {
+  if (!fs.existsSync(RECORD_FILES.enroll)) {
     return undefined;
   }
-  return JSON.parse(fs.readFileSync(LAST_ENROLL_FILE, "utf8")).clazz_id;
+  return JSON.parse(fs.readFileSync(RECORD_FILES.enroll, "utf8")).clazz_id;
 };
 
 const main = async () => {
@@ -89,8 +89,10 @@ const main = async () => {
 
   // The stub reads this before each request.
   fs.writeFileSync(SCENARIO_FILE, scenarioName);
-  // Drop any record left by the previous scenario, so a stale one cannot satisfy this run.
-  fs.rmSync(LAST_ENROLL_FILE, { force: true });
+  // Drop the records left by the previous scenario, so a stale one cannot satisfy this run.
+  for (const file of Object.values(RECORD_FILES)) {
+    fs.rmSync(file, { force: true });
+  }
 
   const request = { ...REQUEST, ...(scenario.request || {}) };
   const context = { ...CONTEXT, ...(scenario.context || {}) };
@@ -167,7 +169,24 @@ const main = async () => {
     enrollOk = false;
   }
 
-  const pass = statusOk && messageOk && classOk && enrollOk;
+  // A failure scenario may declare that the run stopped BEFORE the portal writes. Every record was
+  // deleted before the submit, so a file's absence is evidence that the route was never reached.
+  // Opt-in, because the lock and send failure scenarios reach those routes on purpose.
+  let stopOk = true;
+  if (expect.status === "failure") {
+    for (const [flag, route] of [["noLock", "lock"], ["noEmail", "send"]]) {
+      if (!expect[flag]) {
+        continue;
+      }
+      const reached = fs.existsSync(RECORD_FILES[route]);
+      if (reached) {
+        stopOk = false;
+      }
+      console.log(`${route}: ${reached ? "REACHED the stub" : "(not reached, as expected)"}`);
+    }
+  }
+
+  const pass = statusOk && messageOk && classOk && enrollOk && stopOk;
   console.log(`\nexpected status=${expect.status}, message includes "${expect.messageIncludes}"`);
   if (expect.failsAt) {
     console.log(`(expected to stop at the ${expect.failsAt} step)`);

@@ -48,6 +48,10 @@ export const PIPELINES: Record<string, PipelineStep[]> = {
   // inside fall-random-assignment, which resolves the program from the origin class word itself, so
   // this table stays keyed by stage and never by program. A pilot value such as "fall-2026-fulltime"
   // is forbidden: one shared Green button serves both cohorts.
+  //
+  // evaluate-completion is FIRST on every fall stage. It makes no portal call and it precedes the
+  // lock, so a refused press writes nothing and leaves the student unlocked, able to answer more and
+  // click again. One resource_link_id spans the whole sequence, so the count is sequence-wide.
   "fall-2026-green": [
     { name: "evaluate-completion", processingMessage: "Checking your answers\u2026", handler: evaluateCompletion },
     { name: "resolve-origin-class", processingMessage: "Looking up your class\u2026", handler: resolveOriginClass },
@@ -58,9 +62,11 @@ export const PIPELINES: Record<string, PipelineStep[]> = {
     { name: "send-email", processingMessage: "Notifying your teacher\u2026", handler: sendEmail },
   ],
   // Opens NOTHING. The PI opens the post-test by hand on a fixed date, gated on Blue completion
-  // data she inspects herself. The lock IS the completion record she reads off the roster, so this
-  // stage's whole job is to record and report, and it applies to both arms.
+  // data she inspects herself. The lock IS the completion record she reads off the roster, and the
+  // completion check in front of it is what makes that record mean "did the work" rather than
+  // "pressed the button". Applies to both arms.
   "fall-2026-blue": [
+    { name: "evaluate-completion", processingMessage: "Checking your answers\u2026", handler: evaluateCompletion },
     { name: "lock-curriculum", processingMessage: "Locking this activity\u2026", handler: lockCurrentOffering },
     { name: "send-email", processingMessage: "Notifying your teacher\u2026", handler: sendEmail },
   ],
@@ -69,6 +75,7 @@ export const PIPELINES: Record<string, PipelineStep[]> = {
   // lock aborts before the open runs. Reordering these two requires that message to be revisited in
   // the same change.
   "fall-2026-orange": [
+    { name: "evaluate-completion", processingMessage: "Checking your answers\u2026", handler: evaluateCompletion },
     { name: "resolve-origin-class", processingMessage: "Looking up your class\u2026", handler: resolveOriginClass },
     { name: "lock-post-test", processingMessage: "Locking your post-test\u2026", handler: lockCurrentOffering },
     // "Checking" rather than "Opening": roughly half the cohort is treatment and the step returns

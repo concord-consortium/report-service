@@ -4,6 +4,10 @@ import { StepContext, StepResult } from "./types";
 import { getClientFirestore } from "../../firebase-client";
 import { answerIsCompleted } from "../answer-utils";
 
+// Not TELL_TEACHER_MESSAGE: "setting up your class" is wrong for a misauthored button parameter.
+export const CHECK_FAILED_MESSAGE =
+  "Something went wrong checking your answers. Please tell your teacher.";
+
 export const evaluateCompletion = async ({
   jobPath,
   jobDoc,
@@ -25,18 +29,12 @@ export const evaluateCompletion = async ({
   // Validate min_completed_questions before establishing Firestore connection
   const { request } = jobDoc.jobInfo;
   const rawMinCompleted = request.min_completed_questions;
-  if (rawMinCompleted === undefined || rawMinCompleted === null) {
-    return {
-      success: false,
-      message: "request is missing required parameter min_completed_questions",
-    };
-  }
   const minCompleted = Number(rawMinCompleted);
   if (!Number.isInteger(minCompleted) || minCompleted < 1) {
-    return {
-      success: false,
-      message: `min_completed_questions must be a positive integer, got: ${JSON.stringify(rawMinCompleted)}`,
-    };
+    functions.logger.error(
+      `evaluate-completion: min_completed_questions is missing or not a positive integer (got ${JSON.stringify(rawMinCompleted)}) for ${jobPath}`
+    );
+    return { success: false, message: CHECK_FAILED_MESSAGE };
   }
 
   const { firestore, cleanup } = await getClientFirestore(firebaseJwt);
