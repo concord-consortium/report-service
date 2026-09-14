@@ -22,7 +22,7 @@ compiled step from `lib/` (it exits with a "run `npm run build`" message when
 that file is missing). The fall `enroll-specified-class` and
 `open-target-offering` steps are covered both ways: in isolation by the
 direct-step scenarios, with the failure branches a whole run cannot easily reach,
-and as part of a stage by the five fall pipeline scenarios below.
+and as part of a stage by three of the fall pipeline scenarios below.
 
 ## What it does and does not prove
 

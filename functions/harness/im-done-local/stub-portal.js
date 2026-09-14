@@ -280,6 +280,21 @@ const logFields = (route, body, url) => {
   }
 };
 
+// Record the portal writes run.js asserts on: the enrolment's class, which is the one observation of
+// the class the pipeline actually resolved, and whether a lock or a send reached the stub at all.
+// Written on every call to the route, including the failure behaviours and the dropped connection,
+// so a stale file from an earlier scenario can never be mistaken for this run's and a missing file
+// always means the route was never reached.
+//
+// Non-secret by construction: the same masked fields as the request log, never the Authorization
+// header or the forwarded token.
+const record = (route, status, scenario, body, url) => {
+  const recordFile = RECORD_FILES[route];
+  if (recordFile) {
+    fs.writeFileSync(recordFile, JSON.stringify({ scenario, status, ...logFields(route, body, url) }));
+  }
+};
+
 const server = http.createServer((req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
@@ -308,6 +323,7 @@ const server = http.createServer((req, res) => {
     } else if (req.method === "PUT" && /\/api\/v1\/offerings\/[^/]+\/update_student_metadata$/.test(path)) {
       route = "lock";
       if (behavior.lock === "network") {
+        record(route, "dropped", name, body, url);
         console.log(`[stub] lock -> DROP CONNECTION (scenario=${name})`);
         req.destroy();
         res.destroy();
@@ -330,17 +346,7 @@ const server = http.createServer((req, res) => {
       result = { status: 200, body: classInfo };
     }
 
-    // Record the portal writes run.js asserts on: the enrolment's class, which is the one observation
-    // of the class the pipeline actually resolved, and whether a lock or a send reached the stub at
-    // all. Written on every call to the route, including the failure behaviours, so a stale file from
-    // an earlier scenario can never be mistaken for this run's.
-    //
-    // Non-secret by construction: the same masked fields as the request log below, never the
-    // Authorization header or the forwarded token.
-    const recordFile = RECORD_FILES[route];
-    if (recordFile) {
-      fs.writeFileSync(recordFile, JSON.stringify({ scenario: name, status: result.status, ...logFields(route, body, url) }));
-    }
+    record(route, result.status, name, body, url);
 
     const fields = logFields(route, body, url);
     const fieldStr = Object.keys(fields).length ? ` ${JSON.stringify(fields)}` : "";

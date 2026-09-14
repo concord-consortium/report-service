@@ -141,8 +141,8 @@ The four code commits and the staging verification are done. On 2026-09-14, `tas
 
 ---
 
-### Two harness README counts go stale with the fifth fall scenario
-**Decision**: "three fall pipeline scenarios" and "Four scenarios run a whole fall pipeline" both become "five"; the success bucket's "four whole-pipeline fall stages" stays, since the refused scenario has its own bucket.
+### A harness README count goes stale with the fifth fall scenario
+**Decision**: "Four scenarios run a whole fall pipeline" becomes "Five". The intro's "three fall pipeline scenarios" counts the scenarios that run `enroll-specified-class` or `open-target-offering` (the two Green stages and Orange), which the refused scenario does not, so it stays three; and the success bucket's "four whole-pipeline fall stages" stays, since the refused scenario has its own bucket.
 
 ---
 

@@ -19,12 +19,13 @@ jest.mock("../../firebase-client", () => ({
   getClientFirestore: (...args: any[]) => mockGetClientFirestore(...args),
 }));
 const mockCollection = jest.fn();
+const mockQuery = jest.fn();
 const mockWhere = jest.fn();
 const mockGetDocs = jest.fn();
 jest.mock("firebase/firestore", () => ({
   ...jest.requireActual("firebase/firestore"),
   collection: (...args: any[]) => mockCollection(...args),
-  query: jest.fn(() => "the-query"),
+  query: (...args: any[]) => mockQuery(...args),
   where: (...args: any[]) => mockWhere(...args),
   getDocs: (...args: any[]) => mockGetDocs(...args),
 }));
@@ -75,6 +76,8 @@ describe("evaluateCompletion", () => {
     mockCleanup.mockResolvedValue(undefined);
     mockGetClientFirestore.mockResolvedValue({ firestore: {}, cleanup: mockCleanup });
     mockCollection.mockReturnValue("answers-ref");
+    mockQuery.mockReturnValue("the-query");
+    mockWhere.mockImplementation((field, op, value) => ({ field, op, value }));
   });
 
   describe("a misauthored min_completed_questions", () => {
@@ -121,10 +124,14 @@ describe("evaluateCompletion", () => {
       await evaluateCompletion(makeContext({ min_completed_questions: "4" }));
 
       expect(mockCollection).toHaveBeenCalledWith({}, "sources/test-source/answers");
-      expect(mockWhere).toHaveBeenCalledWith("platform_id", "==", "https://learn.concord.org");
-      expect(mockWhere).toHaveBeenCalledWith("resource_link_id", "==", "845");
-      expect(mockWhere).toHaveBeenCalledWith("context_id", "==", "class-hash");
-      expect(mockWhere).toHaveBeenCalledWith("platform_user_id", "==", 27);
+      expect(mockQuery).toHaveBeenCalledWith(
+        "answers-ref",
+        { field: "platform_id", op: "==", value: "https://learn.concord.org" },
+        { field: "resource_link_id", op: "==", value: "845" },
+        { field: "context_id", op: "==", value: "class-hash" },
+        { field: "platform_user_id", op: "==", value: 27 },
+      );
+      expect(mockGetDocs).toHaveBeenCalledWith("the-query");
     });
 
     it("counts only documents that pass answerIsCompleted", async () => {

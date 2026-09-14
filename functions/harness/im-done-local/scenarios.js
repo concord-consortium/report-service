@@ -315,9 +315,21 @@ const SCENARIOS = {
 //
 // A guard inside seed.js's own loop would not do: it sees only the scenarios declaring seedAnswers,
 // which is not every scenario.
+const EXPECT_KEYS = new Set([
+  "status", "messageIncludes", "summaryIncludes", "failsAt",
+  "assignedArm", "noAssignment", "enrolledClassId", "noEnrollment", "noLock", "noEmail",
+]);
+
 const validateScenarios = (scenarios) => {
   const launchContexts = new Map([[`${CONTEXT.resource_link_id}|${CONTEXT.context_id}`, "the shared CONTEXT"]]);
   for (const [name, scenario] of Object.entries(scenarios)) {
+    // The opt-in flags are read only when present, so a misspelled one would be ignored and the
+    // scenario would pass while checking nothing.
+    for (const key of Object.keys(scenario.expect || {})) {
+      if (!EXPECT_KEYS.has(key)) {
+        throw new Error(`scenario "${name}" declares an unknown expect key "${key}"`);
+      }
+    }
     if (!("context" in scenario)) {
       continue;
     }

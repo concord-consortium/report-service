@@ -7,7 +7,7 @@ const fs = require("fs");
 const { createHash } = require("crypto");
 const {
   CONTEXT, REQUEST, FLEX_PROGRAM, assertLoopbackEmulator, PROJECT_ID,
-  SUBMIT_URL, RUN_CONTEXT_FILE, SCENARIO_FILE, LAST_ENROLL_FILE, RECORD_FILES,
+  SUBMIT_URL, RUN_CONTEXT_FILE, SCENARIO_FILE, RECORD_FILES,
 } = require("./config");
 const { SCENARIOS } = require("./scenarios");
 
@@ -68,10 +68,10 @@ const readAssignedArm = async (scenario, context) => {
 // makes a scenario observe that decision; the assignment read-back above only observes the arm, and
 // recomposes the word from harness constants.
 const readEnrolledClassId = () => {
-  if (!fs.existsSync(LAST_ENROLL_FILE)) {
+  if (!fs.existsSync(RECORD_FILES.enroll)) {
     return undefined;
   }
-  return JSON.parse(fs.readFileSync(LAST_ENROLL_FILE, "utf8")).clazz_id;
+  return JSON.parse(fs.readFileSync(RECORD_FILES.enroll, "utf8")).clazz_id;
 };
 
 const main = async () => {

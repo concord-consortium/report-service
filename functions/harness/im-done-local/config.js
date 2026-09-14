@@ -209,7 +209,6 @@ const RECORD_FILES = {
   lock: `${__dirname}/.last-lock.json`,
   send: `${__dirname}/.last-send.json`,
 };
-const LAST_ENROLL_FILE = RECORD_FILES.enroll;
 
 module.exports = {
   PROJECT_ID,
@@ -236,6 +235,5 @@ module.exports = {
   ANSWERS,
   RUN_CONTEXT_FILE,
   SCENARIO_FILE,
-  LAST_ENROLL_FILE,
   RECORD_FILES,
 };
