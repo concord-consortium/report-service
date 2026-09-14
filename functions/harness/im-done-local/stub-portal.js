@@ -10,7 +10,7 @@
 const http = require("http");
 const fs = require("fs");
 const {
-  PORTS, SCENARIO_FILE, LAST_ENROLL_FILE, ORIGIN_CLASS, DESTINATION_CLASS, STUDY_CONTROL_CLASS,
+  PORTS, SCENARIO_FILE, RECORD_FILES, ORIGIN_CLASS, DESTINATION_CLASS, STUDY_CONTROL_CLASS,
   TARGET_OFFERING_NAME, FALL_CONTEXTS, FALL_FT_TREATMENT_CLASS, FALL_FLEX_CONTROL_CLASS,
   FALL_FLEX_TREATMENT_CLASS, FALL_FT_REGISTRATION_CLASS, FALL_FLEX_REGISTRATION_CLASS,
 } = require("./config");
@@ -330,16 +330,16 @@ const server = http.createServer((req, res) => {
       result = { status: 200, body: classInfo };
     }
 
-    // Record the enrolment so run.js can assert the class the pipeline actually enrolled into, rather
-    // than only the arm it stored. Written on every add_to_class, including the failure behaviours, so
-    // a stale file from an earlier scenario can never be mistaken for this run's.
+    // Record the portal writes run.js asserts on: the enrolment's class, which is the one observation
+    // of the class the pipeline actually resolved, and whether a lock or a send reached the stub at
+    // all. Written on every call to the route, including the failure behaviours, so a stale file from
+    // an earlier scenario can never be mistaken for this run's.
     //
-    // Non-secret by construction: clazz_id and user_id only, never the Authorization header or the
-    // forwarded token. Same masking rule as the request log below it.
-    if (route === "enroll") {
-      fs.writeFileSync(LAST_ENROLL_FILE, JSON.stringify({
-        scenario: name, clazz_id: body.clazz_id, user_id: body.user_id, status: result.status,
-      }));
+    // Non-secret by construction: the same masked fields as the request log below, never the
+    // Authorization header or the forwarded token.
+    const recordFile = RECORD_FILES[route];
+    if (recordFile) {
+      fs.writeFileSync(recordFile, JSON.stringify({ scenario: name, status: result.status, ...logFields(route, body, url) }));
     }
 
     const fields = logFields(route, body, url);

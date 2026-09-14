@@ -239,33 +239,55 @@ const SCENARIOS = {
       assignedArm: "control", enrolledClassId: FALL_FLEX_CONTROL_CLASS.id,
     },
   },
-  // The curriculum stage: two steps, both already covered in isolation, so what this adds is the
+  // The curriculum stage: three steps, each already covered in isolation, so what this adds is the
   // stage. It is the one stage where send-email takes its FALLBACK offering read (no
   // resolve-origin-class publishes a clazz id), and the one whose notification is distinguishable
   // from a pre-test one only by the authored email_subject R14 requires. Launching from a -gator
   // class is deliberate: the curriculum lock applies to both arms, and nothing in this stage reads
   // the arm at all.
   "fall-blue-curriculum": {
-    describe: "The whole fall curriculum stage: lock the curriculum and notify, with no assignment and no enrolment.",
+    describe: "The whole fall curriculum stage: complete, lock the curriculum and notify, with no assignment and no enrolment.",
     behavior: OK,
+    seedAnswers: true,
     context: FALL_CONTEXTS["fall-blue-curriculum"],
-    request: { pilot: "fall-2026-blue", email_subject: "AI4VS: Student completed curriculum" },
+    request: { pilot: "fall-2026-blue", min_completed_questions: 4, email_subject: "AI4VS: Student completed curriculum" },
     originClassWord: FALL_FT_TREATMENT_CLASS.word,
     expect: {
       status: "success", messageIncludes: "teacher has been notified",
       noAssignment: true, noEnrollment: true,
     },
   },
+  // The gate refusing, which the scenario above can only ever pass. The seed is four answers, so a
+  // threshold of five must stop the run at the first step: the authored message, no lock, no email.
+  // Blue is enough; the step is shared by every stage that runs it.
+  "fall-blue-refused": {
+    describe: "The fall curriculum stage refused: four seeded answers against a threshold of five, stopping before the lock and the notification.",
+    behavior: OK,
+    seedAnswers: true,
+    context: FALL_CONTEXTS["fall-blue-refused"],
+    request: {
+      pilot: "fall-2026-blue",
+      min_completed_questions: 5,
+      min_completed_questions_failure_message: "You have answered ${completed} of the ${min_completed_questions} questions needed.",
+      email_subject: "AI4VS: Student completed curriculum",
+    },
+    originClassWord: FALL_FT_TREATMENT_CLASS.word,
+    expect: {
+      status: "failure", failsAt: "evaluate-completion",
+      messageIncludes: "You have answered 4 of the 5 questions needed.",
+      noLock: true, noEmail: true,
+    },
+  },
   // The only stage where two offering-state steps coexist, so the only place the entry-name
   // uniqueness rule actually bites, and the only end-to-end exercise of the teacher email rendering
   // a lock line beside an open line. It makes no assignment and no enrolment, which is why neither
-  // of the driver's read-backs may be implied by success. It carries no seedAnswers: its stage runs
-  // no evaluate-completion and no demographics read, so it needs no answers at all.
+  // of the driver's read-backs may be implied by success.
   "fall-orange-control": {
-    describe: "The whole fall post-test stage for a CONTROL student: resolve, lock the post-test, open the curriculum, notify.",
+    describe: "The whole fall post-test stage for a CONTROL student: complete, resolve, lock the post-test, open the curriculum, notify.",
     behavior: OK,
+    seedAnswers: true,
     context: FALL_CONTEXTS["fall-orange-control"],
-    request: { pilot: "fall-2026-orange", email_subject: "AI4VS: Student completed post-test" },
+    request: { pilot: "fall-2026-orange", min_completed_questions: 4, email_subject: "AI4VS: Student completed post-test" },
     originClassWord: STUDY_CONTROL_CLASS.word,
     expect: {
       status: "success", messageIncludes: "teacher has been notified",
@@ -292,7 +314,7 @@ const SCENARIOS = {
 // message names it, precisely so it cannot masquerade as a pipeline fault.
 //
 // A guard inside seed.js's own loop would not do: it sees only the scenarios declaring seedAnswers,
-// which is neither of the two fall stages that seed none.
+// which is not every scenario.
 const validateScenarios = (scenarios) => {
   const launchContexts = new Map([[`${CONTEXT.resource_link_id}|${CONTEXT.context_id}`, "the shared CONTEXT"]]);
   for (const [name, scenario] of Object.entries(scenarios)) {

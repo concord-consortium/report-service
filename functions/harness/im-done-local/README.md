@@ -22,7 +22,7 @@ compiled step from `lib/` (it exits with a "run `npm run build`" message when
 that file is missing). The fall `enroll-specified-class` and
 `open-target-offering` steps are covered both ways: in isolation by the
 direct-step scenarios, with the failure branches a whole run cannot easily reach,
-and as part of a stage by the three fall pipeline scenarios below.
+and as part of a stage by the five fall pipeline scenarios below.
 
 ## What it does and does not prove
 
@@ -46,7 +46,12 @@ diverge:
   that observes a decision the pipeline made rather than restating a harness
   value: the stub records each `add_to_class` body to `.last-enroll.json` and
   `run.js` reads it back, having deleted it before submitting so a stale record
-  cannot satisfy the run. It matters because every subclass word has a
+  cannot satisfy the run. The stub records each `update_student_metadata` and
+  `send_class_teachers` body the same way (`.last-lock.json`, `.last-send.json`),
+  so a **failure** scenario can declare `expect.noLock` and `expect.noEmail` and
+  have `run.js` assert that the run stopped before either route was reached;
+  those two are opt-in, since the lock and send failure scenarios reach the
+  routes on purpose. It matters because every subclass word has a
   `classes/info` fixture on purpose, so a pipeline that appended the wrong suffix
   would resolve a real class, enroll successfully, and otherwise pass.
 
@@ -127,6 +132,8 @@ driver its entry names, so it needs the emulator, the seed, **and** a build.
   `fall-orange-control` (below), plus the direct-step `enroll-happy`,
   `open-target-happy` and `open-target-treatment` (the last of these succeeds by
   doing nothing, which is the treatment arm's correct behavior).
+- **refused**: `fall-blue-refused`, the completion gate stopping a fall stage
+  before the lock and the notification.
 - **reload**: `mint-expired`.
 - **tell-your-teacher**: `mint-no-shared-teacher` / `mint-unauthorized` /
   `mint-unauthenticated` / `mint-signature` / `mint-bad-token-type` /
@@ -155,7 +162,7 @@ endpoint behavior the stub implements has a scenario that reaches it.
 
 ## The fall stages
 
-Four scenarios run a whole fall pipeline, each with its own `resource_link_id`
+Five scenarios run a whole fall pipeline, each with its own `resource_link_id`
 and `context_id` so they do not share a launch context with `happy` or with each
 other. `scenarios.js` checks that at require time, so a mistyped `FALL_CONTEXTS`
 key throws with the scenario's name instead of silently falling back to the
@@ -165,8 +172,9 @@ shared context and colliding with `happy`:
 |---|---|---|
 | `fall-green-fulltime` | pre-test (`fall-2026-green`) | complete → resolve → randomize → enroll → lock → notify, landing in `ft-2026-bingler-gator` |
 | `fall-green-flex` | pre-test (`fall-2026-green`) | the **same** seeded answers landing in the **opposite** arm, `fl-2026-section1-shark` |
-| `fall-blue-curriculum` | curriculum (`fall-2026-blue`) | lock the curriculum → notify, with no assignment and no enrollment, and `send-email` taking its **fallback** offering read |
-| `fall-orange-control` | post-test (`fall-2026-orange`) | resolve → lock the post-test → open the curriculum → notify, with no assignment at all |
+| `fall-blue-curriculum` | curriculum (`fall-2026-blue`) | complete → lock the curriculum → notify, with no assignment and no enrollment, and `send-email` taking its **fallback** offering read |
+| `fall-blue-refused` | curriculum (`fall-2026-blue`) | the gate refusing: four seeded answers against a threshold of five, the authored message, and neither the lock nor the send reaching the stub |
+| `fall-orange-control` | post-test (`fall-2026-orange`) | complete → resolve → lock the post-test → open the curriculum → notify, with no assignment at all |
 
 The pre-test pair is the point of the pair: identical demographics can only reach
 opposite arms if the program resolved from the origin class word actually
