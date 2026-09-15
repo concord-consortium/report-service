@@ -62,27 +62,28 @@ const classInfoFor = ({ id, word, name }, offerings) => ({
 
 const classInfo = classInfoFor(ORIGIN_CLASS, [{ id: 555, name: "Origin Offering" }]);
 const destinationClassInfo = classInfoFor(DESTINATION_CLASS, [{ id: 556, name: "Destination Offering" }]);
-// Two offerings, mirroring the real study class: the post-test the student launched from and the
+// Two offerings, mirroring the real study classes: the post-test the student launched from and the
 // locked curriculum.
-const studyControlClassInfo = classInfoFor(STUDY_CONTROL_CLASS, [
+const controlClassInfo = (clazz, scenarioName) => classInfoFor(clazz, [
   // Its id is the post-test scenario's own resource_link_id, so the class contains the offering the
   // student launched from, as the real study class does, and a correct by-name match must NOT
   // select it.
   //
   // ⚠️ This id is NOT here to exercise the self-target guard, which compares the offering that
-  // matched the BLUE target name (id 845) against resource_link_id and never looks at this one.
-  // That guard is reached only by open-target-offering.test.ts, from a shape no harness scenario
-  // reproduces.
-  { id: FALL_CONTEXTS["fall-orange-control"].resource_link_id, name: "Orange Sequence for AI in Math (FLVS 26-27)", locked: false },
-  { id: 845, name: TARGET_OFFERING_NAME, locked: true },
+  // matched the BLUE target name against resource_link_id and never looks at this one. That guard
+  // is reached only by open-target-offering.test.ts, from a shape no harness scenario reproduces.
+  { id: FALL_CONTEXTS[scenarioName].resource_link_id, name: "Orange Sequence for AI in Math (FLVS 26-27)", locked: false },
+  { id: clazz.blueOfferingId, name: TARGET_OFFERING_NAME, locked: true },
 ]);
+const studyControlClassInfo = controlClassInfo(STUDY_CONTROL_CLASS, "fall-orange-fulltime");
+const flexControlClassInfo = controlClassInfo(FALL_FLEX_CONTROL_CLASS, "fall-orange-flex");
 
 const CLASSES_BY_WORD = {
   [storedClassWord(ORIGIN_CLASS.word)]: classInfo,
   [storedClassWord(DESTINATION_CLASS.word)]: destinationClassInfo,
   [storedClassWord(STUDY_CONTROL_CLASS.word)]: studyControlClassInfo,
   [storedClassWord(FALL_FT_TREATMENT_CLASS.word)]: classInfoFor(FALL_FT_TREATMENT_CLASS, []),
-  [storedClassWord(FALL_FLEX_CONTROL_CLASS.word)]: classInfoFor(FALL_FLEX_CONTROL_CLASS, []),
+  [storedClassWord(FALL_FLEX_CONTROL_CLASS.word)]: flexControlClassInfo,
   [storedClassWord(FALL_FLEX_TREATMENT_CLASS.word)]: classInfoFor(FALL_FLEX_TREATMENT_CLASS, []),
 };
 
@@ -272,7 +273,7 @@ const logFields = (route, body, url) => {
     case "enroll":
       return { user_id: body.user_id, clazz_id: body.clazz_id };
     case "lock":
-      return { locked: body.locked, active: body.active, user_id: body.user_id };
+      return { locked: body.locked, active: body.active, user_id: body.user_id, offering_id: url.pathname.split("/")[4] };
     case "send":
       return { class_id: body.class_id, subject: body.subject };
     default:
@@ -281,8 +282,9 @@ const logFields = (route, body, url) => {
 };
 
 // Record the portal writes run.js asserts on: the enrolment's class, which is the one observation of
-// the class the pipeline actually resolved, and whether a lock or a send reached the stub at all.
-// Written on every call to the route, including the failure behaviours and the dropped connection,
+// the class the pipeline actually resolved; whether a lock or a send reached the stub at all; and,
+// for the lock, which offering the last write touched and with what `locked` flag, which is how a
+// scenario observes whether the open step ran. Written on every call to the route, including the failure behaviours and the dropped connection,
 // so a stale file from an earlier scenario can never be mistaken for this run's and a missing file
 // always means the route was never reached.
 //

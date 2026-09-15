@@ -178,10 +178,10 @@ const SCENARIOS = {
     expect: { status: "failure", messageIncludes: "tell your teacher" },
   },
   "open-target-happy": {
-    describe: `The open step classifies "${STUDY_CONTROL_CLASS.word}" as control, resolves "${TARGET_OFFERING_NAME}" among the class's two offerings, and unlocks and reveals it (run twice, covering re-entry with a populated token cache and accumulated stepResults).`,
+    describe: `The open step classifies "${FALL_FLEX_CONTROL_CLASS.word}" as a flex control student, resolves "${TARGET_OFFERING_NAME}" among the class's two offerings, and unlocks and reveals it (run twice, covering re-entry with a populated token cache and accumulated stepResults).`,
     ...OPEN_TARGET_STEP,
     behavior: OK,
-    seedOriginClassWord: STUDY_CONTROL_CLASS.word,
+    seedOriginClassWord: FALL_FLEX_CONTROL_CLASS.word,
     expect: { status: "success", summaryIncludes: `Opened ${TARGET_OFFERING_NAME}` },
   },
   "open-target-treatment": {
@@ -193,18 +193,27 @@ const SCENARIOS = {
     seedOriginClassWord: TREATMENT_CLASS_WORD,
     expect: { status: "success", summaryIncludes: "No activity to open" },
   },
+  "open-target-fulltime": {
+    // Needs no class fixture: the program check short-circuits before the mint and the class read, so
+    // nothing looks this word up. Watch terminal 2 for the absent PUT.
+    describe: "A full-time control student's post-test: the step opens nothing and says why, with no portal call at all.",
+    ...OPEN_TARGET_STEP,
+    behavior: OK,
+    seedOriginClassWord: STUDY_CONTROL_CLASS.word,
+    expect: { status: "success", summaryIncludes: "full-time program" },
+  },
   "open-target-lookup-forbidden": {
     describe: "classes#info denies the origin teacher token (403) while resolving the target's class.",
     ...OPEN_TARGET_STEP,
     behavior: { ...OK, classes: "forbidden" },
-    seedOriginClassWord: STUDY_CONTROL_CLASS.word,
+    seedOriginClassWord: FALL_FLEX_CONTROL_CLASS.word,
     expect: { status: "failure", messageIncludes: "tell your teacher" },
   },
   "open-target-write-error": {
     describe: "The target resolves but update_student_metadata fails with a 500.",
     ...OPEN_TARGET_STEP,
     behavior: { ...OK, lock: "server_error" },
-    seedOriginClassWord: STUDY_CONTROL_CLASS.word,
+    seedOriginClassWord: FALL_FLEX_CONTROL_CLASS.word,
     expect: { status: "failure", messageIncludes: "Your work has been saved" },
   },
 
@@ -281,19 +290,33 @@ const SCENARIOS = {
     },
   },
   // The only stage where two offering-state steps coexist, so the only place the entry-name
-  // uniqueness rule actually bites, and the only end-to-end exercise of the teacher email rendering
-  // a lock line beside an open line. It makes no assignment and no enrolment, which is why neither
-  // of the driver's read-backs may be implied by success.
-  "fall-orange-control": {
-    describe: "The whole fall post-test stage for a CONTROL student: complete, resolve, lock the post-test, open the curriculum, notify.",
+  // uniqueness rule actually bites. The flex scenario is the only end-to-end exercise of the teacher
+  // email rendering a lock line beside an open line; the full-time one proves the open step left the
+  // curriculum alone, which `opened: false` observes through the stub's lock record. Neither makes an
+  // assignment or an enrolment, which is why neither of the driver's read-backs may be implied by
+  // success.
+  "fall-orange-fulltime": {
+    describe: "The whole fall post-test stage for a FULL-TIME control student: complete, resolve, lock the post-test, open nothing, notify.",
     behavior: OK,
     seedAnswers: true,
-    context: FALL_CONTEXTS["fall-orange-control"],
+    context: FALL_CONTEXTS["fall-orange-fulltime"],
     request: { pilot: "fall-2026-orange", min_completed_questions: 4, email_subject: "AI4VS: Student completed post-test" },
     originClassWord: STUDY_CONTROL_CLASS.word,
     expect: {
       status: "success", messageIncludes: "teacher has been notified",
-      noAssignment: true, noEnrollment: true,
+      noAssignment: true, noEnrollment: true, opened: false,
+    },
+  },
+  "fall-orange-flex": {
+    describe: "The whole fall post-test stage for a FLEX control student: complete, resolve, lock the post-test, open the curriculum, notify.",
+    behavior: OK,
+    seedAnswers: true,
+    context: FALL_CONTEXTS["fall-orange-flex"],
+    request: { pilot: "fall-2026-orange", min_completed_questions: 4, email_subject: "AI4VS: Student completed post-test" },
+    originClassWord: FALL_FLEX_CONTROL_CLASS.word,
+    expect: {
+      status: "success", messageIncludes: "teacher has been notified",
+      noAssignment: true, noEnrollment: true, opened: FALL_FLEX_CONTROL_CLASS.blueOfferingId,
     },
   },
 
@@ -319,7 +342,7 @@ const SCENARIOS = {
 // which is not every scenario.
 const EXPECT_KEYS = new Set([
   "status", "messageIncludes", "summaryIncludes", "failsAt",
-  "assignedArm", "noAssignment", "enrolledClassId", "noEnrollment", "noLock", "noEmail",
+  "assignedArm", "noAssignment", "enrolledClassId", "noEnrollment", "noLock", "noEmail", "opened",
 ]);
 
 const validateScenarios = (scenarios) => {
