@@ -553,6 +553,16 @@ The five code commits landed as planned, with these departures from the text abo
 
 Checks on the head commit: 524 unit tests pass (27 suites, 8 emulator tests skipped), lint and build clean, and the harness passes 35/35 against the emulator and the stub, with `fall-orange-fulltime` reporting "nothing after the lock", `fall-orange-flex` reporting offering 846 unlocked, and every gated run logging `1 ignored by question type`.
 
+### Staging check (2026-09-15)
+
+`taskWorker` and `submitTask` deployed to report-service-dev from `1e1c8f3` (the deployed source zip's `build-info.json` names it; the compiled open step carries `FULL_TIME_CONTROL_SUMMARY` and the compiled count step the allowlist). Per-student rows were set through the `ai4vs-setup` admin client (never the class-level PUT) and the stale job documents deleted by id, then the presses were driven with Playwright:
+
+- Student 432 (Test Hankamp1, `ft-2026-hankamp-shark`), Blue 1215: `evaluate-completion: 2 of 3 answer(s) completed (need 2; 1 ignored by question type)`, locked, email sent. Then Orange 1216: `open-target-offering: full-time control student, nothing to open`, Orange locked, email sent, and Blue 1215's row stayed `locked=true` through the press.
+- Student 434 (Test Flex1, `fl-2026-section1-shark`), Orange 1232 with no answers: refused with `0 of 0 answer(s) completed (need 2; 0 ignored by question type)` and the authored message, nothing locked. After one multiple-choice and one open-response answer: `2 of 2`, Orange locked, `open-target-offering: opened offering 1231 for user 434`, email sent; Blue 1231's row went from `locked=true` to `locked=false`.
+- `status.js check --env staging`: every stage `ok` for all eight students; the one problem reported is the tool's inverted-Blue expectation for 432, which R9 leaves to the `ai4vs-status-tool` branch.
+
+The email body itself is not observable from the job document (it holds the final result only); the step took the full-time branch per the log line, `send-email` succeeded, and the line's text is pinned by the unit test.
+
 ## Open Questions
 
 <!-- Implementation-focused questions only. Requirements questions go in requirements.md. -->
