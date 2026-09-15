@@ -1,5 +1,9 @@
-import { openTargetOffering, TARGET_OFFERING_NAME } from "./open-target-offering";
-import { armFromClassWord, DESTINATION_SUFFIX, FLEX_PROGRAM } from "./fall-programs";
+import {
+  openTargetOffering, TARGET_OFFERING_NAME, NOTHING_TO_OPEN_SUMMARY, FULL_TIME_CONTROL_SUMMARY,
+} from "./open-target-offering";
+import {
+  armFromClassWord, classifyFallProgram, DESTINATION_SUFFIX, FLEX_PROGRAM, FULL_TIME_PROGRAM,
+} from "./fall-programs";
 import { StepContext, StepResult } from "./types";
 import { IJobDocument } from "../types";
 import { createPortalTokenCache } from "../portal-api";
@@ -25,8 +29,11 @@ jest.mock("firebase-functions", () => ({
   },
 }));
 
-const CONTROL_WORD = "ft-2026-bingler-shark";
+/** The one word the open path runs for: a flex control subclass. */
+const CONTROL_WORD = "fl-2026-section1-shark";
+const FULL_TIME_CONTROL_WORD = "ft-2026-bingler-shark";
 const TREATMENT_WORD = "ft-2026-bingler-gator";
+const FLEX_TREATMENT_WORD = "fl-2026-section1-gator";
 const POST_TEST_NAME = "Orange Sequence for AI in Math (FLVS 26-27)";
 
 /** The run's own offering, a decimal string as the portal sends it. */
@@ -55,7 +62,7 @@ const offering = (id: any, name: any, extra: Record<string, any> = {}) => ({
 /** classes/info anonymizes students but NOT teachers, so these names are real. */
 const classBody = (offerings: any[]) => ({
   id: 30001,
-  name: "FT-2026-Bingler-Shark",
+  name: "FL-2026-Section1-Shark",
   class_word: CONTROL_WORD,
   teachers: [{ id: "http://portal/users/7", user_id: 7, first_name: "Ada", last_name: "Lovelace" }],
   students: [],
@@ -241,21 +248,35 @@ describe("openTargetOffering", () => {
     });
   });
 
-  describe("arm classification", () => {
-    it("does nothing for a treatment student, before any portal call", async () => {
-      const result = await openTargetOffering(makeContext({ classWord: TREATMENT_WORD }));
+  describe("arm and program classification", () => {
+    it.each([
+      ["a full-time treatment student", TREATMENT_WORD],
+      ["a flex treatment student", FLEX_TREATMENT_WORD],
+    ])("does nothing for %s, before any portal call", async (_label, classWord) => {
+      const result = await openTargetOffering(makeContext({ classWord }));
 
-      expect(result.success).toBe(true);
-      expect(result.summary).toContain("No activity to open");
+      expect(result).toEqual({ success: true, summary: NOTHING_TO_OPEN_SUMMARY });
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
       expect(mockGetScopedPortalToken).not.toHaveBeenCalled();
     });
 
-    it("fails permanently on a class word carrying neither arm suffix", async () => {
-      // A registration class word, which is what this branch actually fires on: the word comes from
-      // the portal, not from us, so an unclassifiable one means the Orange sequence is in a class
-      // that is not a study subclass.
-      const result = await openTargetOffering(makeContext({ classWord: "ft-2026-bingler" }));
+    it("does nothing for a full-time control student, saying why, before any portal call", async () => {
+      const result = await openTargetOffering(makeContext({ classWord: FULL_TIME_CONTROL_WORD }));
+
+      expect(result).toEqual({ success: true, summary: FULL_TIME_CONTROL_SUMMARY });
+      expect(mockPortalTokenFetch).not.toHaveBeenCalled();
+      expect(mockGetScopedPortalToken).not.toHaveBeenCalled();
+    });
+
+    // The word comes from the portal, not from us, so an unclassifiable one means the Orange
+    // sequence is in a class that is not a study subclass. The same fault on either axis and on
+    // either arm takes the same exit.
+    it.each([
+      ["neither arm suffix", "ft-2026-bingler"],
+      ["neither program prefix, on a control word", "fl-spring-2026-origin-shark"],
+      ["neither program prefix, on a treatment word", "f-2026-bingler-gator"],
+    ])("fails permanently on a class word carrying %s", async (_label, classWord) => {
+      const result = await openTargetOffering(makeContext({ classWord }));
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("tell your teacher");
@@ -263,9 +284,10 @@ describe("openTargetOffering", () => {
       // the preceding lock has already recorded the post-test this reassures about.
       expect(result.message).toContain("Your work has been saved");
       expect(mockPortalTokenFetch).not.toHaveBeenCalled();
+      expect(mockGetScopedPortalToken).not.toHaveBeenCalled();
       expect(mockLoggerError).toHaveBeenCalledWith(
         expect.stringContaining("unclassifiable"),
-        expect.objectContaining({ origin_class_word: "ft-2026-bingler" }),
+        expect.objectContaining({ origin_class_word: classWord }),
       );
     });
 
@@ -359,6 +381,11 @@ describe("openTargetOffering", () => {
     it("serves class words that classify as the arms their scenarios assume", () => {
       expect(armFromClassWord(harnessConfig.STUDY_CONTROL_CLASS.word)).toBe("control");
       expect(armFromClassWord(harnessConfig.TREATMENT_CLASS_WORD)).toBe("treatment");
+    });
+
+    it("serves control words that classify as the programs their scenarios assume", () => {
+      expect(classifyFallProgram(harnessConfig.STUDY_CONTROL_CLASS.word)).toBe(FULL_TIME_PROGRAM);
+      expect(classifyFallProgram(harnessConfig.FALL_FLEX_CONTROL_CLASS.word)).toBe(FLEX_PROGRAM);
     });
 
     // The fixtures themselves rather than a duplicated copy of the constant: these are the words
