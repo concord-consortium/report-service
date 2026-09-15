@@ -60,12 +60,13 @@ export const evaluateCompletion = async ({
 
     const snapshot = await getDocs(q);
 
-    const countable = snapshot.docs.filter((doc) => COUNTED_QUESTION_TYPES.has(doc.data().question_type));
-    const completed = countable.filter((doc) => answerIsCompleted(doc.data())).length;
-    const ignored = snapshot.size - countable.length;
+    const answers = snapshot.docs.map((doc) => doc.data());
+    const countable = answers.filter((answer) => COUNTED_QUESTION_TYPES.has(answer.question_type));
+    const completed = countable.filter(answerIsCompleted).length;
+    const ignored = answers.length - countable.length;
 
     functions.logger.info(
-      `evaluate-completion: ${completed} of ${snapshot.size} answer(s) completed ` +
+      `evaluate-completion: ${completed} of ${answers.length} answer(s) completed ` +
       `(need ${minCompleted}; ${ignored} ignored by question type) for user ${platform_user_id} at ${jobPath}`
     );
 

@@ -50,10 +50,8 @@ const assertLoopbackEmulator = () => {
 const ORIGIN_CLASS = { id: 90210, word: "fl-spring-2026-origin", name: "FL-spring-2026-origin" };
 const DESTINATION_CLASS = { id: 30001, word: "ft-fall-2026-a", name: "FT-fall-2026-A" };
 
-// The fall full-time control subclass. It carries the "-shark" arm suffix and the "ft-2026-"
-// program prefix, which is the one combination the open step refuses to open for: a full-time
-// control student waits for the researcher. Its Blue is present and locked all the same, so a
-// scenario can observe that the step left it alone.
+// The full-time control subclass: the one arm-and-program combination the open step declines to
+// open for, so its locked Blue is what a scenario observes the step leaving alone.
 const STUDY_CONTROL_CLASS = { id: 30002, word: "ft-2026-bingler-shark", name: "FT-2026-Bingler-Shark", blueOfferingId: 845 };
 
 // ⚠️ Must equal TARGET_OFFERING_NAME exported by open-target-offering.ts, or the by-name match
@@ -69,10 +67,8 @@ const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
 // the fixture set does not imply the origin is resolved through this endpoint. They ARE served by
 // offerings#show, from the separate identity map below.
 const FALL_FT_TREATMENT_CLASS = { id: 30011, word: "ft-2026-bingler-gator", name: "FT-2026-Bingler-Gator" };
-// The flex control subclass is both the flex pre-test's destination and the one class the open
-// step opens Blue in, so it holds the post-test and the locked curriculum the way the real study
-// class does. Its Blue id differs from the full-time class's, so the open assertion can tell them
-// apart.
+// The flex pre-test's destination and the one class the open step opens Blue in. Its Blue id
+// differs from the full-time class's so the opened assertion can tell them apart.
 const FALL_FLEX_CONTROL_CLASS = { id: 30012, word: "fl-2026-section1-shark", name: "FL-2026-Section1-Shark", blueOfferingId: 846 };
 // For the arm the sticky assignment can flip to. An edited ANSWERS or an un-reset pooled document
 // lands the flex scenario in treatment, whose destination would otherwise have no fixture; that
