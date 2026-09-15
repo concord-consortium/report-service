@@ -8,6 +8,14 @@ import { answerIsCompleted } from "../answer-utils";
 export const CHECK_FAILED_MESSAGE =
   "Something went wrong checking your answers. Please tell your teacher.";
 
+/**
+ * The question types the gate counts. A learner-state interactive writes an answer document on
+ * page view alone (a CODAP model saves within seconds of its page loading), so only the types a
+ * student answers deliberately count, whatever the interactive is embedded as. Exported so the test
+ * pins the set rather than restating it.
+ */
+export const COUNTED_QUESTION_TYPES: ReadonlySet<string> = new Set(["multiple_choice", "open_response"]);
+
 export const evaluateCompletion = async ({
   jobPath,
   jobDoc,
@@ -52,11 +60,13 @@ export const evaluateCompletion = async ({
 
     const snapshot = await getDocs(q);
 
-    // Count completed answers
-    const completed = snapshot.docs.filter(doc => answerIsCompleted(doc.data())).length;
+    const countable = snapshot.docs.filter((doc) => COUNTED_QUESTION_TYPES.has(doc.data().question_type));
+    const completed = countable.filter((doc) => answerIsCompleted(doc.data())).length;
+    const ignored = snapshot.size - countable.length;
 
     functions.logger.info(
-      `evaluate-completion: ${completed} of ${snapshot.size} answer(s) completed (need ${minCompleted}) for user ${platform_user_id} at ${jobPath}`
+      `evaluate-completion: ${completed} of ${snapshot.size} answer(s) completed ` +
+      `(need ${minCompleted}; ${ignored} ignored by question type) for user ${platform_user_id} at ${jobPath}`
     );
 
     // Compare against threshold
