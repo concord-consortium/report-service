@@ -257,11 +257,13 @@ const SCENARIOS = {
       noAssignment: true, noEnrollment: true,
     },
   },
-  // The gate refusing, which the scenario above can only ever pass. The seed is four answers, so a
-  // threshold of five must stop the run at the first step: the authored message, no lock, no email.
-  // Blue is enough; the step is shared by every stage that runs it.
+  // The gate refusing, which the scenario above can only ever pass. The seed is four answers plus
+  // one CODAP-shaped interactive that must not count, so a threshold of five must stop the run at
+  // the first step: the authored message, no lock, no email. On code that counts every saved state
+  // the five would pass; that is what this scenario refuses. Blue is enough; the step is shared by
+  // every stage that runs it.
   "fall-blue-refused": {
-    describe: "The fall curriculum stage refused: four seeded answers against a threshold of five, stopping before the lock and the notification.",
+    describe: "The fall curriculum stage refused: four seeded answers and one uncounted interactive against a threshold of five, stopping before the lock and the notification.",
     behavior: OK,
     seedAnswers: true,
     context: FALL_CONTEXTS["fall-blue-refused"],

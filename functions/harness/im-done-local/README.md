@@ -173,7 +173,7 @@ shared context and colliding with `happy`:
 | `fall-green-fulltime` | pre-test (`fall-2026-green`) | complete → resolve → randomize → enroll → lock → notify, landing in `ft-2026-bingler-gator` |
 | `fall-green-flex` | pre-test (`fall-2026-green`) | the **same** seeded answers landing in the **opposite** arm, `fl-2026-section1-shark` |
 | `fall-blue-curriculum` | curriculum (`fall-2026-blue`) | complete → lock the curriculum → notify, with no assignment and no enrollment, and `send-email` taking its **fallback** offering read |
-| `fall-blue-refused` | curriculum (`fall-2026-blue`) | the gate refusing: four seeded answers against a threshold of five, the authored message, and neither the lock nor the send reaching the stub |
+| `fall-blue-refused` | curriculum (`fall-2026-blue`) | the gate refusing: four seeded answers and one uncounted CODAP-shaped interactive against a threshold of five, the authored message, and neither the lock nor the send reaching the stub |
 | `fall-orange-control` | post-test (`fall-2026-orange`) | complete → resolve → lock the post-test → open the curriculum → notify, with no assignment at all |
 
 The pre-test pair is the point of the pair: identical demographics can only reach
@@ -268,7 +268,9 @@ failed step's key behind for a later step to read.
   require time so a malformed or duplicated launch context throws by name.
 - `stub-portal.js` — the stub portal (RIGSE-shaped responses, scenario-driven).
 - `seed.js` — clears the answers collection, re-seeds it for every scenario
-  declaring `seedAnswers` (under that scenario's own launch context), and mints
-  a learner token. One run holds every scenario's answers at once.
+  declaring `seedAnswers` (under that scenario's own launch context: the four
+  demographic answers in the activity player's multiple-choice shape plus one
+  CODAP-shaped interactive the gate must not count), and mints a learner token.
+  One run holds every scenario's answers at once.
 - `run.js` / `run-all.js` — drive one scenario / all scenarios.
 - `run-step.js` — drive one compiled step against the stub, twice.
