@@ -157,9 +157,17 @@ order is also what makes REPORT-80's open-path failure copy true: *"Your work ha
 guaranteed by control flow only while a failed lock aborts before the open runs. Reordering these two
 steps therefore requires REPORT-80's R12 to be revisited in the same change.
 
+> **Amended by REPORT-136 (2026-09):** `openTargetOffering` opens Blue for flex control students
+> only; a full-time control student gets success, nothing opened and a summary line saying why, and
+> the researcher opens Blue for them after the EOC exam. See
+> `specs/REPORT-136-orange-open-and-count-policy.md`.
+
 **R7.** The story adds **no differential step**. The control-only conditional lives inside
 `openTargetOffering`, which classifies the arm from the `-gator` / `-shark` suffix and returns success
 with a "nothing to open" summary for treatment students before making any portal call.
+
+> **Amended by REPORT-136 (2026-09):** it classifies the program from the prefix as well, and a word
+> unclassifiable on either axis fails on both arms.
 
 **R8.** The runner's **control flow** is not modified. No branching primitive, no `when(context)`
 predicate, no optional or continue-on-failure step. Each stage is a flat, ordered, fail-fast array.
@@ -457,6 +465,10 @@ lock, open, email in one pipeline run. It is the only stage where two offering-s
 it is the only place R9's entry-name uniqueness actually bites, and the only end-to-end exercise of the
 teacher email rendering a lock line beside an open line. `run-step.js` already covers
 `openTargetOffering` in isolation with a hand-built context; this covers it as a stage.
+
+> **Amended by REPORT-136 (2026-09):** now a pair, `fall-orange-fulltime` (opens nothing) and
+> `fall-orange-flex` (opens the curriculum); the flex one is the end-to-end exercise of the lock line
+> beside the open line.
 
 **R15f.** The harness README records that a fall scenario's assigned arm is **sticky** across re-runs,
 and names the `sources/<source_key>/jobs-task-data/<docId>` document to delete to start over, **for both
