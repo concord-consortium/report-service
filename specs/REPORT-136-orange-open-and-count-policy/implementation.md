@@ -542,6 +542,17 @@ Non-code, after merge:
 
 Rollback: redeploy the same two functions from tag `report-service-v1.8.1` and restore 209 on the Blue button.
 
+## As built (2026-09-15)
+
+The five code commits landed as planned, with these departures from the text above, all from the per-commit review rather than from compile or lint faults:
+
+- `evaluate-completion.test.ts` names the two recurring snapshots (`FOUR_OF_SEVEN`, `FOUR_OF_FOUR`) instead of repeating the seven-document literal in four tests, and the `EXCLUDED` table's comment points at `MISAUTHORED` instead of restating the jest 24 typings rationale.
+- `open-target-fulltime`'s comment says "Needs no class fixture", matching `open-target-treatment`, rather than the wording planned above.
+- `stub-portal.js`'s `record` comment now names the offering id and `locked` flag the lock record carries for the `opened` assertion.
+- `index.ts`'s rewritten `PIPELINES` comment uses American spelling ("behavior").
+
+Checks on the head commit: 524 unit tests pass (27 suites, 8 emulator tests skipped), lint and build clean, and the harness passes 35/35 against the emulator and the stub, with `fall-orange-fulltime` reporting "nothing after the lock", `fall-orange-flex` reporting offering 846 unlocked, and every gated run logging `1 ignored by question type`.
+
 ## Open Questions
 
 <!-- Implementation-focused questions only. Requirements questions go in requirements.md. -->
