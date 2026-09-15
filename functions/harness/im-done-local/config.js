@@ -50,11 +50,9 @@ const assertLoopbackEmulator = () => {
 const ORIGIN_CLASS = { id: 90210, word: "fl-spring-2026-origin", name: "FL-spring-2026-origin" };
 const DESTINATION_CLASS = { id: 30001, word: "ft-fall-2026-a", name: "FT-fall-2026-A" };
 
-// The fall control subclass. Its word must carry the "-shark" arm suffix, or open-target-offering
-// short-circuits on the arm check before the mint, the class read and the name match, and the
-// scenario reports a passing tell-your-teacher while the matching logic never runs. Neither class
-// word above carries either suffix.
-const STUDY_CONTROL_CLASS = { id: 30002, word: "ft-2026-bingler-shark", name: "FT-2026-Bingler-Shark" };
+// The full-time control subclass: the one arm-and-program combination the open step declines to
+// open for, so its locked Blue is what a scenario observes the step leaving alone.
+const STUDY_CONTROL_CLASS = { id: 30002, word: "ft-2026-bingler-shark", name: "FT-2026-Bingler-Shark", blueOfferingId: 845 };
 
 // ⚠️ Must equal TARGET_OFFERING_NAME exported by open-target-offering.ts, or the by-name match
 // resolves nothing and every open-target scenario fails. A literal rather than an import of the
@@ -69,7 +67,9 @@ const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
 // the fixture set does not imply the origin is resolved through this endpoint. They ARE served by
 // offerings#show, from the separate identity map below.
 const FALL_FT_TREATMENT_CLASS = { id: 30011, word: "ft-2026-bingler-gator", name: "FT-2026-Bingler-Gator" };
-const FALL_FLEX_CONTROL_CLASS = { id: 30012, word: "fl-2026-section1-shark", name: "FL-2026-Section1-Shark" };
+// The flex pre-test's destination and the one class the open step opens Blue in. Its Blue id
+// differs from the full-time class's so the opened assertion can tell them apart.
+const FALL_FLEX_CONTROL_CLASS = { id: 30012, word: "fl-2026-section1-shark", name: "FL-2026-Section1-Shark", blueOfferingId: 846 };
 // For the arm the sticky assignment can flip to. An edited ANSWERS or an un-reset pooled document
 // lands the flex scenario in treatment, whose destination would otherwise have no fixture; that
 // surfaces as a classes#info 400 and the generic tell-your-teacher message, with nothing naming the
@@ -122,10 +122,9 @@ const CONTEXT = {
 };
 
 // Per-scenario launch contexts for the fall stages. ADDITIONS, not edits: CONTEXT keeps its current
-// values, because stub-portal.js gives the study control class an Orange offering whose id IS
-// CONTEXT.resource_link_id, precisely so the by-name match has to discriminate AGAINST the offering
-// the student launched from rather than picking the only one available. That is the property
-// open-target-happy exercises.
+// values. stub-portal.js gives each control class an Orange offering whose id is its post-test
+// scenario's own resource_link_id, precisely so the by-name match has to discriminate AGAINST the
+// offering the student launched from rather than picking the only one available.
 //
 // ⚠️ The isolation this buys is FULL-TIME's only. perClassScope hashes resource_link_id and
 // context_id, so without its own pair a fall full-time run lands in the SAME assignment document as
@@ -139,8 +138,9 @@ const FALL_CONTEXTS = {
   "fall-green-fulltime": { resource_link_id: "im-done-fall-green-ft", context_id: "im-done-fall-green-ft-ctx" },
   "fall-green-flex": { resource_link_id: "im-done-fall-green-flex", context_id: "im-done-fall-green-flex-ctx" },
   "fall-blue-curriculum": { resource_link_id: "im-done-fall-blue", context_id: "im-done-fall-blue-ctx" },
-  "fall-orange-control": { resource_link_id: "im-done-fall-orange", context_id: "im-done-fall-orange-ctx" },
   "fall-blue-refused": { resource_link_id: "im-done-fall-blue-refused", context_id: "im-done-fall-blue-refused-ctx" },
+  "fall-orange-fulltime": { resource_link_id: "im-done-fall-orange-ft", context_id: "im-done-fall-orange-ft-ctx" },
+  "fall-orange-flex": { resource_link_id: "im-done-fall-orange-flex", context_id: "im-done-fall-orange-flex-ctx" },
 };
 
 const REQUEST = {

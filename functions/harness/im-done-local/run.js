@@ -186,7 +186,26 @@ const main = async () => {
     }
   }
 
-  const pass = statusOk && messageOk && classOk && enrollOk && stopOk;
+  // The open step's decision, observed through the stub's record of the last update_student_metadata
+  // call. The lock precedes the open, so the last record is the open's write when the open ran and
+  // the lock's when it did not; `opened` is therefore either `false` (the record is the lock's own
+  // locked:true) or the id of the offering the open was expected to unlock. Opt-in: the stages with
+  // no open step have nothing to observe.
+  let openOk = true;
+  if (expect.status === "success" && expect.opened !== undefined) {
+    const last = fs.existsSync(RECORD_FILES.lock)
+      ? JSON.parse(fs.readFileSync(RECORD_FILES.lock, "utf8"))
+      : undefined;
+    if (expect.opened === false) {
+      openOk = !!last && last.locked === "true";
+      console.log(`opened: ${openOk ? "(nothing after the lock, as expected)" : JSON.stringify(last)}`);
+    } else {
+      openOk = !!last && last.locked === "false" && String(last.offering_id) === String(expect.opened);
+      console.log(`opened: offering ${last && last.offering_id} locked=${last && last.locked} (expected offering ${expect.opened} unlocked)`);
+    }
+  }
+
+  const pass = statusOk && messageOk && classOk && enrollOk && stopOk && openOk;
   console.log(`\nexpected status=${expect.status}, message includes "${expect.messageIncludes}"`);
   if (expect.failsAt) {
     console.log(`(expected to stop at the ${expect.failsAt} step)`);

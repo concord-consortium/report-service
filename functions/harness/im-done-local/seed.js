@@ -13,11 +13,19 @@ assertLoopbackEmulator();
 const admin = require("firebase-admin");
 admin.initializeApp({ projectId: PROJECT_ID });
 
-const buildReportState = (answer) =>
+const buildReportState = (authoredState, interactiveState) =>
   JSON.stringify({
-    authoredState: JSON.stringify({ prompt: answer.prompt, choices: answer.choices }),
-    interactiveState: JSON.stringify({ selectedChoiceIds: answer.selectedChoiceIds }),
+    authoredState: JSON.stringify(authoredState),
+    interactiveState: JSON.stringify(interactiveState),
   });
+
+// The launch-context fields every document under a scenario shares.
+const launchFields = (context) => ({
+  platform_id: context.platform_id,
+  resource_link_id: context.resource_link_id,
+  context_id: context.context_id,
+  platform_user_id: context.platform_user_id,
+});
 
 const main = async () => {
   const db = admin.firestore();
@@ -45,20 +53,36 @@ const main = async () => {
 
   for (const [scenarioName, scenario] of scenariosNeedingAnswers) {
     const context = { ...CONTEXT, ...(scenario.context || {}) };
+    // A multiple-choice document as the activity player writes it: `type` from the interactive's
+    // answerType, `question_type` from the authored questionType, the choice ids under `answer`,
+    // and the report state the demographics reader parses.
     for (const answer of ANSWERS) {
       const docId = `${context.source_key}-${scenarioName}-ans-${answer.key}`;
       await answersCol.doc(docId).set({
-        platform_id: context.platform_id,
-        resource_link_id: context.resource_link_id,
-        context_id: context.context_id,
-        platform_user_id: context.platform_user_id,
-        type: "interactive_state",
+        ...launchFields(context),
+        type: "multiple_choice_answer",
+        question_type: "multiple_choice",
         question_id: `im-done-${answer.key}`,
-        report_state: buildReportState(answer),
+        answer: { choice_ids: answer.selectedChoiceIds },
+        report_state: buildReportState(
+          { prompt: answer.prompt, choices: answer.choices },
+          { selectedChoiceIds: answer.selectedChoiceIds },
+        ),
       });
       seeded += 1;
     }
-    console.log(`seeded ${ANSWERS.length} answers for scenario: ${scenarioName}`);
+    // A learner-state interactive that is not a question, shaped like a CODAP model: it saves state
+    // on page view, so the gate must not count it, and the four answers above are the whole count.
+    // The authored state is an empty object rather than the empty string a real CODAP carries, so
+    // readDemographics skips it silently instead of warning on every pre-test run.
+    await answersCol.doc(`${context.source_key}-${scenarioName}-ans-codap`).set({
+      ...launchFields(context),
+      type: "interactive_state",
+      question_type: "iframe_interactive",
+      question_id: "im-done-codap",
+      report_state: buildReportState({}, { key: "DOC_im_done", type: "CODAP" }),
+    });
+    console.log(`seeded ${ANSWERS.length} answers and 1 uncounted interactive for scenario: ${scenarioName}`);
   }
 
   const token = await admin.auth().createCustomToken(CONTEXT.platform_user_id, {
