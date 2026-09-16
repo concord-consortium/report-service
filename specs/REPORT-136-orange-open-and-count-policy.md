@@ -42,7 +42,7 @@ The study's full-time Sharks and Gators both take Florida's state End-of-Course 
 
 ## Technical Notes
 
-- `functions/src/tasks/ai4vs-flvs/open-target-offering.ts`: both classifications precede the mint; `NOTHING_TO_OPEN_SUMMARY` and `FULL_TIME_CONTROL_SUMMARY` are exported and the second extends the first. `classifyFallProgram` and `FULL_TIME_PROGRAM` come from `fall-programs.ts`.
+- `functions/src/tasks/ai4vs-flvs/open-target-offering.ts`: both classifications precede the mint; `NOTHING_TO_OPEN_SUMMARY` and `FULL_TIME_CONTROL_SUMMARY` are exported and the second extends the first. The program branch reads a `Record<FallProgramId, string | undefined>` rather than testing one program for equality, so a program added to the union cannot compile without an entry (verified: `TS2741` at the record) instead of falling through to the open. `classifyFallProgram` and the program constants come from `fall-programs.ts`. The step's info line names the program, `fall-2026-full-time control student, nothing to open`.
 - `functions/src/tasks/ai4vs-flvs/evaluate-completion.ts`: `COUNTED_QUESTION_TYPES` is exported and pinned by the test; the snapshot is mapped to plain answer objects once, then filtered by type and by `answerIsCompleted`.
 - Answer-document fields, from the activity player and confirmed on staging: `type` is the interactive's `answerType` (`multiple_choice_answer`, `open_response_answer`, `interactive_state`, ...); `question_type` is the authored `questionType` or `iframe_interactive` when there is none, so a CODAP model is `iframe_interactive` however it is embedded. A CODAP saves within seconds of its page loading with no interaction (`mw_interactive_669`, 98,150 chars, nine seconds after load). An offloaded state (`__attachment__` pointer plus an `attachments` map) passes `answerIsCompleted` like an inline one.
 - Counts on the 2026-09-15 published exports, from `count-questions.py` in the oob tools folder (which prints both rules per sequence): Green 59 / 59, Orange 50 / 50, Blue 209 / 203. Blue's 20 stateful `MwInteractive` non-questions are the CODAPs and were never in the authored count; its six `iframe_interactive` questions were, and are what the allowlist removes.
@@ -160,6 +160,17 @@ The study's full-time Sharks and Gators both take Florida's state End-of-Course 
 
 ### Amendments and README passages the change invalidates
 **Decision**: The self-review found REPORT-82 R15e and REPORT-133 R7 quoting the old contract, and the harness README's Scenarios section naming the old scenario; all three joined the plan (R8, R15, and the harness commit's README edits).
+
+---
+
+### Making the program branch exhaustive rather than an equality test
+**Context**: Raised on PR #427 by emcelroy as optional hardening. The branch was `if (program === FULL_TIME_PROGRAM) return nothing-to-open`, with everything else falling through to the open. `FallProgramId` has two members, so it was correct; a third program added later would have compiled clean and silently opened the curriculum to a control student of that program, which is the one fault the study cannot undo.
+**Options considered**:
+- A) `Record<FallProgramId, string | undefined>` mapping each program to its no-open summary, matching the `Record<Arm, string>` pattern `fall-programs.ts` already uses; an incomplete record does not compile.
+- B) A `switch` with a `default: assertNever(program)`, which also fails to compile but needs a helper the repo does not have.
+- C) Leave it; not a current bug.
+
+**Decision**: A (2026-09-16). All three shapes were compiled against a union carrying a third program: today's `if` compiled clean, the record failed with `TS2741`, the switch failed with `TS2345`. The record needs no new helper and keeps each program's summary beside the program, so a third one has to declare its own line or say explicitly that it opens.
 
 ---
 

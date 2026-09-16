@@ -4,7 +4,9 @@ import {
   getScopedPortalToken, classifyPortalFailure, messageForBucket, TELL_TEACHER_MESSAGE,
 } from "../portal-api";
 import { lookupClassByWord, PortalOffering } from "../portal-reads";
-import { armFromClassWord, classifyFallProgram, FULL_TIME_PROGRAM } from "./fall-programs";
+import {
+  armFromClassWord, classifyFallProgram, FallProgramId, FLEX_PROGRAM, FULL_TIME_PROGRAM,
+} from "./fall-programs";
 import { applyOfferingState } from "./offering-state";
 
 /**
@@ -34,6 +36,18 @@ export const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
 export const NOTHING_TO_OPEN_SUMMARY = "No activity to open for this student";
 export const FULL_TIME_CONTROL_SUMMARY =
   `${NOTHING_TO_OPEN_SUMMARY} (full-time program; the researcher opens the curriculum after the EOC exam)`;
+
+/**
+ * What a control student of each program gets: a summary saying nothing was opened, or undefined
+ * for the program whose students the curriculum is opened for here.
+ *
+ * ⚠️ TOTAL BY TYPE ON PURPOSE: a program added to FallProgramId cannot compile without an entry
+ * here, so none can fall through to the open and hand a student the curriculum the study withholds.
+ */
+const CONTROL_NO_OPEN_SUMMARY: Record<FallProgramId, string | undefined> = {
+  [FULL_TIME_PROGRAM]: FULL_TIME_CONTROL_SUMMARY,
+  [FLEX_PROGRAM]: undefined,
+};
 
 /**
  * ⚠️ A failed open is an experience problem rather than a data problem: the student's completion was
@@ -164,12 +178,13 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
     functions.logger.info(`open-target-offering: treatment student, nothing to open (${jobPath})`);
     return { success: true, summary: NOTHING_TO_OPEN_SUMMARY };
   }
-  if (program === FULL_TIME_PROGRAM) {
+  const noOpenSummary = CONTROL_NO_OPEN_SUMMARY[program];
+  if (noOpenSummary) {
     // Full-time students of both arms sit the state EOC exam, and the study compares the arms on
     // it, so the curriculum reaches a full-time control student only when the researcher opens it
     // by hand after the exam. Flex students sit no EOC and get it here.
-    functions.logger.info(`open-target-offering: full-time control student, nothing to open (${jobPath})`);
-    return { success: true, summary: FULL_TIME_CONTROL_SUMMARY };
+    functions.logger.info(`open-target-offering: ${program} control student, nothing to open (${jobPath})`);
+    return { success: true, summary: noOpenSummary };
   }
 
   const target = normalizeName(TARGET_OFFERING_NAME);
