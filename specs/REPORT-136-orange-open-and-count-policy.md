@@ -38,7 +38,7 @@ The study's full-time Sharks and Gators both take Florida's state End-of-Course 
 
 - **R17.** Staging check on report-service-dev: one full-time Shark presses Orange and Blue stays locked; one flex Shark presses Orange and Blue is opened; one Blue press whose log line shows the count excluding a viewed CODAP document. Per-student unlock and job-document deletion, never the class-level offering PUT. *(done 2026-09-15; see Technical Notes)*
 - **R18.** Functions 1.8.2: version bump, tag `report-service-v1.8.2`, `npm run buildinfo` before each deploy, `firebase deploy --only functions:taskWorker,functions:submitTask` to staging then production, verified from the deployed source zip. Rollback is a redeploy of the same two functions from tag `report-service-v1.8.1` plus restoring 209 on the Blue button. *(pending: production release)*
-- **R19.** After production: republish the flowchart artifact the PI reviews (https://claude.ai/artifact/HVZdysz5StDibKe5gps4Cc) from `im-done-button/tools/build-flowchart.py` with the new Orange branch and the count rule, publishing with `url` set so the link stays the same; update decisions log rows O16 and O17 to shipped. *(pending: production release)*
+- **R19.** After production: republish the flowchart artifact the PI reviews (https://claude.ai/artifact/PRzAUCKqmpSKFKDNPakK6t) from `im-done-button/tools/build-flowchart.py` with the new Orange branch and the count rule, publishing with `url` set so the link stays the same; update decisions log rows O16 and O17 to shipped. *(pending: production release)*
 
 ## Technical Notes
 
