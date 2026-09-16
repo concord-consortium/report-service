@@ -22,11 +22,11 @@ compiled step from `lib/` (it exits with a "run `npm run build`" message when
 that file is missing). The fall `enroll-specified-class` and
 `open-target-offering` steps are covered both ways: in isolation by the
 direct-step scenarios, with the failure branches a whole run cannot easily reach,
-and as part of a stage by three of the fall pipeline scenarios below.
+and as part of a stage by four of the fall pipeline scenarios below.
 
 ## What it does and does not prove
 
-`run.js` **asserts** up to four things per scenario and fails the run if any
+`run.js` **asserts** up to five things per scenario and fails the run if any
 diverge:
 
 - the final job status (`success` / `failure`),
@@ -54,6 +54,14 @@ diverge:
   routes on purpose. It matters because every subclass word has a
   `classes/info` fixture on purpose, so a pipeline that appended the wrong suffix
   would resolve a real class, enroll successfully, and otherwise pass.
+- whether the open step **opened** the curriculum, and which one: a success
+  scenario may declare `expect.opened`, read from the last
+  `update_student_metadata` the stub recorded (which carries the offering id
+  from the request path). The lock precedes the open, so that record is the
+  open's write when the open ran and the lock's own `locked: "true"` when it did
+  not: an offering id asserts the last write unlocked that offering, and `false`
+  asserts the lock's record is the last one. Opt-in, since the stages with no
+  open step have nothing to observe.
 
 Both declarations are mandatory rather than opt-in, because an omitted one is
 silent: the scenario reports PASS while checking nothing beyond its completion
@@ -127,11 +135,12 @@ driver its entry names, so it needs the emulator, the seed, **and** a build.
 
 `happy` plus a failure per bucket:
 
-- **success**: `happy`, the four whole-pipeline fall stages
+- **success**: `happy`, the five whole-pipeline fall stages
   `fall-green-fulltime` / `fall-green-flex` / `fall-blue-curriculum` /
-  `fall-orange-control` (below), plus the direct-step `enroll-happy`,
-  `open-target-happy` and `open-target-treatment` (the last of these succeeds by
-  doing nothing, which is the treatment arm's correct behavior).
+  `fall-orange-fulltime` / `fall-orange-flex` (below), plus the direct-step
+  `enroll-happy`, `open-target-happy`, `open-target-treatment` and
+  `open-target-fulltime` (the last two succeed by doing nothing, which is the
+  correct behavior for a treatment student and for a full-time control student).
 - **refused**: `fall-blue-refused`, the completion gate stopping a fall stage
   before the lock and the notification.
 - **reload**: `mint-expired`.
@@ -153,16 +162,16 @@ reassurance clause, and the preceding lock has already recorded the work.
 
 The direct-step scenarios (`driver: "run-step"`) are `enroll-happy`,
 `enroll-unknown-word` (the destination word matches no class, a `400` from
-`classes#info` as in rigse), `enroll-lookup-forbidden`, and all four
-`open-target-*` scenarios (`-happy`, `-treatment`, `-lookup-forbidden`,
-`-write-error`).
+`classes#info` as in rigse), `enroll-lookup-forbidden`, and all five
+`open-target-*` scenarios (`-happy`, `-treatment`, `-fulltime`,
+`-lookup-forbidden`, `-write-error`).
 
 See `scenarios.js` for the full table and the exact response each maps to; every
 endpoint behavior the stub implements has a scenario that reaches it.
 
 ## The fall stages
 
-Five scenarios run a whole fall pipeline, each with its own `resource_link_id`
+Six scenarios run a whole fall pipeline, each with its own `resource_link_id`
 and `context_id` so they do not share a launch context with `happy` or with each
 other. `scenarios.js` checks that at require time, so a mistyped `FALL_CONTEXTS`
 key throws with the scenario's name instead of silently falling back to the
@@ -173,14 +182,15 @@ shared context and colliding with `happy`:
 | `fall-green-fulltime` | pre-test (`fall-2026-green`) | complete → resolve → randomize → enroll → lock → notify, landing in `ft-2026-bingler-gator` |
 | `fall-green-flex` | pre-test (`fall-2026-green`) | the **same** seeded answers landing in the **opposite** arm, `fl-2026-section1-shark` |
 | `fall-blue-curriculum` | curriculum (`fall-2026-blue`) | complete → lock the curriculum → notify, with no assignment and no enrollment, and `send-email` taking its **fallback** offering read |
-| `fall-blue-refused` | curriculum (`fall-2026-blue`) | the gate refusing: four seeded answers against a threshold of five, the authored message, and neither the lock nor the send reaching the stub |
-| `fall-orange-control` | post-test (`fall-2026-orange`) | complete → resolve → lock the post-test → open the curriculum → notify, with no assignment at all |
+| `fall-blue-refused` | curriculum (`fall-2026-blue`) | the gate refusing: four seeded answers and one uncounted CODAP-shaped interactive against a threshold of five, the authored message, and neither the lock nor the send reaching the stub |
+| `fall-orange-fulltime` | post-test (`fall-2026-orange`) | complete → resolve → lock the post-test → open **nothing** (a full-time control student waits for the researcher) → notify, with no assignment at all; `opened: false` observes that the lock's write was the last |
+| `fall-orange-flex` | post-test (`fall-2026-orange`) | the same stage for a flex control student, opening the curriculum; `opened` observes the unlock of the flex class's Blue |
 
 The pre-test pair is the point of the pair: identical demographics can only reach
 opposite arms if the program resolved from the origin class word actually
-selected a different strata table. `fall-orange-control` is the only stage where
-two offering-state steps coexist, so it is the only end-to-end exercise of the
-teacher email rendering a lock line beside an open line.
+selected a different strata table. The post-test pair is the only stage where
+two offering-state steps coexist, and `fall-orange-flex` is the only end-to-end
+exercise of the teacher email rendering a lock line beside an open line.
 `fall-blue-curriculum` is the only stage where no step publishes an
 `originClazzId`, so it is the only end-to-end run of `send-email`'s retained
 offering read on a fall pipeline; it launches from a `-gator` class deliberately,
@@ -241,10 +251,13 @@ further things a new step may need, neither of which the stub can provide:
   absent-handoff check before reaching anything the scenario tests. Set
   `seedOriginClassWord` on the scenario.
 - **A class word of the right shape.** `open-target-offering` classifies the
-  study arm from the word's `-gator` / `-shark` suffix before any portal call, so
-  a scenario seeded with `fl-spring-2026-origin` or `ft-fall-2026-a` fails on
-  that check and reports a passing tell-your-teacher while the logic it exists
-  to prove never runs.
+  study arm from the word's `-gator` / `-shark` suffix and the program from its
+  `ft-2026-` / `fl-2026-` prefix before any portal call, and only a flex control
+  word reaches the open. A scenario seeded with `fl-spring-2026-origin` or
+  `ft-fall-2026-a` fails on that check and reports a passing tell-your-teacher
+  while the logic it exists to prove never runs; one seeded with a full-time
+  control word reports a passing "nothing to open" while the matching logic
+  never runs.
 
 The driver also writes each run's result into `context.stepResults` under the
 scenario's step name, the way `index.ts` does, so the second run is a real
@@ -268,7 +281,9 @@ failed step's key behind for a later step to read.
   require time so a malformed or duplicated launch context throws by name.
 - `stub-portal.js` — the stub portal (RIGSE-shaped responses, scenario-driven).
 - `seed.js` — clears the answers collection, re-seeds it for every scenario
-  declaring `seedAnswers` (under that scenario's own launch context), and mints
-  a learner token. One run holds every scenario's answers at once.
+  declaring `seedAnswers` (under that scenario's own launch context: the four
+  demographic answers in the activity player's multiple-choice shape plus one
+  CODAP-shaped interactive the gate must not count), and mints a learner token.
+  One run holds every scenario's answers at once.
 - `run.js` / `run-all.js` — drive one scenario / all scenarios.
 - `run-step.js` — drive one compiled step against the stub, twice.

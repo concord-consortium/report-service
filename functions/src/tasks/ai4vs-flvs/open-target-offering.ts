@@ -4,11 +4,13 @@ import {
   getScopedPortalToken, classifyPortalFailure, messageForBucket, TELL_TEACHER_MESSAGE,
 } from "../portal-api";
 import { lookupClassByWord, PortalOffering } from "../portal-reads";
-import { armFromClassWord } from "./fall-programs";
+import {
+  armFromClassWord, classifyFallProgram, FallProgramId, FLEX_PROGRAM, FULL_TIME_PROGRAM,
+} from "./fall-programs";
 import { applyOfferingState } from "./offering-state";
 
 /**
- * The curriculum sequence, opened to control students once they finish the post-test.
+ * The curriculum sequence, opened to flex control students once they finish the post-test.
  *
  * ⚠️ THIS IS THE RUNNABLE'S NAME AS THE PORTAL SERVES IT. Portal::Offering#name delegates to the
  * runnable, and the portal's copy is a snapshot taken at publish time (ExternalActivitiesController
@@ -26,6 +28,28 @@ import { applyOfferingState } from "./offering-state";
 export const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
 
 /**
+ * Rendered into the teacher notification by send-email. Both open with the same phrase so a
+ * teacher scanning many emails sees the same "nothing happened" shape; the full-time line says why,
+ * because the researcher reads it when deciding whom to open the curriculum for after the exam.
+ * Neither names the sequence: a rename should break exactly one string in this file.
+ */
+export const NOTHING_TO_OPEN_SUMMARY = "No activity to open for this student";
+export const FULL_TIME_CONTROL_SUMMARY =
+  `${NOTHING_TO_OPEN_SUMMARY} (full-time program; the researcher opens the curriculum after the EOC exam)`;
+
+/**
+ * What a control student of each program gets: a summary saying nothing was opened, or undefined
+ * for the program whose students the curriculum is opened for here.
+ *
+ * ⚠️ TOTAL BY TYPE ON PURPOSE: a program added to FallProgramId cannot compile without an entry
+ * here, so none can fall through to the open and hand a student the curriculum the study withholds.
+ */
+const CONTROL_NO_OPEN_SUMMARY: Record<FallProgramId, string | undefined> = {
+  [FULL_TIME_PROGRAM]: FULL_TIME_CONTROL_SUMMARY,
+  [FLEX_PROGRAM]: undefined,
+};
+
+/**
  * ⚠️ A failed open is an experience problem rather than a data problem: the student's completion was
  * already recorded by the preceding lock, and the researcher opens sequences by hand regardless. No
  * retry promise, because by the time this runs the student has been locked out by that preceding
@@ -41,15 +65,15 @@ export const TARGET_OFFERING_NAME = "Blue Sequence for AI in Math (FLVS 26-27)";
  * advice is correct. The header rule governs the wired case; this is the exception, not a divergence.
  *
  * ⚠️ THIS MESSAGE COVERS THE PORTAL-DATA FAILURES TOO (no match, several matches, self-target, a class
- * word carrying neither arm suffix), not only the retryable portal ones. Those four are permanent
- * configuration faults, so the usual rule would hand them the shared TELL_TEACHER_MESSAGE; here that
- * rule buys nothing and costs the reassurance. The rule exists because a step's own message typically
- * promises a retry that a permanent fault cannot honour, which is true of fall-random-assignment, whose
- * message says "please try again". This step's message promises no retry: both messages route the
- * student to their teacher, and they differ only in the "Your work has been saved" clause, which is
- * TRUE on every one of these branches because the preceding lock succeeded. The shared message would
- * also tell a student finishing a post-test that something went wrong "setting up your class", which is
- * not what happened.
+ * word carrying neither arm suffix or neither program prefix), not only the retryable portal ones.
+ * Those four are permanent configuration faults, so the usual rule would hand them the shared
+ * TELL_TEACHER_MESSAGE; here that rule buys nothing and costs the reassurance. The rule exists
+ * because a step's own message typically promises a retry that a permanent fault cannot honor,
+ * which is true of fall-random-assignment, whose message says "please try again". This step's
+ * message promises no retry: both messages route the student to their teacher, and they differ only
+ * in the "Your work has been saved" clause, which is TRUE on every one of these branches because the
+ * preceding lock succeeded. The shared message would also tell a student finishing a post-test that
+ * something went wrong "setting up your class", which is not what happened.
  *
  * The no-match branch is where this matters most: it is where a stale TARGET_OFFERING_NAME or an
  * archived runnable lands, it fires for EVERY control student at once, and it fires at the last event
@@ -80,7 +104,7 @@ const matchesTargetName = (offering: PortalOffering, normalizedTarget: string): 
   typeof offering.name === "string" && normalizeName(offering.name) === normalizedTarget;
 
 /**
- * Open the curriculum to a control student: unlock it AND make it visible.
+ * Open the curriculum to a flex control student: unlock it AND make it visible.
  *
  * Opening means making reachable. An offering whose effective active is false is absent from the
  * student's runnable list entirely, so unlocking a hidden offering accomplishes nothing they can
@@ -124,18 +148,21 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
     return { success: false, message: TELL_TEACHER_MESSAGE };
   }
 
-  // ⚠️ The arm check runs before any portal call. Roughly half the fall cohort is treatment, and a
-  // check placed after the class read would have every one of them pay a classes/info read to do
-  // nothing, while needlessly holding the whole class's per-student metadata on a path with no use
-  // for it.
+  // ⚠️ Both classifications run before any portal call. Roughly half the fall cohort is treatment
+  // and every full-time control student is a no-op, so a check placed after the class read would
+  // have most of the cohort pay a classes/info read to do nothing, while needlessly holding the
+  // whole class's per-student metadata on a path with no use for it.
   const arm = armFromClassWord(originClassWord);
-  if (!arm) {
+  const program = classifyFallProgram(originClassWord);
+  if (!arm || !program) {
     // ⚠️ This step's OWN message, like the other portal-data faults. The word is not ours: it is
     // whatever offerings#show returned for the class the student launched from, so a word carrying
-    // neither suffix means the Orange sequence is sitting in a class that is not a study subclass (a
-    // registration class, most likely), which is portal-side placement in the same category as "no
-    // offering matched the name". And the reassurance is true here: the stage locks the post-test
-    // before this step runs, so the student's work IS recorded.
+    // neither suffix, or neither year-qualified prefix, means the Orange sequence is sitting in a
+    // class that is not a study subclass (a registration class, most likely), which is portal-side
+    // placement in the same category as "no offering matched the name". The same fault fails the
+    // same way on both arms, so a misplaced Gator class is as loud as a misplaced Shark one. And the
+    // reassurance is true here: the stage locks the post-test before this step runs, so the
+    // student's work IS recorded.
     //
     // Safe to log the offending word: authored, environment-stable, not PII, not a token.
     functions.logger.error(
@@ -149,7 +176,15 @@ export const openTargetOffering = async (context: StepContext): Promise<StepResu
     // cannot go back and change answers. Success with a summary saying nothing was done, since
     // send-email renders this line.
     functions.logger.info(`open-target-offering: treatment student, nothing to open (${jobPath})`);
-    return { success: true, summary: "No activity to open for this student" };
+    return { success: true, summary: NOTHING_TO_OPEN_SUMMARY };
+  }
+  const noOpenSummary = CONTROL_NO_OPEN_SUMMARY[program];
+  if (noOpenSummary) {
+    // Full-time students of both arms sit the state EOC exam, and the study compares the arms on
+    // it, so the curriculum reaches a full-time control student only when the researcher opens it
+    // by hand after the exam. Flex students sit no EOC and get it here.
+    functions.logger.info(`open-target-offering: ${program} control student, nothing to open (${jobPath})`);
+    return { success: true, summary: noOpenSummary };
   }
 
   const target = normalizeName(TARGET_OFFERING_NAME);

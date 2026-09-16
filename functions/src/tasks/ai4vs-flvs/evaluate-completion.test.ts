@@ -30,8 +30,9 @@ jest.mock("firebase/firestore", () => ({
   getDocs: (...args: any[]) => mockGetDocs(...args),
 }));
 
-import { evaluateCompletion, CHECK_FAILED_MESSAGE } from "./evaluate-completion";
+import { evaluateCompletion, CHECK_FAILED_MESSAGE, COUNTED_QUESTION_TYPES } from "./evaluate-completion";
 import { createPortalTokenCache } from "../portal-api";
+import { answerIsCompleted } from "../answer-utils";
 
 const JOB_PATH = "sources/test-source/jobs/test-job-123";
 
@@ -57,18 +58,29 @@ const makeContext = (request: Record<string, any>): StepContext => ({
   portalOrigin: "https://learn.concord.org",
 });
 
-/** A snapshot of `completed` answered multiple-choice docs plus `untouched` empty interactive states. */
-const snapshotOf = (completed: number, untouched: number) => ({
-  size: completed + untouched,
-  docs: [
-    ...Array.from({ length: completed }, () => ({
-      data: () => ({ type: "multiple_choice_answer", answer: { choice_ids: ["c1"] } }),
-    })),
-    ...Array.from({ length: untouched }, () => ({
-      data: () => ({ type: "interactive_state", report_state: JSON.stringify({ interactiveState: "{}" }) }),
-    })),
-  ],
+const COMPLETED_STATE = JSON.stringify({ interactiveState: JSON.stringify({ key: "DOC_1", type: "CODAP" }) });
+
+const multipleChoice = () => ({ type: "multiple_choice_answer", question_type: "multiple_choice", answer: { choice_ids: ["c1"] } });
+const openResponse = () => ({ type: "open_response_answer", question_type: "open_response", answer: "An answer." });
+const untouchedChoice = () => ({ type: "multiple_choice_answer", question_type: "multiple_choice", answer: { choice_ids: [] } });
+const codap = () => ({ type: "interactive_state", question_type: "iframe_interactive", report_state: COMPLETED_STATE });
+const offloadedCodap = () => ({
+  type: "interactive_state", question_type: "iframe_interactive", attachments: { __attachment__: "ref" },
 });
+const imageQuestion = () => ({ type: "image_question_answer", question_type: "image_question", answer: { image_url: "u" } });
+const untyped = () => ({ type: "interactive_state", report_state: COMPLETED_STATE });
+
+const snapshotOf = (...docs: Array<Record<string, any>>) => ({
+  size: docs.length,
+  docs: docs.map((data) => ({ data: () => data })),
+});
+
+/** Four completed multiple-choice answers plus three untouched ones. */
+const FOUR_OF_SEVEN = () => snapshotOf(
+  multipleChoice(), multipleChoice(), multipleChoice(), multipleChoice(),
+  untouchedChoice(), untouchedChoice(), untouchedChoice(),
+);
+const FOUR_OF_FOUR = () => snapshotOf(multipleChoice(), multipleChoice(), multipleChoice(), multipleChoice());
 
 describe("evaluateCompletion", () => {
   beforeEach(() => {
@@ -119,7 +131,7 @@ describe("evaluateCompletion", () => {
 
   describe("counting", () => {
     it("queries the launch's answers by all four identity fields", async () => {
-      mockGetDocs.mockResolvedValue(snapshotOf(4, 0));
+      mockGetDocs.mockResolvedValue(FOUR_OF_FOUR());
 
       await evaluateCompletion(makeContext({ min_completed_questions: "4" }));
 
@@ -135,18 +147,18 @@ describe("evaluateCompletion", () => {
     });
 
     it("counts only documents that pass answerIsCompleted", async () => {
-      mockGetDocs.mockResolvedValue(snapshotOf(4, 3));
+      mockGetDocs.mockResolvedValue(FOUR_OF_SEVEN());
 
       const result = await evaluateCompletion(makeContext({ min_completed_questions: "5" }));
 
       expect(result.success).toBe(false);
       expect(mockLoggerInfo).toHaveBeenCalledWith(
-        expect.stringContaining("4 of 7 answer(s) completed (need 5)")
+        expect.stringContaining("4 of 7 answer(s) completed (need 5; 0 ignored by question type)")
       );
     });
 
     it("releases the client after a refusal and after a pass", async () => {
-      mockGetDocs.mockResolvedValue(snapshotOf(4, 0));
+      mockGetDocs.mockResolvedValue(FOUR_OF_FOUR());
 
       await evaluateCompletion(makeContext({ min_completed_questions: "5" }));
       await evaluateCompletion(makeContext({ min_completed_questions: "4" }));
@@ -157,7 +169,7 @@ describe("evaluateCompletion", () => {
 
   describe("a short count", () => {
     beforeEach(() => {
-      mockGetDocs.mockResolvedValue(snapshotOf(4, 3));
+      mockGetDocs.mockResolvedValue(FOUR_OF_SEVEN());
     });
 
     it("is an expected failure carrying the authored template with both variables filled", async () => {
@@ -193,11 +205,52 @@ describe("evaluateCompletion", () => {
 
   describe("enough answers", () => {
     it("passes with the line send-email renders", async () => {
-      mockGetDocs.mockResolvedValue(snapshotOf(4, 3));
+      mockGetDocs.mockResolvedValue(FOUR_OF_SEVEN());
 
       const result = await evaluateCompletion(makeContext({ min_completed_questions: "4" }));
 
       expect(result).toEqual({ success: true, message: "4 of 4 questions completed" });
+    });
+  });
+
+  describe("question types", () => {
+    it("exports the two counted types", () => {
+      expect([...COUNTED_QUESTION_TYPES].sort()).toEqual(["multiple_choice", "open_response"]);
+    });
+
+    it("counts multiple-choice and open-response answers that pass answerIsCompleted", async () => {
+      mockGetDocs.mockResolvedValue(snapshotOf(multipleChoice(), openResponse(), untouchedChoice()));
+
+      const result = await evaluateCompletion(makeContext({ min_completed_questions: "2" }));
+
+      expect(result).toEqual({ success: true, message: "2 of 2 questions completed" });
+    });
+
+    // Typed explicitly for the same reason as MISAUTHORED.
+    const EXCLUDED: Array<[string, Record<string, any>]> = [
+      ["a CODAP model with saved state", codap()],
+      ["a CODAP model with an offloaded state", offloadedCodap()],
+      ["an image question", imageQuestion()],
+      ["a document with no question_type", untyped()],
+    ];
+    it.each(EXCLUDED)("does not count %s, although answerIsCompleted accepts it", async (_label, doc) => {
+      expect(answerIsCompleted(doc)).toBe(true);
+      mockGetDocs.mockResolvedValue(snapshotOf(multipleChoice(), doc));
+
+      const result = await evaluateCompletion(makeContext({ min_completed_questions: "2" }));
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("1 of 2");
+    });
+
+    it("logs the counted, total and ignored numbers", async () => {
+      mockGetDocs.mockResolvedValue(snapshotOf(multipleChoice(), openResponse(), codap(), codap(), untouchedChoice()));
+
+      await evaluateCompletion(makeContext({ min_completed_questions: "3" }));
+
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        expect.stringContaining("2 of 5 answer(s) completed (need 3; 2 ignored by question type)")
+      );
     });
   });
 });

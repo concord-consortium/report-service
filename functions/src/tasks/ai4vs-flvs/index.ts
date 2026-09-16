@@ -44,10 +44,11 @@ export const PIPELINES: Record<string, PipelineStep[]> = {
   // portal's vocabulary (the sequences are named Green/Blue/Orange Sequence for AI in Math), but it
   // is not self-describing: green = pre-test, blue = curriculum, orange = post-test.
   //
-  // BOTH cohorts run these same three stages. The only program-dependent behaviour in the study is
-  // inside fall-random-assignment, which resolves the program from the origin class word itself, so
-  // this table stays keyed by stage and never by program. A pilot value such as "fall-2026-fulltime"
-  // is forbidden: one shared Green button serves both cohorts.
+  // BOTH cohorts run these same three stages. The program-dependent behavior in the study lives
+  // inside two steps, fall-random-assignment and open-target-offering, and both resolve the program
+  // from the origin class word itself, so this table stays keyed by stage and never by program. A
+  // pilot value such as "fall-2026-fulltime" is forbidden: one shared Green button serves both
+  // cohorts.
   //
   // evaluate-completion is FIRST on every fall stage. It makes no portal call and it precedes the
   // lock, so a refused press writes nothing and leaves the student unlocked, able to answer more and
@@ -78,8 +79,8 @@ export const PIPELINES: Record<string, PipelineStep[]> = {
     { name: "evaluate-completion", processingMessage: "Checking your answers\u2026", handler: evaluateCompletion },
     { name: "resolve-origin-class", processingMessage: "Looking up your class\u2026", handler: resolveOriginClass },
     { name: "lock-post-test", processingMessage: "Locking your post-test\u2026", handler: lockCurrentOffering },
-    // "Checking" rather than "Opening": roughly half the cohort is treatment and the step returns
-    // immediately for every one of them without a portal call, so "opening" would promise something
+    // "Checking" rather than "Opening": treatment students and full-time control students, most of
+    // the cohort, return immediately without a portal call, so "opening" would promise something
     // that does not happen. True on both arms.
     { name: "open-curriculum", processingMessage: "Checking for your other activity\u2026", handler: openTargetOffering },
     { name: "send-email", processingMessage: "Notifying your teacher\u2026", handler: sendEmail },
