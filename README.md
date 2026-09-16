@@ -21,11 +21,32 @@ The high-level parts:
 * **Report-Server**: An Elixir/Phoenix app that replaces the **Researcher-Reports** app.  It allows for long-running processes
     to post-process log files.
 
+`specs/` holds one markdown file per closed spec, written for whoever picks the work up next rather than as a record of how it was built.
+
 ## Deployment
 
 S3 deployment is handled by GitHub Actions using OIDC for AWS authentication. See [deploy-setup.md in starter-projects](https://github.com/concord-consortium/starter-projects/blob/main/doc/deploy-setup.md) for how the AWS side is set up, and [doc/deploy.md](doc/deploy.md) for how deploys work in this repo.
 
 The only S3 deploy is the retired Researcher-Reports app, which was replaced by the report server (see above). It publishes nothing that any service reads, and now runs only when triggered by hand. See [doc/deploy.md](doc/deploy.md) for why it was left in place rather than deleted.
+
+The report server is deployed separately, as a Docker image on AWS ECS driven by CloudFormation, and is not part of any GitHub Actions deploy. The steps are in [server/README.md](server/README.md), and the `release-report-server` skill in [.claude/skills/release-report-server/](.claude/skills/release-report-server/) drives the whole release: version bump, image build and push, migrations as a one-off Fargate task, the stack update, and verification.
+
+### Release tracks
+
+The report server and the Firebase functions are released independently. They share this repo and nothing else, so do not bump one while releasing the other.
+
+| | version lives in | tag |
+|---|---|---|
+| Report server | `server/mix.exs` (`version:`) | `report-service-server-X.Y.Z` |
+| Firebase functions | `functions/package.json` | `report-service-vX.Y.Z` |
+
+Pushing any tag runs both the Report Server and the Firestore/Functions test workflows, whatever the tag is for, because GitHub does not apply a workflow's `paths` filter to tag pushes. That is expected, and [doc/deploy.md](doc/deploy.md) covers the S3 deploy this same behavior used to trigger.
+
+## Data safety
+
+Never scan production Firestore (`report-service-pro`). Use the development app, `report-service-dev`, which holds the same shapes of data.
+
+The report server's own databases are reachable only from inside their VPC; see [server/README.md](server/README.md) for how migrations and other database access are run against them.
 
 ## Setting up a new report on a portal
 
