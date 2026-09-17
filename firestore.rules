@@ -342,5 +342,98 @@ service cloud.firestore {
     match /sources/fake.authoring.system/feedback_settings/{document=**} {
       allow read, create, update: if true;
     }
+
+    //
+    //  -----------  Researcher Dashboard -------------
+    //
+    // Analyze Class results, written by a per-researcher MicroVM and read by the dashboard.
+    // The browser is a pure reader here: every write requires researcher_dashboard_runner,
+    // a claim only the portal mints and never issues to a browser, so a page cannot forge a
+    // result. The runner tokens come in two shapes and the split is load-bearing: a session
+    // token carries no class_hash and can touch only its own researcher document, while a
+    // class token carries one and is the only thing that can write that class's results.
+    //
+    // {portal} is the portal host with dots as underscores, matching the convention used
+    // for portal-keyed collections elsewhere. It partitions the tree for humans; platform_id
+    // on each document is what the rules actually check, exactly as the student work block
+    // above checks it rather than trusting the {source} path segment.
+
+    match /researcher_dashboard/{portal} {
+
+      function rdAuthed() {
+        return request.auth != null;
+      }
+
+      // `.get` with a default, not a bare read: an absent claim is an evaluation error
+      // rather than null, and a rule that errors denies the request.
+      function rdIsRunner() {
+        return rdAuthed() && request.auth.token.get("researcher_dashboard_runner", false) == true;
+      }
+
+      function rdIsResearcher() {
+        return rdAuthed() && request.auth.token.user_type == "researcher";
+      }
+
+      function rdSamePlatform(data) {
+        return request.auth.token.platform_id == data.platform_id;
+      }
+
+      function rdTokenUserId() {
+        return string(request.auth.token.platform_user_id);
+      }
+
+      // The per-researcher runner status document: state, current analysis, VM id, expiry.
+      // Scoped to one researcher rather than one class, so the class token cannot reach it
+      // and one researcher cannot read another's, which is what criterion 18 checks.
+      match /researchers/{platformUserId} {
+        // A missing document reads as permitted so the page can attach its listener before
+        // the VM has written anything. Firestore ends an onSnapshot after its error
+        // callback, so denying this would kill the status channel before a launch. Only
+        // non-existence is exposed; an existing document still has to pass the checks.
+        allow read: if rdIsResearcher() && rdTokenUserId() == platformUserId
+          && (resource == null || rdSamePlatform(resource.data));
+        allow write: if rdIsRunner() && rdIsResearcher() && rdTokenUserId() == platformUserId
+          && rdSamePlatform(request.resource.data);
+      }
+
+      match /classes/{classHash} {
+
+        // Counts describe the class rather than the researcher, so any of its researchers
+        // may write them and last writer wins.
+        function rdResearcherOfClass() {
+          return rdIsResearcher() && request.auth.token.class_hash == classHash;
+        }
+
+        allow read: if rdResearcherOfClass() && (resource == null || rdSamePlatform(resource.data));
+        allow write: if rdIsRunner() && rdResearcherOfClass() && rdSamePlatform(request.resource.data);
+
+        match /analyses/{analysisId} {
+          // requested_by is taken from the session token the VM holds, never from the
+          // request body, so pinning it to the writing token here is what stops one
+          // researcher's VM attributing an analysis to another.
+          function rdRequestedByWriter() {
+            return request.resource.data.requested_by == rdTokenUserId();
+          }
+
+          // requested_by and package are the analysis's identity: who asked and what ran.
+          // Letting either move after creation would rewrite history on a finished result.
+          function rdPreservesIdentity() {
+            return request.resource.data.requested_by == resource.data.requested_by
+              && request.resource.data.package == resource.data.package;
+          }
+
+          allow read: if rdResearcherOfClass() && (resource == null || rdSamePlatform(resource.data));
+          // The runner creates the document only when it accepts the work, so there is no
+          // `requested` state and a refused /analyze writes nothing at all.
+          allow create: if rdIsRunner() && rdResearcherOfClass()
+            && rdSamePlatform(request.resource.data) && rdRequestedByWriter();
+          allow update: if rdIsRunner() && rdResearcherOfClass()
+            && rdSamePlatform(request.resource.data) && rdPreservesIdentity();
+          // Results are rebuildable from S3; nothing needs to delete them, and a runner
+          // that could would let a fetched package erase another analysis.
+          allow delete: if false;
+        }
+      }
+    }
   }
 }
