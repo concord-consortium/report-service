@@ -27,6 +27,12 @@ const plainResearcher = {
 };
 const otherResearcher = { ...plainResearcher, uid: "uid-other", platform_user_id: OTHER_RESEARCHER };
 const otherPortalRunner = { ...classRunner, platform_id: OTHER_PLATFORM };
+// A second researcher of the SAME class. Both hold class tokens for the same
+// class_hash, so this is the token that can reach another researcher's analysis if
+// the rules pin requested_by only on create.
+const otherResearcherRunner = {
+  ...classRunner, uid: "uid-other-runner", platform_user_id: OTHER_RESEARCHER
+};
 const unwrittenResearcher = { ...plainResearcher, uid: "uid-unwritten", platform_user_id: UNWRITTEN };
 
 // One app per token shape, built once. The client SDK does not survive an app per call
@@ -35,7 +41,7 @@ const unwrittenResearcher = { ...plainResearcher, uid: "uid-unwritten", platform
 // instead of a clean database.
 const tokens = {
   sessionRunner, classRunner, otherClassRunner, plainResearcher, otherResearcher,
-  otherPortalRunner, unwrittenResearcher, anonymous: null
+  otherPortalRunner, otherResearcherRunner, unwrittenResearcher, anonymous: null
 };
 const dbs = {};
 let admin;
@@ -167,6 +173,24 @@ describe("analysis document", () => {
     await firebase.assertFails(
       db('classRunner').doc(analysisPath(CLASS, "a-package"))
         .update({ package: { name: "other", version: "9.9.9", checksum: "sha256:zzz" } }));
+  });
+
+  it("cannot be rewritten by another researcher's runner in the same class", async () => {
+    await adminDb().doc(analysisPath(CLASS, "a-cross")).set(analysisDoc);
+    // Same class, same platform, valid runner claim: everything passes except that
+    // the analysis is not theirs. Handing a researcher fabricated results attributed
+    // to them is the outcome this prevents.
+    await firebase.assertFails(
+      db('otherResearcherRunner').doc(analysisPath(CLASS, "a-cross"))
+        .update({ status: "done", display: { summary: "fabricated" } }));
+  });
+
+  it("is refused when the document carries no platform_id", async () => {
+    // The rules check platform_id on every write. A fixture that always seeds it
+    // cannot catch a runner that never writes it, which is how this was missed.
+    const { platform_id, ...withoutPlatform } = analysisDoc;
+    await firebase.assertFails(
+      db('classRunner').doc(analysisPath(CLASS, "a-noplat")).set(withoutPlatform));
   });
 
   it("cannot be deleted, even by the runner that made it", async () => {

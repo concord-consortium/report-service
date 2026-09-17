@@ -427,8 +427,14 @@ service cloud.firestore {
           // `requested` state and a refused /analyze writes nothing at all.
           allow create: if rdIsRunner() && rdResearcherOfClass()
             && rdSamePlatform(request.resource.data) && rdRequestedByWriter();
+          // rdRequestedByWriter on update as well as create, not just the immutability
+          // check: every researcher of a class holds a class token for the same
+          // class_hash, so without it one researcher's VM can rewrite the status and
+          // display of another researcher's finished analysis. It is a no-op for the
+          // legitimate writer, whose requested_by is frozen to their own id anyway.
           allow update: if rdIsRunner() && rdResearcherOfClass()
-            && rdSamePlatform(request.resource.data) && rdPreservesIdentity();
+            && rdSamePlatform(request.resource.data) && rdPreservesIdentity()
+            && rdRequestedByWriter();
           // Results are rebuildable from S3; nothing needs to delete them, and a runner
           // that could would let a fetched package erase another analysis.
           allow delete: if false;
