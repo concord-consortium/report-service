@@ -17,6 +17,10 @@ import bulkRead from "./api/bulk-read"
 import fetchAttachmentMeta from "./api/attachment-meta"
 import requireHeaderBearer from "./middleware/require-header-bearer"
 
+import { defineSecret, defineString } from "firebase-functions/params"
+import { makeRunPackage, RunPackageDeps, VmRecord } from "./researcher-dashboard/run-package"
+import { makeMicrovmApi } from "./researcher-dashboard/microvm"
+
 import {
   createSyncDocAfterAnswerWritten,
   monitorSyncDocCount,
@@ -27,6 +31,43 @@ import { submitTask } from "./tasks/submit-task";
 import { taskWorker } from "./tasks/task-worker";
 
 import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigger
+
+// The researcher dashboard's launch surface. The AWS credentials belong to the
+// researcher-dashboard-runner stack's launcher user, and the ARNs and bucket are that
+// stack's outputs.
+const awsKey = defineSecret("AWS_KEY")
+const awsSecretKey = defineSecret("AWS_SECRET_KEY")
+const rdImageArn = defineString("RD_MICROVM_IMAGE_ARN")
+const rdExecutionRoleArn = defineString("RD_EXECUTION_ROLE_ARN")
+const rdBucket = defineString("RD_DATA_BUCKET")
+const rdReportServerUrl = defineString("RD_REPORT_SERVER_URL")
+
+// Built on first use, not at module load: a params value cannot be read until the
+// function is running.
+let runPackageDeps: RunPackageDeps | null = null
+function researcherDashboardDeps(): RunPackageDeps {
+  if (runPackageDeps) return runPackageDeps
+  const vmDoc = (portal: string, platformUserId: string) =>
+    admin.firestore().doc(`researcher_dashboard/${portal}/vms/${platformUserId}`)
+  runPackageDeps = {
+    microvms: makeMicrovmApi({ accessKeyId: awsKey.value(), secretAccessKey: awsSecretKey.value() }),
+    loadVm: async (portal, platformUserId) => {
+      const snapshot = await vmDoc(portal, platformUserId).get()
+      return snapshot.exists ? (snapshot.data() as VmRecord) : null
+    },
+    saveVm: async (portal, platformUserId, record) => {
+      await vmDoc(portal, platformUserId).set(record)
+    },
+    fetchImpl: fetch,
+    config: {
+      imageIdentifier: rdImageArn.value(),
+      executionRoleArn: rdExecutionRoleArn.value(),
+      bucket: rdBucket.value(),
+      reportServerUrl: rdReportServerUrl.value()
+    }
+  }
+  return runPackageDeps
+}
 
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
@@ -52,6 +93,7 @@ api.get("/", (req, res) => {
       "GET student_feedback_metadata?source=<SOURCE>&platform_id=<PLATFORM_ID>&platform_student_id=<PLATFORM_STUDENT_ID>": "Returns a map, keyed by offering id, of the student's activity and question feedback metadata",
       "POST bulk_read": "STORY 3: bulk answers/history read for a report run's authorized endpoints (Elixir-only, header bearer required)",
       "POST fetch_attachment_meta": "STORY 3: authoritative attachment metadata (publicPath/owner/contentType) for a batch of docs (Elixir-only, header bearer required)",
+      "POST run_package": "Runs an analysis package on the researcher's MicroVM, launching or reusing one (portal-only, header bearer required)",
     }
   })
 })
@@ -64,11 +106,15 @@ api.get("/plugin_states", getPluginStates)
 api.get("/student_feedback_metadata", getStudentFeedbackMetadata)
 api.post("/bulk_read", requireHeaderBearer, bulkRead)
 api.post("/fetch_attachment_meta", requireHeaderBearer, fetchAttachmentMeta)
+api.post("/run_package", requireHeaderBearer, (req, res) => makeRunPackage(researcherDashboardDeps())(req, res))
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.
 const wrappedApi = functions
-  .runWith({ secrets: [bearerToken], timeoutSeconds: 300 })   // STORY 3: headroom for a slow bulk page; ceiling, not a cost floor
+  // The AWS keys are the researcher dashboard's launcher user, reached only by
+  // run_package. Secrets are declared per function, so every route here runs with them
+  // in its environment.
+  .runWith({ secrets: [bearerToken, awsKey, awsSecretKey], timeoutSeconds: 300 })   // STORY 3: headroom for a slow bulk page; ceiling, not a cost floor
   .https.onRequest( (req: express.Request, res: express.Response) =>  {
     if (!req.path) {
       req.url = `/${req.url}` // prepend '/' to keep query params if any
