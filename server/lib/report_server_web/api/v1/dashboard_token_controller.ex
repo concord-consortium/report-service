@@ -2,9 +2,12 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenController do
   @moduledoc """
   Mints and revokes the API token a Researcher Dashboard MicroVM pulls with.
 
-  The portal sends the researcher's own user info, which it is authoritative about, so
-  no portal-database lookup happens on this path and the role flags are as fresh as the
-  portal's rather than as fresh as this user's last sign-in here.
+  The portal signs the researcher's own user info into a short-lived assertion, which it
+  is authoritative about, so no portal-database lookup happens on this path and the role
+  flags are as fresh as the portal's rather than as fresh as this user's last sign-in
+  here. Reading them from verified claims rather than from the request body is what lets
+  the assertion be relayed by the launch function without that function being able to
+  choose the user or the flags.
   """
   use ReportServerWeb, :controller
 
@@ -13,8 +16,8 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenController do
 
   # Minting revokes the researcher's previous dashboard token, so one is live at a time
   # and a copy that leaked from an earlier VM stops working at the next launch.
-  def create(conn, params) do
-    with {:ok, info} <- portal_user_info(params),
+  def create(conn, _params) do
+    with {:ok, info} <- portal_user_info(conn),
          {:ok, user, raw_token, api_token} <- Accounts.mint_dashboard_token(info) do
       conn
       |> put_status(:created)
@@ -32,8 +35,8 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenController do
 
   # Called when a VM terminates, so the credential dies with the VM rather than living
   # until the researcher's next launch.
-  def delete(conn, params) do
-    with {:ok, info} <- portal_user_info(params),
+  def delete(conn, _params) do
+    with {:ok, info} <- portal_user_info(conn),
          {:ok, user} <- Accounts.find_or_create_user(info),
          {:ok, revoked} <- Accounts.revoke_dashboard_tokens(user) do
       json(conn, %{revoked: revoked})
@@ -43,24 +46,23 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenController do
     end
   end
 
-  defp portal_user_info(params) do
-    with {:ok, id} <- required_integer(params, "portal_user_id"),
-         {:ok, server} <- required_string(params, "portal_server") do
+  # From the assertion's verified claims, never from the request body. These are what
+  # get_allowed_project_ids branches on, so a caller that could set them could mint a
+  # token scoped to every project at Concord for any user it named.
+  defp portal_user_info(%{assigns: %{portal_claims: claims}}) do
+    with {:ok, id} <- required_integer(claims, "portal_user_id"),
+         {:ok, server} <- required_string(claims, "portal_server") do
       {:ok,
        %PortalUserInfo{
          id: id,
          server: server,
-         login: params["login"],
-         first_name: params["first_name"],
-         last_name: params["last_name"],
-         email: params["email"],
-         # The portal is authoritative about its own users, and these are what
-         # get_allowed_project_ids branches on. Taking them from the caller keeps them
-         # current, where this server's own copy is only as fresh as the user's last
-         # sign-in here.
-         is_admin: !!params["is_admin"],
-         is_project_admin: !!params["is_project_admin"],
-         is_project_researcher: !!params["is_project_researcher"]
+         login: claims["login"],
+         first_name: claims["first_name"],
+         last_name: claims["last_name"],
+         email: claims["email"],
+         is_admin: !!claims["is_admin"],
+         is_project_admin: !!claims["is_project_admin"],
+         is_project_researcher: !!claims["is_project_researcher"]
        }}
     end
   end
