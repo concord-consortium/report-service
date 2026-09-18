@@ -32,11 +32,13 @@ import { taskWorker } from "./tasks/task-worker";
 
 import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigger
 
-// The researcher dashboard's launch surface. The AWS credentials belong to the
-// researcher-dashboard-runner stack's launcher user, and the ARNs and bucket are that
-// stack's outputs.
-const awsKey = defineSecret("AWS_KEY")
-const awsSecretKey = defineSecret("AWS_SECRET_KEY")
+// The researcher dashboard's launch surface. Its own AWS identity, not the one
+// auto-importer writes answers to S3 with: this key belongs to the
+// researcher-dashboard-runner stack's launcher user and grants only lambda-microvms
+// calls and PassRole on the runner's execution role. The ARNs and bucket below are that
+// stack's outputs and are not secret.
+const awsKey = defineSecret("RD_AWS_KEY")
+const awsSecretKey = defineSecret("RD_AWS_SECRET_KEY")
 const rdImageArn = defineString("RD_MICROVM_IMAGE_ARN")
 const rdExecutionRoleArn = defineString("RD_EXECUTION_ROLE_ARN")
 const rdBucket = defineString("RD_DATA_BUCKET")

@@ -141,14 +141,14 @@ export function makeRunPackage(deps: RunPackageDeps) {
         })
       })
 
-      const answered = await dispatched.json().catch(() => ({}))
+      const answered = await dispatched.json().catch(() => ({})) as Record<string, unknown>
       if (!dispatched.ok) {
         // The runner's refusals are the app's to show: 409 for a package already running
         // or a VM expiring too soon, 4xx for a body it will not accept. Every one of them
         // leaves Firestore untouched, so passing the status through says so honestly.
-        return res.error(dispatched.status, (answered as any).error ?? "the runner refused the package run")
+        return res.error(dispatched.status, (answered as { error?: string }).error ?? "the runner refused the package run")
       }
-      return res.success({ ...(answered as object), microvm_id: microvmId })
+      return res.success({ ...answered, microvm_id: microvmId })
     } catch (err: any) {
       return res.error(502, err.message)
     }
