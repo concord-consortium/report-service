@@ -6,7 +6,7 @@ const CLASS = "7be899cf665898097ed1ec57f34b700e156bd4544ffd693f"
 
 function validBody(overrides: any = {}) {
   return {
-    scope: { kind: "class", class_hash: CLASS },
+    scope: { kind: "class", class_hash: CLASS, class_id: 111 },
     package: { name: "class-counts", version: "1.0.0", checksum: "sha256:abc" },
     class_tokens: { "report-service-dev": "class-token" },
     session_token: "session-token",
@@ -191,7 +191,8 @@ describe("runPackage", () => {
 
   describe("a malformed request", () => {
     const cases: [string, any][] = [
-      ["a scope that is not a class", { scope: { kind: "student", class_hash: CLASS } }],
+      ["a scope that is not a class", { scope: { kind: "student", class_hash: CLASS, class_id: 111 } }],
+      ["a scope with no class_id", { scope: { kind: "class", class_hash: CLASS } }],
       ["a package with no checksum", { package: { name: "class-counts", version: "1.0.0" } }],
       ["no class tokens", { class_tokens: {} }],
       ["no session token", { session_token: "" }],

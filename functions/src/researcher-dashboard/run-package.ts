@@ -34,7 +34,7 @@ export interface RunPackageDeps {
 }
 
 interface Body {
-  scope?: { kind?: string; class_hash?: string }
+  scope?: { kind?: string; class_hash?: string; class_id?: number | string }
   package?: { name?: string; version?: string; checksum?: string }
   class_tokens?: Record<string, string>
   session_token?: string
@@ -46,8 +46,13 @@ interface Body {
 }
 
 function invalid(body: Body): string | null {
+  // Passed through to the runner untouched, including class_id, which report-server
+  // filters a run by and which nothing inside the VM can derive from the hash.
   if (body.scope?.kind !== "class" || !body.scope?.class_hash) {
-    return "scope must be {kind: 'class', class_hash}"
+    return "scope must be {kind: 'class', class_hash, class_id}"
+  }
+  if (body.scope?.class_id === undefined || body.scope?.class_id === null || body.scope?.class_id === "") {
+    return "scope must carry class_id"
   }
   if (!body.package?.name || !body.package?.version || !body.package?.checksum) {
     return "package must carry name, version and checksum"
