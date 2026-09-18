@@ -91,6 +91,52 @@ defmodule ReportServer.Accounts do
     end
   end
 
+  @dashboard_token_label "researcher-dashboard"
+
+  def dashboard_token_label, do: @dashboard_token_label
+
+  @doc """
+  Mints the API token a Researcher Dashboard MicroVM pulls with, as the researcher
+  themselves rather than a shared account.
+
+  Minted per VM launch, and the researcher's previous one is revoked in the same
+  breath, so exactly one is live at a time and a copy that leaked from an earlier VM
+  stops working. The raw token is returned once and only its hash is kept, which is why
+  this mints rather than returning an existing one.
+
+  Revoking marks the row rather than deleting it, so what is left is an audit trail of
+  the researcher's dashboard sessions with `last_used_at` on each.
+  """
+  def mint_dashboard_token(portal_user_info = %PortalUserInfo{}) do
+    with {:ok, user} <- find_or_create_user(portal_user_info) do
+      revoke_dashboard_tokens(user)
+
+      case create_api_token(user, @dashboard_token_label) do
+        {:ok, raw_token, api_token} -> {:ok, user, raw_token, api_token}
+        {:error, changeset} -> {:error, changeset}
+      end
+    end
+  end
+
+  @doc """
+  Revokes every live dashboard token the user holds. Called when minting a replacement
+  and when a VM terminates, so a credential does not outlive the VM that was given it.
+  """
+  def revoke_dashboard_tokens(user = %User{}) do
+    now = DateTime.utc_now(:second)
+
+    query =
+      from t in ApiToken,
+        where: t.user_id == ^user.id,
+        where: t.label == ^@dashboard_token_label,
+        where: is_nil(t.revoked_at)
+
+    # Self-revoked: the researcher owns this credential, and no operator asked for it to
+    # go, so attributing it to anyone else would misread the audit trail.
+    {count, _} = Repo.update_all(query, set: [revoked_at: now, revoked_by_user_id: user.id, updated_at: now])
+    {:ok, count}
+  end
+
   def verify_api_token(raw_token) when is_binary(raw_token) do
     query = from t in ApiToken,
       where: t.token_hash == ^hash_secret(raw_token),

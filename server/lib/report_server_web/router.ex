@@ -35,6 +35,12 @@ defmodule ReportServerWeb.Router do
     plug ReportServerWeb.Api.AuthPlug, token_only: true
   end
 
+  # Authenticates the portal as a service rather than a user; see ServiceAuthPlug.
+  pipeline :api_service do
+    plug :force_json
+    plug ReportServerWeb.Api.ServiceAuthPlug
+  end
+
   scope "/", ReportServerWeb do
     pipe_through :browser
 
@@ -85,6 +91,13 @@ defmodule ReportServerWeb.Router do
 
   # must stay below every real /api/v1 route: unknown API paths render the contract 404 rather
   # than raising NoRouteError, which Phoenix renders as HTML for clients that send no Accept header
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api_service
+
+    post "/dashboard-tokens", DashboardTokenController, :create
+    delete "/dashboard-tokens", DashboardTokenController, :delete
+  end
+
   scope "/api/v1", ReportServerWeb.Api.V1 do
     pipe_through :api
 

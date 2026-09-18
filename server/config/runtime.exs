@@ -43,6 +43,11 @@ hide_username_hash_salt =
     the required HIDE_USERNAME_HASH_SALT environment variable is missing.
     """
 
+# Shared with the portal, which uses it to ask for a Researcher Dashboard credential on
+# a researcher's behalf. It authenticates a service and mints nothing on its own, so a
+# leak lets someone request researcher-scoped API tokens rather than forge an identity.
+config :report_server, :portal_service_secret, System.get_env("PORTAL_SERVICE_SECRET")
+
 config :report_server, :aws_credentials,
   access_key_id: server_access_key_id,
   secret_access_key: server_secret_access_key
