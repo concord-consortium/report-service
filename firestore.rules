@@ -360,8 +360,16 @@ service cloud.firestore {
 
     match /researcher_dashboard/{portal} {
 
+      // The {portal} segment is the portal host with its dots as underscores, and a
+      // hostname cannot contain an underscore, so the two forms round-trip exactly.
+      // Rules have no replace(), so the transformation is done by splitting both into
+      // label lists and comparing those. Without this the segment would be decorative:
+      // a runner token from another portal could write anywhere in this one's tree so
+      // long as the document it wrote agreed with its own platform_id.
       function rdAuthed() {
-        return request.auth != null;
+        return request.auth != null
+          && request.auth.token.platform_id.split('://')[1].split('/')[0].split('\\.')
+             == portal.split('_');
       }
 
       // `.get` with a default, not a bare read: an absent claim is an evaluation error
@@ -405,7 +413,7 @@ service cloud.firestore {
           return rdIsResearcher() && request.auth.token.class_hash == classHash;
         }
 
-        allow read: if rdResearcherOfClass() && (resource == null || rdSamePlatform(resource.data));
+        allow get: if rdResearcherOfClass() && (resource == null || rdSamePlatform(resource.data));
         allow create, update: if rdIsRunner() && rdResearcherOfClass() && rdSamePlatform(request.resource.data);
         allow delete: if false;
 
@@ -418,7 +426,12 @@ service cloud.firestore {
           // the intent rather than something to defend against; requested_by records
           // who ran it last. What still has to hold is that the writer is a runner,
           // for this class, on this portal.
-          allow read: if rdResearcherOfClass() && (resource == null || rdSamePlatform(resource.data));
+          allow get: if rdResearcherOfClass() && (resource == null || rdSamePlatform(resource.data));
+          // Separated from get because the page lists this collection to show the class's
+          // results. The class claim is the boundary that matters here: the token's
+          // class_hash has to equal the path segment, and rdAuthed already ties the
+          // portal segment to the token, so every document in scope is this portal's.
+          allow list: if rdResearcherOfClass();
           // create, update rather than write: `write` covers delete too, and allow
           // rules are OR-ed, so the explicit delete denial below would never win.
           allow create, update: if rdIsRunner() && rdResearcherOfClass() && rdSamePlatform(request.resource.data);

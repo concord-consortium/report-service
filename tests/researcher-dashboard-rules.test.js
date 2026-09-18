@@ -204,10 +204,11 @@ describe("result document", () => {
   });
 });
 
-// The dashboard listens for AP answer changes class-wide. The existing rules already grant
-// a researcher of the class each answer document individually; whether a class-wide QUERY
-// passes is a different question, and this is the test that answers it rather than a
-// guess.
+// The dashboard would like to listen for AP answer changes class-wide. The existing rules
+// grant a researcher of the class each answer document individually; whether a class-wide
+// QUERY passes is a different question, and these are the tests that answer it rather
+// than guess. The answer is no, for either class, so a class-wide answers listener is not
+// available to the dashboard and a live AP count has to come from somewhere else.
 describe("class-wide answers query for the dashboard listener", () => {
   const answersPath = "sources/activity-player.concord.org/answers";
   const answer = (contextId) => ({
@@ -215,10 +216,13 @@ describe("class-wide answers query for the dashboard listener", () => {
     question_id: "q1", answer: "an answer"
   });
 
-  it("a class-scoped researcher token can query its own class's answers", async () => {
+  // Refused even for the researcher's own class: studentWorkRead is a chain of
+  // predicates over resource.data, which a query cannot satisfy document by document, so
+  // the request is denied rather than filtered. Individual gets are unaffected.
+  it("cannot query even its own class's answers", async () => {
     await adminDb().doc(`${answersPath}/ans1`).set(answer(CLASS));
     const q = db('plainResearcher').collection(answersPath).where("context_id", "==", CLASS);
-    await firebase.assertSucceeds(q.get());
+    await firebase.assertFails(q.get());
   });
 
   it("the same token cannot query another class's answers", async () => {
