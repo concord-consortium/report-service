@@ -62,11 +62,11 @@ function adminDb() {
 
 const researcherPath = (id) => `researcher_dashboard/${PORTAL}/researchers/${id}`;
 const classPath = (hash) => `researcher_dashboard/${PORTAL}/classes/${hash}`;
-const analysisPath = (hash, id) => `${classPath(hash)}/analyses/${id}`;
+const resultPath = (hash, pkg) => `${classPath(hash)}/results/${pkg}`;
 
 const statusDoc = { platform_id: PLATFORM, state: "ready", microvm_id: "mvm-1", updated_at: 1 };
 const classDoc = { platform_id: PLATFORM, data: { clue_documents: 22 }, last_pulled_by: RESEARCHER };
-const analysisDoc = {
+const resultDoc = {
   platform_id: PLATFORM, status: "running", stage: "pull", requested_by: String(RESEARCHER),
   package: { name: "counts", version: "1.0.0", checksum: "sha256:abc" }
 };
@@ -110,6 +110,11 @@ describe("researcher status document", () => {
     await firebase.assertFails(db('sessionRunner').doc(researcherPath(OTHER_RESEARCHER)).set(statusDoc));
   });
 
+  it("cannot be deleted by the runner", async () => {
+    await adminDb().doc(researcherPath(RESEARCHER)).set(statusDoc);
+    await firebase.assertFails(db('sessionRunner').doc(researcherPath(RESEARCHER)).delete());
+  });
+
   it("is not written with another portal's platform_id", async () => {
     await firebase.assertFails(
       db('otherPortalRunner').doc(researcherPath(RESEARCHER)).set({ ...statusDoc, platform_id: OTHER_PLATFORM }));
@@ -142,81 +147,60 @@ describe("class document", () => {
   });
 });
 
-describe("analysis document", () => {
-  it("is created by the class runner token with requested_by pinned to that token", async () => {
-    await firebase.assertSucceeds(db('classRunner').doc(analysisPath(CLASS, "a-create")).set(analysisDoc));
+describe("result document", () => {
+  it("is written by the class runner token", async () => {
+    await firebase.assertSucceeds(db('classRunner').doc(resultPath(CLASS, "counts")).set(resultDoc));
   });
 
-  it("cannot be created attributing the analysis to another researcher", async () => {
-    await firebase.assertFails(
-      db('classRunner').doc(analysisPath(CLASS, "a-attrib")).set({ ...analysisDoc, requested_by: String(OTHER_RESEARCHER) }));
+  it("cannot be written by the session runner token, which carries no class_hash", async () => {
+    await firebase.assertFails(db('sessionRunner').doc(resultPath(CLASS, "s-counts")).set(resultDoc));
   });
 
-  it("cannot be created by the session runner token", async () => {
-    await firebase.assertFails(db('sessionRunner').doc(analysisPath(CLASS, "a-session")).set(analysisDoc));
+  it("cannot be written by a plain researcher token", async () => {
+    await firebase.assertFails(db('plainResearcher').doc(resultPath(CLASS, "p-counts")).set(resultDoc));
   });
 
-  it("is updated by the runner as the analysis progresses", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-update")).set(analysisDoc);
+  // One document per class and package, shared by every researcher of the class, so a
+  // second researcher re-running the same package overwrites it on purpose.
+  it("is overwritten by another researcher of the same class, which is the intent", async () => {
+    await adminDb().doc(resultPath(CLASS, "shared")).set(resultDoc);
     await firebase.assertSucceeds(
-      db('classRunner').doc(analysisPath(CLASS, "a-update")).update({ status: "done", stage: "display" }));
-  });
-
-  it("cannot have requested_by rewritten after creation", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-req-by")).set(analysisDoc);
-    await firebase.assertFails(
-      db('classRunner').doc(analysisPath(CLASS, "a-req-by")).update({ requested_by: String(OTHER_RESEARCHER) }));
-  });
-
-  it("cannot have its package rewritten after creation", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-package")).set(analysisDoc);
-    await firebase.assertFails(
-      db('classRunner').doc(analysisPath(CLASS, "a-package"))
-        .update({ package: { name: "other", version: "9.9.9", checksum: "sha256:zzz" } }));
-  });
-
-  it("cannot be rewritten by another researcher's runner in the same class", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-cross")).set(analysisDoc);
-    // Same class, same platform, valid runner claim: everything passes except that
-    // the analysis is not theirs. Handing a researcher fabricated results attributed
-    // to them is the outcome this prevents.
-    await firebase.assertFails(
-      db('otherResearcherRunner').doc(analysisPath(CLASS, "a-cross"))
-        .update({ status: "done", display: { summary: "fabricated" } }));
+      db('otherResearcherRunner').doc(resultPath(CLASS, "shared"))
+        .update({ status: "done", requested_by: String(OTHER_RESEARCHER) }));
   });
 
   it("is refused when the document carries no platform_id", async () => {
     // The rules check platform_id on every write. A fixture that always seeds it
     // cannot catch a runner that never writes it, which is how this was missed.
-    const { platform_id, ...withoutPlatform } = analysisDoc;
+    const { platform_id, ...withoutPlatform } = resultDoc;
     await firebase.assertFails(
-      db('classRunner').doc(analysisPath(CLASS, "a-noplat")).set(withoutPlatform));
+      db('classRunner').doc(resultPath(CLASS, "noplat")).set(withoutPlatform));
   });
 
-  it("cannot be deleted, even by the runner that made it", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-delete")).set(analysisDoc);
-    await firebase.assertFails(db('classRunner').doc(analysisPath(CLASS, "a-delete")).delete());
+  it("cannot be deleted, even by the runner that wrote it", async () => {
+    await adminDb().doc(resultPath(CLASS, "undeletable")).set(resultDoc);
+    await firebase.assertFails(db('classRunner').doc(resultPath(CLASS, "undeletable")).delete());
   });
 
   it("is readable by any researcher of the class, since results are shared", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-read")).set(analysisDoc);
-    await firebase.assertSucceeds(db('plainResearcher').doc(analysisPath(CLASS, "a-read")).get());
+    await adminDb().doc(resultPath(CLASS, "readable")).set(resultDoc);
+    await firebase.assertSucceeds(db('plainResearcher').doc(resultPath(CLASS, "readable")).get());
   });
 
   it("is not readable by a researcher of another class", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-read-other")).set(analysisDoc);
-    await firebase.assertFails(db('otherClassRunner').doc(analysisPath(CLASS, "a-read-other")).get());
+    await adminDb().doc(resultPath(CLASS, "other-class")).set(resultDoc);
+    await firebase.assertFails(db('otherClassRunner').doc(resultPath(CLASS, "other-class")).get());
   });
 
   it("is not readable unauthenticated", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a-read-anon")).set(analysisDoc);
-    await firebase.assertFails(db('anonymous').doc(analysisPath(CLASS, "a-read-anon")).get());
+    await adminDb().doc(resultPath(CLASS, "anon")).set(resultDoc);
+    await firebase.assertFails(db('anonymous').doc(resultPath(CLASS, "anon")).get());
   });
 
-  it("lists a class's analyses for a researcher of that class", async () => {
-    await adminDb().doc(analysisPath(CLASS, "a1")).set(analysisDoc);
-    await adminDb().doc(analysisPath(CLASS, "a2")).set(analysisDoc);
-    await firebase.assertSucceeds(db('plainResearcher').collection(`${classPath(CLASS)}/analyses`).get());
+  it("lists a class's results for a researcher of that class", async () => {
+    await adminDb().doc(resultPath(CLASS, "one")).set(resultDoc);
+    await adminDb().doc(resultPath(CLASS, "two")).set(resultDoc);
+    await firebase.assertSucceeds(db('plainResearcher').collection(`${classPath(CLASS)}/results`).get());
   });
 });
 
