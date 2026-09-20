@@ -61,6 +61,9 @@ function researcherDashboardDeps(): RunPackageDeps {
       await vmDoc(portal, platformUserId).set(record)
     },
     fetchImpl: fetch,
+    now: () => Date.now(),
+    sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    log: functions.logger,
     config: {
       imageIdentifier: rdImageArn.value(),
       executionRoleArn: rdExecutionRoleArn.value(),

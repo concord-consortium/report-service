@@ -1,4 +1,4 @@
-import { makeRunPackage, RunPackageDeps, VmRecord } from "./run-package"
+import { makeRunPackage, RunPackageDeps, VmRecord, vmUrl } from "./run-package"
 
 const PORTAL = "learn_portal_staging_concord_org"
 const USER = "200"
@@ -59,6 +59,9 @@ function harness({ remembered = null as VmRecord | null, vmState = "RUNNING", vm
     loadVm: async () => remembered,
     saveVm: async (_p, _u, record) => { calls.saved.push(record) },
     fetchImpl,
+    now: () => Date.now(),
+    sleep: async () => { return },
+    log: { warn: () => { return }, error: () => { return } },
     config: {
       imageIdentifier: "arn:image",
       executionRoleArn: "arn:role",
@@ -149,6 +152,30 @@ describe("runPackage", () => {
       expect(payload.secret_name).toBeUndefined()
     })
 
+    // run-microvm returns before the run hook has finished, and a dispatch then reaches a
+    // runner that refuses with 409 because it is not up yet.
+    it("waits for a launched VM to reach RUNNING before dispatching", async () => {
+      const h = harness({ remembered: null })
+      const states = ["PENDING", "PENDING", "RUNNING"]
+      let i = 0
+      h.deps.microvms.get = async () => ({ state: states[Math.min(i++, states.length - 1)], endpoint: "https://vm.example/", imageVersion: "2.0" })
+
+      await call(h)
+
+      expect(i).toBeGreaterThanOrEqual(3)
+      expect(h.calls.posted).toHaveLength(1)
+    })
+
+    it("fails rather than dispatching when the VM never comes up", async () => {
+      const h = harness({ remembered: null })
+      h.deps.microvms.get = async () => ({ state: "TERMINATED", endpoint: "https://vm.example/", imageVersion: "2.0" })
+
+      const res = await call(h)
+
+      expect(res.statusCode).toEqual(502)
+      expect(h.calls.posted).toHaveLength(0)
+    })
+
     it("refuses without launching when report-server will not mint", async () => {
       const h = harness({ remembered: null, mintStatus: 401 })
       const res = await call(h)
@@ -165,6 +192,7 @@ describe("runPackage", () => {
 
       const post = h.calls.posted[0]
       expect(post.url).toEqual("https://vm.example/run-package")
+      expect(h.calls.auth).toEqual([{ id: "mvm-1", port: 8080 }])
       expect(post.init.headers["x-microvm-auth"]).toEqual("jwe")
       const sent = JSON.parse(post.init.body)
       expect(sent.scope.class_hash).toEqual(CLASS)
@@ -210,5 +238,18 @@ describe("runPackage", () => {
         expect(h.calls.posted).toHaveLength(0)
       })
     })
+  })
+})
+
+// The API returns the endpoint as a bare hostname. fetch refuses a URL without a
+// scheme, and the failure reads as a parse error rather than anything about MicroVMs.
+describe("vmUrl", () => {
+  it("adds https to a bare hostname", () => {
+    expect(vmUrl("abc.lambda-microvm.us-east-1.on.aws", "/run-package"))
+      .toEqual("https://abc.lambda-microvm.us-east-1.on.aws/run-package")
+  })
+
+  it("leaves an endpoint that already has a scheme alone", () => {
+    expect(vmUrl("https://abc.example/", "/run-package")).toEqual("https://abc.example/run-package")
   })
 })

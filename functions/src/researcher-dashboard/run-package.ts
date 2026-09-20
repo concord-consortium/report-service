@@ -25,6 +25,11 @@ export interface RunPackageDeps {
   loadVm(portal: string, platformUserId: string): Promise<VmRecord | null>
   saveVm(portal: string, platformUserId: string, record: VmRecord): Promise<void>
   fetchImpl: typeof fetch
+  now(): number
+  sleep(ms: number): Promise<void>
+  // Injected for the same reason the AWS client is: this module holds the decision worth
+  // testing, and the repo's jest cannot resolve firebase-functions.
+  log: { warn(message: string, data: object): void; error(message: string, data: object): void }
   config: {
     imageIdentifier: string
     executionRoleArn: string
@@ -87,6 +92,34 @@ async function mintReportServerToken(deps: RunPackageDeps, assertion: string): P
   return minted.token
 }
 
+// run-microvm and get-microvm return the VM's endpoint as a bare hostname, with no
+// scheme, so it cannot be handed to fetch as it stands.
+// run-microvm returns as soon as the VM exists, which is before its run hook has
+// installed credentials and built the package backend. Dispatching then reaches a runner
+// that refuses with 409 because it is not up yet, so a launch waits for RUNNING.
+const READY_TIMEOUT_MS = 180_000
+const READY_POLL_MS = 3_000
+
+async function waitUntilRunning(deps: RunPackageDeps, microvmId: string): Promise<void> {
+  const deadline = deps.now() + READY_TIMEOUT_MS
+  for (;;) {
+    const vm = await deps.microvms.get(microvmId)
+    if (vm?.state === "RUNNING") return
+    if (vm && !["PENDING", "RUNNING"].includes(vm.state ?? "")) {
+      throw new Error(`the launched VM reached ${vm.state} instead of RUNNING`)
+    }
+    if (deps.now() >= deadline) {
+      throw new Error("the launched VM did not reach RUNNING in time")
+    }
+    await deps.sleep(READY_POLL_MS)
+  }
+}
+
+export function vmUrl(endpoint: string, path: string): string {
+  const host = endpoint.replace(/\/$/, "")
+  return /^https?:\/\//.test(host) ? `${host}${path}` : `https://${host}${path}`
+}
+
 export function makeRunPackage(deps: RunPackageDeps) {
   return async function runPackage(req: express.Request, res: express.Response) {
     const body = (req.body ?? {}) as Body
@@ -133,10 +166,11 @@ export function makeRunPackage(deps: RunPackageDeps) {
           microvm_id: launched.microvmId,
           image_version: launched.imageVersion
         })
+        await waitUntilRunning(deps, launched.microvmId)
       }
 
       const headers = await deps.microvms.authHeaders(microvmId, RUNNER_PORT)
-      const dispatched = await deps.fetchImpl(`${endpoint?.replace(/\/$/, "")}/run-package`, {
+      const dispatched = await deps.fetchImpl(vmUrl(endpoint as string, "/run-package"), {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,10 +185,20 @@ export function makeRunPackage(deps: RunPackageDeps) {
         // The runner's refusals are the app's to show: 409 for a package already running
         // or a VM expiring too soon, 4xx for a body it will not accept. Every one of them
         // leaves Firestore untouched, so passing the status through says so honestly.
-        return res.error(dispatched.status, (answered as { error?: string }).error ?? "the runner refused the package run")
+        const refusal = (answered as { error?: string }).error ?? "the runner refused the package run"
+        deps.log.warn("run_package refused by the runner", {
+          status: dispatched.status, microvm_id: microvmId, error: refusal
+        })
+        return res.error(dispatched.status, refusal)
       }
       return res.success({ ...answered, microvm_id: microvmId })
     } catch (err: any) {
+      // Logged as well as returned: the caller collapses this into a status code, and
+      // without the reason here a failure inside the launch is invisible from outside.
+      deps.log.error("run_package failed", {
+        portal, platform_user_id: platformUserId, class_hash: body.scope?.class_hash,
+        package: body.package?.name, error: err.message
+      })
       return res.error(502, err.message)
     }
   }
