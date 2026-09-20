@@ -5,6 +5,7 @@ import {
   LambdaMicrovmsClient,
   RunMicrovmCommand
 } from "@aws-sdk/client-lambda-microvms"
+import { CONNECTOR, ingressConnectors } from "./connectors"
 
 // MicroVMs live in the same region as the runner stack, and the same one auto-importer
 // already reaches S3 in.
@@ -62,8 +63,8 @@ export function makeMicrovmApi(credentials: { accessKeyId: string; secretAccessK
         imageVersion,
         executionRoleArn,
         runHookPayload,
-        ingressNetworkConnectors: [`arn:aws:lambda:${REGION}:aws:network-connector:aws-network-connector:HTTP_INGRESS`],
-        egressNetworkConnectors: [`arn:aws:lambda:${REGION}:aws:network-connector:aws-network-connector:INTERNET_EGRESS`],
+        ingressNetworkConnectors: ingressConnectors(),
+        egressNetworkConnectors: [CONNECTOR("INTERNET_EGRESS")],
         // Eight hours is the window the researcher status document advertises as
         // expires_at, and what a package's declared duration is checked against.
         maximumDurationInSeconds: 8 * 60 * 60,
