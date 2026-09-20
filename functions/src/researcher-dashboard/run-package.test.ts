@@ -253,3 +253,13 @@ describe("vmUrl", () => {
     expect(vmUrl("https://abc.example/", "/run-package")).toEqual("https://abc.example/run-package")
   })
 })
+
+// A launch that is not pinned can come up on an older version than the one the reuse
+// decision compared against, and the next request relaunches for the same reason.
+describe("launching pins the image version", () => {
+  it("launches the version the reuse check measured against", async () => {
+    const h = harness({ remembered: null, currentVersion: "9.0" })
+    await call(h)
+    expect(h.calls.run[0].imageVersion).toEqual("9.0")
+  })
+})

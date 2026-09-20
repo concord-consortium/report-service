@@ -25,6 +25,7 @@ export interface MicrovmApi {
   get(microvmId: string): Promise<{ state?: string; endpoint?: string; imageVersion?: string } | null>
   run(input: {
     imageIdentifier: string
+    imageVersion: string
     executionRoleArn: string
     runHookPayload: string
   }): Promise<Microvm>
@@ -52,9 +53,13 @@ export function makeMicrovmApi(credentials: { accessKeyId: string; secretAccessK
       }
     },
 
-    async run({ imageIdentifier, executionRoleArn, runHookPayload }) {
+    async run({ imageIdentifier, imageVersion, executionRoleArn, runHookPayload }) {
       const vm = await client.send(new RunMicrovmCommand({
         imageIdentifier,
+        // Pinned to the version the reuse decision was made against. Left to the
+        // service, a launch can come up on an older version, and the next request then
+        // relaunches for exactly the same reason, forever.
+        imageVersion,
         executionRoleArn,
         runHookPayload,
         ingressNetworkConnectors: [`arn:aws:lambda:${REGION}:aws:network-connector:aws-network-connector:HTTP_INGRESS`],

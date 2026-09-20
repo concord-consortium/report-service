@@ -148,6 +148,7 @@ export function makeRunPackage(deps: RunPackageDeps) {
         const reportServerToken = await mintReportServerToken(deps, body.report_server_assertion as string)
         const launched = await deps.microvms.run({
           imageIdentifier: deps.config.imageIdentifier,
+          imageVersion: currentVersion as string,
           executionRoleArn: deps.config.executionRoleArn,
           runHookPayload: JSON.stringify({
             session_token: body.session_token,
