@@ -33,7 +33,7 @@ import { RunPackageDeps, Db } from "./researcher-dashboard/run-package"
 import { parsePortalKeys, PortalKeys } from "./researcher-dashboard/portal-token"
 import {
   functionUrl, portalPublicKeys, rdAwsKey, rdAwsSecretKey, rdDataBucket, rdExecutionRoleArn, rdMicrovmImageArn,
-  rdQueueCap, rdReportServerUrl
+  rdQueueCap, rdReportServerUrl, unsetLaunchSettings
 } from "./researcher-dashboard/config"
 import { ensureVm, EnsureVmDeps } from "./researcher-dashboard/ensure-vm"
 import { makeMicrovmApi, MicrovmApi } from "./researcher-dashboard/microvm"
@@ -124,7 +124,8 @@ function researcherDashboardDeps(): RunPackageDeps {
     timestamp,
     ensureVm: (who, body) => ensureVm(vmDeps, who, body),
     log: functions.logger,
-    config: { queueCap: rdQueueCap.value() }
+    config: { queueCap: rdQueueCap.value() },
+    unconfigured: unsetLaunchSettings()
   }
 }
 

@@ -55,6 +55,8 @@ export interface RunPackageDeps {
   ensureVm(who: Researcher, body: RunPackageBody): Promise<VmOutcome>
   log: { error(message: string, data: object): void }
   config: { queueCap: number }
+  /** Launch settings that are unset; while any are, nothing is queued. */
+  unconfigured: string[]
 }
 
 export class Refusal extends Error {
@@ -190,6 +192,9 @@ export async function queuePackages(deps: RunPackageDeps, who: Researcher, body:
 export function makeRunPackage(deps: RunPackageDeps) {
   return async function runPackage(req: express.Request, res: express.Response) {
     const who = res.locals.researcher as Researcher
+    if (deps.unconfigured.length > 0) {
+      return res.error(503, `researcherDashboard is not configured: ${deps.unconfigured.join(", ")} unset`)
+    }
     const body: Record<string, unknown> = isObject(req.body) ? req.body : {}
 
     const problem = bodyProblem(body) ?? assertionProblem(body.report_server_assertion as string, who, deps.keys())

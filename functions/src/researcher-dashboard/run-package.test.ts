@@ -45,7 +45,8 @@ beforeEach(async () => {
     timestamp: () => TIMESTAMP,
     ensureVm: jest.fn().mockResolvedValue("running"),
     log: { error: jest.fn() },
-    config: { queueCap: 20 }
+    config: { queueCap: 20 },
+    unconfigured: []
   }
   // Firebase parses the body before the app sees the request
   server = express().use(express.json() as express.RequestHandler).use(researcherDashboardApp(() => deps)).listen(0)
@@ -298,6 +299,17 @@ describe("POST /run-package authentication", () => {
   it("refuses a bearer in the body even beside a valid header", async () => {
     expect((await post({ ...requestBody(), bearer: "the-shared-bearer-token" })).status).toBe(401)
     expect(db.docs.size).toBe(0)
+  })
+
+  it("answers 503 naming the unset launch settings and writes nothing", async () => {
+    deps.unconfigured = ["RD_MICROVM_IMAGE_ARN", "RD_DATA_BUCKET"]
+
+    const res = await post(requestBody())
+
+    expect(res.status).toBe(503)
+    expect(res.body.error).toBe("researcherDashboard is not configured: RD_MICROVM_IMAGE_ARN, RD_DATA_BUCKET unset")
+    expect(db.docs.size).toBe(0)
+    expect(deps.ensureVm).not.toHaveBeenCalled()
   })
 
   it("answers 500 naming the setting when PORTAL_PUBLIC_KEYS is misconfigured", async () => {

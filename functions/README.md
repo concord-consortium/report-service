@@ -180,6 +180,38 @@ The bearer token value is managed as a secret in Google Cloud Secret Manager:
 
 `firebase functions:secrets:set AUTH_BEARER_TOKEN`
 
+## Researcher Dashboard function
+
+`researcherDashboard` is a separate HTTPS function, not a route on `api`, and the shared `AUTH_BEARER_TOKEN` does not open it. rigse calls it with a short-lived RS256 assertion it signs (`aud: report-service-functions`) in the `Authorization: Bearer` header, and the function takes the researcher and portal from that assertion, never from the body.
+
+- `researcherDashboard/run-package` queues a researcher's packages under `researcher_dashboard/{portal}/work/{platform_user_id}`, then launches, resumes or leaves that researcher's MicroVM, and answers 202 without waiting for it. Only on a launch does it relay rigse's `aud: report-server` assertion to report-server's `POST /api/v1/dashboard-tokens` for the VM's token.
+
+Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`, is also the `function_url` the runner calls back, derived at runtime from the project. `RD_FUNCTION_URL` overrides it only if the function moves region or behind a custom domain.
+
+| Parameter | Type | Env Var Name | Purpose |
+|---|---|---|---|
+| Portal public keys | `defineString` | `PORTAL_PUBLIC_KEYS` | JSON array of `{"kid", "iss", "pem"}`, one entry per rigse signing key |
+| MicroVM image | `defineString` | `RD_MICROVM_IMAGE_ARN` | The runner stack's image |
+| Execution role | `defineString` | `RD_EXECUTION_ROLE_ARN` | The runner stack's VM execution role |
+| Data bucket | `defineString` | `RD_DATA_BUCKET` | The runner stack's bucket, passed to the VM |
+| report-server URL | `defineString` | `RD_REPORT_SERVER_URL` | Where the launch mints the VM's report-server token |
+| Function URL | `defineString` | `RD_FUNCTION_URL` | Optional override of `function_url` |
+| Queue cap | `defineInt` | `RD_QUEUE_CAP` | Packages outstanding per researcher before a 409 (default 20) |
+| Launcher access key | `defineSecret` | `RD_AWS_KEY` | The runner stack's launcher user |
+| Launcher secret key | `defineSecret` | `RD_AWS_SECRET_KEY` | The runner stack's launcher user |
+
+Each `PORTAL_PUBLIC_KEYS` entry is what `rake portal_signing_key:public` prints on that portal, with the portal's site URL (for example `https://learn.portal.staging.concord.org/`) as `iss`. A key is trusted only for its own `iss`, so staging and production portals must have their own entries, and a malformed value is answered 500 rather than trusted. Until the image, role, bucket and report-server URL are all set, `run-package` answers 503 and writes nothing. Every one of these params must still appear in each `.env.<project>` file, with an empty value where it has none yet: a deploy prompts for a declared param the file does not list, whatever its default, and fails outright when it cannot prompt.
+
+**Deploy order.** A deploy of a function that declares an unset secret fails, and `researcherDashboard` declares the launcher's two keys, so set them in each project before the first deploy that includes it, even in a project with no runner stack yet (any placeholder value will do there, since the 503 stops the function using them):
+
+```
+firebase use report-service-dev
+firebase functions:secrets:set RD_AWS_KEY
+firebase functions:secrets:set RD_AWS_SECRET_KEY
+```
+
+Repeat for `report-service-pro`. Deploy report-server before the function, since a launch calls report-server's mint endpoint.
+
 ## Rules
 
 The firestore rules are maintained in `../firestore.rules`
