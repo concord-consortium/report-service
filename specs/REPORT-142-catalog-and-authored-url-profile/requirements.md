@@ -316,6 +316,21 @@ Stage 1 ran these probes, which were throwaway and never committed.
 
 **Decision**: A, and every portal site admin also holds the role (Doug, 2026-09-24). So the role is the report-server `package_publisher` flag, set only by an operator through a release task, **or** `portal_is_admin`. The release pipeline's service user gets the flag rather than being made a site admin. Recorded as R11.
 
+### RESOLVED: Judgment call: the resolve needs the launch token
+**Context**: R17 gives the resolve "the same bearer and visibility rule as R15", and R14 gives the list an anonymous answer. Whether an anonymous resolve should answer official packages was left open.
+**Options considered**:
+- A) The resolve always needs the launch token, and answers 401 without it.
+- B) An anonymous resolve with `?portal=` answers official packages, as the list does.
+
+**Decision**: A. rigse is the resolve's only caller and always presents the app's launch token (RIGSE-368 R17), and the resolve's answer is a run decision rather than a listing. B would add an unauthenticated route nobody calls. Recorded in the implementation spec's "As built" section.
+
+### RESOLVED: Judgment call: a launch token for a user the portal does not know
+**Options considered**:
+- A) 401, as for an unknown portal.
+- B) Treat the caller as holding no roles or grants, and answer official and public packages.
+
+**Decision**: A. A validly signed token naming a user the portal has no row for is a mismatch between rigse and its own database, not an ordinary researcher, and refusing it is the conservative answer. RIGSE-368's requirements were amended to list it.
+
 ## Self-Review
 
 Roles: Security Engineer, Senior Engineer (Elixir and Firebase functions), QA Engineer, DevOps Engineer, and the engineer integrating RIGSE-368 and RD-3 against these contracts. Each finding was checked by running code or reading the repo before being recorded. Two concerns were dropped after checking:

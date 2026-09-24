@@ -565,9 +565,139 @@ The READMEs state the deploy order.
 - `PACKAGES_UNREVIEWED_RUNS` stays unset until REPORT-143's broker is live and RD-1's third pass has taken S3 off the execution role.
 - `deriveProfileWorker` is deployed with `researcherDashboard`. Firebase creates its task queue on the first deploy of an `onTaskDispatched` function, as it did for `taskWorker`.
 
+## As built (2026-09-24)
+
+Implemented in eight reviewed commits on this branch (`0ef193d` to `b3c38b1`), one per step, each put through the `cc-code-review` loop until a pass reported nothing actionable. Where the code departs from the plan above, or settles something the plan left open, it is recorded here; the judgment calls behind the larger ones are RESOLVED questions below.
+
+### report-server
+
+- **Identity.** An origin id is at most 18 digits (`users/<1..18 digits>`), so it always fits the portal's integer ids and the S3 key stays short. `Identity.parse/1` splits and validates an identity, and the state-change route rebuilds and checks one with it.
+- **The manifest.** `Manifest.project/2` takes the archive's file entries as well as the manifest, so the entrypoint is checked in one place, where the plan had `project/1`. Beyond R7:
+  - `version` is at most 64 characters and refuses leading zeros, as semver does.
+  - `description` is optional, since its column is nullable and R7 gives only its length and one-line rule.
+  - Unknown keys inside `urls` are refused, because a misspelt `any` would otherwise make a package apply everywhere. Unknown top-level keys are still ignored.
+  - Lengths are counted in code points, as the varchar columns count them, not in graphemes.
+- **The archive.** An entry named with a backslash separator or a drive letter counts as absolute too. `build.sh` runs the Go writer itself (Go must be installed) rather than keeping it in comments, so both fixtures rebuild with one command.
+- **Publish.**
+  - `?origin=` accepts only `projects/<id>`, since a user origin is always the caller's own.
+  - A `Content-Length` is required (400 without). Bandit reads a `Transfer-Encoding: chunked` body whole whatever `read_body`'s `:length`, so the 10 MiB cap is enforced on the declared length first.
+  - `official=true` from a publisher is honoured on any publish, not only the first, and still requires administering the package (R11's "on publish or afterwards"). It writes audit rows for `official`, `visibility` and any cleared `project_id`, and the pointer decision is taken from the visibility the package had before.
+  - The portal is asked for project grants only when the origin or the existing maintainer is a project; a portal that does not answer is 503.
+  - The package row is read, then locked with `FOR UPDATE` or inserted. A locking read of an absent row takes a gap lock, and two such reads deadlock both inserts, so a missing row is inserted without one and a unique conflict locks the winner's row.
+  - The two S3 puts carry a 5-second connect and 15-second receive timeout, under InnoDB's 50-second lock wait, and the publish transaction has a 120-second timeout. A lock wait timeout (1205) or deadlock (1213) answers 503 asking the caller to retry, for publish and state changes alike.
+  - The portal reads go through a `:packages, :portal` seam (`PackagesPortalStub` in tests), and the store through `:packages, :store` (`PackagesMemoryStore`).
+  - The 201 body also carries `official`.
+- **State changes.**
+  - `official` needs the publisher role only, not administering the package, and clearing it leaves the package public.
+  - An official package cannot leave `public` (422 "clear official first"), since official implies public.
+  - Setting `official` clears any `project_id`, and a `project` visibility change writes two audit rows, `visibility` and `project_id`.
+  - `project_id` is bounded to the column's signed 32-bit range (400 beyond it).
+  - An unknown state is 404 and a malformed value 400. Authorization is checked on an unlocked read, since the maintainer and grants cannot change within this story.
+- **Reading and resolving.**
+  - `resolve` needs the launch token (401 without), as R17 describes it being called.
+  - The anonymous `?portal=` takes a host or a portal URL, both through `get_server_for_portal_url/1`'s report-host aliases. An unknown portal answers an empty list.
+  - A launch token whose `uid` the portal does not know, or whose portal report-server has no database for, is 401.
+  - The list is ordered by catalog id; the app orders for display.
+  - The role-flag SQL is one `@role_flags` attribute shared by `get_user_info/2` and the new `get_user_roles/3`.
+  - `portal_fixture.sql` gains `roles`, `roles_users` and three users, so `get_user_roles/3` and `get_project_names/3` are tested against MySQL.
+
+### The function
+
+- **The deriver.**
+  - `fetchTimeoutMs` is an optional dependency so the timeout test need not wait 15 seconds.
+  - `content_urls` and `unread` record each content URL as the assignment named it, not the HTTPS-rewritten one, and both are sorted, so a re-run is identical whatever order the fetches finish in.
+  - A timeout is not retried. A network error, before the headers or partway through the body, and a 5xx are retried once, and the body of every non-200 answer is cancelled so its connection is released.
+  - The fixtures are trimmed copies of live authoring JSON (activities 100 and 1000, and the first three activities of sequence 100), with the expected URLs computed from them independently in Python. No committed script regenerates them.
+- **The route and worker.**
+  - `researcherDashboardApp` takes a second deps factory for `/derive-profile` rather than widening `RunPackageDeps`, and `run-package.test.ts` passes one that throws.
+  - `enqueueDerivation` sits in `derive-profile-worker.ts` beside `runDerivation`. Under `FUNCTIONS_EMULATOR` it runs the derivation directly, as `submitTask` does.
+  - `RD_AUTHORING_HOSTS` is comma-separated, trimmed and lowercased.
+  - An empty `assignment_urls` is accepted, so a class with no assignments gets an empty profile.
+  - A write proceeds when the stored `requested_at` is not later than the task's, so a retried task rewrites its own derivation. `requested_at` is the function's clock when the request arrives.
+
+- **Configuration.** A blank `PACKAGES_AWS_*` value fails at boot as a missing one does. `RD_AUTHORING_HOSTS` is `authoring.lara.staging.concord.org,authoring.concord.org` for report-service-dev (the staging host checked to answer 200 for activity JSON) and `authoring.concord.org` for pro. The `PORTAL_PUBLIC_KEYS` paragraph in report-server's README now covers the catalog's launch tokens too.
+- **Review.** Every finding the `cc-code-review` passes raised was accepted and fixed; none was rejected.
+- **Later specs.** RIGSE-368's requirements were amended on its branch (`553a9e381`) for the `/derive-profile` 202 body `{success: true, queued: true}`, its 503 while `RD_AUTHORING_HOSTS` is empty, and the resolve's 401 without a launch token or for a `uid` the portal does not know. rigse's handling was already right: anything but a 202 is a 502.
+
+### Verification
+
+- **report-server:** the full `mix test` suite passes (1183 tests), and `mix compile --warnings-as-errors` is clean.
+- **The function:** the full `npm test` suite passes (656 tests), with `tsc` and `tslint` clean, and a throwaway `tsc` build's `index.js` exports `deriveProfileWorker`.
+- **Not run:** no deploy was made and nothing ran against staging, so a live S3 put, a live Cloud Task and a real Firestore write remain unexercised. The staging runner stack's `packages/*` user (RD-1's fourth IAM item) does not exist yet.
+
+### Checked against both specs
+
+Each of R1 to R27 was compared with the code after the last step, along with the Jira story's "Done when" and each step's test list. Nothing was missing; the departures are the ones listed above.
+
+### What blocks deployment
+
+- **REPORT-141 merges first.** This branch stacks on it (PR #429, in review), for `PortalTokenPlug`, `PORTAL_PUBLIC_KEYS` and the `researcherDashboard` function.
+- **report-server's stack.** cloud-formation's `fargate/report-server.yml` does not yet carry `PACKAGE_BUCKETS`, `PACKAGES_AWS_ACCESS_KEY_ID`, `PACKAGES_AWS_SECRET_ACCESS_KEY`, `PACKAGES_CORS_ORIGINS` or `PACKAGES_UNREVIEWED_RUNS`, nor REPORT-141's `PORTAL_PUBLIC_KEYS`. It lives outside this repository. Unset, report-server boots and the catalog answers, but no portal can publish and no launch token verifies.
+- **Migrations.** `bin/report_server eval "ReportServer.Release.migrate"` must run before the new image serves, for the three catalog tables and `users.package_publisher`.
+- **RD-1's fourth IAM item.** Publishing in an environment needs that runner stack's `packages/*`-only IAM user, whose keys become `PACKAGES_AWS_*`. It does not exist yet, for staging or production.
+- **The app's origin.** `PACKAGES_CORS_ORIGINS` needs the dashboard app's origins, which RD-1 and RD-3 settle. Until they are set, only the anonymous list and rigse's server-to-server resolve work.
+- **Portal keys.** Nothing verifies a launch token until each portal's key is in `PORTAL_PUBLIC_KEYS`, which is REPORT-141's blocker too.
+- **Firestore rules.** The class profile document is written but no client can read it until REPORT-143 ships the dashboard's read rules. That blocks RD-3's use of it, not this deploy.
+- **Cloud Tasks from `researcherDashboard`.** The function enqueues to the `deriveProfileWorker` queue with an OIDC token for the App Engine default service account, as `api`'s `submitTask` does. Whether `researcherDashboard`'s runtime service account holds `cloudtasks.tasks.create` and `iam.serviceAccounts.actAs` on that account was not checked. If it runs as the default account, as `api` does, it should.
+- **`PACKAGES_UNREVIEWED_RUNS` stays unset** until REPORT-143's storage broker is live and RD-1's third pass has taken S3 off the execution role.
+
 ## Open Questions
 
 <!-- Implementation-focused questions only. Requirements questions go in requirements.md. -->
+
+### RESOLVED: Judgment call: a publish must declare its Content-Length
+**Context**: The plan capped the upload with `read_body(conn, length: 10 MiB)`. Review found that Bandit reads a `Transfer-Encoding: chunked` body whole whatever `:length` says (`deps/bandit/lib/bandit/http1/socket.ex`), so a chunked upload of any size would be held in memory before the cap applied.
+**Options considered**:
+- A) Require `Content-Length`, refuse a declared length over 10 MiB before reading, and keep `read_body`'s `:length` as the backstop.
+- B) Read the body in chunks with a running total, accepting chunked uploads.
+
+**Decision**: A. cc-data-cli's Go client sends a `Content-Length` for a `bytes.Reader` body, so no real caller is refused, and A is one header check where B is a read loop. Built in the publish step.
+
+### RESOLVED: Judgment call: `official=true` on a later publish
+**Context**: R9 describes `official=true` only as a first publish creating the package official and public. R11 says a publisher may set `official` "on publish or afterwards", and the plan made it a no-op on an existing package.
+**Options considered**:
+- A) Honour it on any publish, with the same audit rows as the state change, still requiring the caller to administer the package.
+- B) Refuse it on an existing package, pointing at the state change.
+- C) Accept and ignore it.
+
+**Decision**: A. It matches R11, and the cc-data-studies release pipeline can publish a new official version in one call. C answered 201 while dropping the flag, which review caught. The pointer decision is taken from the visibility before the change, so a private package made official on this publish still moves its pointer.
+
+### RESOLVED: Judgment call: what setting and clearing `official` touch
+**Options considered**:
+- A) `official` is the publisher role's alone, needs no administration of the package, implies `public` and clears any `project_id`. Clearing it leaves the package public, and an official package cannot leave `public` (422).
+- B) Require the publisher to administer the package too, and restore the previous visibility on clearing.
+
+**Decision**: A. R11 says holding the role "does not make anyone a maintainer" and R12 gives `official` to "the publisher role only", so B would stop Concord endorsing a researcher's package without taking it over. Restoring a previous visibility would need it stored somewhere other than the audit trail, and leaving it public is the conservative reading of an endorsement being withdrawn.
+
+### RESOLVED: Judgment call: locking the package row, and lock conflicts
+**Context**: Publish holds the package's row lock across two S3 puts. The plan's `find_or_insert_package` did not say how a missing row is created under concurrency.
+**Options considered**:
+- A) Read without a lock. Lock an existing row with `FOR UPDATE`, or insert a missing one and, on a unique conflict, lock the winner's row. Bound the S3 puts under InnoDB's 50-second lock wait, and answer a lock wait timeout or a deadlock with a retryable 503.
+- B) `SELECT ... FOR UPDATE` first, then insert when absent.
+- C) `INSERT ... ON DUPLICATE KEY` then lock.
+
+**Decision**: A. Under REPEATABLE READ, B's locking read of an absent row takes a gap lock, and two concurrent first publishes then deadlock on their inserts. C burns an auto-increment id on every publish of an existing package, and `on_conflict: :nothing` hides errors other than the duplicate. The 503 tells a client the conflict is transient rather than surfacing a 500.
+
+### RESOLVED: Judgment call: how strict the manifest is beyond R7
+**Options considered**:
+- A) Refuse unknown keys inside `urls`, cap `version` at 64 characters with no leading zeros, make `description` optional, and count lengths in code points.
+- B) Apply R7 literally.
+
+**Decision**: A. A misspelt `urls` group would otherwise leave a package offered on every class. A version is an S3 key segment and `s3_key` is a varchar(255). Leading zeros would let `1.0.6` and `01.0.6` be two versions. The description column is nullable. MySQL's varchar counts code points, and a grapheme count let a 200-grapheme title of combining characters overflow its column. Unknown top-level keys are still ignored, as R7 says.
+
+### RESOLVED: Judgment call: the deriver's retry and timeout policy
+**Options considered**:
+- A) Retry a network error (before the headers or partway through the body) or a 5xx once. Never retry a timeout, and cancel the body of every non-200 answer.
+- B) Retry every failure once.
+
+**Decision**: A. A timeout already spent 15 seconds, and retrying it doubles the worst case of a derivation that Cloud Tasks will retry whole anyway. A dropped connection is the transient case a retry is for. An unread body holds its undici connection until garbage collection.
+
+### RESOLVED: Judgment call: the app's deps for `/derive-profile`
+**Options considered**:
+- A) `researcherDashboardApp(deps, deriveDeps)`, a second factory.
+- B) Widen `RunPackageDeps` to carry the enqueue seam.
+
+**Decision**: A. The two routes share only the auth middleware's keys, which the first factory already provides. B would make every `/run-package` test construct derive-profile deps it never uses.
 
 ### RESOLVED: Judgment call: an `optional` mode on REPORT-141's `PortalTokenPlug` rather than a second plug
 **Options considered**:
