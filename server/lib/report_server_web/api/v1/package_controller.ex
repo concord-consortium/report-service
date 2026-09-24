@@ -1,15 +1,17 @@
 defmodule ReportServerWeb.Api.V1.PackageController do
   use ReportServerWeb, :controller
 
-  alias ReportServer.Packages
+  alias ReportServer.{Packages, PortalDbs}
   alias ReportServer.Packages.{Archive, Identity}
   alias ReportServerWeb.Api.ErrorHelpers
+  alias ReportServerWeb.Api.V1.PackageJSON
 
   @error_codes %{
     bad_request: "BAD_REQUEST",
     unprocessable: "UNPROCESSABLE",
     forbidden: "FORBIDDEN",
     not_found: "NOT_FOUND",
+    not_authenticated: "NOT_AUTHENTICATED",
     already_exists: "ALREADY_EXISTS",
     portal_unavailable: "SERVICE_UNAVAILABLE",
     busy: "SERVICE_UNAVAILABLE",
@@ -56,6 +58,59 @@ defmodule ReportServerWeb.Api.V1.PackageController do
     else
       {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
     end
+  end
+
+  def index(conn, params) do
+    result =
+      case conn.assigns[:portal_claims] do
+        nil ->
+          with {:ok, server} <- portal_param(params["portal"]), do: {:ok, Packages.list_official(server)}
+
+        claims ->
+          with {:ok, reader} <- Packages.reader(claims), do: {:ok, Packages.list_visible(reader)}
+      end
+
+    case result do
+      {:ok, entries} -> conn |> no_store() |> json(PackageJSON.index(entries))
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  def resolve(conn, params) do
+    with {:ok, claims} <- bearer_claims(conn),
+         {:ok, identity, version} <- resolve_params(params),
+         {:ok, reader} <- Packages.reader(claims),
+         {:ok, resolved} <- Packages.resolve(reader, identity, version) do
+      conn |> no_store() |> json(PackageJSON.resolve(resolved))
+    else
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  # CatalogCors has already refused an origin outside the allowlist and set the headers.
+  def preflight(conn, _params), do: send_resp(conn, 204, "")
+
+  defp portal_param(portal) when is_binary(portal) and portal != "" do
+    server = PortalDbs.get_server_for_portal_url(if String.contains?(portal, "://"), do: portal, else: "https://" <> portal)
+    if is_binary(server), do: {:ok, server}, else: {:error, :bad_request, "portal must be a portal host or URL"}
+  end
+
+  defp portal_param(_), do: {:error, :bad_request, "an anonymous read names its portal with ?portal="}
+
+  defp bearer_claims(conn) do
+    case conn.assigns[:portal_claims] do
+      nil -> {:error, :not_authenticated, "resolving a package needs a launch token"}
+      claims -> {:ok, claims}
+    end
+  end
+
+  defp resolve_params(%{"identity" => identity, "version" => version}) when is_binary(identity) and is_binary(version),
+    do: {:ok, identity, version}
+
+  defp resolve_params(_), do: {:error, :bad_request, "resolve needs identity and version"}
+
+  defp no_store(conn) do
+    if conn.assigns[:portal_claims], do: put_resp_header(conn, "cache-control", "no-store"), else: conn
   end
 
   defp known_identity(identity) do

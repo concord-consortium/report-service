@@ -95,6 +95,10 @@ if package_buckets != %{} do
     ]
 end
 
+config :report_server, :packages,
+  cors_origins: (System.get_env("PACKAGES_CORS_ORIGINS") || "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1),
+  unreviewed_runs: System.get_env("PACKAGES_UNREVIEWED_RUNS") == "true"
+
 config :report_server, :portal_report,
   url: System.get_env("PORTAL_REPORT_URL") || "https://portal-report.concord.org/branch/master/" # production (yes, prod uses master)
 

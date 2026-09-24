@@ -8,9 +8,15 @@ defmodule ReportServer.PackagesPortalStub do
   def reset, do: Application.delete_env(:report_server, __MODULE__)
 
   def get_allowed_project_ids(user, _opts), do: answer(:allowed_project_ids, [user])
+  def get_user_roles(server, portal_user_id, _opts), do: answer(:user_roles, [server, portal_user_id])
+  def get_project_names(server, ids, _opts), do: answer(:project_names, [server, ids])
 
   defp defaults do
-    %{allowed_project_ids: :none}
+    %{
+      allowed_project_ids: :none,
+      user_roles: {:ok, %{is_admin: false, is_project_admin: false, is_project_researcher: true}},
+      project_names: {:ok, %{}}
+    }
   end
 
   defp answer(key, args) do

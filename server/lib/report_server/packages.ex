@@ -201,6 +201,139 @@ defmodule ReportServer.Packages do
       else: {:error, :unprocessable, "#{package.identity} has no version #{version}"}
   end
 
+  @doc """
+  Who is reading the catalog with a launch token: the portal from the verified `iss`, and the
+  project grants read from that portal now rather than from report-server's stored copy, so the
+  caller needs no report-server user row.
+  """
+  @spec reader(map()) :: {:ok, map()} | {:error, atom(), String.t()}
+  def reader(%{"iss" => iss, "uid" => uid}) when is_binary(iss) and is_integer(uid) do
+    server = PortalDbs.get_server_for_portal_url(iss)
+
+    with true <- (is_binary(server) and PortalDbs.has_db_connection?(server)) || {:error, :not_authenticated, "unknown portal"},
+         {:ok, flags} <- user_roles(server, uid),
+         user = %User{
+           portal_server: server,
+           portal_user_id: uid,
+           portal_is_admin: flags.is_admin,
+           portal_is_project_admin: flags.is_project_admin,
+           portal_is_project_researcher: flags.is_project_researcher
+         },
+         {:ok, allowed} <- portal_allowed_project_ids(user) do
+      {:ok, %{server: server, uid: uid, allowed: allowed}}
+    end
+  end
+
+  def reader(_claims), do: {:error, :not_authenticated, "the token names no portal user"}
+
+  defp user_roles(server, uid) do
+    case portal().get_user_roles(server, uid, timeout: @portal_timeout_ms) do
+      {:ok, flags} -> {:ok, flags}
+      {:error, :not_found} -> {:error, :not_authenticated, "the portal has no such user"}
+      _error -> {:error, :portal_unavailable, "the portal could not be asked for your roles"}
+    end
+  end
+
+  @doc "The anonymous answer: the portal's non-archived official packages, with their current versions."
+  def list_official(portal_server) do
+    listing(from(p in Package, where: p.portal_server == ^portal_server and p.official))
+    |> Enum.map(fn {package, version} -> %{package: package, version: version, mine: false} end)
+    |> with_project_names(portal_server)
+  end
+
+  @doc """
+  The non-archived packages a reader may see, with their current versions: official, public,
+  administered by them, or project-visible on a project they hold a grant on.
+  """
+  def list_visible(%{server: server, uid: uid, allowed: allowed}) do
+    listing(from(p in Package, where: p.portal_server == ^server) |> where(^visible(uid, allowed)))
+    |> Enum.map(fn {package, version} -> %{package: package, version: version, mine: administers?(package, uid, allowed)} end)
+    |> with_project_names(server)
+  end
+
+  defp listing(query) do
+    from(p in query,
+      where: not p.archived,
+      join: v in PackageVersion,
+      on: v.package_id == p.id and v.version == p.current_version,
+      order_by: p.id,
+      select: {p, v}
+    )
+    |> Repo.all()
+  end
+
+  defp visible(uid, allowed) do
+    own = Identity.origin(:users, uid)
+
+    case allowed do
+      :all ->
+        dynamic([p], p.official or p.visibility in ["public", "project"] or p.maintainer == ^own or like(p.maintainer, "projects/%"))
+
+      ids ->
+        ids = if is_list(ids), do: ids, else: []
+        maintainers = Enum.map(ids, &Identity.origin(:projects, &1))
+
+        dynamic(
+          [p],
+          p.official or p.visibility == "public" or p.maintainer == ^own or
+            (p.visibility == "project" and p.project_id in ^ids) or p.maintainer in ^maintainers
+        )
+    end
+  end
+
+  # A portal that cannot name the projects leaves the names null rather than failing the list.
+  defp with_project_names(entries, server) do
+    ids = entries |> Enum.map(& &1.package.project_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    names =
+      case portal().get_project_names(server, ids, timeout: @portal_timeout_ms) do
+        {:ok, names} -> names
+        _error -> %{}
+      end
+
+    Enum.map(entries, fn entry ->
+      project = entry.package.project_id && %{id: entry.package.project_id, name: Map.get(names, entry.package.project_id)}
+      Map.put(entry, :project, project)
+    end)
+  end
+
+  @doc """
+  One version of a package the reader may see, archived or not, with whether it may run now: an
+  archived package never runs, and a non-official one runs only when `:packages, :unreviewed_runs`
+  is on.
+  """
+  def resolve(%{server: server, uid: uid, allowed: allowed}, identity, version) do
+    from(p in Package,
+      where: p.portal_server == ^server and p.identity == ^identity,
+      join: v in PackageVersion,
+      on: v.package_id == p.id and v.version == ^version,
+      select: {p, v}
+    )
+    |> where(^visible(uid, allowed))
+    |> Repo.one()
+    |> case do
+      nil ->
+        {:error, :not_found, "no package #{identity} #{version}"}
+
+      {package, version} ->
+        reason = unrunnable_reason(package)
+        {:ok, %{package: package, version: version, runnable: is_nil(reason), reason: reason}}
+    end
+  end
+
+  @doc "Whether a package may be run now."
+  def runnable?(package), do: is_nil(unrunnable_reason(package))
+
+  defp unrunnable_reason(package) do
+    cond do
+      package.archived -> "archived"
+      not (package.official or unreviewed_runs?()) -> "not official, and unreviewed runs are not enabled"
+      true -> nil
+    end
+  end
+
+  defp unreviewed_runs?, do: Keyword.get(Application.get_env(:report_server, :packages, []), :unreviewed_runs, false) == true
+
   defp check_publisher(user, true) do
     if publisher?(user), do: :ok, else: {:error, :forbidden, "only a package publisher may publish an official package"}
   end
@@ -224,13 +357,15 @@ defmodule ReportServer.Packages do
   end
 
   defp allowed_project_ids(user, origins) do
-    if Enum.any?(origins, &match?({:ok, {:projects, _}}, Identity.parse_origin(&1))) do
-      case portal().get_allowed_project_ids(user, timeout: @portal_timeout_ms) do
-        ids when is_list(ids) or ids in [:all, :none] -> {:ok, ids}
-        _error -> {:error, :portal_unavailable, "the portal could not be asked for your project grants"}
-      end
-    else
-      {:ok, :none}
+    if Enum.any?(origins, &match?({:ok, {:projects, _}}, Identity.parse_origin(&1))),
+      do: portal_allowed_project_ids(user),
+      else: {:ok, :none}
+  end
+
+  defp portal_allowed_project_ids(user) do
+    case portal().get_allowed_project_ids(user, timeout: @portal_timeout_ms) do
+      ids when is_list(ids) or ids in [:all, :none] -> {:ok, ids}
+      _error -> {:error, :portal_unavailable, "the portal could not be asked for your project grants"}
     end
   end
 

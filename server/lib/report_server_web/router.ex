@@ -35,6 +35,12 @@ defmodule ReportServerWeb.Router do
     plug ReportServerWeb.Api.PortalTokenPlug, audience: "report-server"
   end
 
+  pipeline :api_catalog do
+    plug :force_json
+    plug ReportServerWeb.Api.CatalogCors
+    plug ReportServerWeb.Api.PortalTokenPlug, audience: "researcher-dashboard", optional: true
+  end
+
   pipeline :api_token_only do
     plug :force_json
     plug ReportServerWeb.Api.AuthPlug, token_only: true
@@ -60,6 +66,16 @@ defmodule ReportServerWeb.Router do
     live_session :codap_plugin, layout: false, root_layout: {ReportServerWeb.Layouts, :codap_plugin} do
       live "/codap-plugin", CodapPluginLive.Index, :index
     end
+  end
+
+  # the catalog's reads, anonymous or with a launch token, and the only routes with CORS
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api_catalog
+
+    get "/packages", PackageController, :index
+    get "/packages/resolve", PackageController, :resolve
+    options "/packages", PackageController, :preflight
+    options "/packages/resolve", PackageController, :preflight
   end
 
   scope "/api/v1", ReportServerWeb.Api.V1 do
