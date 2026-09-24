@@ -76,6 +76,7 @@ defmodule ReportServerWeb.Router do
     post "/reports/:id/attachments", AttachmentController, :create
     get "/reports/:id/jobs", ReportJobController, :index
     get "/reports/:id/jobs/:job_id/download", ReportJobController, :download
+    post "/packages", PackageController, :create
   end
 
   # token self-management: authenticated by token validity alone (no role gate, no

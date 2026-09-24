@@ -51,3 +51,11 @@ System.put_env(
   System.get_env("PORTAL_TEST_EXAMPLE_COM_DB") ||
     "mysql://#{mysql[:username]}:#{mysql[:password]}@#{mysql[:hostname]}:#{mysql[:port]}"
 )
+
+config :report_server, :packages,
+  store: ReportServer.PackagesMemoryStore,
+  portal: ReportServer.PackagesPortalStub,
+  buckets: %{
+    "learn.concord.org" => "runner-bucket-learn",
+    "learn.portal.staging.concord.org" => "runner-bucket-staging"
+  }

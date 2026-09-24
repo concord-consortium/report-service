@@ -5,7 +5,9 @@ defmodule ReportServerWeb.Api.ErrorHelpers do
   @statuses %{
     "BAD_REQUEST" => 400,
     "NOT_AUTHENTICATED" => 401,
+    "FORBIDDEN" => 403,
     "NOT_FOUND" => 404,
+    "ALREADY_EXISTS" => 409,
     "NOT_READY" => 409,
     "PORTAL_DUPLICATE_UNNECESSARY" => 409,
     "EXPIRED_CURSOR" => 410,
@@ -20,6 +22,7 @@ defmodule ReportServerWeb.Api.ErrorHelpers do
   @primary_code_by_status %{
     400 => "BAD_REQUEST",
     401 => "NOT_AUTHENTICATED",
+    403 => "FORBIDDEN",
     404 => "NOT_FOUND",
     409 => "NOT_READY",
     410 => "EXPIRED_CURSOR",

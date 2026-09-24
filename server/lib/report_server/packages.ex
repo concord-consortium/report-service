@@ -5,9 +5,16 @@ defmodule ReportServer.Packages do
   """
   import Ecto.Query, warn: false
 
-  alias ReportServer.Repo
+  require Logger
+
+  alias ReportServer.{PortalDbs, Repo}
   alias ReportServer.Accounts.User
-  alias ReportServer.Packages.Identity
+  alias ReportServer.Packages.{Archive, Identity, Manifest, Package, PackageEvent, PackageVersion, Store}
+
+  # a portal read on a request path fails fast rather than inheriting PortalDbs' five minutes
+  @portal_timeout_ms 5_000
+  # covers the two S3 puts made before the commit (Store.S3Store's HTTP timeouts)
+  @publish_transaction_timeout_ms 120_000
 
   @doc """
   Whether a caller administers a package: they are its maintainer, or it is maintained by a
@@ -44,4 +51,163 @@ defmodule ReportServer.Packages do
       {0, _} -> {:error, :not_found}
     end
   end
+
+  @doc """
+  Publishes a package version from its zip. The owner comes from the token's user, never the
+  manifest. The rows are inserted before the S3 writes and committed after them, so a
+  concurrent publish of the same version waits on the unique index and fails rather than
+  overwriting the winner's object, and a failed write leaves no rows.
+
+  Errors are `{:error, kind, message}`, where kind is `:unprocessable`, `:forbidden`,
+  `:already_exists`, `:portal_unavailable`, `:store_failed` or `:busy` (a lock conflict; retry).
+  """
+  def publish(%User{} = user, body, origin_param, official?) do
+    with :ok <- check_publisher(user, official?),
+         {:ok, manifest, entries} <- tag(Archive.read_manifest(body), :unprocessable),
+         {:ok, attrs} <- tag(Manifest.project(manifest, entries), :unprocessable),
+         {:ok, bucket} <- tag(Store.bucket_for(user.portal_server), :unprocessable),
+         {:ok, origin} <- publish_origin(user, origin_param),
+         identity = Identity.identity(origin, attrs.name),
+         {:ok, allowed} <- allowed_project_ids(user, [origin, maintainer_of(user.portal_server, identity)]) do
+      checksum = "sha256:" <> Base.encode16(:crypto.hash(:sha256, body), case: :lower)
+
+      Repo.transaction(fn ->
+        {package, created?} = lock_or_insert_package(user, identity, origin, attrs.name)
+
+        unless administers?(package, user.portal_user_id, allowed) do
+          Repo.rollback({:forbidden, "you do not administer #{identity}"})
+        end
+
+        version = insert_version(package, attrs, identity, checksum, user)
+        move_pointer? = created? or package.visibility == "private"
+        package = if official?, do: make_official(package, user), else: package
+        package = if move_pointer?, do: move_pointer(package, version.version, user), else: package
+
+        with :ok <- Store.put(bucket, version.s3_key, body),
+             :ok <- Store.put(bucket, Identity.s3_key(identity, version.version, "sha256"), checksum) do
+          %{package: package, version: version}
+        else
+          {:error, reason} ->
+            Logger.error("package store write failed for #{identity}: #{inspect(reason)}")
+            Repo.rollback({:store_failed, "the package could not be stored"})
+        end
+      end, timeout: @publish_transaction_timeout_ms)
+      |> case do
+        {:ok, result} -> {:ok, result}
+        {:error, {kind, message}} -> {:error, kind, message}
+      end
+    end
+  rescue
+    e in MyXQL.Error ->
+      if lock_conflict?(e), do: {:error, :busy, "another change to this package is in progress; retry"}, else: reraise(e, __STACKTRACE__)
+  end
+
+  # a lock wait timeout or a deadlock, which a retry resolves
+  defp lock_conflict?(%MyXQL.Error{mysql: %{code: code}}), do: code in [1205, 1213]
+  defp lock_conflict?(_error), do: false
+
+  defp check_publisher(user, true) do
+    if publisher?(user), do: :ok, else: {:error, :forbidden, "only a package publisher may publish an official package"}
+  end
+
+  defp check_publisher(_user, _official?), do: :ok
+
+  defp tag({:error, message}, kind), do: {:error, kind, message}
+  defp tag(ok, _kind), do: ok
+
+  defp publish_origin(user, nil), do: {:ok, Identity.origin(:users, user.portal_user_id)}
+
+  defp publish_origin(_user, origin) do
+    case Identity.parse_origin(origin) do
+      {:ok, {:projects, _}} -> {:ok, origin}
+      _ -> {:error, :unprocessable, "origin must be projects/<id>; a user origin is always your own"}
+    end
+  end
+
+  defp maintainer_of(portal_server, identity) do
+    package_query(portal_server, identity) |> select([p], p.maintainer) |> Repo.one()
+  end
+
+  defp allowed_project_ids(user, origins) do
+    if Enum.any?(origins, &match?({:ok, {:projects, _}}, Identity.parse_origin(&1))) do
+      case portal().get_allowed_project_ids(user, timeout: @portal_timeout_ms) do
+        ids when is_list(ids) or ids in [:all, :none] -> {:ok, ids}
+        _error -> {:error, :portal_unavailable, "the portal could not be asked for your project grants"}
+      end
+    else
+      {:ok, :none}
+    end
+  end
+
+  # No locking read of an absent row: two such reads take gap locks that deadlock both inserts.
+  defp lock_or_insert_package(user, identity, origin, name) do
+    if package_query(user.portal_server, identity) |> Repo.exists?() do
+      {lock_package!(user.portal_server, identity), false}
+    else
+      %Package{}
+      |> Package.create_changeset(%{portal_server: user.portal_server, origin: origin, name: name, maintainer: origin})
+      |> Repo.insert()
+      |> case do
+        {:ok, package} -> {package, true}
+        {:error, %{errors: [identity: _]}} -> {lock_package!(user.portal_server, identity), false}
+      end
+    end
+  end
+
+  defp package_query(portal_server, identity),
+    do: from(p in Package, where: p.portal_server == ^portal_server and p.identity == ^identity)
+
+  defp lock_package!(portal_server, identity),
+    do: package_query(portal_server, identity) |> lock("FOR UPDATE") |> Repo.one!()
+
+  defp insert_version(package, attrs, identity, checksum, user) do
+    %PackageVersion{}
+    |> PackageVersion.changeset(
+      Map.merge(attrs, %{
+        package_id: package.id,
+        checksum: checksum,
+        s3_key: Identity.s3_key(identity, attrs.version, "zip"),
+        published_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        published_by: user.id
+      })
+    )
+    |> Repo.insert()
+    |> case do
+      {:ok, version} -> version
+      {:error, _changeset} -> Repo.rollback({:already_exists, "#{identity} #{attrs.version} is already published"})
+    end
+  end
+
+  defp make_official(package, user) do
+    package
+    |> record_change(:official, true, user)
+    |> record_change(:visibility, "public", user)
+  end
+
+  defp move_pointer(package, version, user), do: record_change(package, :current_version, version, user)
+
+  defp record_change(package, field, new_value, user) do
+    previous = Map.fetch!(package, field)
+
+    if previous == new_value do
+      package
+    else
+      package = package |> Package.state_changeset(%{field => new_value}) |> Repo.update!()
+
+      Repo.insert!(%PackageEvent{
+        package_id: package.id,
+        user_id: user.id,
+        field: Atom.to_string(field),
+        previous_value: audit_value(previous),
+        new_value: audit_value(new_value)
+      })
+
+      package
+    end
+  end
+
+  defp audit_value(nil), do: nil
+  defp audit_value(value), do: to_string(value)
+
+  defp portal, do: Keyword.get(Application.get_env(:report_server, :packages, []), :portal, PortalDbs)
 end

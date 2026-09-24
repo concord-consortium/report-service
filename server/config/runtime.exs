@@ -55,6 +55,46 @@ config :report_server, :report_service,
 # rigse's RS256 public keys, a JSON array of {"kid", "iss", "pem"}, one entry per portal served
 config :report_server, :portal_public_keys, System.get_env("PORTAL_PUBLIC_KEYS")
 
+# Each portal's packages go to that portal's runner bucket, a JSON object of portal server to
+# bucket. Two portals' identities overlap, so they may never share one.
+package_buckets =
+  case System.get_env("PACKAGE_BUCKETS") do
+    blank when blank in [nil, ""] ->
+      %{}
+
+    json ->
+      case Jason.decode(json) do
+        {:ok, buckets} when is_map(buckets) ->
+          unless Enum.all?(buckets, fn {portal, bucket} -> is_binary(bucket) and bucket != "" and portal != "" end) do
+            raise "PACKAGE_BUCKETS must map each portal server to a bucket name"
+          end
+
+          buckets
+
+        _ ->
+          raise "PACKAGE_BUCKETS must be a JSON object of portal server to bucket"
+      end
+  end
+
+case package_buckets |> Map.values() |> Enum.frequencies() |> Enum.filter(fn {_, n} -> n > 1 end) do
+  [] -> :ok
+  shared -> raise "PACKAGE_BUCKETS sends more than one portal to #{shared |> Enum.map(&elem(&1, 0)) |> Enum.join(", ")}"
+end
+
+if package_buckets != %{} do
+  config :report_server, :packages,
+    buckets: package_buckets,
+    # the runner stack's dedicated user, which may only put objects under packages/
+    aws_credentials: [
+      access_key_id:
+        System.get_env("PACKAGES_AWS_ACCESS_KEY_ID") ||
+          raise("PACKAGE_BUCKETS is set, so PACKAGES_AWS_ACCESS_KEY_ID is required"),
+      secret_access_key:
+        System.get_env("PACKAGES_AWS_SECRET_ACCESS_KEY") ||
+          raise("PACKAGE_BUCKETS is set, so PACKAGES_AWS_SECRET_ACCESS_KEY is required")
+    ]
+end
+
 config :report_server, :portal_report,
   url: System.get_env("PORTAL_REPORT_URL") || "https://portal-report.concord.org/branch/master/" # production (yes, prod uses master)
 
