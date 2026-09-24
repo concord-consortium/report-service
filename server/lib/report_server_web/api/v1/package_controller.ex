@@ -2,13 +2,14 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   use ReportServerWeb, :controller
 
   alias ReportServer.Packages
-  alias ReportServer.Packages.Archive
+  alias ReportServer.Packages.{Archive, Identity}
   alias ReportServerWeb.Api.ErrorHelpers
 
   @error_codes %{
     bad_request: "BAD_REQUEST",
     unprocessable: "UNPROCESSABLE",
     forbidden: "FORBIDDEN",
+    not_found: "NOT_FOUND",
     already_exists: "ALREADY_EXISTS",
     portal_unavailable: "SERVICE_UNAVAILABLE",
     busy: "SERVICE_UNAVAILABLE",
@@ -35,6 +36,32 @@ defmodule ReportServerWeb.Api.V1.PackageController do
       })
     else
       {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  def update_state(conn, %{"kind" => kind, "owner_id" => owner_id, "name" => name, "state" => state} = params) do
+    identity = Identity.identity("#{kind}/#{owner_id}", name)
+
+    with :ok <- known_identity(identity),
+         {:ok, package} <- Packages.change_state(conn.assigns.current_user, identity, state, params) do
+      json(conn, %{
+        catalog_id: package.id,
+        identity: package.identity,
+        visibility: package.visibility,
+        project_id: package.project_id,
+        official: package.official,
+        archived: package.archived,
+        current_version: package.current_version
+      })
+    else
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  defp known_identity(identity) do
+    case Identity.parse(identity) do
+      {:ok, _} -> :ok
+      :error -> {:error, :not_found, "no package #{identity}"}
     end
   end
 

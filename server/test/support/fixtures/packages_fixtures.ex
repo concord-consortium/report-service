@@ -1,7 +1,8 @@
 defmodule ReportServer.PackagesFixtures do
   @moduledoc """
-  Builds package zips for the catalog's tests.
+  Builds package zips and publishes them, for the catalog's tests.
   """
+  alias ReportServer.Packages
 
   def manifest(overrides \\ %{}) do
     Map.merge(
@@ -23,5 +24,11 @@ defmodule ReportServer.PackagesFixtures do
     files = [{~c"manifest.json", Jason.encode!(manifest(overrides))}, {~c"run.py", "print(1)\n"}]
     {:ok, {_, bin}} = :zip.create(~c"package.zip", files, [:memory])
     bin
+  end
+
+  @doc "Publishes a package as `user`, failing the test on any refusal."
+  def publish_fixture(user, overrides \\ %{}, opts \\ []) do
+    {:ok, result} = Packages.publish(user, package_zip(overrides), opts[:origin], Keyword.get(opts, :official, false))
+    result
   end
 end

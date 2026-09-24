@@ -98,13 +98,108 @@ defmodule ReportServer.Packages do
       end
     end
   rescue
-    e in MyXQL.Error ->
-      if lock_conflict?(e), do: {:error, :busy, "another change to this package is in progress; retry"}, else: reraise(e, __STACKTRACE__)
+    e in MyXQL.Error -> busy_or_reraise(e, __STACKTRACE__)
+  end
+
+  defp busy_or_reraise(error, stacktrace) do
+    if lock_conflict?(error),
+      do: {:error, :busy, "another change to this package is in progress; retry"},
+      else: reraise(error, stacktrace)
   end
 
   # a lock wait timeout or a deadlock, which a retry resolves
   defp lock_conflict?(%MyXQL.Error{mysql: %{code: code}}), do: code in [1205, 1213]
   defp lock_conflict?(_error), do: false
+
+  @doc """
+  Changes one state of a package on the caller's portal, writing an audit row per field that
+  changes, in one transaction. A change to the current value writes nothing and succeeds.
+
+  `official` is the publisher role's alone, and setting it also makes the package public; the
+  other states are its administrators'. Errors are `{:error, kind, message}`, where kind is
+  `:bad_request`, `:not_found`, `:forbidden`, `:unprocessable`, `:portal_unavailable` or `:busy`
+  (a lock conflict; retry).
+  """
+  def change_state(%User{} = user, identity, state, params) do
+    with {:ok, change} <- parse_change(state, params),
+         %Package{} = package <- package_query(user.portal_server, identity) |> Repo.one() || {:error, :not_found, "no package #{identity}"},
+         {:ok, allowed} <- allowed_project_ids(user, grant_origins(change, package)),
+         :ok <- authorize_change(change, package, user, allowed) do
+      Repo.transaction(fn ->
+        package = lock_package!(user.portal_server, identity)
+
+        case apply_change(change, package, user) do
+          {:ok, package} -> package
+          {:error, kind, message} -> Repo.rollback({kind, message})
+        end
+      end)
+      |> case do
+        {:ok, package} -> {:ok, package}
+        {:error, {kind, message}} -> {:error, kind, message}
+      end
+    end
+  rescue
+    e in MyXQL.Error -> busy_or_reraise(e, __STACKTRACE__)
+  end
+
+  # project_id is a signed 32-bit column
+  defp parse_change("visibility", %{"visibility" => "project", "project_id" => id})
+       when is_integer(id) and id > 0 and id <= 2_147_483_647,
+    do: {:ok, {:visibility, "project", id}}
+
+  defp parse_change("visibility", %{"visibility" => "project"}),
+    do: {:error, :bad_request, "project visibility needs a positive integer project_id"}
+
+  defp parse_change("visibility", %{"visibility" => v}) when v in ["private", "public"], do: {:ok, {:visibility, v, nil}}
+  defp parse_change("visibility", _), do: {:error, :bad_request, "visibility must be private, project or public"}
+  defp parse_change("official", %{"official" => v}) when is_boolean(v), do: {:ok, {:official, v}}
+  defp parse_change("archived", %{"archived" => v}) when is_boolean(v), do: {:ok, {:archived, v}}
+  defp parse_change("current_version", %{"current_version" => v}) when is_binary(v), do: {:ok, {:current_version, v}}
+
+  defp parse_change(state, _) when state in ["official", "archived", "current_version"],
+    do: {:error, :bad_request, "#{state} is missing or of the wrong type"}
+
+  defp parse_change(state, _), do: {:error, :not_found, "no state #{state}; it is one of visibility, official, archived or current_version"}
+
+  # official is the publisher role's alone, so no grant decides it
+  defp grant_origins({:official, _}, _package), do: []
+  defp grant_origins({:visibility, "project", id}, package), do: [package.maintainer, Identity.origin(:projects, id)]
+  defp grant_origins(_change, package), do: [package.maintainer]
+
+  defp authorize_change({:official, _}, _package, user, _allowed) do
+    if publisher?(user), do: :ok, else: {:error, :forbidden, "only a package publisher may set official"}
+  end
+
+  defp authorize_change(change, package, user, allowed) do
+    cond do
+      not administers?(package, user.portal_user_id, allowed) ->
+        {:error, :forbidden, "you do not administer #{package.identity}"}
+
+      match?({:visibility, "project", _}, change) and not project_allowed?(elem(change, 2), allowed) ->
+        {:error, :forbidden, "you hold no grant on project #{elem(change, 2)}"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp apply_change({:visibility, visibility, project_id}, package, user) do
+    if package.official and visibility != "public" do
+      {:error, :unprocessable, "an official package is public; clear official first"}
+    else
+      {:ok, package |> record_change(:visibility, visibility, user) |> record_change(:project_id, project_id, user)}
+    end
+  end
+
+  defp apply_change({:official, true}, package, user), do: {:ok, make_official(package, user)}
+  defp apply_change({:official, false}, package, user), do: {:ok, record_change(package, :official, false, user)}
+  defp apply_change({:archived, archived}, package, user), do: {:ok, record_change(package, :archived, archived, user)}
+
+  defp apply_change({:current_version, version}, package, user) do
+    if Repo.exists?(from v in PackageVersion, where: v.package_id == ^package.id and v.version == ^version),
+      do: {:ok, move_pointer(package, version, user)},
+      else: {:error, :unprocessable, "#{package.identity} has no version #{version}"}
+  end
 
   defp check_publisher(user, true) do
     if publisher?(user), do: :ok, else: {:error, :forbidden, "only a package publisher may publish an official package"}
@@ -182,6 +277,7 @@ defmodule ReportServer.Packages do
     package
     |> record_change(:official, true, user)
     |> record_change(:visibility, "public", user)
+    |> record_change(:project_id, nil, user)
   end
 
   defp move_pointer(package, version, user), do: record_change(package, :current_version, version, user)
