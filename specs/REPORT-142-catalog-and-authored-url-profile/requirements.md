@@ -19,13 +19,13 @@ When a researcher opens a class, the dashboard lists only the packages that make
 
 REPORT-142 is derived from `final-design.md` sections 5.2 to 5.7 and the `manifest.json` and `POST /derive-profile` contracts in section 10. The Jira description is the authoritative scope and is not restated in full here. This spec records how the story lands on master and on REPORT-141, which it stacks on. It also records the decisions the story leaves to implementation.
 
-**What it builds on (REPORT-141, `specs/REPORT-141-report-service-everything-rigse-calls/`).**
+**What it builds on (REPORT-141, closed at `specs/REPORT-141-report-service-everything-rigse-calls.md`).**
 - report-server's `PortalToken.verify/2` and `PortalTokenPlug`. These verify rigse's RS256 tokens by `kid`, bound to an issuer, and expose the claims for a named audience. REPORT-141 R5 builds the `researcher-dashboard` audience for this story's catalog read.
 - The function's separate `researcherDashboard` HTTPS function, whose auth middleware verifies an `aud: report-service-functions` assertion. It sets `res.locals.researcher` to `{uid, platformUserId, platformId, portal}` taken from `uid` and `iss`.
 - `firestore-paths.ts`, with `portalSegment(iss)`.
 - `PORTAL_PUBLIC_KEYS`.
 
-`/derive-profile` is a route on that function. REPORT-141 is implemented on its branch, which this one stacks on, but is not yet merged to master. Every file named below as "from REPORT-141" exists there, and its spec's "As built" section records where the code departs from its plan.
+`/derive-profile` is a route on that function. REPORT-141 is implemented on its branch, which this one stacks on, but is not yet merged to master. Every file named below as "from REPORT-141" exists there. Its closed spec's "As built (2026-09-24)" notes, under Technical Notes, record where the code departs from its plan.
 
 **What rigse sends (RIGSE-367).** The launch token carries `aud: researcher-dashboard`, `iss` (the portal's site URL), `uid`, `user_type: "researcher"`, `scope_kind`, `scope_id`, `iat` and `exp`, and lives two hours. It carries no role flags and no project ids, which is why report-server resolves them from the portal on the catalog path. rigse's side of `refresh_profile`, the assignment fingerprint and the run-path resolve are RIGSE-368.
 
@@ -193,7 +193,7 @@ The runner today fetches `scripts/<name>/<version>.zip`, verifies the bytes agai
     - new `functions/src/researcher-dashboard/derive-profile*.ts`
     - `functions/src/index.ts`
     - `functions/.env.report-service-{dev,pro}`
-  - The files REPORT-141 adds, named in its implementation spec.
+  - The files REPORT-141 adds, named in its closed spec.
 - **`get_allowed_project_ids/2` is used as it stands.** A project admin gets only the projects they administer, not also those they research, and no grant's `expiration_date` is checked (`portal_dbs.ex:198-218`). Both quirks predate this story and govern what the same researcher's runs can read (`final-design.md` 11.2), so the catalog applies the same definition rather than a second one.
 - **The catalog's patterns and the runner's grammar differ today.** The runner allows `_` in a name (`runner/server/package-env.js:26`); the catalog does not (R3). RD-4 adopts the identity.
 - **Where the other halves are specified**:
