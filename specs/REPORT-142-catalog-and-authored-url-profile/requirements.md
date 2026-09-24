@@ -21,11 +21,11 @@ REPORT-142 is derived from `final-design.md` sections 5.2 to 5.7 and the `manife
 
 **What it builds on (REPORT-141, `specs/REPORT-141-report-service-everything-rigse-calls/`).**
 - report-server's `PortalToken.verify/2` and `PortalTokenPlug`. These verify rigse's RS256 tokens by `kid`, bound to an issuer, and expose the claims for a named audience. REPORT-141 R5 builds the `researcher-dashboard` audience for this story's catalog read.
-- The function's separate `researcherDashboard` HTTPS function, whose auth middleware verifies an `aud: report-service-functions` assertion. It sets `res.locals.researcher` to `{platformUserId, platformId, portal}` taken from `uid` and `iss`.
+- The function's separate `researcherDashboard` HTTPS function, whose auth middleware verifies an `aud: report-service-functions` assertion. It sets `res.locals.researcher` to `{uid, platformUserId, platformId, portal}` taken from `uid` and `iss`.
 - `firestore-paths.ts`, with `portalSegment(iss)`.
 - `PORTAL_PUBLIC_KEYS`.
 
-`/derive-profile` is a route on that function. **None of REPORT-141 is on master yet**: its branch holds only its spec, so every file named below as "from REPORT-141" arrives with that story's implementation.
+`/derive-profile` is a route on that function. REPORT-141 is implemented on its branch, which this one stacks on, but is not yet merged to master. Every file named below as "from REPORT-141" exists there, and its spec's "As built" section records where the code departs from its plan.
 
 **What rigse sends (RIGSE-367).** The launch token carries `aud: researcher-dashboard`, `iss` (the portal's site URL), `uid`, `user_type: "researcher"`, `scope_kind`, `scope_id`, `iat` and `exp`, and lives two hours. It carries no role flags and no project ids, which is why report-server resolves them from the portal on the catalog path. rigse's side of `refresh_profile`, the assignment fingerprint and the run-path resolve are RIGSE-368.
 
@@ -144,7 +144,7 @@ The runner today fetches `scripts/<name>/<version>.zip`, verifies the bytes agai
   - `assignment_fingerprint` is a non-empty opaque string of at most 256 characters.
   - `assignment_urls` is an array of at most 500 strings of at most 2,048 characters each.
   - The whole body is at most 256 KiB, which keeps the queued task under Cloud Tasks' 1 MiB task limit.
-  Anything else is 400 and nothing is queued. A valid request is answered 202 once the derivation is queued, and the function holds nothing open while it runs.
+  Anything else is 400 and nothing is queued. A valid request is answered 202 once the derivation is queued, and the function holds nothing open while it runs. While the authoring host allowlist (R22) is empty, every request is answered 503 naming it, before validation, and nothing is queued, since the deriver could only refuse every content URL.
 - R21. The derivation runs outside the request, because a first-generation HTTPS function is not guaranteed any CPU after it responds. It is retried on failure. It ends in one write of `researcher_dashboard/{portal}/classes/{class_hash}` with the Admin SDK.
 - R22. The deriver follows only a URL that names a container: an assignment URL carrying an `activity` or `sequence` query parameter whose value is an absolute URL. That value is the content URL. Every other assignment URL, a CLUE offering URL among them, is taken as it stands and not fetched.
   - A content URL is fetched only if its parsed hostname exactly equals an entry in a configured allowlist of authoring hosts (no suffix match, no userinfo, default port), and only over HTTPS. An `http:` URL on an allowlisted host is fetched as `https:`.

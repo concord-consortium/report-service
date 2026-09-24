@@ -14,7 +14,16 @@ Eight steps, one commit each, on top of REPORT-141's implementation.
 
 Each step is testable on its own:
 - report-server's with `mix test` against the port-3406 MySQL, with the four placeholder environment variables.
-- The function's with Jest 24 on Node 22, with `fetch`, Firestore and the task client injected as fakes, as REPORT-141's `run-package.test.ts` does.
+- The function's with Jest 24 on Node 22, with `fetch`, Firestore and the task client injected as fakes, as REPORT-141 injects Firestore and `ensureVm` in `run-package.test.ts` and `fetchImpl` in `ensure-vm.test.ts`.
+
+**What REPORT-141 built, as this plan uses it (checked against its implementation, 2026-09-24).**
+- `researcherDashboardApp(deps: () => RunPackageDeps)` in `app.ts` applies `requireHeaderBearer` and `portalAssertionAuth` to every route. It takes one deps factory today, so adding `/derive-profile` widens that parameter to carry this route's deps (the `enqueue` seam) too.
+- Errors go through the repo's `res.error(status, message)`, which answers `{success: false, error}`. `/run-package` answers 503 naming any unset launch setting before it writes anything.
+- The Firestore fake is shared at `functions/src/test/researcher-dashboard-fake-db.ts`. It runs transactions one at a time, models `merge` and `mergeFields`, and copies only maps and arrays, so a `Timestamp` such as `requested_at` reads back as a `Timestamp`. The ordered-write tests below use it rather than a fake of their own. The `Db`, `DocRef` and `Transaction` interfaces it implements are in `run-package.ts`.
+- `run-package.test.ts` drives the real express app over HTTP on an ephemeral port, under `@jest-environment node` and with `express.json()` in front, since Firebase parses the body first. The `node` test environment has no `AbortSignal` or `AbortController` (jsdom has its own), and Jest 24 cannot load a package that imports `node:` builtins, such as the AWS SDK v3 clients, so such a module is replaced with `jest.mock`.
+- Every dashboard string param in `config.ts` defaults to `""`, and `RD_QUEUE_CAP` to 20. The secrets `RD_AWS_KEY` and `RD_AWS_SECRET_KEY` are the exception: they have no default and are never in a `.env` file. Every non-secret param is still listed in both `.env.report-service-*` files, because firebase-tools prompts for (or, non-interactively, fails on) a declared param a file leaves out, whatever its default.
+- `/run-package` validates `class_hash` as `^[0-9a-f]{48}$`, the same rule R20 gives `/derive-profile`.
+- report-server's `PortalTokenPlug.init/1` returns the audience string (`Keyword.fetch!(opts, :audience)`), so the `optional: true` mode below changes what `init/1` returns. The plug halts through `ErrorHelpers.not_authenticated/1`.
 
 ### report-server: the catalog tables and the `Packages` context
 
@@ -433,7 +442,7 @@ export async function deriveProfile(deps: ProfileDeps, assignmentUrls: string[])
 
 `deriveProfile` works through the content URLs:
 - De-duplicates them.
-- Fetches with at most 5 in flight, each under a 15-second `AbortController` and `redirect: "manual"`, so a 3xx is a failure (`"redirect not followed"`).
+- Fetches with at most 5 in flight, each under a 15-second `AbortController` and `redirect: "manual"`, so a 3xx is a failure (`"redirect not followed"`). `derive-profile.test.ts` stays on Jest's default jsdom environment, because the node environment has no `AbortController`.
 - Reads the body through its stream reader and abandons it past 5 MiB.
 - Retries a network error or 5xx once.
 
@@ -462,11 +471,11 @@ Each `fetchImpl` in tests is a fake, since Jest 24's jsdom environment has no `f
 **Summary**: The route on `researcherDashboard` validates and enqueues. A v2 `onTaskDispatched` worker, `deriveProfileWorker`, runs the derivation and writes the class document in a transaction that refuses to overwrite a newer request. Covers R19 to R21, R24 to R26.
 
 **Files affected**:
-- `functions/src/researcher-dashboard/app.ts` (from REPORT-141) — `app.post("/derive-profile", ...)`
+- `functions/src/researcher-dashboard/app.ts` (from REPORT-141) — `app.post("/derive-profile", ...)`, with the app's deps parameter widened to carry this route's
 - `functions/src/researcher-dashboard/derive-profile-route.ts` — new: validation and enqueue
 - `functions/src/researcher-dashboard/derive-profile-worker.ts` — new: `runDerivation` and `writeProfile`, importing nothing from `firebase-functions`
 - `functions/src/researcher-dashboard/derive-profile-task.ts` — new: only the `onTaskDispatched` wrapper, which no test imports, because Jest 24 cannot resolve `firebase-functions/v2/tasks`
-- `functions/src/researcher-dashboard/config.ts` (from REPORT-141) — `defineString("RD_AUTHORING_HOSTS")`
+- `functions/src/researcher-dashboard/config.ts` (from REPORT-141) — `defineString("RD_AUTHORING_HOSTS", { default: "" })`, following the file's convention, and listed in both `.env` files (configuration step)
 - `functions/src/index.ts` — `deriveProfileWorker` added to the `module.exports` object
 - `functions/src/researcher-dashboard/derive-profile-route.test.ts`, `derive-profile-worker.test.ts` — new
 
@@ -478,7 +487,8 @@ The route:
 - A valid request takes `requested_at = Date.now()`.
 - It enqueues `{portal, platform_id, class_hash, assignment_fingerprint, assignment_urls, requested_at}` with `CloudTasksClient.createTask`, to `https://us-central1-${project}.cloudfunctions.net/deriveProfileWorker` with an OIDC token for `${project}@appspot.gserviceaccount.com`. That is `submitTask`'s pattern (`tasks/submit-task.ts:134-150`), behind a `deps.enqueue` seam.
 - Under `FUNCTIONS_EMULATOR` it calls the worker body directly, as `submitTask` does.
-- It answers 202 `{queued: true}`. An enqueue failure is 502 with its reason.
+- When the parsed `RD_AUTHORING_HOSTS` allowlist is empty, it answers 503 `researcherDashboard is not configured: RD_AUTHORING_HOSTS unset` before validating or enqueuing anything, as `/run-package` does for its launch settings. Otherwise every content URL would be refused and an empty profile written with a 202.
+- It answers 202 `{success: true, queued: true}` with `res.status(202).json(...)`, as `/run-package` does. An enqueue failure is 502 with its reason.
 
 The worker:
 
@@ -515,7 +525,7 @@ export async function writeProfile(db, task: DeriveTask, derived: Derived) {
 
 `import * as admin from "firebase-admin"`, not the `firebase-admin/firestore` subpath, which Jest 24 cannot resolve (REPORT-141 stage 7). The document's field names are the contract RD-3's app and RD-4's runner read, and REPORT-143's rule checks `platform_id`.
 
-**`index.ts` ends in `module.exports = { ... }`.** An `export const` elsewhere in the file is dropped from the compiled module. A throwaway `tsc` build of that shape exported only the `module.exports` keys. So `deriveProfileWorker` is added as a key there, beside whatever REPORT-141 adds for `researcherDashboard`, which the same rule applies to.
+**`index.ts` ends in `module.exports = { ... }`.** An `export const` elsewhere in the file is dropped from the compiled module. A throwaway `tsc` build of that shape exported only the `module.exports` keys. So `deriveProfileWorker` is added as a key there, beside `researcherDashboard`, which REPORT-141 added there.
 
 **Tests** (fakes for `enqueue`, `db` and the deriver):
 - The route:
@@ -523,6 +533,7 @@ export async function writeProfile(db, task: DeriveTask, derived: Derived) {
   - Each malformed field is 400 with nothing enqueued, and so is a body over 256 KiB.
   - A `report-service-functions` bearer for another audience is 401, via REPORT-141's middleware.
   - An enqueue failure is 502.
+  - An empty `RD_AUTHORING_HOSTS` is 503 naming it, with nothing enqueued.
 - The write:
   - It sets exactly the R24 fields with no merge.
   - A task older than the stored `requested_at` writes nothing.
