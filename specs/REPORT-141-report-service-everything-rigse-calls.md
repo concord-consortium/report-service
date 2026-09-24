@@ -1,50 +1,16 @@
 # report-service: everything rigse calls
 
 **Jira**: https://concord-consortium.atlassian.net/browse/REPORT-141
-**Repo**: https://github.com/concord-consortium/report-service
-**Status**: **In Development**
+
+**Status**: **Closed**
 
 ## Overview
 
 report-server and the report-service function learn to verify rigse's RS256 portal tokens, report-server gains the endpoint that exchanges rigse's signed assertion for a researcher's own short-lived API token, and the function gains `POST /run-package`, which queues a researcher's packages and launches or wakes their MicroVM without waiting for it. Together they are the whole surface rigse calls for the Researcher Dashboard, authenticated by short-lived signed assertions instead of the function app's shared bearer.
 
-## Project Owner Overview
-
 When a researcher asks the Researcher Dashboard to run analyses, the portal hands the work to report-service, which records the request, starts or wakes that researcher's private analysis machine, and answers straight away rather than making the researcher wait for the machine. The machine pulls data as the researcher themselves, using a credential report-server issues for that one machine and that expires on its own.
 
 This story replaces a single all-powerful shared password between the portal and report-service with short-lived, single-purpose signed credentials that only the portal can create, and it makes sure a credential from the staging portal can never be used against production. It is the second step of the dashboard's first release, directly after the portal's signing key (RIGSE-367), and the catalog (REPORT-142) and the dashboard API (RIGSE-368) are built on it.
-
-## Background
-
-REPORT-141 is derived from `final-design.md` sections 6.1, 10, 11.1 and 11.2; the Jira description is the authoritative scope and is not restated in full here. This spec records how it lands on master and the contract it takes from RIGSE-367, whose spec (`rigse/specs/RIGSE-367-the-portal-signing-key-and-the-scoped-launch-token/`) fixes the token shapes.
-
-**What rigse sends (RIGSE-367).** rigse signs RS256 tokens with a per-environment key, `kid` in the header, `iss` equal to the portal's site URL, exactly one string `aud`, and verifiers configured with the public key PEM under its `kid` (RIGSE-367 R5). Three audiences:
-
-| `aud` | Claims | Life | Verified here by |
-|---|---|---|---|
-| `researcher-dashboard` | `iss`, `uid`, `user_type: "researcher"`, `scope_kind`, `scope_id`, `iat`, `exp` | 2 hours | report-server (used by REPORT-142's catalog read) |
-| `report-server` | the above plus `jti`, `portal_user_id`, `portal_server`, `login`, `first_name`, `last_name`, `email`, `is_admin`, `is_project_admin`, `is_project_researcher` | 2 minutes | report-server's mint endpoint |
-| `report-service-functions` | `iss`, `uid`, `iat`, `exp` | 2 minutes | the function's `/run-package` |
-
-The `jwt` gem rigse uses was found to accept an HS256 token signed with an RS256 public key's PEM when handed the PEM string and a list containing HS256, and to accept an `aud` array containing the expected value (RIGSE-367 Verification); the same classes of mistake are possible in any JWT library and are the reason for R3 and R4 below.
-
-**What master has today.** Nothing of the dashboard. On report-service master:
-
-- **The function app** (`functions/src/index.ts`) is one express app behind `api.use(bearerTokenAuth)` (`index.ts:85`), which requires the shared `AUTH_BEARER_TOKEN` secret on every route but `/`; `requireHeaderBearer` additionally refuses a bearer in the query or body on `bulk_read` and `fetch_attachment_meta`. There is no JWT library in `functions/package.json`, no MicroVM SDK, and no `researcher_dashboard/` code.
-- **report-server** (`server/`) has `api_tokens` (`accounts/api_token.ex`: `token_hash`, `label`, `last_used_at`, `revoked_at`, `revoked_by_user_id`), `create_api_token/2` and `verify_api_token/1`, which filters on `is_nil(t.revoked_at)` only (`accounts.ex:94-104`). `ReportServerWeb.Api.AuthPlug` authenticates `/api/v1` by API token. `DELETE /api/v1/tokens/current` already lets a token holder revoke its own token (`router.ex:79-86`), which is what the runner's `/terminate` uses (RD-4), so this story adds no revoke endpoint. There is no JWT library in `mix.exs` and no mint endpoint.
-- **Users** are found or created from `PortalUserInfo` (`accounts.ex:16`, `find_or_create_user/1`) keyed by `portal_server` (the portal host) and `portal_user_id`; the `User` changeset requires every portal field. `PortalDbs.get_server_for_portal_url/1` maps a portal URL to that host, and `has_db_connection?/1` says whether report-server knows the portal.
-
-**One report-server serves several portals, staging and production together.** `cloud-formation/fargate/report-server.yml:215-219` gives the task `LEARN_PORTAL_STAGING_CONCORD_ORG_DB`, `LEARN_CONCORD_ORG_DB` and `NGSS_ASSESSMENT_PORTAL_CONCORD_ORG_DB`. So one report-server holds more than one portal's public key, and a verifier that picks a key by `kid` alone would accept a token signed with the staging key that claims `iss: https://learn.concord.org/`: the story's own Done-when, "a staging-signed token is refused in production", fails. Each configured key must be bound to the issuer it may sign for (R2). The function is configured per project with one portal (`TRUSTED_PORTAL_HOSTS` in `functions/.env.report-service-{dev,pro}`), but takes a list, so the same binding applies there.
-
-**report-server runs as one task and does not cluster.** `DesiredCount` defaults to 1 (`report-server.yml:51`) and `DNS_CLUSTER_QUERY` is not set, so there is no shared memory between tasks if the count is ever raised, and a node restart empties an in-memory cache. That shapes where the `jti` nonce lives (see Open Questions).
-
-**Clauses of the Jira story set aside, and why.** Per the sprint's branching rule, a clause that deletes or renames something existing only on a spike branch is ignored. Each was checked against master:
-
-| Jira clause | On master? | Treatment |
-|---|---|---|
-| `secret_name` deleted along with the Secrets Manager secret behind it | No: absent from report-service on master and on the spike branch (whose test asserts it is absent); it survives only in the runner's `Makefile` sample payload and a runner test, which are RD-4's | Set aside; `runHookPayload` is built without it from the start. |
-| The spike's `PORTAL_SERVICE_SECRET` and its HS256 `PortalAssertion` | No (spike only) | Set aside; the mint endpoint verifies RS256 from the start. |
-| "rigse holds no bearer for the function app" (Done-when) | rigse holds `REPORT_SERVICE_BEARER_TOKEN` on master for student feedback metadata | Restated as RIGSE-367 decided (its R23, option A): no dashboard path uses the shared bearer. `/run-package` accepts only the assertion. |
 
 ## Requirements
 
@@ -79,7 +45,7 @@ The `jwt` gem rigse uses was found to accept an HS256 token signed with an RS256
 
 ### Configuration
 
-- R21. Every new setting is documented and configured for both environments before the code that reads it deploys: the portal key entries for report-server (`config/runtime.exs`) and for the function; the function's launcher credentials as function secrets; and the runner image, execution role, bucket, report-server URL, the function's own URL (`function_url`) and the queue cap as function params in `functions/.env.report-service-{dev,pro}`. A Firebase deploy of a function that declares a secret not yet set in the project fails, so the secrets are set first.
+- R21. Every new setting is documented and configured for both environments before the code that reads it deploys: the portal key entries for report-server (`config/runtime.exs`) and for the function; the function's launcher credentials as function secrets; and the runner image, execution role, bucket, report-server URL, the function's own URL (`function_url`) and the queue cap as function params in `functions/.env.report-service-{dev,pro}`. A Firebase deploy of a function that declares a secret not yet set in the project fails, so the secrets are set first. *(partial: the settings, their defaults, the README deploy order and the staging runner values are in place; no portal signing key exists yet, so `PORTAL_PUBLIC_KEYS` is empty in both projects, production has no runner stack, and report-server's variable belongs in cloud-formation. See Not Yet Implemented)*
 
 ## Technical Notes
 
@@ -93,7 +59,7 @@ The `jwt` gem rigse uses was found to accept an HS256 token signed with an RS256
 
 - **What `RUNNING does nothing` relies on.** A running VM that has drained its queue calls `/idle` after its idle period, and `/idle` checks for queued work before suspending (REPORT-143, `final-design.md` 7.2(b)); a VM mid-queue calls `/work` again as it drains (RD-4). So work appended to a running VM's queue is taken without the function calling into the VM.
 
-## Verification
+### Verification
 
 Stage 4 ran throwaway probes, never committed, against both runtimes with two freshly generated keypairs standing in for a staging and a production portal. The verifier under test chose the key by `kid`, required the key's configured issuer, pinned RS256, and checked `aud` and `exp` itself.
 
@@ -114,6 +80,30 @@ Stage 4 ran throwaway probes, never committed, against both runtimes with two fr
 
 The first row pair is the one R2 exists for: with the key chosen by `kid` alone, a token signed by the staging key and claiming production's `iss` verifies, and only the issuer binding refuses it.
 
+### As built (2026-09-24)
+
+The seven planned steps landed one commit each (`50c303a` to `ee6a7a4`), each reviewed until a pass found nothing to act on, followed by an as-built docs commit (`2383050`) and a fix to the shared Firestore fake so it passes `Timestamp`s through (`e5fa456`). Every requirement has code and tests behind it. The departures from the implementation plan's text:
+
+**report-server**
+- The test keys are installed from `test/test_helper.exs` (`PortalTokenFixture.install!/0`), not `config/test.exs`: `runtime.exs` runs after `test.exs` and would overwrite it, and `test/support` is not compiled when `test.exs` is evaluated.
+- `PortalKeys` logs and ignores an entry it cannot trust: a missing field, an unreadable PEM, or a `kid` listed twice, where it trusts neither entry because which issuer the `kid` is bound to would be a guess. Unset or malformed, it trusts no key and every assertion is refused.
+- The live-token predicate is `live_api_tokens/0`, a base query, rather than `live/1`. `revoke_dashboard_tokens/1` uses it too, so an already-expired dashboard token is left unrevoked, which is harmless.
+- The mint endpoint stores a role flag as true only when its claim is literally `true` (not `!!`). It requires `login`, `first_name`, `last_name` and `email` as non-empty strings and `portal_user_id` as a positive integer, answering 400 naming the claim, because `create_user` would store a missing field as NULL and `update_user`'s changeset would fail on it. A `jti` over 255 characters is refused as not authenticated, and `used_portal_assertions` also has an index on `expires_at` for the prune.
+
+**The function**
+- `parsePortalKeys` throws on a malformed `PORTAL_PUBLIC_KEYS` (including an empty field or a repeated `kid`), which the auth middleware answers as 500 naming the setting. It is the only configuration of a function whose every route needs it, so failing loudly is right there, where report-server has other routes that must keep working. `verifyPortalToken` re-checks `iss` itself, since jsonwebtoken skips its issuer check for a falsy issuer.
+- `/run-package` validates more than the plan listed: `scope.collection` must be `"classes"`, `scope.id` must be the class's `class_hash`, `class_hash` must be 48 lowercase hex (rigse's `SecureRandom.hex(24)`, and what REPORT-142's `/derive-profile` validates), every class token must be a non-empty string, and a package named twice in one batch is a 400.
+- The work document is written with `mergeFields` rather than `{merge: true}`, so a later request for a class replaces that class's `scopes.{class_hash}` whole and a stale class token cannot survive, while other classes' entries are kept.
+- The 202 body is `{success: true, queue, appended, vm}`, with `queue` as the `{class_hash, package_key}` pairs R15 puts on the runner document, and `vm` one of `launched`, `launching` (another request holds the launch claim, where the plan said `running`), `resumed`, `running` or `suspending`.
+- `launching_until` is epoch milliseconds, cleared with `null`, and the launch records are written in a transaction rather than a batch, since the `Db` slice the module uses has no batch. The claim is cleared only when no VM can exist: a failure before `RunMicrovm`, a definite 4xx from it, or the oversized payload. A timeout or 5xx from `RunMicrovm`, or a failure to record a launched VM, leaves it to lapse.
+- Each upstream call is made once with a 10-second timeout (the mint including its body, and the SDK client with `maxAttempts: 1` and `throwOnRequestTimeout`), so the four calls a launch makes fit inside the function's 60 seconds. A throttled call is answered 502 with the work kept rather than retried. The mint's timeout stops waiting but does not abort the socket: `ensure-vm.test.ts` runs in Jest 24's jsdom environment, whose `AbortSignal` has no `timeout()`, and the node environment has no `AbortSignal` at all.
+- The payload-size check runs after the mint, since the minted token is part of the payload. On the launch branch no live VM holds the revoked token, and rigse signs a fresh assertion per call.
+- A Firestore failure inside the VM step (reading `vms/` or the claim) is a generic 500. Two concurrent requests against a `SUSPENDED` VM both call `ResumeMicrovm`, and the loser's error is answered 502 with its work already queued.
+- Every dashboard string param defaults to `""` (`RD_QUEUE_CAP` defaults to 20), and `/run-package` answers 503 naming the unset launch settings (image, role, bucket, report-server URL) before writing anything. Both `.env` files list every param, empty where it has no value yet, because firebase-tools prompts for (or, non-interactively, fails on) a declared param a file leaves out, whatever its default.
+- `microvm.test.ts` replaces the SDK module with `jest.mock`, because Jest 24 cannot resolve the SDK's `node:` builtins. The Firestore fake is shared at `functions/src/test/researcher-dashboard-fake-db.ts`. It runs transactions one at a time, models `merge` and `mergeFields`, and copies only maps and arrays, so a `Timestamp` written through it reads back as a `Timestamp`. `package-lock.json` was regenerated with Node 22's npm 10, the package's engine.
+
+Checks on the head commit: report-server 1062 tests pass (7 skipped) and compiles with `--warnings-as-errors`; the functions' 609 tests pass (31 suites, 8 emulator tests skipped), with `tsc` and `tslint` clean.
+
 ## Out of Scope
 
 - `/derive-profile` and the catalog: REPORT-142. The `researcher-dashboard` token verification is built here (R5) and first used there.
@@ -123,9 +113,15 @@ The first row pair is the one R2 exists for: with the key chosen by `kid` alone,
 - Moving student feedback metadata off the shared bearer (RIGSE-367 R23).
 - IAM changes on the launcher user: RD-1.
 
-## Open Questions
+## Not Yet Implemented
 
-### RESOLVED: Judgment call: bind each configured key to an issuer
+- No rigse signing key exists for either portal, so `PORTAL_PUBLIC_KEYS` is `'[]'` in both functions `.env` files and every assertion is refused until entries from `rake portal_signing_key:public` are added.
+- report-server reads `PORTAL_PUBLIC_KEYS` from its task environment, which comes from cloud-formation's `fargate/report-server.yml` in another repository. The variable has to be added to that stack.
+- There is no production runner stack yet, so production's image, role and bucket are empty and `/run-package` answers 503 there. `RD_AWS_KEY` and `RD_AWS_SECRET_KEY` must still be set in both projects before the first deploy, as the functions README says.
+
+## Decisions
+
+### Bind each configured key to an issuer
 **Context**: The story says keys are "keyed by `kid`". One report-server serves the staging portal and both production portals (`report-server.yml:215-219`).
 **Options considered**:
 - A) Configure `{kid, pem, issuer}` and require the token's `iss` to be its key's issuer.
@@ -133,7 +129,9 @@ The first row pair is the one R2 exists for: with the key chosen by `kid` alone,
 
 **Decision**: A. Under B, a report-server holding the staging key accepts a staging-signed token that claims a production `iss`, and the minted token reads production data for whichever production user the claims name. Binding costs one field per key and one comparison. Recorded as R1 and R2.
 
-### RESOLVED: Judgment call: the researcher comes from the assertion, not the body
+---
+
+### The researcher comes from the assertion, not the body
 **Context**: The spike's `run_package` took `platform_user_id`, `platform_id` and `portal` from the body under the shared bearer.
 **Options considered**:
 - A) Take them from the verified `report-service-functions` assertion (`uid`, `iss`).
@@ -141,7 +139,9 @@ The first row pair is the one R2 exists for: with the key chosen by `kid` alone,
 
 **Decision**: A. The assertion names the researcher already, and a body field is what a caller holding any valid assertion could change to queue work into, and launch a VM for, someone else. Recorded as R12.
 
-### RESOLVED: Judgment call: reuse a live VM whatever its image version
+---
+
+### Reuse a live VM whatever its image version
 **Context**: The spike relaunched when a remembered VM ran an older image version than the current one, leaving the old VM running.
 **Options considered**:
 - A) Reuse a `RUNNING` or `SUSPENDED` VM whatever its version; a new version is picked up at the next launch.
@@ -149,7 +149,9 @@ The first row pair is the one R2 exists for: with the key chosen by `kid` alone,
 
 **Decision**: A. Under the queue model, relaunching leaves the old VM holding the researcher's queue claim and token until its eight-hour cap, and two VMs for one researcher is what R16 forbids. The maximum VM life bounds how long an old image can serve. Recorded as R16.
 
-### RESOLVED: Low confidence: where does the `jti` nonce live?
+---
+
+### Where does the `jti` nonce live?
 **Context**: The story says "a short-lived nonce cache". report-server runs one task today and does not cluster, and a restart empties memory.
 **Options considered**:
 - A) A database table with a unique `jti` and its expiry, pruned of expired rows.
@@ -157,7 +159,9 @@ The first row pair is the one R2 exists for: with the key chosen by `kid` alone,
 
 **Decision**: A. Checked: report-server runs `DesiredCount: 1` with no `DNS_CLUSTER_QUERY` (`report-server.yml:51`), so an ETS cache is per node and emptied by every deploy or restart, and a restart inside an assertion's two-minute window would reopen exactly the replay the story closes. A table with a unique index on `jti` makes the insert itself the check, holds across restarts and any future task count, and needs no process to own it; rows are pruned by expiry on each insert. Recorded as R8.
 
-### RESOLVED: Low confidence: what is the queue's cap?
+---
+
+### What is the queue's cap?
 **Context**: `final-design.md` 6.1 names "a queue at its cap" as a 409 without a number.
 **Options considered**:
 - A) A configured cap, defaulting to 20 packages outstanding per researcher.
@@ -165,7 +169,9 @@ The first row pair is the one R2 exists for: with the key chosen by `kid` alone,
 
 **Decision**: A, as a configured value defaulting to 20. The design names the 409 but no number, and RIGSE-368's contract depends only on the 409 and its reason, not the value, so a configured default lets operations tune it without a release. Twenty is several full batches of the packages a class is offered and far below anything that strains one VM's eight-hour window, which the runner enforces separately (RD-4). Recorded in R14.
 
-### RESOLVED: Low confidence: is `/run-package` a route on the existing `api` function or a function of its own?
+---
+
+### Is `/run-package` a route on the existing `api` function or a function of its own?
 **Context**: The existing app applies the shared bearer to every route and every route receives every declared secret, including the launcher's AWS keys once they are declared.
 **Options considered**:
 - A) A separate HTTPS function for the dashboard's function surface, holding the launcher secrets alone and no shared-bearer middleware; REPORT-142 and REPORT-143 add their routes to it.
@@ -173,32 +179,99 @@ The first row pair is the one R2 exists for: with the key chosen by `kid` alone,
 
 **Decision**: A. Checked: the repo already scopes secrets per function (`auto-importer.ts:461` holds its AWS keys, `chat-tutor.ts:39` its OpenAI key, `submitTask` is its own function), and `api` declares its secrets for every route (`index.ts:71`), so putting the launcher's AWS keys on `api` would put them in the environment of `import_run`, `move_student_work` and every other shared-bearer route. A separate function also has no global `bearerTokenAuth` to exempt a route from, which removes the one place a mistake would let the shared bearer reach `/run-package`. `function_url` in `runHookPayload` points at it, and REPORT-142 and REPORT-143 add their routes there. Recorded as R11.
 
-## Self-Review
+---
 
-Roles: Security Engineer, Senior Engineer (Elixir and Firebase functions), QA Engineer, DevOps Engineer, Product Manager. Each finding was checked against the code before being recorded. Dropped after checking: a replayed `report-service-functions` assertion, which inside its two minutes can only re-append packages already queued (skipped) and ensure a VM that already exists, so it needs no nonce; the mint response carrying a raw token, which is the endpoint's purpose and is returned once over TLS as the CLI token flow already does; and the Product Manager's review, which found nothing to change.
+### R16 used a state the API does not have and missed `SUSPENDING`
+**Context**: The SDK's `MicrovmState` is `PENDING`, `RUNNING`, `SUSPENDING`, `SUSPENDED`, `TERMINATING`, `TERMINATED` (`@aws-sdk/client-lambda-microvms` 3.1138.0, `models/enums.d.ts:103`). "Starting" is not one, and `SUSPENDING` is exactly the race between `/idle` (queue empty, suspend requested) and a `/run-package` that appends work a moment later: doing nothing leaves the new work stranded on a VM that finishes suspending, and `ResumeMicrovm` cannot be issued until it has.
 
-### Senior Engineer
+**Decision**: Fixed: R16 maps every state, and `SUSPENDING` schedules a follow-up resume.
 
-#### RESOLVED: R16 used a state the API does not have and missed `SUSPENDING`
-The SDK's `MicrovmState` is `PENDING`, `RUNNING`, `SUSPENDING`, `SUSPENDED`, `TERMINATING`, `TERMINATED` (`@aws-sdk/client-lambda-microvms` 3.1138.0, `models/enums.d.ts:103`). "Starting" is not one, and `SUSPENDING` is exactly the race between `/idle` (queue empty, suspend requested) and a `/run-package` that appends work a moment later: doing nothing leaves the new work stranded on a VM that finishes suspending, and `ResumeMicrovm` cannot be issued until it has. Fixed: R16 maps every state, and `SUSPENDING` schedules a follow-up resume.
 
-### Security Engineer
+*Superseded*: the follow-up resume became REPORT-143's watchdog, as the decision on work queued against a `SUSPENDING` VM records, and R16 says so.
+---
 
-#### RESOLVED: Nothing tied the relayed `report_server_assertion` to the researcher the request is for
-R12 took the researcher from the request's own assertion but R13 relayed a second assertion from the body unchecked. A request carrying researcher A's functions assertion and researcher B's report-server assertion would launch A's VM holding B's report-server token, so A's packages would pull B's data into A's S3 prefix. rigse signs both and would have to be wrong for this to happen, but the function can refuse it for one verification, since verifying is not minting. Fixed: R13 verifies it and requires the same `uid` and `iss`.
+### Nothing tied the relayed `report_server_assertion` to the researcher the request is for
+**Context**: R12 took the researcher from the request's own assertion but R13 relayed a second assertion from the body unchecked. A request carrying researcher A's functions assertion and researcher B's report-server assertion would launch A's VM holding B's report-server token, so A's packages would pull B's data into A's S3 prefix. rigse signs both and would have to be wrong for this to happen, but the function can refuse it for one verification, since verifying is not minting.
 
-### QA Engineer
+**Decision**: Fixed: R13 verifies it and requires the same `uid` and `iss`.
 
-#### RESOLVED: Expired dashboard tokens would still be listed and managed as active
-`list_active_api_tokens`, `list_all_active_api_tokens`, `get_user_api_token` and `get_active_api_token` (`accounts.ex:120-146`) all filter on `is_nil(t.revoked_at)` alone, and the first two drive the CLI token page (`report_live/cli_token.ex`) and the admin all-tokens page (`all_tokens_live/index.ex`). With R10's expiry only in `verify_api_token`, a nine-hour-old dashboard token would verify as dead and display as live. Fixed: R10 applies the expiry to the listings and lookups too.
+---
 
-### DevOps Engineer
+### Expired dashboard tokens would still be listed and managed as active
+**Context**: `list_active_api_tokens`, `list_all_active_api_tokens`, `get_user_api_token` and `get_active_api_token` (`accounts.ex:120-146`) all filter on `is_nil(t.revoked_at)` alone, and the first two drive the CLI token page (`report_live/cli_token.ex`) and the admin all-tokens page (`all_tokens_live/index.ex`). With R10's expiry only in `verify_api_token`, a nine-hour-old dashboard token would verify as dead and display as live.
 
-#### RESOLVED: Nothing required the new secrets and params to exist before deploy
-The spike's function declared `RD_AWS_KEY` and `RD_AWS_SECRET_KEY` as secrets and four `RD_*` params in `.env.report-service-dev` only (spike `functions/.env.report-service-dev`); nothing equivalent exists for `-pro`, and a Firebase deploy fails for a function whose declared secret is unset. report-server likewise needs the portal keys in `runtime.exs`. Fixed: R21.
+**Decision**: Fixed: R10 applies the expiry to the listings and lookups too.
 
-### Integrator of RIGSE-368 (found while speccing RIGSE-368)
+---
 
-#### RESOLVED: The `/run-package` validation would refuse every body rigse sends
-The queueing step validated `checksum` as "a hex string", but REPORT-142's catalog stores and resolves `sha256:<lowercase hex>` (its R9), the runner computes and compares that form (`researcher-dashboard/runner/server/package-fetch.js:20`), and rigse forwards the catalog's value unchanged (RIGSE-368 R17). The validation also left the assignment fields untyped, while rigse sends the portal's stored URL, which master's `valid_url` lets be `""`, and a name that can be null. Fixed: R13 names the checksum format and the two nullable assignment fields, and the queueing step validates `checksum` against `^sha256:[0-9a-f]{64}$` and accepts them (Doug, 2026-09-24).
+### Nothing required the new secrets and params to exist before deploy
+**Context**: The spike's function declared `RD_AWS_KEY` and `RD_AWS_SECRET_KEY` as secrets and four `RD_*` params in `.env.report-service-dev` only (spike `functions/.env.report-service-dev`); nothing equivalent exists for `-pro`, and a Firebase deploy fails for a function whose declared secret is unset. report-server likewise needs the portal keys in `runtime.exs`.
 
+**Decision**: Fixed: R21.
+
+---
+
+### The `/run-package` validation would refuse every body rigse sends
+**Context**: The queueing step validated `checksum` as "a hex string", but REPORT-142's catalog stores and resolves `sha256:<lowercase hex>` (its R9), the runner computes and compares that form (`researcher-dashboard/runner/server/package-fetch.js:20`), and rigse forwards the catalog's value unchanged (RIGSE-368 R17). The validation also left the assignment fields untyped, while rigse sends the portal's stored URL, which master's `valid_url` lets be `""`, and a name that can be null.
+
+**Decision**: Fixed: R13 names the checksum format and the two nullable assignment fields, and the queueing step validates `checksum` against `^sha256:[0-9a-f]{64}$` and accepts them (Doug, 2026-09-24).
+
+---
+
+### How does work queued against a `SUSPENDING` VM get the VM resumed?
+**Context**: R16 requires that it does, and `ResumeMicrovm` cannot be issued until the VM reaches `SUSPENDED`, which can take up to the `/suspend` hook's 60-second flush. The function must not wait (R20).
+**Options considered**:
+- A) The function enqueues a Cloud Task, delayed ~30 seconds, to a follow-up route on `researcherDashboard` that re-runs the ensure step; the repo already uses `@google-cloud/tasks` (`tasks/submit-task.ts`). Needs an authenticated route for Cloud Tasks (an OIDC token from the function's service account) and the queue created per project.
+- B) REPORT-143's per-minute watchdog, which already reads sessions and holds the MicroVM API, resumes any `SUSPENDED` VM whose `work/` document has packages outstanding. No new route or queue; up to a minute of latency in a rare race; moves the guarantee into REPORT-143.
+- C) Do nothing here; the researcher's next request resumes it.
+
+**Decision**: B (Doug, 2026-09-23). The function does nothing more on `SUSPENDING` than on `RUNNING`; REPORT-143's watchdog gains a clause resuming any `SUSPENDED` VM whose `work/` document has packages outstanding. Recorded in R16.
+
+---
+
+### `jsonwebtoken` rather than hand-rolled `crypto.verify`
+**Options considered**:
+- A) `jsonwebtoken` 9, which loads under the repo's Jest 24 and whose refusals are in the Verification table.
+- B) Verify RS256 directly with Node's `crypto.verify`, no dependency.
+
+**Decision**: A. The library's alg handling was checked (it refuses the confusion token even with HS256 allowed), and the two gaps it has, `exp` and `aud` arrays, are covered by explicit checks. Hand-rolling base64url parsing and signature checks is where a verifier's subtle bugs live.
+
+---
+
+### A launch claim on `vms/{uid}`, not a lock on `work/`
+**Options considered**:
+- A) The ensure step's own transaction on `vms/{uid}`, setting a short `launching_until` before calling `RunMicrovm`.
+- B) Hold the queue transaction open across the launch.
+
+**Decision**: A. A Firestore transaction must not span a network call as slow as `RunMicrovm` and the mint round trip (transactions retry and hold contention), and the queue write is already committed before the VM step, which is what lets a failed launch keep the work for next time.
+
+---
+
+### The dashboard-function step referenced secrets declared only in the last step
+**Context**: `researcherDashboard` is declared with `runWith({ secrets: [rdAwsKey, rdAwsSecretKey] })` in the queueing step, but `config.ts`, which defines them, was in the configuration step at the end, so that commit would not compile.
+
+**Decision**: Fixed: `config.ts` moves into the queueing step, and the last step only fills values and documentation.
+
+---
+
+### `firebase-admin/firestore` cannot be imported under the repo's Jest
+**Decision**: Checked with a scratch test: `import { FieldValue, Timestamp } from "firebase-admin/firestore"` fails with `Cannot find module` under Jest 24, which predates package subpath exports; `import * as admin from "firebase-admin"` with `admin.firestore.FieldValue` and `admin.firestore.Timestamp` passes, and is what `src/chat/drain.test.ts` already does. Fixed throughout the plan.
+
+---
+
+### `function_url` could not be known before the first deploy
+**Decision**: The plan had the operator deploy, read the function's URL, set `RD_FUNCTION_URL` and redeploy. A first-generation HTTPS function's URL is fixed by region, project and name, and `GCLOUD_PROJECT` is set at runtime, so it defaults to the derived URL, with the param kept as an override. Fixed in the queueing and configuration steps.
+
+---
+
+### One scope per researcher's queue runs a second class's packages against the first class's scope
+`final-design.md` gives `work/{platform_user_id}` one scope block ("also holds the scope block rigse sent"), de-duplicates appended packages by package key, and mirrors a flat list of package keys onto `runners/{platform_user_id}`'s `queue`; this plan followed it. A researcher who runs packages from two class dashboards before their VM takes the work overwrites the first class's scope and class tokens with the second's, so the first class's queued packages run over the second class's data. A package already queued for class A and then requested for class B is skipped as a duplicate, and `queue` cannot say which class an entry is for. Checked against the design's text and the plan's transaction. The fix is to key queue entries by class and package (for example `scopes: {class_hash: {scope, class_tokens}}` beside `packages: [{class_hash, identity, ...}]`, and `queue` entries naming the class), which changes the `/work` response REPORT-143 returns, what RD-4's runner reads, and the `queue` field RD-3's page renders. Left open because it changes a contract three other stories consume.
+
+**Decision**: key by class (Doug, 2026-09-23). Applied to R15 and the queueing step: entries carry `class_hash`, scope and class tokens live under `scopes.{class_hash}`, de-duplication is by class and package, and `queue` holds `{class_hash, package_key}` pairs. REPORT-143, RD-4 and RD-3 read these shapes.
+
+---
+
+### `export const researcherDashboard` would never be deployed
+**Context**: `functions/src/index.ts` ends by assigning `module.exports = { api: wrappedApi, ... }`, which replaces the whole exports object, so an `export const` anywhere in the file is dropped from the compiled module. A throwaway `tsc` build of that shape (`export const researcherDashboard = 1` followed by `module.exports = { api }`) exported only `api`, so Firebase would never have seen the function.
+
+**Decision**: Fixed: `researcherDashboard` is added as a key of that object (Doug, 2026-09-24).
