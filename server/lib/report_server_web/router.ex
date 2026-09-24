@@ -35,6 +35,12 @@ defmodule ReportServerWeb.Router do
     plug ReportServerWeb.Api.PortalTokenPlug, audience: "report-server"
   end
 
+  pipeline :api_catalog do
+    plug :force_json
+    plug ReportServerWeb.Api.CatalogCors
+    plug ReportServerWeb.Api.PortalTokenPlug, audience: "researcher-dashboard", optional: true
+  end
+
   pipeline :api_token_only do
     plug :force_json
     plug ReportServerWeb.Api.AuthPlug, token_only: true
@@ -62,6 +68,16 @@ defmodule ReportServerWeb.Router do
     end
   end
 
+  # the catalog's reads, anonymous or with a launch token, and the only routes with CORS
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api_catalog
+
+    get "/packages", PackageController, :index
+    get "/packages/resolve", PackageController, :resolve
+    options "/packages", PackageController, :preflight
+    options "/packages/resolve", PackageController, :preflight
+  end
+
   scope "/api/v1", ReportServerWeb.Api.V1 do
     pipe_through :api_authenticated
 
@@ -76,6 +92,8 @@ defmodule ReportServerWeb.Router do
     post "/reports/:id/attachments", AttachmentController, :create
     get "/reports/:id/jobs", ReportJobController, :index
     get "/reports/:id/jobs/:job_id/download", ReportJobController, :download
+    post "/packages", PackageController, :create
+    post "/packages/:kind/:owner_id/:name/:state", PackageController, :update_state
   end
 
   # token self-management: authenticated by token validity alone (no role gate, no

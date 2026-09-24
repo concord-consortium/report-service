@@ -29,11 +29,14 @@ import { taskWorker } from "./tasks/task-worker";
 import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigger
 
 import { researcherDashboardApp } from "./researcher-dashboard/app"
+import { DeriveProfileRouteDeps, parseAllowedHosts } from "./researcher-dashboard/derive-profile-route"
+import { defaultDerivationDeps, enqueueDerivation } from "./researcher-dashboard/derive-profile-worker"
+import { deriveProfileWorker } from "./researcher-dashboard/derive-profile-task"
 import { RunPackageDeps, Db } from "./researcher-dashboard/run-package"
 import { parsePortalKeys, PortalKeys } from "./researcher-dashboard/portal-token"
 import {
   functionUrl, portalPublicKeys, rdAwsKey, rdAwsSecretKey, rdDataBucket, rdExecutionRoleArn, rdMicrovmImageArn,
-  rdQueueCap, rdReportServerUrl, unsetLaunchSettings
+  rdAuthoringHosts, rdQueueCap, rdReportServerUrl, unsetLaunchSettings
 } from "./researcher-dashboard/config"
 import { ensureVm, EnsureVmDeps } from "./researcher-dashboard/ensure-vm"
 import { makeMicrovmApi, MicrovmApi } from "./researcher-dashboard/microvm"
@@ -129,11 +132,20 @@ function researcherDashboardDeps(): RunPackageDeps {
   }
 }
 
+function deriveProfileDeps(): DeriveProfileRouteDeps {
+  const allowedHosts = () => parseAllowedHosts(rdAuthoringHosts.value())
+  return {
+    enqueue: task => enqueueDerivation(task, () => defaultDerivationDeps(allowedHosts()), functions.logger),
+    allowedHosts,
+    now: Date.now
+  }
+}
+
 // The Researcher Dashboard's function surface, authenticated by rigse's signed assertions
 // rather than the shared bearer, and the only function holding the MicroVM launcher's keys.
 const researcherDashboard = functions
   .runWith({ secrets: [rdAwsKey, rdAwsSecretKey], timeoutSeconds: 60 })
-  .https.onRequest(researcherDashboardApp(researcherDashboardDeps))
+  .https.onRequest(researcherDashboardApp(researcherDashboardDeps, deriveProfileDeps))
 
 module.exports = {
   api: wrappedApi,
@@ -144,4 +156,5 @@ module.exports = {
   taskWorker,
   chatTutorOnWrite, // per-page AI chat tutor trigger
   researcherDashboard,
+  deriveProfileWorker,
 }

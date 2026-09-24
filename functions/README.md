@@ -186,6 +186,8 @@ The bearer token value is managed as a secret in Google Cloud Secret Manager:
 
 - `researcherDashboard/run-package` queues a researcher's packages under `researcher_dashboard/{portal}/work/{platform_user_id}`, then launches, resumes or leaves that researcher's MicroVM, and answers 202 without waiting for it. Only on a launch does it relay rigse's `aud: report-server` assertion to report-server's `POST /api/v1/dashboard-tokens` for the VM's token.
 
+- `researcherDashboard/derive-profile` takes a class's assignment URLs from rigse, answers 202, and queues the derivation as a Cloud Task for `deriveProfileWorker`. The worker follows each Activity Player URL's `activity=` or `sequence=` to its public JSON, on an allowlisted authoring host only, and writes the class's authored URL profile to `researcher_dashboard/{portal}/classes/{class_hash}` with the Admin SDK. A write never replaces the profile of a later request.
+
 Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`, is also the `function_url` the runner calls back, derived at runtime from the project. `RD_FUNCTION_URL` overrides it only if the function moves region or behind a custom domain.
 
 | Parameter | Type | Env Var Name | Purpose |
@@ -197,6 +199,7 @@ Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`,
 | report-server URL | `defineString` | `RD_REPORT_SERVER_URL` | Where the launch mints the VM's report-server token |
 | Function URL | `defineString` | `RD_FUNCTION_URL` | Optional override of `function_url` |
 | Queue cap | `defineInt` | `RD_QUEUE_CAP` | Packages outstanding per researcher before a 409 (default 20) |
+| Authoring hosts | `defineString` | `RD_AUTHORING_HOSTS` | Comma-separated hostnames `derive-profile` may fetch activity JSON from; empty makes it answer 503 |
 | Launcher access key | `defineSecret` | `RD_AWS_KEY` | The runner stack's launcher user |
 | Launcher secret key | `defineSecret` | `RD_AWS_SECRET_KEY` | The runner stack's launcher user |
 
@@ -211,6 +214,8 @@ firebase functions:secrets:set RD_AWS_SECRET_KEY
 ```
 
 Repeat for `report-service-pro`. Deploy report-server before the function, since a launch calls report-server's mint endpoint.
+
+`deriveProfileWorker` deploys with `researcherDashboard` and must stay beside it: `derive-profile` queues its tasks on the `deriveProfileWorker` queue, which Firebase creates on the worker's first deploy, as it did for `taskWorker`. Under the emulator the derivation runs in the request's process instead, since Cloud Tasks cannot reach it.
 
 ## Rules
 
