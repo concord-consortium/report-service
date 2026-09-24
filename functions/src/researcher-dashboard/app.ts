@@ -4,6 +4,7 @@ import requireHeaderBearer from "../middleware/require-header-bearer"
 import { PortalKeys, verifyPortalToken } from "./portal-token"
 import { portalSegment } from "./firestore-paths"
 import { makeRunPackage, Researcher, RunPackageDeps } from "./run-package"
+import { DeriveProfileRouteDeps, makeDeriveProfile } from "./derive-profile-route"
 
 const FUNCTIONS_AUDIENCE = "report-service-functions"
 
@@ -41,11 +42,12 @@ export function portalAssertionAuth(keys: () => PortalKeys) {
 }
 
 /** The researcherDashboard function's app. It has no shared-bearer middleware. */
-export function researcherDashboardApp(deps: () => RunPackageDeps) {
+export function researcherDashboardApp(deps: () => RunPackageDeps, deriveDeps: () => DeriveProfileRouteDeps) {
   const app = express()
   app.use(responseMethods)
   app.use(requireHeaderBearer)
   app.use(portalAssertionAuth(() => deps().keys()))
   app.post("/run-package", (req, res) => makeRunPackage(deps())(req, res))
+  app.post("/derive-profile", (req, res) => makeDeriveProfile(deriveDeps())(req, res))
   return app
 }

@@ -9,5 +9,6 @@ export const root = (portal: string) => `researcher_dashboard/${portal}`
 export const workPath = (portal: string, platformUserId: string) => `${root(portal)}/work/${platformUserId}`
 export const runnerPath = (portal: string, platformUserId: string) => `${root(portal)}/runners/${platformUserId}`
 export const vmPath = (portal: string, platformUserId: string) => `${root(portal)}/vms/${platformUserId}`
+export const classPath = (portal: string, classHash: string) => `${root(portal)}/classes/${classHash}`
 export const resultPath = (portal: string, classHash: string, platformUserId: string, key: string) =>
-  `${root(portal)}/classes/${classHash}/researchers/${platformUserId}/results/${key}`
+  `${classPath(portal, classHash)}/researchers/${platformUserId}/results/${key}`

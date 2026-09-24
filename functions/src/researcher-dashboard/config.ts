@@ -18,6 +18,9 @@ export const rdReportServerUrl = defineString("RD_REPORT_SERVER_URL", { default:
 // Empty means the function's own first-generation URL, derived from the project at runtime.
 export const rdFunctionUrl = defineString("RD_FUNCTION_URL", { default: "" })
 export const rdQueueCap = defineInt("RD_QUEUE_CAP", { default: 20 })
+// Comma-separated hostnames the profile deriver may fetch activity JSON from; empty makes
+// derive-profile answer 503.
+export const rdAuthoringHosts = defineString("RD_AUTHORING_HOSTS", { default: "" })
 
 export const functionUrl = () =>
   rdFunctionUrl.value() || `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/researcherDashboard`
