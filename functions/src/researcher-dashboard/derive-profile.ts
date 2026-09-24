@@ -6,6 +6,9 @@ export const MAX_INTERACTIVE_URLS = 500
 const MAX_BODY_BYTES = 5 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_IN_FLIGHT = 5
+// under deriveProfileWorker's 300-second timeout, leaving time for the write
+const DERIVATION_BUDGET_MS = 240_000
+export const BUDGET_EXHAUSTED = "not fetched: the derivation's time budget ran out"
 
 export interface FetchInit { redirect: "manual"; signal: AbortSignal }
 export interface FetchResponse {
@@ -17,6 +20,8 @@ export interface ProfileDeps {
   fetchImpl: (url: string, init: FetchInit) => Promise<FetchResponse>
   allowedHosts: Set<string>
   fetchTimeoutMs?: number
+  budgetMs?: number
+  now?: () => number
 }
 
 export interface Unread { url: string; reason: string }
@@ -115,9 +120,11 @@ async function readBounded(response: FetchResponse): Promise<string> {
   return Buffer.concat(chunks).toString("utf8")
 }
 
-async function fetchOnce(deps: ProfileDeps, url: string): Promise<unknown> {
+async function fetchOnce(deps: ProfileDeps, url: string, deadline: number): Promise<unknown> {
+  const remaining = deadline - (deps.now ?? Date.now)()
+  if (remaining <= 0) throw new FetchFailure(BUDGET_EXHAUSTED, false)
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), deps.fetchTimeoutMs ?? FETCH_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), Math.min(deps.fetchTimeoutMs ?? FETCH_TIMEOUT_MS, remaining))
   try {
     let response: FetchResponse
     try {
@@ -150,11 +157,12 @@ async function fetchOnce(deps: ProfileDeps, url: string): Promise<unknown> {
   }
 }
 
-async function fetchJson(deps: ProfileDeps, url: string): Promise<unknown> {
+async function fetchJson(deps: ProfileDeps, url: string, deadline: number): Promise<unknown> {
   try {
-    return await fetchOnce(deps, url)
+    return await fetchOnce(deps, url, deadline)
   } catch (e) {
-    if (e instanceof FetchFailure && e.retryable) return fetchOnce(deps, url)
+    // past the deadline the original failure stands, since the URL was requested
+    if (e instanceof FetchFailure && e.retryable && deadline > (deps.now ?? Date.now)()) return fetchOnce(deps, url, deadline)
     throw e
   }
 }
@@ -169,13 +177,15 @@ async function eachLimited<T>(items: T[], limit: number, fn: (item: T) => Promis
 
 /**
  * Follows each assignment URL that names its content, within the allowed hosts, and collects the
- * interactive URLs. A URL that cannot be read is recorded in `unread` and the rest still derive.
+ * interactive URLs. A URL that cannot be read is recorded in `unread` and the rest still derive,
+ * including every URL not reached before the derivation's time budget runs out.
  */
 export async function deriveProfile(deps: ProfileDeps, assignmentUrls: string[]): Promise<Derived> {
   const contentUrls = Array.from(new Set(assignmentUrls.map(contentUrlOf).filter((u): u is string => !!u)))
   const read: string[] = []
   const unread: Unread[] = []
   const found = new Set<string>()
+  const deadline = (deps.now ?? Date.now)() + (deps.budgetMs ?? DERIVATION_BUDGET_MS)
 
   await eachLimited(contentUrls, MAX_IN_FLIGHT, async contentUrl => {
     const target = allowedContentUrl(contentUrl, deps.allowedHosts)
@@ -184,7 +194,7 @@ export async function deriveProfile(deps: ProfileDeps, assignmentUrls: string[])
       return
     }
     try {
-      contentInteractiveUrls(await fetchJson(deps, target)).forEach(u => found.add(u))
+      contentInteractiveUrls(await fetchJson(deps, target, deadline)).forEach(u => found.add(u))
       read.push(contentUrl)
     } catch (e) {
       unread.push({ url: contentUrl, reason: e instanceof FetchFailure ? e.message : "failed" })

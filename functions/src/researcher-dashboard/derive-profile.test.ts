@@ -1,7 +1,8 @@
 import * as fs from "fs"
 import * as path from "path"
 import {
-  allowedContentUrl, contentUrlOf, deriveProfile, FetchResponse, interactiveUrls, MAX_INTERACTIVE_URLS, ProfileDeps
+  allowedContentUrl, BUDGET_EXHAUSTED, contentUrlOf, deriveProfile, FetchResponse, interactiveUrls, MAX_INTERACTIVE_URLS,
+  ProfileDeps
 } from "./derive-profile"
 
 const fixture = (name: string) => JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", `${name}.json`), "utf8"))
@@ -230,6 +231,38 @@ describe("deriveProfile", () => {
     })
     const derived = await deriveProfile(deps(stall, { fetchTimeoutMs: 20 }), [ap(activity(1))])
     expect(derived.unread).toEqual([{ url: activity(1), reason: "timed out" }])
+  })
+
+  it("stops starting fetches once the time budget runs out, and still derives what it read", async () => {
+    let clock = 0
+    const body = JSON.stringify(fixture("activity-100"))
+    const fetchImpl: ProfileDeps["fetchImpl"] = async () => { clock += 50; return response(200, body) }
+    const urls = Array.from({ length: 10 }, (_, i) => ap(activity(i + 1)))
+    const derived = await deriveProfile(deps(fetchImpl, { budgetMs: 120, now: () => clock }), urls)
+
+    expect(derived.content_urls.length).toBeGreaterThan(0)
+    expect(derived.content_urls.length).toBeLessThan(10)
+    expect(derived.unread.every(u => u.reason === BUDGET_EXHAUSTED)).toBe(true)
+    expect(derived.content_urls.length + derived.unread.length).toBe(10)
+    expect(derived.interactive_urls).toEqual(expected["activity-100"])
+  })
+
+  it("cuts a fetch in flight short when the budget runs out", async () => {
+    const hang: ProfileDeps["fetchImpl"] = (_url, init) =>
+      new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))))
+    const started = Date.now()
+    const derived = await deriveProfile(deps(hang, { budgetMs: 30, fetchTimeoutMs: 60_000 }), [ap(activity(1))])
+    expect(derived.unread).toEqual([{ url: activity(1), reason: "timed out" }])
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  it("does not retry past the deadline, and keeps the real failure", async () => {
+    let clock = 0
+    let calls = 0
+    const failing: ProfileDeps["fetchImpl"] = async () => { calls++; clock += 200; return response(503) }
+    const derived = await deriveProfile(deps(failing, { budgetMs: 100, now: () => clock }), [ap(activity(1))])
+    expect(calls).toBe(1)
+    expect(derived.unread).toEqual([{ url: activity(1), reason: "HTTP 503" }])
   })
 
   it("fetches 35 activities with at most five in flight", async () => {

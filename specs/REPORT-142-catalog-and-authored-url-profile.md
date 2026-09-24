@@ -102,6 +102,7 @@ When a researcher opens a class, the dashboard lists only the packages that make
   - A content URL is fetched only if its parsed hostname exactly equals an entry in a configured allowlist of authoring hosts (no suffix match, no userinfo, default port), and only over HTTPS. An `http:` URL on an allowlisted host is fetched as `https:`.
   - A redirect is not followed.
   - A response over 5 MiB, or one not answered within 15 seconds, is a failure for that URL.
+  - The whole derivation has a 240-second budget, under the worker's 300-second timeout. No fetch or retry starts after it, and a fetch in flight is aborted when it runs out (added after the Copilot review of #430).
   - A content URL outside the allowlist is recorded as refused and never requested.
 - R23. From each activity, directly or inside a sequence's `activities`, the deriver emits one interactive URL per interactive embeddable found in `pages[].sections[].embeddables[]` (or `pages[].embeddables[]` if present):
   - For a `ManagedInteractive`: `library_interactive.data.base_url`, followed by `url_fragment` when that is non-empty, which is the URL the Activity Player loads.
@@ -116,7 +117,7 @@ When a researcher opens a class, the dashboard lists only the packages that make
   - `assignment_fingerprint`.
   - `derived_at` and `requested_at`, both Firestore timestamps.
   - `truncated`, which is true when more than 500 distinct interactive URLs were found and only the first 500 in sorted order were kept.
-  A partial fetch still writes, with what was read and the failures in `unread`, so a deleted activity cannot keep a class from ever getting a profile.
+  A partial fetch still writes, with what was read and the failures in `unread`, so a deleted activity cannot keep a class from ever getting a profile. A content URL not reached within the derivation's budget (R22) is recorded with the reason "not fetched: the derivation's time budget ran out".
 - R25. The write is idempotent and ordered by request. The same inputs produce the same document apart from its timestamps. A derivation writes only if the stored document's `requested_at` is not later than its own, checked in a transaction. So two researchers refreshing one class at the same moment converge on the later request, and a slow, older derivation never overwrites a newer one.
 - R26. No client can write the profile document: `firestore.rules`' default denial covers the path, and this story adds no rule for it. The deriver never takes a URL from a browser, since only rigse can call it (R19). The rules test asserting that no client can write `classes/{class_hash}` belongs to REPORT-143, which owns the dashboard's rules (Doug, 2026-09-24).
 
