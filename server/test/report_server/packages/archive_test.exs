@@ -58,7 +58,9 @@ defmodule ReportServer.Packages.ArchiveTest do
     assert {:error, message} = Archive.read_manifest(zip([{"manifest.json", manifest_json()}, {"../x", "x"}]))
     assert message =~ "climbs out"
     assert {:error, _} = Archive.read_manifest(zip([{"manifest.json", manifest_json()}, {"a/../../x", "x"}]))
-    assert {:error, message} = Archive.read_manifest(zip([{"manifest.json", manifest_json()}, {"/abs", "x"}]))
+    # :zip.create rewrites an absolute name on some OTP releases, so the name is patched in
+    absolute = zip([{"manifest.json", manifest_json()}, {"xabs", "x"}]) |> :binary.replace("xabs", "/abs", [:global])
+    assert {:error, message} = Archive.read_manifest(absolute)
     assert message =~ "absolute"
   end
 
