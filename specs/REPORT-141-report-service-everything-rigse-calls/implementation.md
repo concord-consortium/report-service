@@ -558,3 +558,32 @@ The plan had the operator deploy, read the function's URL, set `RD_FUNCTION_URL`
 
 #### RESOLVED: `export const researcherDashboard` would never be deployed
 `functions/src/index.ts` ends by assigning `module.exports = { api: wrappedApi, ... }`, which replaces the whole exports object, so an `export const` anywhere in the file is dropped from the compiled module. A throwaway `tsc` build of that shape (`export const researcherDashboard = 1` followed by `module.exports = { api }`) exported only `api`, so Firebase would never have seen the function. Fixed: `researcherDashboard` is added as a key of that object (Doug, 2026-09-24).
+
+## As built (2026-09-24)
+
+The seven steps landed as planned, one commit each (`50c303a` to `ee6a7a4`), each reviewed until a pass found nothing to act on. Every requirement R1 to R21 has code and tests behind it. These are the departures from the text above, most from the per-step review:
+
+**report-server**
+- The test keys are installed from `test/test_helper.exs` (`PortalTokenFixture.install!/0`), not `config/test.exs`: `runtime.exs` runs after `test.exs` and would overwrite it, and `test/support` is not compiled when `test.exs` is evaluated.
+- `PortalKeys` logs and ignores an entry it cannot trust: a missing field, an unreadable PEM, or a `kid` listed twice, where it trusts neither entry because which issuer the `kid` is bound to would be a guess. Unset or malformed, it trusts no key and every assertion is refused.
+- The live-token predicate is `live_api_tokens/0`, a base query, rather than `live/1`. `revoke_dashboard_tokens/1` uses it too, so an already-expired dashboard token is left unrevoked, which is harmless.
+- The mint endpoint stores a role flag as true only when its claim is literally `true` (not `!!`). It requires `login`, `first_name`, `last_name` and `email` as non-empty strings and `portal_user_id` as a positive integer, answering 400 naming the claim, because `create_user` would store a missing field as NULL and `update_user`'s changeset would fail on it. A `jti` over 255 characters is refused as not authenticated, and `used_portal_assertions` also has an index on `expires_at` for the prune.
+
+**The function**
+- `parsePortalKeys` throws on a malformed `PORTAL_PUBLIC_KEYS` (including an empty field or a repeated `kid`), which the auth middleware answers as 500 naming the setting. It is the only configuration of a function whose every route needs it, so failing loudly is right there, where report-server has other routes that must keep working. `verifyPortalToken` re-checks `iss` itself, since jsonwebtoken skips its issuer check for a falsy issuer.
+- `/run-package` validates more than the plan listed: `scope.collection` must be `"classes"`, `scope.id` must be the class's `class_hash`, `class_hash` must be 48 lowercase hex (rigse's `SecureRandom.hex(24)`, and what REPORT-142's `/derive-profile` validates), every class token must be a non-empty string, and a package named twice in one batch is a 400.
+- The work document is written with `mergeFields` rather than `{merge: true}`, so a later request for a class replaces that class's `scopes.{class_hash}` whole and a stale class token cannot survive, while other classes' entries are kept.
+- The 202 body is `{success: true, queue, appended, vm}`, with `queue` as the `{class_hash, package_key}` pairs R15 puts on the runner document, and `vm` one of `launched`, `launching` (another request holds the launch claim, where the plan said `running`), `resumed`, `running` or `suspending`.
+- `launching_until` is epoch milliseconds, cleared with `null`, and the launch records are written in a transaction rather than a batch, since the `Db` slice the module uses has no batch. The claim is cleared only when no VM can exist: a failure before `RunMicrovm`, a definite 4xx from it, or the oversized payload. A timeout or 5xx from `RunMicrovm`, or a failure to record a launched VM, leaves it to lapse.
+- Each upstream call is made once with a 10-second timeout (the mint including its body, and the SDK client with `maxAttempts: 1` and `throwOnRequestTimeout`), so the four calls a launch makes fit inside the function's 60 seconds. A throttled call is answered 502 with the work kept rather than retried. The mint's timeout stops waiting but does not abort the socket, because Jest 24 has no `AbortSignal`.
+- The payload-size check runs after the mint, since the minted token is part of the payload. On the launch branch no live VM holds the revoked token, and rigse signs a fresh assertion per call.
+- A Firestore failure inside the VM step (reading `vms/` or the claim) is a generic 500. Two concurrent requests against a `SUSPENDED` VM both call `ResumeMicrovm`, and the loser's error is answered 502 with its work already queued.
+- Every dashboard string param defaults to `""` (`RD_QUEUE_CAP` defaults to 20), and `/run-package` answers 503 naming the unset launch settings (image, role, bucket, report-server URL) before writing anything. Both `.env` files list every param, empty where it has no value yet, because firebase-tools prompts for (or, non-interactively, fails on) a declared param a file leaves out, whatever its default.
+- `microvm.test.ts` replaces the SDK module with `jest.mock`, because Jest 24 cannot resolve the SDK's `node:` builtins. The Firestore fake is shared at `functions/src/test/researcher-dashboard-fake-db.ts`, runs transactions one at a time and models `merge` and `mergeFields`. `package-lock.json` was regenerated with Node 22's npm 10, the package's engine.
+
+**Not configured yet, so not deployable end to end**
+- No rigse signing key exists for either portal, so `PORTAL_PUBLIC_KEYS` is `'[]'` in both functions `.env` files and every assertion is refused until entries from `rake portal_signing_key:public` are added.
+- report-server reads `PORTAL_PUBLIC_KEYS` from its task environment, which comes from cloud-formation's `fargate/report-server.yml` in another repository. The variable has to be added to that stack.
+- There is no production runner stack yet, so production's image, role and bucket are empty and `/run-package` answers 503 there. `RD_AWS_KEY` and `RD_AWS_SECRET_KEY` must still be set in both projects before the first deploy, as the functions README says.
+
+Checks on the head commit: report-server 1062 tests pass (7 skipped) and compiles with `--warnings-as-errors`; the functions' 609 tests pass (31 suites, 8 emulator tests skipped), with `tsc` and `tslint` clean.

@@ -262,8 +262,9 @@ describe("ensureVm", () => {
     await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: "ResumeMicrovm failed: ConflictException" })
   })
 
-  it("refuses a payload over the platform's cap before RunMicrovm", async () => {
+  it("refuses a payload over the platform's cap before RunMicrovm, and clears the claim", async () => {
     await expect(ensureVm(deps, who, body({ session_token: "x".repeat(17000) }))).rejects.toMatchObject({ status: 500 })
     expect(microvms.run).not.toHaveBeenCalled()
+    expect(db.docs.get(VM_PATH)).toEqual({ launching_until: null })
   })
 })
