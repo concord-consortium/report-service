@@ -75,14 +75,21 @@ defmodule ReportServer.Accounts do
 
   @doc """
   Mints an API token for a user. The raw token is returned exactly once — only its
-  SHA-256 hash is stored, so it cannot be recovered afterwards.
+  SHA-256 hash is stored, so it cannot be recovered afterwards. `expires_in:` (seconds) sets
+  an expiry; without it the token lives until revoked.
   """
-  def create_api_token(user = %User{}, label \\ nil) do
+  def create_api_token(user = %User{}, label \\ nil, opts \\ []) do
     raw_token = @api_token_prefix <> Base.url_encode64(:crypto.strong_rand_bytes(@api_token_bytes), padding: false)
+
+    expires_at =
+      case Keyword.get(opts, :expires_in) do
+        nil -> nil
+        seconds when is_integer(seconds) -> DateTime.utc_now(:second) |> DateTime.add(seconds)
+      end
 
     result =
       %ApiToken{}
-      |> ApiToken.changeset(%{user_id: user.id, token_hash: hash_secret(raw_token), label: label})
+      |> ApiToken.changeset(%{user_id: user.id, token_hash: hash_secret(raw_token), label: label, expires_at: expires_at})
       |> Repo.insert()
 
     case result do
@@ -92,9 +99,8 @@ defmodule ReportServer.Accounts do
   end
 
   def verify_api_token(raw_token) when is_binary(raw_token) do
-    query = from t in ApiToken,
+    query = from t in live_api_tokens(),
       where: t.token_hash == ^hash_secret(raw_token),
-      where: is_nil(t.revoked_at),
       preload: [:user]
 
     case Repo.one(query) do
@@ -119,30 +125,34 @@ defmodule ReportServer.Accounts do
 
   def list_active_api_tokens(user_id) do
     Repo.all(
-      from t in ApiToken,
-        where: t.user_id == ^user_id and is_nil(t.revoked_at),
+      from t in live_api_tokens(),
+        where: t.user_id == ^user_id,
         order_by: [desc: t.inserted_at, desc: t.id]
     )
   end
 
   def get_user_api_token(id, user_id) do
     Repo.one(
-      from t in ApiToken,
-        where: t.id == ^id and t.user_id == ^user_id and is_nil(t.revoked_at)
+      from t in live_api_tokens(),
+        where: t.id == ^id and t.user_id == ^user_id
     )
   end
 
   def get_active_api_token(id) do
-    Repo.one(from t in ApiToken, where: t.id == ^id and is_nil(t.revoked_at))
+    Repo.one(from t in live_api_tokens(), where: t.id == ^id)
   end
 
   def list_all_active_api_tokens(page) do
-    from(t in ApiToken,
-      where: is_nil(t.revoked_at),
+    from(t in live_api_tokens(),
       order_by: [desc: t.inserted_at, desc: t.id],
       preload: [:user]
     )
     |> Pagination.paginate(page)
+  end
+
+  defp live_api_tokens do
+    now = DateTime.utc_now(:second)
+    from t in ApiToken, where: is_nil(t.revoked_at) and (is_nil(t.expires_at) or t.expires_at > ^now)
   end
 
   @doc """
