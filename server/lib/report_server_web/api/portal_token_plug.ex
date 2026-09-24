@@ -1,6 +1,6 @@
 defmodule ReportServerWeb.Api.PortalTokenPlug do
   @moduledoc """
-  Authenticates a request by an rigse-signed token for one audience, given as
+  Authenticates a request by a rigse-signed token for one audience, given as
   `audience: "..."`, and assigns its verified claims as `:portal_claims`.
   """
   alias ReportServerWeb.Api.{ErrorHelpers, PortalToken}
