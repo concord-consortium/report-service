@@ -1,6 +1,14 @@
 import { Db, DocRef, Transaction } from "../researcher-dashboard/run-package"
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && Object.getPrototypeOf(v) === Object.prototype
+
+// Copies maps and arrays and passes anything else (a Timestamp, a FieldValue) through by reference.
+const clone = (v: unknown): any => {
+  if (Array.isArray(v)) return v.map(clone)
+  if (!isPlainObject(v)) return v
+  return Object.keys(v).reduce((out: Record<string, unknown>, k) => { out[k] = clone(v[k]); return out }, {})
+}
 // Firestore's set-with-merge: nested maps merge key by key, anything else is replaced.
 const deepMerge = (target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> => {
   const out = { ...target }
@@ -12,7 +20,7 @@ const deepMerge = (target: Record<string, unknown>, source: Record<string, unkno
 
 // Firestore's set with mergeFields: each named dotted path is replaced whole, nothing else changes.
 const setFields = (target: Record<string, unknown>, source: Record<string, unknown>, fields: string[]) => {
-  const out = JSON.parse(JSON.stringify(target))
+  const out = clone(target)
   for (const field of fields) {
     const parts = field.split(".")
     let from: any = source
@@ -37,7 +45,7 @@ export class FakeDb implements Db {
   }
 
   read(path: string) {
-    return this.docs.has(path) ? JSON.parse(JSON.stringify(this.docs.get(path))) : undefined
+    return this.docs.has(path) ? clone(this.docs.get(path)) : undefined
   }
 
   // Transactions run one at a time, which is what Firestore's retry on contention amounts to.
