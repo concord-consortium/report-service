@@ -8,7 +8,9 @@ import jwt from "jsonwebtoken"
 import { generateKeyPairSync } from "crypto"
 import { researcherDashboardApp } from "./app"
 import { parsePortalKeys } from "./portal-token"
-import { Db, DocRef, RunPackageDeps, Transaction } from "./run-package"
+import { RunPackageDeps } from "./run-package"
+import { FakeDb } from "../test/researcher-dashboard-fake-db"
+import { VmStepError } from "./ensure-vm"
 
 const STAGING_ISS = "https://learn.portal.staging.concord.org/"
 const PORTAL = "learn_portal_staging_concord_org"
@@ -28,56 +30,6 @@ const now = () => Math.floor(Date.now() / 1000)
 const assertion = (aud: string, overrides: Record<string, unknown> = {}, key = staging) =>
   jwt.sign({ iss: key.iss, aud, uid: 42, iat: now(), exp: now() + 120, ...overrides }, key.privateKey, { algorithm: "RS256", keyid: key.kid })
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
-// Firestore's set-with-merge: nested maps merge key by key, anything else is replaced.
-const deepMerge = (target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> => {
-  const out = { ...target }
-  for (const [k, v] of Object.entries(source)) {
-    out[k] = isPlainObject(v) && isPlainObject(out[k]) ? deepMerge(out[k] as Record<string, unknown>, v) : v
-  }
-  return out
-}
-
-// Firestore's set with mergeFields: each named dotted path is replaced whole, nothing else changes.
-const setFields = (target: Record<string, unknown>, source: Record<string, unknown>, fields: string[]) => {
-  const out = JSON.parse(JSON.stringify(target))
-  for (const field of fields) {
-    const parts = field.split(".")
-    let from: any = source
-    let to: any = out
-    parts.slice(0, -1).forEach(part => {
-      from = from[part]
-      to = to[part] = isPlainObject(to[part]) ? to[part] : {}
-    })
-    const last = parts[parts.length - 1]
-    to[last] = from[last]
-  }
-  return out
-}
-
-class FakeDb implements Db {
-  docs = new Map<string, Record<string, unknown>>()
-  commits = 0
-
-  doc(path: string): DocRef { return { path } }
-
-  async runTransaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
-    const writes: [string, Record<string, unknown>, { merge?: boolean; mergeFields?: string[] } | undefined][] = []
-    const tx: Transaction = {
-      get: async ref => ({ data: () => this.docs.has(ref.path) ? JSON.parse(JSON.stringify(this.docs.get(ref.path))) : undefined }),
-      set: (ref, data, options) => { writes.push([ref.path, data as Record<string, unknown>, options]) }
-    }
-    const result = await fn(tx)
-    for (const [path, data, options] of writes) {
-      const current = this.docs.get(path) ?? {}
-      if (options?.mergeFields) this.docs.set(path, setFields(current, data, options.mergeFields))
-      else this.docs.set(path, options?.merge ? deepMerge(current, data) : data)
-    }
-    this.commits++
-    return result
-  }
-}
-
 const TIMESTAMP = "<server timestamp>"
 
 let db: FakeDb
@@ -91,6 +43,7 @@ beforeEach(async () => {
     db,
     keys: () => parsePortalKeys(keysJson),
     timestamp: () => TIMESTAMP,
+    ensureVm: jest.fn().mockResolvedValue("running"),
     log: { error: jest.fn() },
     config: { queueCap: 20 }
   }
@@ -152,7 +105,7 @@ describe("POST /run-package queueing", () => {
         { class_hash: CLASS_A, package_key: "projects__20__answers-summary" }
       ],
       appended: ["projects__20__class-counts", "projects__20__answers-summary"],
-      vm: null
+      vm: "running"
     })
     expect(db.commits).toBe(1)
 
@@ -245,6 +198,17 @@ describe("POST /run-package queueing", () => {
       { uid: 42, platformUserId: "42", platformId: STAGING_ISS, portal: PORTAL },
       expect.objectContaining({ session_token: "session-token" })
     )
+  })
+
+  it("answers a VM step failure with its status and reason, keeping the queued work", async () => {
+    deps.ensureVm = jest.fn().mockRejectedValue(new VmStepError(502, "RunMicrovm failed: throttled"))
+
+    const res = await post(requestBody())
+
+    expect(res.status).toBe(502)
+    expect(res.body.error).toBe("RunMicrovm failed: throttled")
+    expect(workDoc().packages).toHaveLength(2)
+    expect(resultDoc(CLASS_A, "projects__20__class-counts").status).toBe("queued")
   })
 
   it("answers 500 without leaking the error when the write fails", async () => {

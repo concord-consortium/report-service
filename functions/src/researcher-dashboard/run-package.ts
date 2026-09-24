@@ -1,6 +1,7 @@
 import express from "express"
 import { PortalKeys, verifyPortalToken } from "./portal-token"
 import { packageKey, resultPath, runnerPath, workPath } from "./firestore-paths"
+import { VmOutcome, VmStepError } from "./ensure-vm"
 
 export interface Researcher {
   uid: number
@@ -35,8 +36,8 @@ export interface WorkDoc {
 export interface QueueEntry { class_hash: string; package_key: string }
 
 // The slice of the Admin SDK's Firestore this module uses, so tests can hand it a fake.
-export interface DocRef { path: string }
 export interface Snapshot { data(): unknown }
+export interface DocRef { path: string; get(): Promise<Snapshot> }
 export interface Transaction {
   get(ref: DocRef): Promise<Snapshot>
   set(ref: DocRef, data: object, options?: { merge?: boolean; mergeFields?: string[] }): unknown
@@ -46,14 +47,12 @@ export interface Db {
   runTransaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T>
 }
 
-export type VmOutcome = string
-
 export interface RunPackageDeps {
   db: Db
   keys(): PortalKeys
   // admin.firestore.FieldValue.serverTimestamp() in production, so the watchdog can range-query it
   timestamp(): unknown
-  ensureVm?(who: Researcher, body: RunPackageBody): Promise<VmOutcome>
+  ensureVm(who: Researcher, body: RunPackageBody): Promise<VmOutcome>
   log: { error(message: string, data: object): void }
   config: { queueCap: number }
 }
@@ -66,8 +65,8 @@ export class Refusal extends Error {
 
 const IDENTITY = /^(users|projects)\/[0-9]+\/[a-z0-9][a-z0-9-]{0,62}$/
 const CHECKSUM = /^sha256:[0-9a-f]{64}$/
-// class_hash becomes a Firestore path segment
-const CLASS_HASH = /^[0-9A-Za-z]{1,128}$/
+// rigse's SecureRandom.hex(24); it becomes a Firestore path segment
+const CLASS_HASH = /^[0-9a-f]{48}$/
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v !== ""
@@ -96,7 +95,7 @@ function scopeProblem(scope: unknown): string | null {
   if (!Array.isArray(classes) || classes.length !== 1) return "scope.classes must hold exactly one class"
   const [clazz] = classes
   if (!isObject(clazz) || typeof clazz.class_hash !== "string" || !CLASS_HASH.test(clazz.class_hash)) {
-    return "scope.classes[0].class_hash must be alphanumeric"
+    return "scope.classes[0].class_hash must be 48 lowercase hex characters"
   }
   if (!isPositiveInteger(clazz.class_id)) return "scope.classes[0].class_id must be a positive integer"
   if (scope.id !== clazz.class_hash) return "scope.id must be the class's class_hash"
@@ -199,10 +198,15 @@ export function makeRunPackage(deps: RunPackageDeps) {
 
     try {
       const queued = await queuePackages(deps, who, valid)
-      const vm = deps.ensureVm ? await deps.ensureVm(who, valid) : null
+      const vm = await deps.ensureVm(who, valid)
       return res.status(202).json({ success: true, ...queued, vm })
     } catch (e) {
       if (e instanceof Refusal) return res.error(e.status, e.message)
+      // the work is already queued, and the next request or the VM itself will take it
+      if (e instanceof VmStepError) {
+        deps.log.error("run-package VM step failed", { platformUserId: who.platformUserId, portal: who.portal, error: e.message })
+        return res.error(e.status, e.message)
+      }
       deps.log.error("run-package failed", { platformUserId: who.platformUserId, portal: who.portal, error: String(e) })
       return res.error(500, "run-package failed")
     }

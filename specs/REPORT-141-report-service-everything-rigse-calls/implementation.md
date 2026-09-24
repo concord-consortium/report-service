@@ -478,13 +478,13 @@ JSON.stringify({
 })
 ```
 
-then one batch: `vms/{uid}` `{microvm_id, image_version, launching_until: delete}`, and `runners/{uid}` merged with `{state: "starting", microvm_id, platform_id, started_at, updated_at}` (the queue is already there from the previous step). A failure after the claim clears `launching_until` so the next request can try again. The payload is checked against the platform's 16,384-byte cap before `RunMicrovm`, failing with a reason rather than a service error.
+then one batch: `vms/{uid}` `{microvm_id, image_version, launching_until: delete}`, and `runners/{uid}` merged with `{state: "starting", microvm_id, platform_id, started_at, updated_at}` (the queue is already there from the previous step). A failure before `RunMicrovm`, or a definite 4xx from it, clears `launching_until` so the next request can try again. A failure after a VM may have been created (`RunMicrovm` timing out or failing without a 4xx, or the launch not being recorded) leaves the claim to lapse after 60 seconds, so the next request cannot launch a second VM. The payload is checked against the platform's 16,384-byte cap before `RunMicrovm`, failing with a reason rather than a service error.
 
 `resume`: `ResumeMicrovm`, no mint (R17). `running`: nothing. `resume-pending`: nothing either, answered as `vm: "suspending"` so the 202 says what happened; REPORT-143's watchdog resumes the VM once it is `SUSPENDED` with work outstanding (R16).
 
 Any upstream failure (report-server's mint answering non-2xx, the MicroVM API throwing) becomes a 502 whose message carries the upstream status and reason, and is logged with the researcher and portal; the queue write has already happened, so the work is kept for the next request or the VM that takes it.
 
-**Tests** (fakes for `microvms`, `fetchImpl`, `db`): no VM recorded launches, mints once, and the payload has exactly the nine fields with the assertion's researcher and no `secret_name`, no `idlePolicy`, no auth token requested; `TERMINATED` and a not-found VM launch; `SUSPENDED` resumes and does not mint; `RUNNING` and `PENDING` do nothing and do not mint; two concurrent calls (the fake transaction serializes) launch once; a live `launching_until` claim does nothing; report-server's refusal is a 502 naming it and clears the claim; an oversized payload is refused before `RunMicrovm`; nothing in the module imports `CreateMicrovmAuthToken`.
+**Tests** (fakes for `microvms`, `fetchImpl`, `db`): no VM recorded launches, mints once, and the payload has exactly the nine fields with the assertion's researcher and no `secret_name`, no `idlePolicy`, no auth token requested; `TERMINATED` and a not-found VM launch; `SUSPENDED` resumes and does not mint; `RUNNING` and `PENDING` do nothing and do not mint; two concurrent calls (the fake transaction serializes) launch once; a live `launching_until` claim does nothing; report-server's refusal is a 502 naming it and clears the claim; an oversized payload is refused before `RunMicrovm`; `RunMicrovm` failing with a timeout or a 5xx, and a launch that cannot be recorded, keep the claim; nothing in the module imports `CreateMicrovmAuthToken`.
 
 ---
 

@@ -31,7 +31,12 @@ import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigg
 import { researcherDashboardApp } from "./researcher-dashboard/app"
 import { RunPackageDeps, Db } from "./researcher-dashboard/run-package"
 import { parsePortalKeys, PortalKeys } from "./researcher-dashboard/portal-token"
-import { portalPublicKeys, rdAwsKey, rdAwsSecretKey, rdQueueCap } from "./researcher-dashboard/config"
+import {
+  functionUrl, portalPublicKeys, rdAwsKey, rdAwsSecretKey, rdDataBucket, rdExecutionRoleArn, rdMicrovmImageArn,
+  rdQueueCap, rdReportServerUrl
+} from "./researcher-dashboard/config"
+import { ensureVm, EnsureVmDeps } from "./researcher-dashboard/ensure-vm"
+import { makeMicrovmApi, MicrovmApi } from "./researcher-dashboard/microvm"
 
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
@@ -89,11 +94,35 @@ function trustedPortalKeys(): PortalKeys {
   return parsedKeys.keys
 }
 
+// Built on first use, once the secrets are readable, and kept for the instance's life.
+let microvms: MicrovmApi | null = null
+function microvmApi(): MicrovmApi {
+  microvms ??= makeMicrovmApi({ accessKeyId: rdAwsKey.value(), secretAccessKey: rdAwsSecretKey.value() })
+  return microvms
+}
+
 function researcherDashboardDeps(): RunPackageDeps {
+  const db = admin.firestore() as unknown as Db
+  const timestamp = () => admin.firestore.FieldValue.serverTimestamp()
+  const vmDeps: EnsureVmDeps = {
+    db,
+    microvms: microvmApi(),
+    fetchImpl: fetch,
+    now: Date.now,
+    timestamp,
+    config: {
+      imageIdentifier: rdMicrovmImageArn.value(),
+      executionRoleArn: rdExecutionRoleArn.value(),
+      bucket: rdDataBucket.value(),
+      reportServerUrl: rdReportServerUrl.value(),
+      functionUrl: functionUrl()
+    }
+  }
   return {
-    db: admin.firestore() as unknown as Db,
+    db,
     keys: trustedPortalKeys,
-    timestamp: () => admin.firestore.FieldValue.serverTimestamp(),
+    timestamp,
+    ensureVm: (who, body) => ensureVm(vmDeps, who, body),
     log: functions.logger,
     config: { queueCap: rdQueueCap.value() }
   }
