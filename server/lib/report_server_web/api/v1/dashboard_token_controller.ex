@@ -23,7 +23,7 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenController do
       |> put_status(:created)
       |> json(%{token: raw_token, expires_at: api_token.expires_at, user_id: user.id})
     else
-      {:error, reason} when reason in [:unknown_portal, :no_jti, :invalid_jti, :replayed] ->
+      {:error, reason} when reason in [:unknown_portal, :no_jti, :invalid_jti, :invalid_expiry, :replayed] ->
         ErrorHelpers.not_authenticated(conn)
 
       {:error, message} when is_binary(message) ->
@@ -43,7 +43,8 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenController do
   defp known_portal(_, _), do: {:error, :unknown_portal}
 
   defp portal_user_info(claims, server) do
-    with {:ok, id} <- required(claims, "portal_user_id", &(is_integer(&1) and &1 > 0)),
+    # uid is who /run-package checked the assertion names, so the token must be minted for that user
+    with {:ok, id} <- required(claims, "portal_user_id", &(is_integer(&1) and &1 > 0 and &1 == claims["uid"])),
          {:ok, login} <- required_string(claims, "login"),
          {:ok, first_name} <- required_string(claims, "first_name"),
          {:ok, last_name} <- required_string(claims, "last_name"),

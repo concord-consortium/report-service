@@ -36,19 +36,23 @@ export interface EnsureVmDeps {
 }
 
 /**
- * A failure after the work was queued, answered with its status and reason. `vmMayExist` marks
- * a launch that may have created a VM, whose claim must lapse rather than be cleared.
+ * A failure after the work was queued, answered with its status and reason. `keepClaim` marks a
+ * launch whose claim must lapse rather than be cleared, because a VM may exist or a mint may still
+ * land and revoke the token a next launch hands its VM.
  */
 export class VmStepError extends Error {
-  constructor(public status: number, message: string, public vmMayExist = false) {
+  constructor(public status: number, message: string, public keepClaim = false) {
     super(message)
   }
 }
 
 const reason = (e: unknown) => e instanceof Error ? e.message : String(e)
 
-const within = <T>(promise: Promise<T>, ms: number): Promise<T> => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => reject(new Error(`no answer within ${ms / 1000} seconds`)), ms)
+const within = <T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => {
+    onTimeout?.()
+    reject(new Error(`no answer within ${ms / 1000} seconds`))
+  }, ms)
   promise.then(
     value => { clearTimeout(timer); resolve(value) },
     error => { clearTimeout(timer); reject(error) }
@@ -85,13 +89,13 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   })
   if (!claimed) return "launching"
 
-  // Once a VM may exist, a failure leaves the claim to lapse rather than clearing it: clearing
-  // would let the next request launch a second VM.
+  // Once a VM may exist, or a mint may still land, a failure leaves the claim to lapse rather than
+  // clearing it: clearing would let the next request launch a second VM or lose its token.
   let launched: Launched
   try {
     launched = await launch(deps, who, body)
   } catch (e) {
-    if (!(e instanceof VmStepError && e.vmMayExist)) {
+    if (!(e instanceof VmStepError && e.keepClaim)) {
       // if this fails too the claim lapses on its own, and the original reason is what to answer
       await deps.db.runTransaction(async tx => { tx.set(vmRef, { launching_until: null }, { merge: true }) }).catch(() => undefined)
     }
@@ -119,15 +123,20 @@ async function resume(deps: EnsureVmDeps, microvmId: string): Promise<VmOutcome>
 async function mintReportServerToken(deps: EnsureVmDeps, assertion: string): Promise<string> {
   let response: Response
   let answer: { token?: string; message?: string }
+  // Aborting on timeout also ends the body read. Where AbortController is missing the request
+  // is left to finish, which the kept claim covers.
+  const controller = typeof AbortController === "undefined" ? undefined : new AbortController()
   try {
     const request = deps.fetchImpl(`${deps.config.reportServerUrl.replace(/\/$/, "")}/api/v1/dashboard-tokens`, {
       method: "POST",
       headers: { Authorization: `Bearer ${assertion}`, "Content-Type": "application/json" },
-      body: "{}"
+      body: "{}",
+      signal: controller?.signal
     }).then(async r => ({ response: r, answer: await r.json().catch(() => ({})) }))
-    ;({ response, answer } = await within(request, UPSTREAM_TIMEOUT_MS))
+    ;({ response, answer } = await within(request, UPSTREAM_TIMEOUT_MS, () => controller?.abort()))
   } catch (e) {
-    throw new VmStepError(502, `report-server could not be reached for a dashboard token: ${reason(e)}`)
+    // report-server may have minted anyway, so the claim is kept for this one too
+    throw new VmStepError(502, `report-server could not be reached for a dashboard token: ${reason(e)}`, true)
   }
   if (!response.ok) {
     throw new VmStepError(502, `report-server refused the dashboard token (${response.status}): ${answer.message ?? "no reason given"}`)

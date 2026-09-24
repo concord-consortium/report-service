@@ -30,18 +30,11 @@ defmodule ReportServerWeb.Api.PortalKeys do
   defp parse(json) do
     case Jason.decode(json) do
       {:ok, entries} when is_list(entries) ->
-        entries
-        |> Enum.flat_map(&valid_entry/1)
-        |> Enum.group_by(fn {kid, _key} -> kid end, fn {_kid, key} -> key end)
-        |> Enum.flat_map(fn
-          {kid, [key]} ->
-            [{kid, key}]
+        repeated = repeated_kids(entries)
 
-          {kid, _keys} ->
-            # which issuer the kid is bound to would be a guess, so neither entry is trusted
-            Logger.error("PORTAL_PUBLIC_KEYS lists kid #{kid} more than once; ignoring it")
-            []
-        end)
+        entries
+        |> Enum.reject(&(kid_of(&1) in repeated))
+        |> Enum.flat_map(&valid_entry/1)
         |> Map.new()
 
       _ ->
@@ -49,6 +42,23 @@ defmodule ReportServerWeb.Api.PortalKeys do
         %{}
     end
   end
+
+  # Counted before any entry is validated, so a malformed repeat still makes its kid ambiguous.
+  defp repeated_kids(entries) do
+    entries
+    |> Enum.map(&kid_of/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.frequencies()
+    |> Enum.filter(fn {_kid, count} -> count > 1 end)
+    |> Enum.map(fn {kid, _count} ->
+      # which issuer the kid is bound to would be a guess, so no entry for it is trusted
+      Logger.error("PORTAL_PUBLIC_KEYS lists kid #{kid} more than once; ignoring it")
+      kid
+    end)
+  end
+
+  defp kid_of(%{"kid" => kid}) when is_binary(kid), do: kid
+  defp kid_of(_entry), do: nil
 
   defp valid_entry(%{"kid" => kid, "iss" => iss, "pem" => pem})
        when is_binary(kid) and is_binary(iss) and is_binary(pem) do

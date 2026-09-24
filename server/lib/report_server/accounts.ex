@@ -148,22 +148,32 @@ defmodule ReportServer.Accounts do
     now = DateTime.utc_now(:second)
     Repo.delete_all(from u in UsedPortalAssertion, where: u.expires_at < ^now)
 
-    %UsedPortalAssertion{}
-    |> UsedPortalAssertion.changeset(%{jti: jti, expires_at: DateTime.from_unix!(exp)})
-    |> Repo.insert()
-    |> case do
-      {:ok, _} ->
-        :ok
+    with {:ok, expires_at} <- expiry(exp) do
+      %UsedPortalAssertion{}
+      |> UsedPortalAssertion.changeset(%{jti: jti, expires_at: expires_at})
+      |> Repo.insert()
+      |> case do
+        {:ok, _} ->
+          :ok
 
-      {:error, changeset} ->
-        case changeset.errors[:jti] do
-          {_message, opts} -> if opts[:constraint] == :unique, do: {:error, :replayed}, else: {:error, :invalid_jti}
-          nil -> {:error, :invalid_jti}
-        end
+        {:error, changeset} ->
+          case changeset.errors[:jti] do
+            {_message, opts} -> if opts[:constraint] == :unique, do: {:error, :replayed}, else: {:error, :invalid_jti}
+            nil -> {:error, :invalid_jti}
+          end
+      end
     end
   end
 
   def claim_assertion_jti(_, _), do: {:error, :no_jti}
+
+  # A signed exp can lie outside what a DateTime (or the column) can hold.
+  defp expiry(exp) do
+    case DateTime.from_unix(exp) do
+      {:ok, expires_at} when expires_at.year <= 9999 -> {:ok, expires_at}
+      _ -> {:error, :invalid_expiry}
+    end
+  end
 
   def verify_api_token(raw_token) when is_binary(raw_token) do
     query = from t in live_api_tokens(),

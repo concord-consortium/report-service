@@ -113,6 +113,20 @@ defmodule ReportServerWeb.Api.PortalTokenTest do
       end)
     end
 
+    test "trusts neither entry when a kid is listed twice, even if the repeat is malformed" do
+      token = sign(:staging, claims(:staging, @audience))
+
+      keys =
+        Jason.encode!([
+          %{kid: kid(:staging), iss: iss(:staging), pem: public_pem(:staging)},
+          %{kid: kid(:staging), iss: iss(:production), pem: "not a pem"}
+        ])
+
+      with_portal_keys(keys, fn ->
+        assert PortalToken.verify(token, @audience) == {:error, :unknown_kid}
+      end)
+    end
+
     test "trusts neither entry when a kid is listed twice" do
       token = sign(:staging, claims(:staging, @audience))
       pem = public_pem(:staging)

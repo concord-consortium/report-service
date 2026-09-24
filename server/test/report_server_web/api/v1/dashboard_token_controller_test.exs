@@ -25,6 +25,7 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenControllerTest do
       "report-server",
       Map.merge(
         %{
+          "uid" => 1001,
           "jti" => Ecto.UUID.generate(),
           "user_type" => "researcher",
           "scope_kind" => "class",
@@ -92,6 +93,20 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenControllerTest do
 
   test "refuses an assertion without a jti", %{conn: conn} do
     assert conn |> mint(sign(:staging, assertion_claims(), without: ["jti"])) |> json_response(401)
+    assert Repo.aggregate(ApiToken, :count) == 0
+  end
+
+  test "refuses an assertion whose portal_user_id is not its uid, and mints nothing", %{conn: conn} do
+    body = conn |> mint(sign(:staging, assertion_claims(%{"uid" => 2002}))) |> json_response(400)
+
+    assert body["message"] =~ "portal_user_id"
+    assert Repo.aggregate(ApiToken, :count) == 0
+  end
+
+  test "refuses an assertion whose exp is beyond what can be recorded", %{conn: conn} do
+    token = sign(:staging, assertion_claims(%{"exp" => 300_000_000_000}))
+
+    assert conn |> mint(token) |> json_response(401)
     assert Repo.aggregate(ApiToken, :count) == 0
   end
 

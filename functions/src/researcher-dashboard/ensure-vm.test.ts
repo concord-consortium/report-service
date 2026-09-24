@@ -184,9 +184,17 @@ describe("ensureVm", () => {
 
       await expect(failure).rejects.toMatchObject({ status: 502, message: expect.stringMatching(/no answer within 10 seconds/) })
       expect(microvms.run).not.toHaveBeenCalled()
+      expect(db.docs.get(VM_PATH)).toEqual({ launching_until: NOW + 60 * 1000 })
     } finally {
       jest.useRealTimers()
     }
+  })
+
+  it("keeps the claim when report-server cannot be reached, since it may have minted", async () => {
+    fetchImpl.mockRejectedValue(new Error("socket hang up"))
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: expect.stringMatching(/could not be reached.*socket hang up/) })
+    expect(db.docs.get(VM_PATH)).toEqual({ launching_until: NOW + 60 * 1000 })
   })
 
   it("answers a RunMicrovm refusal with 502 naming it, and clears the claim", async () => {
@@ -231,7 +239,7 @@ describe("ensureVm", () => {
     expect(microvms.run).toHaveBeenCalledTimes(1)
   })
 
-  it("answers a report-server that does not answer in time with 502, and clears the claim", async () => {
+  it("aborts a report-server that does not answer in time, answers 502 and keeps the claim", async () => {
     jest.useFakeTimers()
     try {
       fetchImpl.mockReturnValue(new Promise(() => undefined))
@@ -241,7 +249,9 @@ describe("ensureVm", () => {
       jest.advanceTimersByTime(10 * 1000)
 
       await expect(failure).rejects.toMatchObject({ status: 502, message: expect.stringMatching(/could not be reached.*no answer within 10 seconds/) })
-      expect(db.docs.get(VM_PATH)).toEqual({ launching_until: null })
+      expect(fetchImpl.mock.calls[0][1].signal.aborted).toBe(true)
+      // the mint may still land, so the next request must not launch and mint again yet
+      expect(db.docs.get(VM_PATH)).toEqual({ launching_until: NOW + 60 * 1000 })
     } finally {
       jest.useRealTimers()
     }
