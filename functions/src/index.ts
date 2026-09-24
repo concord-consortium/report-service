@@ -28,6 +28,11 @@ import { taskWorker } from "./tasks/task-worker";
 
 import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigger
 
+import { researcherDashboardApp } from "./researcher-dashboard/app"
+import { RunPackageDeps, Db } from "./researcher-dashboard/run-package"
+import { parsePortalKeys, PortalKeys } from "./researcher-dashboard/portal-token"
+import { portalPublicKeys, rdAwsKey, rdAwsSecretKey, rdQueueCap } from "./researcher-dashboard/config"
+
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
 
@@ -76,6 +81,30 @@ const wrappedApi = functions
     api(req, res)
   })
 
+// Parsed once per configured value rather than per request.
+let parsedKeys: { json: string; keys: PortalKeys } | null = null
+function trustedPortalKeys(): PortalKeys {
+  const json = portalPublicKeys.value()
+  if (parsedKeys?.json !== json) parsedKeys = { json, keys: parsePortalKeys(json) }
+  return parsedKeys.keys
+}
+
+function researcherDashboardDeps(): RunPackageDeps {
+  return {
+    db: admin.firestore() as unknown as Db,
+    keys: trustedPortalKeys,
+    timestamp: () => admin.firestore.FieldValue.serverTimestamp(),
+    log: functions.logger,
+    config: { queueCap: rdQueueCap.value() }
+  }
+}
+
+// The Researcher Dashboard's function surface, authenticated by rigse's signed assertions
+// rather than the shared bearer, and the only function holding the MicroVM launcher's keys.
+const researcherDashboard = functions
+  .runWith({ secrets: [rdAwsKey, rdAwsSecretKey], timeoutSeconds: 60 })
+  .https.onRequest(researcherDashboardApp(researcherDashboardDeps))
+
 module.exports = {
   api: wrappedApi,
   createSyncDocAfterAnswerWritten,
@@ -84,4 +113,5 @@ module.exports = {
   submitTask,
   taskWorker,
   chatTutorOnWrite, // per-page AI chat tutor trigger
+  researcherDashboard,
 }
