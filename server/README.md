@@ -91,12 +91,35 @@ export REPORT_SERVICE_URL=           # URL of the report service
 export PORTAL_REPORT_URL=            # URL of the portal report endpoint
 export LEARN_PORTAL_STAGING_CONCORD_ORG_DB=mysql://<username>:<password>@<host>:<port>
 export PORTAL_PUBLIC_KEYS='[]'        # rigse's RS256 public keys (see below); optional for development
+export PACKAGE_BUCKETS='{}'          # the package catalog's runner bucket per portal (see below); optional for development
+export PACKAGES_AWS_ACCESS_KEY_ID=   # required whenever PACKAGE_BUCKETS names a portal
+export PACKAGES_AWS_SECRET_ACCESS_KEY=
+export PACKAGES_CORS_ORIGINS=        # comma-separated origins that may read the catalog with a launch token
+export PACKAGES_UNREVIEWED_RUNS=     # "true" lets a non-official package run; leave unset (see below)
 
 # Optional: disable the stats server for development
 export DISABLE_STATS_SERVER=true
 ```
 
-`PORTAL_PUBLIC_KEYS` is a JSON array of `{"kid", "iss", "pem"}`, one entry per rigse signing key, each what `rake portal_signing_key:public` prints on that portal, with the portal's site URL as `iss`. It authenticates rigse's signed assertions, today only on `POST /api/v1/dashboard-tokens`, which mints a Researcher Dashboard VM's token. One report-server serves several portals, so it lists one entry per portal, and a key is trusted only for its own `iss`: the staging key can never sign for production. An entry it cannot trust (a missing field, an unreadable PEM, a `kid` listed twice) is logged and ignored. Unset, every assertion is refused and nothing else is affected.
+`PORTAL_PUBLIC_KEYS` is a JSON array of `{"kid", "iss", "pem"}`, one entry per rigse signing key, each what `rake portal_signing_key:public` prints on that portal, with the portal's site URL as `iss`. It authenticates rigse's signed assertions on `POST /api/v1/dashboard-tokens`, which mints a Researcher Dashboard VM's token, and researchers' launch tokens on the package catalog's reads. One report-server serves several portals, so it lists one entry per portal, and a key is trusted only for its own `iss`: the staging key can never sign for production. An entry it cannot trust (a missing field, an unreadable PEM, a `kid` listed twice) is logged and ignored. Unset, every assertion is refused: no VM token can be minted, and the catalog answers only its anonymous list.
+
+### The package catalog
+
+The Researcher Dashboard's package catalog lives in report-server: `POST /api/v1/packages` publishes a package zip with the publisher's cc-data token, `POST /api/v1/packages/<origin>/<name>/<state>` changes its visibility, official flag, archived flag or current version with an audit row per change, and `GET /api/v1/packages` and `GET /api/v1/packages/resolve` are the dashboard app's list and rigse's run-path resolve. The list answers anonymously with a portal's official packages (named with `?portal=`), or with a researcher's launch token (`aud: researcher-dashboard`, verified with `PORTAL_PUBLIC_KEYS`) with every package that researcher may see; the resolve always needs the launch token. These two reads are the only routes with CORS.
+
+- `PACKAGE_BUCKETS` is a JSON object of portal server to that environment's runner bucket, for example `{"learn.portal.staging.concord.org": "researcher-dashboard-runner-staging"}`. Package identities are portal ids, which overlap between portals, so report-server refuses to boot if two portals share a bucket. A portal it does not name cannot publish.
+- `PACKAGES_AWS_ACCESS_KEY_ID` and `PACKAGES_AWS_SECRET_ACCESS_KEY` are the runner stack's dedicated IAM user, which may only `s3:PutObject` under `packages/`. They are required whenever `PACKAGE_BUCKETS` names a portal, and the server's own credentials are never used for it.
+- `PACKAGES_CORS_ORIGINS` lists the dashboard app's origins. A browser read with a launch token from any other origin is refused, while the anonymous read is answered to every origin.
+- `PACKAGES_UNREVIEWED_RUNS=true` lets the resolve answer a non-official, non-archived package as runnable. It stays unset until the per-researcher storage broker is live and S3 has been taken off the runner's shared execution role, since until then a stranger's package would run with every researcher's data in reach.
+
+The publisher role, which alone may set `official`, is held by every portal site admin and by any user an operator grants it, for example the cc-data-studies release pipeline's service user once it has logged in to report-server:
+
+```shell
+bin/report_server eval 'ReportServer.Release.grant_package_publisher("learn.concord.org", 123)'
+bin/report_server eval 'ReportServer.Release.revoke_package_publisher("learn.concord.org", 123)'
+```
+
+**Deploy order.** Run the catalog's migrations and set these variables before anyone publishes with `cc-data package publish`. Publishing in an environment also waits on its runner stack's `packages/*` user.
 
 Note that if you cannot directly connect to the database (eg, it is in an AWS cluster), you may need to
 establish an ssh port-forwarding tunnel to it, something like:

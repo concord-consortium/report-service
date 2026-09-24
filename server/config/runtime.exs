@@ -82,16 +82,19 @@ case package_buckets |> Map.values() |> Enum.frequencies() |> Enum.filter(fn {_,
 end
 
 if package_buckets != %{} do
+  required_package_credential = fn name ->
+    case System.get_env(name) do
+      blank when blank in [nil, ""] -> raise "PACKAGE_BUCKETS is set, so #{name} is required"
+      value -> value
+    end
+  end
+
   config :report_server, :packages,
     buckets: package_buckets,
     # the runner stack's dedicated user, which may only put objects under packages/
     aws_credentials: [
-      access_key_id:
-        System.get_env("PACKAGES_AWS_ACCESS_KEY_ID") ||
-          raise("PACKAGE_BUCKETS is set, so PACKAGES_AWS_ACCESS_KEY_ID is required"),
-      secret_access_key:
-        System.get_env("PACKAGES_AWS_SECRET_ACCESS_KEY") ||
-          raise("PACKAGE_BUCKETS is set, so PACKAGES_AWS_SECRET_ACCESS_KEY is required")
+      access_key_id: required_package_credential.("PACKAGES_AWS_ACCESS_KEY_ID"),
+      secret_access_key: required_package_credential.("PACKAGES_AWS_SECRET_ACCESS_KEY")
     ]
 end
 
