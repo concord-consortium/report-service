@@ -19,6 +19,8 @@ config :report_server, ReportServer.Repo,
 # you can enable the server option below.
 config :report_server, ReportServerWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
+  # a deployed server's URL, which is the audience rigse names in an access token
+  url: [host: "report-server.example", port: 443, scheme: "https"],
   secret_key_base: "dVgyX6OXy2LsFToLpy02eK9PKFcWe4MEGc8KHU1N+P9t9sr/fkV/hIQ3Owrrs44L",
   server: false
 

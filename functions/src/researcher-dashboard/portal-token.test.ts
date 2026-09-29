@@ -88,6 +88,12 @@ describe("verifyPortalToken", () => {
     expectRefused(sign(claims({ aud: [AUDIENCE] })), /aud must be a single string/)
   })
 
+  // rigse's scoped access token names every service it may be used at; only an assertion,
+  // which names one, authenticates here.
+  it("refuses an access token naming several services, this one among them", () => {
+    expectRefused(sign(claims({ aud: [staging.iss, AUDIENCE], scope: "packages:read" })), /aud must be a single string/)
+  })
+
   it("refuses an expired token", () => {
     expectRefused(sign(claims({ exp: now() - 1 })), /expired/)
   })

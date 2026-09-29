@@ -10,6 +10,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
   @server "learn.portal.staging.concord.org"
   @db_env "LEARN_PORTAL_STAGING_CONCORD_ORG_DB"
   @uid 42
+  @catalog "https://report-server.example"
 
   setup do
     previous = System.get_env(@db_env)
@@ -56,7 +57,9 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
     published
   end
 
-  defp launch_token(overrides \\ %{}), do: sign(:staging, claims(:staging, "researcher-dashboard", Map.merge(%{"uid" => @uid}, overrides)))
+  # rigse's scoped access token: its aud names rigse and this deployment, its scope packages:read.
+  defp access_token(overrides \\ %{}),
+    do: sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read", Map.merge(%{"uid" => @uid}, overrides)))
   defp with_bearer(conn, token), do: put_req_header(conn, "authorization", "Bearer #{token}")
   defp names(conn), do: conn |> json_response(200) |> Map.fetch!("packages") |> Enum.map(& &1["name"]) |> Enum.sort()
 
@@ -101,7 +104,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
       catalog(context)
       PackagesPortalStub.set(%{allowed_project_ids: [20], project_names: {:ok, %{20 => "Team Twenty"}}})
 
-      conn = conn |> with_bearer(launch_token()) |> get("/api/v1/packages")
+      conn = conn |> with_bearer(access_token()) |> get("/api/v1/packages")
       assert names(conn) == ["granted", "mine", "official", "public", "team"]
       assert get_resp_header(conn, "cache-control") == ["no-store"]
 
@@ -122,43 +125,43 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
         allowed_project_ids: fn user -> if user.portal_is_admin, do: :all, else: :none end
       })
 
-      assert names(conn |> with_bearer(launch_token()) |> get("/api/v1/packages")) ==
+      assert names(conn |> with_bearer(access_token()) |> get("/api/v1/packages")) ==
                ["granted", "mine", "official", "public", "team", "ungranted"]
     end
 
     test "a researcher with no grants sees official, public and their own", %{conn: conn} = context do
       catalog(context)
-      assert names(conn |> with_bearer(launch_token()) |> get("/api/v1/packages")) == ["mine", "official", "public"]
+      assert names(conn |> with_bearer(access_token()) |> get("/api/v1/packages")) == ["mine", "official", "public"]
     end
 
     test "needs no report-server user row", %{conn: conn} = context do
       catalog(context)
-      assert names(conn |> with_bearer(launch_token(%{"uid" => 9_999_999})) |> get("/api/v1/packages")) == ["official", "public"]
+      assert names(conn |> with_bearer(access_token(%{"uid" => 9_999_999})) |> get("/api/v1/packages")) == ["official", "public"]
     end
 
     test "a project-name lookup that fails leaves the name null", %{conn: conn} = context do
       catalog(context)
       PackagesPortalStub.set(%{allowed_project_ids: [20], project_names: {:error, "timeout"}})
-      packages = conn |> with_bearer(launch_token()) |> get("/api/v1/packages") |> json_response(200) |> Map.fetch!("packages")
+      packages = conn |> with_bearer(access_token()) |> get("/api/v1/packages") |> json_response(200) |> Map.fetch!("packages")
       assert %{"project" => %{"id" => 20, "name" => nil}} = Enum.find(packages, &(&1["name"] == "granted"))
     end
 
     test "a user the portal does not know is 401", %{conn: conn} do
       PackagesPortalStub.set(%{user_roles: {:error, :not_found}})
-      assert %{"error" => "NOT_AUTHENTICATED"} = json_response(conn |> with_bearer(launch_token()) |> get("/api/v1/packages"), 401)
+      assert %{"error" => "NOT_AUTHENTICATED"} = json_response(conn |> with_bearer(access_token()) |> get("/api/v1/packages"), 401)
 
-      resolve = build_conn() |> with_bearer(launch_token()) |> get("/api/v1/packages/resolve?identity=users/1/x&version=1.0.0")
+      resolve = build_conn() |> with_bearer(access_token()) |> get("/api/v1/packages/resolve?identity=users/1/x&version=1.0.0")
       assert %{"error" => "NOT_AUTHENTICATED"} = json_response(resolve, 401)
     end
 
     test "a portal that cannot answer is 503", %{conn: conn} do
       PackagesPortalStub.set(%{user_roles: {:error, "timeout"}})
-      assert %{"error" => "SERVICE_UNAVAILABLE"} = json_response(conn |> with_bearer(launch_token()) |> get("/api/v1/packages"), 503)
+      assert %{"error" => "SERVICE_UNAVAILABLE"} = json_response(conn |> with_bearer(access_token()) |> get("/api/v1/packages"), 503)
     end
 
     test "an expired, wrong-audience or unknown-portal bearer is 401, never the anonymous answer", %{conn: conn} do
       now = System.system_time(:second)
-      expired = sign(:staging, claims(:staging, "researcher-dashboard", %{"iat" => now - 7200, "exp" => now - 1}))
+      expired = sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read", %{"iat" => now - 7200, "exp" => now - 1}))
       wrong_audience = sign(:staging, claims(:staging, "report-server"))
 
       for token <- [expired, wrong_audience, "not-a-token"] do
@@ -166,12 +169,12 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
       end
 
       System.delete_env(@db_env)
-      assert %{"error" => "NOT_AUTHENTICATED"} = json_response(conn |> with_bearer(launch_token()) |> get("/api/v1/packages"), 401)
+      assert %{"error" => "NOT_AUTHENTICATED"} = json_response(conn |> with_bearer(access_token()) |> get("/api/v1/packages"), 401)
     end
   end
 
   describe "resolve" do
-    defp resolve(conn, identity, version, token \\ launch_token()) do
+    defp resolve(conn, identity, version, token \\ access_token()) do
       conn |> with_bearer(token) |> get("/api/v1/packages/resolve?identity=#{identity}&version=#{version}")
     end
 
@@ -229,7 +232,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
 
     test "needs a launch token, an identity and a version", %{conn: conn} do
       assert %{"error" => "NOT_AUTHENTICATED"} = json_response(get(conn, "/api/v1/packages/resolve?identity=users/1/x&version=1.0.0"), 401)
-      assert %{"error" => "BAD_REQUEST"} = json_response(build_conn() |> with_bearer(launch_token()) |> get("/api/v1/packages/resolve?identity=users/1/x"), 400)
+      assert %{"error" => "BAD_REQUEST"} = json_response(build_conn() |> with_bearer(access_token()) |> get("/api/v1/packages/resolve?identity=users/1/x"), 400)
     end
   end
 end

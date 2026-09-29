@@ -7,6 +7,7 @@ defmodule ReportServerWeb.Api.CatalogCorsTest do
 
   @allowed "https://researcher-dashboard.concord.org"
   @db_env "LEARN_PORTAL_STAGING_CONCORD_ORG_DB"
+  @catalog "https://report-server.example"
 
   setup do
     previous_db = System.get_env(@db_env)
@@ -23,9 +24,9 @@ defmodule ReportServerWeb.Api.CatalogCorsTest do
     end)
   end
 
-  defp launch_token, do: sign(:staging, claims(:staging, "researcher-dashboard"))
+  defp access_token, do: sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read"))
   defp from(conn, origin), do: put_req_header(conn, "origin", origin)
-  defp bearer(conn), do: put_req_header(conn, "authorization", "Bearer #{launch_token()}")
+  defp bearer(conn), do: put_req_header(conn, "authorization", "Bearer #{access_token()}")
   defp header(conn, name), do: get_resp_header(conn, name)
 
   test "an anonymous read from any origin is answered to every origin", %{conn: conn} do

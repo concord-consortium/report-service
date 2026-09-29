@@ -34,6 +34,14 @@ defmodule ReportServerWeb.PortalTokenFixture do
   end
 
   @doc """
+  The claims rigse puts in a scoped access token from the `key` portal: an `aud` list naming
+  every service the token may be used at, rigse itself first, and a space-separated `scope`.
+  """
+  def access_claims(key, audiences, scope, overrides \\ %{}) when is_list(audiences) do
+    claims(key, audiences, Map.merge(%{"scope" => scope}, overrides))
+  end
+
+  @doc """
   Signs `claims` with the `key` portal's private key. `:kid` overrides the header's kid, and
   `:without` drops claims.
   """

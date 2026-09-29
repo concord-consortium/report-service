@@ -273,6 +273,16 @@ Each of R1 to R27 was compared with the code after the last step, along with the
 - **Cloud Tasks from `researcherDashboard`: checked, not a blocker (2026-09-24).** In both projects `submitTask` and `api` run as the App Engine default service account, which holds `roles/editor` (so `cloudtasks.tasks.create` and `iam.serviceAccounts.actAs`), and `submitTask` already enqueues to `taskWorker` with an OIDC token for that account. `researcherDashboard` sets no service account, so it runs as the same one. The `deriveProfileWorker` queue does not exist yet in either project; Firebase creates it on the worker's first deploy.
 - **`PACKAGES_UNREVIEWED_RUNS` stays unset** until REPORT-143's storage broker is live and RD-1's third pass has taken S3 off the execution role.
 
+#### The rework onto the RIGSE-367 redesign (2026-09-29)
+
+The catalog path now takes rigse's scoped access token in place of the launch token, as the section at the top of this spec describes. What the code does with it:
+
+- **Two verifiers, one decoder.** `PortalToken.verify/2` is unchanged and stays the assertion verifier: a single-string `aud`, so the mint path keeps refusing a list. `PortalToken.verify_access_token/3` adds list membership and the capability check. The key lookup, issuer, algorithm and expiry checks are shared in one private `decode/1`, so the two can never diverge on the parts that are not about audience.
+- **Requiring a list is itself a separation.** An access token's `aud` is always a list, so `verify_access_token/3` refuses a single string even when it equals report-server's own URL. An assertion therefore cannot authenticate a catalog read whatever the audience is configured to, which is the other half of the mint path refusing a list.
+- **The plug names what it takes.** `PortalTokenPlug` takes either `audience:` (an assertion) or `capability:` (an access token), and the router's catalog pipeline now reads `capability: "packages:read", optional: true`. A pipeline naming both or neither fails to compile.
+- **The audience is the endpoint's own URL**, read per request rather than at plug init, since `init/1` runs at compile time in a release. It needs no setting of its own (Decisions), and the test environment configures the endpoint with a deployed server's URL so the tests read as a deployment does.
+- **Tests.** `verify_access_token/3` has the four refusals the note asks for (no capability, a list omitting this deployment, a single-string `aud`, the old `researcher-dashboard` audience) plus the shared key, issuer and expiry checks; `verify/2` gains the multi-audience refusal, and so does the function's `portal-token.test.ts`. The catalog and CORS tests present an access token in place of a launch token. The `report-server` assertion fixture drops the `scope_kind` and `scope_id` claims, which rigse replaced with `context` and this repository never read.
+
 ## Out of Scope
 
 - rigse's `refresh_profile`, the assignment fingerprint, and the run-path resolve call: RIGSE-368.
@@ -283,6 +293,16 @@ Each of R1 to R27 was compared with the code after the last step, along with the
 - Changing `get_allowed_project_ids/2`'s grant semantics.
 
 ## Decisions
+
+### Where report-server learns the audience rigse names it by
+**Context**: The access token's `aud` list carries report-server's own URL, exactly as the portal holds it in `REPORT_SERVER_URL`, and both sides compare it as a string. Decided during the rework (2026-09-29).
+**Options considered**:
+- A) `ReportServerWeb.Endpoint.url/0`, the endpoint's own URL, which is `PHX_HOST` in a deployed environment.
+- B) A `REPORT_SERVER_URL` setting of its own, named after the portal setting it must equal.
+
+**Decision**: A. The endpoint URL is already this deployment's answer to "where do I live", it is required to be right for everything else Phoenix generates, and `Phoenix.Endpoint.Supervisor.build_url/2` produces exactly the form rigse holds: a `%URI{scheme, host, port}` with no path, which `URI.to_string/1` renders without the scheme's default port and without a trailing slash. B adds a second place for the same fact and a second way to be wrong, one of them invisible: a portal could be configured correctly while report-server's own copy was blank, and the catalog would silently answer only its anonymous list. A has one host configuration, so a mismatch means the portal is pointed at a hostname this server does not answer to, which is a misconfiguration worth failing on.
+
+---
 
 ### Scope catalog rows to a portal
 **Context**: One production report-server serves learn.concord.org and the NGSS portal, whose user and project ids overlap. The design's identity is portal ids with no portal.

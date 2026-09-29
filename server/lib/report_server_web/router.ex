@@ -38,7 +38,7 @@ defmodule ReportServerWeb.Router do
   pipeline :api_catalog do
     plug :force_json
     plug ReportServerWeb.Api.CatalogCors
-    plug ReportServerWeb.Api.PortalTokenPlug, audience: "researcher-dashboard", optional: true
+    plug ReportServerWeb.Api.PortalTokenPlug, capability: "packages:read", optional: true
   end
 
   pipeline :api_token_only do
