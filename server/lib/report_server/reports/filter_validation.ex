@@ -13,7 +13,8 @@ defmodule ReportServer.Reports.FilterValidation do
   alias ReportServer.Reports.{AthenaFailure, FilterOptions, Report, ReportFilter}
 
   def validate(report_filter = %ReportFilter{}, report = %Report{}) do
-    with :ok <- check_app_supported(report_filter, report) do
+    with :ok <- check_app_supported(report_filter, report),
+         :ok <- check_remove_open_response_urls_supported(report_filter, report) do
       check_dimensions_offered(report_filter, report)
     end
   end
@@ -51,9 +52,9 @@ defmodule ReportServer.Reports.FilterValidation do
   Whether the filter expresses any constraint at all, which is what an Athena create is judged by
   because its report's query builder is not affordable in a request.
 
-  `hide_names` and `exclude_internal` are modifiers rather than constraints: neither narrows
-  anything on its own, and `exclude_internal` contributes no clause at all when the portal has no
-  Concord schools.
+  `hide_names`, `exclude_internal` and `remove_open_response_urls` are modifiers rather than
+  constraints: none of them narrows anything on its own, and `exclude_internal` contributes no
+  clause at all when the portal has no Concord schools.
   """
   def check_constrains_anything(report_filter = %ReportFilter{}) do
     dimensions = Enum.any?(ReportFilter.dimensions(), &(Map.get(report_filter, &1) not in [nil, []]))
@@ -79,6 +80,21 @@ defmodule ReportServer.Reports.FilterValidation do
         end
     end
   end
+
+  @doc "Whether the report's form offers the checkbox that drops the open response link columns."
+  def offers_remove_open_response_urls?(%Report{form_options: form_options}),
+    do: Keyword.get(form_options, :enable_remove_open_response_urls, false)
+
+  # false is accepted everywhere, so a filter copied from any run's JSON can be sent back unchanged
+  def check_remove_open_response_urls_supported(%ReportFilter{remove_open_response_urls: true}, report = %Report{}) do
+    if offers_remove_open_response_urls?(report) do
+      :ok
+    else
+      {:error, :invalid, "This report does not support removing open response links."}
+    end
+  end
+
+  def check_remove_open_response_urls_supported(%ReportFilter{}, %Report{}), do: :ok
 
   # get_athena_query/3 rejects an unknown value too, but only after the report has run the portal
   # join and uploaded the learner data, so the researcher sees a failed run instead of a form error

@@ -7,7 +7,7 @@ defmodule ReportServer.Reports.ReportFilter do
 
   defstruct filters: [], cohort: nil, school: nil, teacher: nil, assignment: nil, class: nil, student: nil,
     permission_form: nil, country: nil, state: nil, subject_area: nil, start_date: nil, end_date: nil,
-    hide_names: false, exclude_internal: false, app: nil
+    hide_names: false, exclude_internal: false, app: nil, remove_open_response_urls: false
 
   @valid_filter_types ~w"cohort school teacher assignment class student permission_form country state subject_area"
   @filter_type_atoms Enum.map(@valid_filter_types, &String.to_atom/1)
@@ -49,6 +49,7 @@ defmodule ReportServer.Reports.ReportFilter do
     |> Map.put(:hide_names, form.params["hide_names"] == "true")
     |> Map.put(:exclude_internal, form.params["exclude_internal"] == "true")
     |> Map.put(:app, form.params["app"])
+    |> Map.put(:remove_open_response_urls, form.params["remove_open_response_urls"] == "true")
   end
 
   @doc """

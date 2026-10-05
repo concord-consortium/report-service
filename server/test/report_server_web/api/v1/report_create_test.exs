@@ -152,4 +152,33 @@ defmodule ReportServerWeb.Api.V1.ReportCreateTest do
     assert body["error"] == "NOT_AUTHENTICATED"
     assert run_count() == 0
   end
+
+  test "remove_open_response_urls is stored and returned on student answers", %{conn: conn} do
+    {_user, token} = admin_token()
+
+    body =
+      post_create(conn, token, %{
+        "report_slug" => "student-answers",
+        "report_filter" => %{"cohort" => [1], "remove_open_response_urls" => true}
+      })
+      |> json_response(201)
+
+    assert body["report_filter"]["remove_open_response_urls"] == true
+    assert Repo.get!(ReportRun, body["id"]).report_filter.remove_open_response_urls == true
+  end
+
+  test "remove_open_response_urls is a bad request on a report that does not offer it", %{conn: conn} do
+    {_user, token} = admin_token()
+
+    body =
+      post_create(conn, token, %{
+        "report_slug" => "student-actions",
+        "report_filter" => %{"cohort" => [1], "remove_open_response_urls" => true}
+      })
+      |> json_response(400)
+
+    assert body["error"] == "BAD_REQUEST"
+    assert body["message"] == "This report does not support removing open response links."
+    assert run_count() == 0
+  end
 end
