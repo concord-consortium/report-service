@@ -499,6 +499,7 @@ defmodule ReportServerWeb.ReportLive.Form do
   defp get_form_options(report = %Report{form_options: form_options}, user = %User{}) do
     %{
       enable_hide_names: HideNames.allowed?(user) && Keyword.get(form_options, :enable_hide_names, false),
+      enable_remove_open_response_urls: FilterValidation.offers_remove_open_response_urls?(report),
       enable_app_filter: AthenaFailure.offers_app_filter?(report)
     }
   end
