@@ -37,7 +37,7 @@ The open response `_url` column also has an internal consumer. For `student-answ
 - When the checkbox is checked, the generated Athena SQL contains no `res_<n>_<question_id>_url` column for any `open_response` question, in the header row or in the data rows.
 - When the checkbox is checked, every other column is unchanged, including the open response `_text` and `_submitted` columns, and the `_url` columns of `iframe_interactive`, `clue_text_tile`, `clue_question` and `clue_tile` questions.
 - When the checkbox is unchecked, the generated SQL is identical to what it is today.
-- When the checkbox is checked, an audio-only open response answer leaves an empty `_text` cell, the same as a skipped question. This is an accepted tradeoff: the `_url` column is the report's only sign of an audio answer, and researchers who check the box don't use audio. The `_text` column's content does not change.
+- When the checkbox is checked, no column marks an audio-only open response answer, so it reads like a skipped question: its `_text` cell holds no answer text. That cell is usually empty. When the report-state placeholder is stored JSON-escaped, the cell holds the raw placeholder instead, in checked and unchecked reports alike (REPORT-162). This is an accepted tradeoff: the `_url` column is the report's only sign of an audio answer, and researchers who check the box don't use audio. The `_text` column's content does not change.
 - The choice is saved with the report run, so the run's summary shows it as a "Remove Open Response Links: True" row next to "Hide Names", and only when it is on, and duplicating the run keeps it.
 - Report runs saved before this change load and behave as if the checkbox was unchecked.
 - The report run JSON API accepts the option as an optional boolean in `report_filter` when a run is created. It defaults to `false` when absent and is rejected with the existing "must be true or false" error when it is not a boolean. Every run's returned filter JSON includes it, `false` for older runs.
@@ -132,7 +132,7 @@ The open response `_url` column also has an internal consumer. For `student-answ
 **Decision**: Neither. It isn't needed, because CLASSDASH-116 already specifies the teacher CSV with one column per open response and no `_url` columns. The link moves into the answer column only for audio-only answers.
 
 ### RESOLVED: How should audio-only answers look once the link column is removed?
-**Context**: For an audio-only answer the `_text` cell is empty, which is why the `_url` link is always generated for open responses. With the option on, an audio-only answer looks the same as a skipped question. The teacher CSV (CLASSDASH-116) puts the single-question link in the answer's own column instead, for audio-only answers only.
+**Context**: For an audio-only answer the `_text` cell holds no answer text (it is usually empty; see REPORT-162 for the exception), which is why the `_url` link is always generated for open responses. With the option on, an audio-only answer looks the same as a skipped question. The teacher CSV (CLASSDASH-116) puts the single-question link in the answer's own column instead, for audio-only answers only.
 **Options considered**:
 - A) Accept it and write down the tradeoff.
 - B) Mark audio-only answers in the `_text` cell when the option is on, with a placeholder or with the link as the teacher CSV does. Either needs SQL to detect an audio answer from the stored data, which isn't confirmed to be possible, and moving the link in would bring back the link the researcher asked to remove.
