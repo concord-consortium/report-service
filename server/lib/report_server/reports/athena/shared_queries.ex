@@ -397,12 +397,14 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
   @report_state_prefixes [~s({"mode":"report","authoredState":), ~s({"version":1,"mode":"report","authoredState":)]
 
   defp open_response_text(answer) do
-    # A cleared answer is stored as the encoded empty string, and no other encoded string starts with it.
+    # A cleared answer is stored as the encoded empty string. It is matched whole, since an unencoded answer in a
+    # parquet file written before April 2021 can start with `""` and still have text after it.
     pattern =
       @report_state_prefixes
       |> Enum.flat_map(&[json_string_prefix(&1), &1])
-      |> Enum.concat([Jason.encode!("")])
-      |> Enum.map_join("|", &Regex.escape/1)
+      |> Enum.map(&Regex.escape/1)
+      |> Enum.concat([Regex.escape(Jason.encode!("")) <> "\\z"])
+      |> Enum.join("|")
 
     "CASE WHEN regexp_like(#{answer}, '#{ReportUtils.escape_single_quote("^(?:#{pattern})")}') THEN '' ELSE (#{answer}) END"
   end
@@ -482,9 +484,10 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
           # Every answer is JSON-encoded on its way to S3, so the placeholder arrives as an encoded string
           # (or, in parquet files written before April 2021, unencoded) and is blanked here, as is an answer the
           # student typed and then cleared.
-          # note: conditional_model_url.() is not used here as students can answer with only audio responses and in that
-          # case the answer does not exist as open response answers are only the text of the answer due to the
-          # question type being ported from the legacy LARA built in open response questions which only saved the text.
+          # note: conditional_model_url.() is not used here as students can answer with only audio responses, and in that
+          # case the stored answer is missing or is only the report-state placeholder, so it does not show the audio.
+          # Open response answers are only the text of the answer due to the question type being ported from the legacy
+          # LARA built in open response questions which only saved the text.
           # Without the url column an audio-only answer looks unanswered.
           text_column = %{name: "#{column_prefix}_text", value: open_response_text(answer), header: prompt_header}
           url_column = %{name: "#{column_prefix}_url", value: model_url.(answers_source_key_with_no_answer_fallback), header: prompt_header}

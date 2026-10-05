@@ -144,13 +144,15 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
 
   describe "get_columns_for_question/6 for open_response" do
     test "by default emits the text and the single-question link" do
+      answer = "learners_and_answers_1.kv1['#{@key}']"
+
       assert columns("open_response") == [
                %{
                  name: "res_1_#{@key}_text",
                  value:
-                   ~S|CASE WHEN regexp_like(learners_and_answers_1.kv1['q39487a59642d'], '| <>
-                     ~S[^(?:"\{\\"mode\\":\\"report\\",\\"authoredState\\":|\{"mode":"report","authoredState":|"\{\\"version\\":1,\\"mode\\":\\"report\\",\\"authoredState\\":|\{"version":1,"mode":"report","authoredState":|"")] <>
-                     ~S|') THEN '' ELSE (learners_and_answers_1.kv1['q39487a59642d']) END|,
+                   "CASE WHEN regexp_like(#{answer}, '" <>
+                     ~S[^(?:"\{\\"mode\\":\\"report\\",\\"authoredState\\":|\{"mode":"report","authoredState":|"\{\\"version\\":1,\\"mode\\":\\"report\\",\\"authoredState\\":|\{"version":1,"mode":"report","authoredState":|""\z)] <>
+                     "') THEN '' ELSE (#{answer}) END",
                  header: "activities_1.questions['#{@key}'].prompt"
                },
                %{
@@ -223,6 +225,11 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
 
     test "blanks an answer the student typed and then cleared" do
       assert blanked?(~S|""|)
+    end
+
+    test "keeps an unencoded text answer that begins with two quotes" do
+      refute blanked?(~S|"" is what I typed|)
+      refute blanked?(~s|""\n|)
     end
 
     test "keeps a text answer" do
