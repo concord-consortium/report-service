@@ -31,7 +31,7 @@ In the Student Answers report, every open response question produces two columns
 - Column generation: `server/lib/report_server/reports/athena/shared_queries.ex`. `generate_resource_sql/4` passes `remove_open_response_urls` to `get_columns_for_question/6` as a trailing keyword option (default `[]`), and the `"open_response"` branch drops its `_url` column when it is set. Every row (prompt, correct-answer, data) is built from the one column list, so dropping it there removes it from all of them.
 - Option storage: `remove_open_response_urls` is a boolean field on `%ReportFilter{}` (default `false`), read in `from_form/2` like `hide_names`. `EctoReportFilter.load/1` uses `struct!/2`, so stored runs without the key load with it off. `dump/1` writes every struct key, so every run saved after the deploy carries it, and a build without the field raises `KeyError` loading those runs. A rollback past this release needs those runs' filters cleaned up, or a forward fix. `exclude_internal` and `app` were added under the same constraint.
 - Which reports offer it: `FilterValidation.offers_remove_open_response_urls?/1` reads `form_options` (`enable_remove_open_response_urls: true` on Student Answers in `tree.ex`). The form's `get_form_options/2` and `check_remove_open_response_urls_supported/2` both use it, so the checkbox and the rule can't drift. `validate/2` is called by the form's submit, the API create and duplicate.
-- Form and summary: the checkbox is in `form.html.heex` after the Hide names block, without Hide names' `whitespace-nowrap` so the 55-character label can wrap. The summary row is in `custom_components.ex`.
+- Form and summary: the checkbox is in `form.html.heex` after the Hide names block, without Hide names' `whitespace-nowrap` so the long label can wrap. The summary row is in `custom_components.ex`.
 - JSON API: `filter_params.ex` (`base/1`, `boolean/2`) parses it and `report_json.ex` (`report_filter_json/1`, `!!`) emits it. `FilterOptionsController`'s moduledoc lists it among the emitted keys that narrow nothing on that endpoint.
 - Post-processing: `PostProcessingComponent.steps_for_run/1` drops `HasAudio` and `TranscribeAudio` (ids taken from the step modules) for runs with the option, and both `init/2` and `show_component?/2` use it. Those steps find each answer's `answersSourceKey` through the open response `_url` column (`Helpers.parse_res_answer_col/2`).
 - Tests: `shared_queries_test.exs` pins the default open response `_text`/`_url` pair exactly, captured from the code before the change, as the guard for "unchanged when unchecked". The form test sets the checkbox through `form/3`, which raises when the rendered form has no input by that name, so a misnamed `field` fails it; params passed straight to `render_change/3` would not.
@@ -135,13 +135,13 @@ In the Student Answers report, every open response question produces two columns
 ---
 
 ### How should the option reach `get_columns_for_question`?
-**Context**: The builder took five positional arguments, and the CLUE tests call it with five.
+**Context**: The builder took five positional arguments, and the CLUE tests called it with five.
 **Options considered**:
 - A) A trailing keyword `opts \\ []`.
 - B) Pass the whole `%ReportFilter{}`.
 - C) A sixth positional boolean.
 
-**Decision**: A. The builder shouldn't depend on the whole filter for one flag, and a bare boolean at a call site doesn't say what it means. Existing five-argument callers keep working.
+**Decision**: A. The builder shouldn't depend on the whole filter for one flag, and a bare boolean at a call site doesn't say what it means. The default `[]` lets a five-argument call still work.
 
 ---
 
