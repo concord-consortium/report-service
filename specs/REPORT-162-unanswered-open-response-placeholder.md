@@ -77,7 +77,7 @@ When a student opens an open response question and leaves it empty, the Student 
 - B) Include them without checking
 - C) Skip them
 
-**Decision**: B (Doug). They cost about 90 characters per question and cannot match a real answer, which is always stored with a leading `"`..
+**Decision**: B (Doug). They cost about 90 characters per question and cannot match a real answer, which is always stored with a leading `"`.
 
 ---
 
