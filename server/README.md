@@ -131,6 +131,19 @@ mix test
 
 Tests will automatically create and migrate a test database on first run.
 
+The test database is the same MySQL container the development setup uses, so `docker compose up` has to be running; `config/test.exs` fixes the connection at `localhost:3406` with user `root` and password `xyzzy`, and `DATABASE_URL` is not read outside production.
+
+Four secrets are another matter: `config/runtime.exs` raises without them in every environment, including test, even though no test uses their values.  Placeholders are the right thing here:
+
+```shell
+export SERVER_ACCESS_KEY_ID=FAKE SERVER_SECRET_ACCESS_KEY=FAKE
+export REPORT_SERVICE_TOKEN=FAKE HIDE_USERNAME_HASH_SALT=FAKE
+```
+
+Do not `source .env` to run the tests.  That file is for running the server (see above) and its values point at live services, so the form tests fail against them whenever the portal database tunnel is not open.
+
+CI also runs `mix compile --warnings-as-errors`, so a warning fails the build even when every test passes.
+
 ### Key Dependencies
 
 - **Phoenix LiveView**: Real-time UI for report generation and monitoring
@@ -141,16 +154,20 @@ Tests will automatically create and migrate a test database on first run.
 
 ## Deploying
 
+The `release-report-server` skill in [../.claude/skills/release-report-server/](../.claude/skills/release-report-server/) automates everything below, including the pre-flight checks, the migration task and the verification, and it ships helper scripts for the parts that are easy to get wrong.  The steps are kept here so the release can be driven by hand.
+
 The report server is deployed using Docker on CloudFormation.  Here are the steps to deploy:
 
 1. Run `docker build . -t concordconsortium/report-server:VERSION` where `VERSION` is a semver version.  For staging deployments use `-pre.N` suffixes like `1.1.0-pre.0`.
 2. Once the build is complete run `docker push concordconsortium/report-server:VERSION` to push to the container registry.
-3. Before updating the stack to the new image, apply any new migrations by running `bin/report_server eval "ReportServer.Release.migrate"` in a one-off task/container built from the new image.  (A workstation with DB access can run `MIX_ENV=prod mix ecto.migrate` instead, but `config/runtime.exs` raises unless `SERVER_ACCESS_KEY_ID`, `SERVER_SECRET_ACCESS_KEY`, `REPORT_SERVICE_TOKEN` and `HIDE_USERNAME_HASH_SALT` are also set — migrations do not use them, so any non-empty placeholder works.)
+3. Before updating the stack to the new image, apply any new migrations by running `bin/report_server eval "ReportServer.Release.migrate"` in a one-off task/container built from the new image.  On ECS this means registering a task definition revision that differs from the running one only in its image, because `run-task --overrides` can change the container's command but not its image; deregister that revision once the stack update has registered its own.  (A workstation with DB access can run `MIX_ENV=prod mix ecto.migrate` instead, but `config/runtime.exs` raises unless `SERVER_ACCESS_KEY_ID`, `SERVER_SECRET_ACCESS_KEY`, `REPORT_SERVICE_TOKEN` and `HIDE_USERNAME_HASH_SALT` are also set — migrations do not use them, so any non-empty placeholder works.)
 4. In AWS CloudFormation select the `report-service-qa` stack in the QA account (816253370536) or `report-service-prod` in the production account (612297603577) and run an update using the newly uploaded tagged container as the value for the "ImageUrl" parameter in the update process.  Note that the stack names use `report-service` (matching this repo), not `report-server`.
 
 Step 3 is not optional whenever the new image contains code that reads a table the running image does not have: those paths fail closed, so the migration must land before the new image serves traffic.  The `data_access_log` table added in the REPORT-74 release is the canonical example.
 
 The version shown in the app header comes from the `version:` field in `mix.exs` (compiled into the release), not from the Docker tag, so bump it in the same commit that cuts a release.  Staging builds carry the `-pre.N` suffix; production builds drop it.
+
+Both report server databases are reachable only from inside their VPC, which is why step 3 runs inside the cluster: there is no working SSH bastion for them, and a workstation cannot connect directly.  Anything you generate from a task definition or a `describe-stacks` call holds `DATABASE_URL`, `SECRET_KEY_BASE` and the AWS keys in plaintext, so write those files outside the repo and do not print them.
 
 ## Server Setup
 
