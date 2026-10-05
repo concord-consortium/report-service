@@ -17,7 +17,8 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
     end
   end
 
-  def generate_resource_sql(report_type, %ReportFilter{hide_names: hide_names}, resource_data, auth_domain) do
+  def generate_resource_sql(report_type, %ReportFilter{hide_names: hide_names} = report_filter, resource_data, auth_domain) do
+    column_opts = [remove_open_response_urls: report_filter.remove_open_response_urls]
 
     # The source_key map is just used to add an answersSourceKey to the interactive urls
     # It might be possible there will be some answers with different source_keys but after the LARA migration to AP this is probably not needed
@@ -222,7 +223,7 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
             |> Map.get(:question_order)
             |> Enum.reduce(acc, fn question_id, acc2 ->
               question = Map.get(questions, question_id)
-              question_columns = get_columns_for_question(question_id, question, denormalized_resource, auth_domain, activity_index)
+              question_columns = get_columns_for_question(question_id, question, denormalized_resource, auth_domain, activity_index, column_opts)
               [[question_columns] | acc2]
             end)
           else
@@ -392,7 +393,8 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
       """}}
   end
 
-  def get_columns_for_question(question_id, question, denormalized_resource, auth_domain, activity_index) do
+  def get_columns_for_question(question_id, question, denormalized_resource, auth_domain, activity_index, opts \\ []) do
+    remove_open_response_urls = Keyword.get(opts, :remove_open_response_urls, false)
     source_key = AthenaConfig.get_source_key()
     type = Map.get(question, :type)
     is_required = Map.get(question, :required) || false
@@ -462,11 +464,12 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
           # no answer to the question.
           # note: conditional_model_url.() is not used here as students can answer with only audio responses and in that
           # case the answer does not exist as open response answers are only the text of the answer due to the
-          # question type being ported from the legacy LARA built in open response questions which only saved the text
-          [
-            %{name: "#{column_prefix}_text", value: "CASE WHEN starts_with(#{answer}, '\"{\"mode\":\"report\"') THEN '' ELSE (#{answer}) END", header: prompt_header},
-            %{name: "#{column_prefix}_url", value: model_url.(answers_source_key_with_no_answer_fallback), header: prompt_header}
-          ]
+          # question type being ported from the legacy LARA built in open response questions which only saved the text.
+          # Without the url column an audio-only answer looks unanswered.
+          text_column = %{name: "#{column_prefix}_text", value: "CASE WHEN starts_with(#{answer}, '\"{\"mode\":\"report\"') THEN '' ELSE (#{answer}) END", header: prompt_header}
+          url_column = %{name: "#{column_prefix}_url", value: model_url.(answers_source_key_with_no_answer_fallback), header: prompt_header}
+
+          if remove_open_response_urls, do: [text_column], else: [text_column, url_column]
 
         "multiple_choice" ->
           question_has_correct_answer =
