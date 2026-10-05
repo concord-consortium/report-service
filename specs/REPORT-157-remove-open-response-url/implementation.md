@@ -64,7 +64,7 @@ The `"open_response"` branch. The comment is extended, and the `_url` entry beco
           # note: conditional_model_url.() is not used here as students can answer with only audio responses and in that
           # case the answer does not exist as open response answers are only the text of the answer due to the
           # question type being ported from the legacy LARA built in open response questions which only saved the text.
-          # The url is left out when the report filter asks for it, which also leaves an audio-only answer looking unanswered.
+          # Without the url column an audio-only answer looks unanswered.
           text_column = %{name: "#{column_prefix}_text", value: "CASE WHEN starts_with(#{answer}, '\"{\"mode\":\"report\"') THEN '' ELSE (#{answer}) END", header: prompt_header}
           url_column = %{name: "#{column_prefix}_url", value: model_url.(answers_source_key_with_no_answer_fallback), header: prompt_header}
 
@@ -73,7 +73,7 @@ The `"open_response"` branch. The comment is extended, and the `_url` entry beco
 
 `generate_no_resource_sql/2` emits no question columns and is untouched.
 
-Tests in `shared_queries_test.exs`: a new `describe "get_columns_for_question for open_response"` using the existing `columns/2` helper, extended with keyword options: `required:` sets the question's `required` flag (default `false`), and the rest pass through to `/6` as its `opts`. The moduledoc, which today pins only the CLUE types' column shape, is widened to say the file also pins the open response columns and the option that drops their `_url`:
+Tests in `shared_queries_test.exs`: a new `describe "get_columns_for_question/6 for open_response"` (the CLUE describe is renamed to `/6` to match) using the existing `columns` helper, which gains a trailing keyword list: `required:` sets the question's `required` flag (default `false`), and the rest pass through to `/6` as its `opts`. The moduledoc, which today pins only the CLUE types' column shape, is widened to say the file also pins the open response columns and the option that drops their `_url`:
 
 - by default an open response emits exactly today's two column maps, compared with `==` against literal expected values: the name, the full `value` and the `header` of both `_text` and `_url`. With the file's existing setup (`source_key: "authoring.concord.org"`, `@auth_domain`, `@key`) the `_url` value is the full `CONCAT('https://portal-report.concord.org/branch/master/?auth-domain=https%3A%2F%2Flearn.concord.org&firebase-app=report-service-pro&sourceKey=authoring.concord.org&iframeQuestionId=<key>&class=...', ... '&answersSourceKey=', COALESCE(learners_and_answers_1.source_key['<key>'], IF(... 'activity-player-offline.concord.org', 'activity-player.concord.org', ...)))` string. The prototype captured it from the current code and confirmed the changed code produces byte-identical maps. This is the committed guard for the requirement that unchecked output is unchanged.
 - with `remove_open_response_urls: true` it emits only `_text`, and a required one emits `_text` then `_submitted`
@@ -97,7 +97,7 @@ Tests in `report_filter_test.exs`, in the existing `from_form/2` describe:
 - `lib/report_server_web/live/report_live/form.ex`: the form option
 - `lib/report_server_web/live/report_live/form.html.heex`: the checkbox
 - `lib/report_server_web/components/custom_components.ex`: the summary row
-- `test/report_server/reports/filter_validation_test.exs`, `test/report_server_web/live/report_form_live_test.exs` (also the comment above `choose_first_filter/2`, which lists the controls that render once a first filter has a value), `test/report_server_web/components/custom_components_test.exs`
+- `test/report_server/reports/filter_validation_test.exs`, `test/report_server_web/live/report_form_live_test.exs` (also the comment above `choose_first_filter/2`, reworded to say the controls below the filter rows render once a first filter has a value), `test/report_server_web/components/custom_components_test.exs`
 
 **Estimated diff size**: ~150 lines
 
@@ -259,7 +259,7 @@ Tests:
   alias ReportServer.PostProcessing.Steps.{HasAudio, TranscribeAudio}
   alias ReportServer.Reports.{Report, ReportFilter, ReportRun}
 
-  # both steps find each answer through the open response _url column, which a run made with remove_open_response_urls leaves out
+  # both steps find each answer through the open response _url column
   @open_response_url_step_ids [HasAudio.step().id, TranscribeAudio.step().id]
 
   @doc "The post-processing steps this run's output supports."
