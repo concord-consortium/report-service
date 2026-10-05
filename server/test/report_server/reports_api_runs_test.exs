@@ -206,6 +206,16 @@ defmodule ReportServer.ReportsApiRunsTest do
       assert_receive {:started, %ReportRun{id: ^copy_id, user: %User{}}}
     end
 
+    test "keeps remove_open_response_urls" do
+      user = admin()
+      {:ok, source} = create(user, athena_report(), %ReportFilter{cohort: [1], remove_open_response_urls: true})
+      source = Reports.get_report_run_with_user!(source.id)
+
+      {:ok, copy} = Reports.duplicate_api_report_run(user, athena_report(), source)
+
+      assert Reports.get_report_run_with_user!(copy.id).report_filter.remove_open_response_urls == true
+    end
+
     test "derives filters rather than copying the strings a round trip left behind" do
       user = admin()
       {:ok, source} = create(user, athena_report(), %ReportFilter{cohort: [1], school: [51]})

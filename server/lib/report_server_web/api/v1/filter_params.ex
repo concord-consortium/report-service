@@ -33,12 +33,14 @@ defmodule ReportServerWeb.Api.V1.FilterParams do
   defp base(filter) do
     with {:ok, exclude_internal} <- boolean(filter, "exclude_internal"),
          {:ok, hide_names} <- boolean(filter, "hide_names"),
+         {:ok, remove_open_response_urls} <- boolean(filter, "remove_open_response_urls"),
          {:ok, app} <- app(filter),
          {:ok, start_date} <- date(filter, "start_date"),
          {:ok, end_date} <- date(filter, "end_date") do
       check_dates(%ReportFilter{
         exclude_internal: exclude_internal,
         hide_names: hide_names,
+        remove_open_response_urls: remove_open_response_urls,
         app: app,
         start_date: start_date,
         end_date: end_date
