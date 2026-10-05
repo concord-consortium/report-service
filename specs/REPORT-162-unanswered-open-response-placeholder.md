@@ -6,7 +6,7 @@
 
 ## Overview
 
-When a student opens an open response question and leaves it empty, the Student Answers report showed a long block of report-state JSON in that question's `_text` cell instead of an empty cell. This story makes the "no answer" check recognize the placeholder in every form it is actually stored, and also blanks an answer the student typed and then cleared, so skipped questions read as skipped. A real answer's cell is unchanged.
+When a student opens an open response question and leaves it empty, the Student Answers report showed a long block of report-state JSON in that question's `_text` cell instead of an empty cell. This story makes the "no answer" check recognize the placeholder in every form it is actually stored, and also blanks an answer the student typed and then cleared, so skipped questions read as skipped. A text answer's cell is unchanged. An audio-only answer's `_text` cell is blank too, because its stored answer is the placeholder; the `_url` column still links to the audio.
 
 **Why the old check never matched.** The activity player and LARA store the report-state JSON string as the answer for an opened, unanswered question, and the S3 sync (`functions/src/auto-importer.ts`, `scripts/export-answers.js`) `JSON.stringify`s every answer, so the placeholder is stored escaped: `"{\"mode\":\"report\",...`. The Elixir check looked for `"{"mode":"report"`, a quote followed by unescaped JSON, which no writer produces. It was ported in `0765893` from the query-creator's pre-fix form (`d761da5`), and that JS fix (`4de5142`) also matched nothing.
 
@@ -21,17 +21,17 @@ When a student opens an open response question and leaves it empty, the Student 
 
 - An open response `_text` cell is empty when the stored answer is a report-state placeholder: the JSON-encoded form of a report state that starts with the keys a writer emits first, `{"mode":"report","authoredState":` (activity player) or `{"version":1,"mode":"report","authoredState":` (LARA).
 - The check recognizes the raw (unencoded) placeholder forms as well, written by the S3 sync before `dd423b7` (2021-04-21), without first measuring whether any survive.
-- An answer the student typed and then cleared, stored as the encoded empty string `""`, also shows an empty `_text` cell.
+- An answer the student typed and then cleared, stored as the encoded empty string `""`, also shows an empty `_text` cell. Only an answer that is exactly `""` matches.
 - Any other answer's `_text` cell is byte-for-byte unchanged. A text answer is blanked only if the student typed one of the full prefixes above, through `"authoredState":`, at the start of the answer.
 - A learner with no stored answer for the question still gets `NULL` through the `ELSE` branch. The tests cover this through the expression's shape: their evaluator only accepts a `CASE` whose `ELSE` returns the answer unchanged.
 - `shared_queries_test.exs` has a test per recognized form and for real text answers, each running the emitted pattern on stored bytes written out as the writer produces them, so it fails if a form's alternative is removed or its escaping is wrong.
 - The pinned default open response column test from REPORT-157 holds the new expression, and the PR description explains the change.
 - The code comment above the open response branch describes the placeholder and the stored encoding.
-- The generated SQL grows by about 12% per open response question (1,537 to 1,721 characters, measured with `generate_resource_sql/4`). That is accepted, and lowers how many open response questions fit under Athena's 256KB query limit by the same proportion.
+- The generated SQL grows by about 12% per open response question (1,537 to 1,723 characters, measured with `generate_resource_sql/4`). That is accepted, and lowers how many open response questions fit under Athena's 256KB query limit by the same proportion.
 
 ## Technical Notes
 
-- **The expression** is one anchored `regexp_like` built in `open_response_text/1` in `shared_queries.ex`. `@report_state_prefixes` holds the two decoded prefixes; `json_string_prefix/1` derives each encoded form with `Jason.encode!/1`, the encoded empty string is appended, and `Regex.escape/1` makes every alternative a literal. Each alternative is a plain literal, so the pattern means the same in Athena's regex engine and Elixir's. The `""` alternative needs no end anchor, because in JSON a string whose first two characters are `""` is the empty string.
+- **The expression** is one anchored `regexp_like` built in `open_response_text/1` in `shared_queries.ex`. `@report_state_prefixes` holds the two decoded prefixes; `json_string_prefix/1` derives each encoded form with `Jason.encode!/1`, the encoded empty string is appended, and `Regex.escape/1` makes every alternative a literal. Each alternative is a plain literal, and the `""` one is followed by `\z`, so the pattern means the same in Athena's regex engine and Elixir's. The `""` alternative needs the end anchor because an unencoded answer from before April 2021 can start with `""` and continue. It is `\z` rather than `$` because `$` also matches before a trailing newline in both engines (checked in Trino).
 - **Tests** read the pattern back out of the generated SQL with a strict regex (a shape change raises `MatchError`) and run it on fixtures byte-identical to Node's `JSON.stringify` and Ruby's `to_json` output.
 - **Athena dialect.** Single-quoted literals take backslashes literally and only `''` is an escape. Verified in a throwaway Trino container, Athena's engine.
 - **Do not run `mix format`** on `shared_queries.ex` or its test: neither is formatter-clean, and the formatter rewrites about 500 unrelated lines.
@@ -77,7 +77,7 @@ When a student opens an open response question and leaves it empty, the Student 
 - B) Include them without checking
 - C) Skip them
 
-**Decision**: B (Doug). They cost about 90 characters per question and cannot match a real answer, which is always stored with a leading `"`.
+**Decision**: B (Doug). They cost about 90 characters per question. They can match a real answer only in an unencoded file, and only if the student typed the full prefix through `"authoredState":`.
 
 ---
 
@@ -124,6 +124,6 @@ When a student opens an open response question and leaves it empty, the Student 
 **Context**: `AthenaDb.check_query_size/1` rejects queries over 262,144 characters, and master already rejects 10 activities of 15 open responses each.
 **Options considered**:
 - A) Four `starts_with` calls joined by `OR` (1,923 characters per question)
-- B) One anchored `regexp_like` (1,721 with the cleared-answer alternative)
+- B) One anchored `regexp_like` (1,723 with the cleared-answer alternative)
 
 **Decision**: B. A grew each question's SQL by 25% and would have turned some reports that run today into errors. With B the `^` anchor becomes separately losable, so a test with the prefix after leading text pins it.
