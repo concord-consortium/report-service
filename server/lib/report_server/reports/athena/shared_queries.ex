@@ -17,8 +17,8 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
     end
   end
 
-  def generate_resource_sql(report_type, %ReportFilter{hide_names: hide_names} = report_filter, resource_data, auth_domain) do
-    column_opts = [remove_open_response_urls: report_filter.remove_open_response_urls]
+  def generate_resource_sql(report_type, %ReportFilter{hide_names: hide_names, remove_open_response_urls: remove_open_response_urls}, resource_data, auth_domain) do
+    column_opts = [remove_open_response_urls: remove_open_response_urls]
 
     # The source_key map is just used to add an answersSourceKey to the interactive urls
     # It might be possible there will be some answers with different source_keys but after the LARA migration to AP this is probably not needed
