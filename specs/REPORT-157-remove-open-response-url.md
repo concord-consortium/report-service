@@ -186,16 +186,6 @@ In the Student Answers report, every open response question produces two columns
 
 ---
 
-### How many commits?
-**Context**: The API and form steps are each small.
-**Options considered**:
-- A) Four: SQL, form and validation, API, post-processing.
-- B) Three, folding the API into the form step.
-
-**Decision**: A. The API step changes a contract cc-data consumes (`@filter_keys`), and keeping it separate lets a reviewer check that on its own.
-
----
-
 ### Does duplicating a run keep the option?
 **Context**: It does, because `duplicate_api_report_run/3` copies the whole filter, but nothing tested it.
 **Options considered**:
