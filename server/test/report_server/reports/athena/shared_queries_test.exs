@@ -14,6 +14,12 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
   single-question view, unless the report filter's `remove_open_response_urls`
   drops the link. The default pair is pinned exactly, since a report made
   without the option must not change.
+
+  The text is blanked when the stored answer is the report-state placeholder
+  saved for an opened, unanswered question, or a cleared answer. The SQL only
+  renders here, so those tests read the `regexp_like` pattern back out of it and
+  run it on the answer bytes the writers store, which is what catches an
+  escaping mistake.
   """
   use ExUnit.Case, async: true
 
@@ -141,7 +147,10 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
       assert columns("open_response") == [
                %{
                  name: "res_1_#{@key}_text",
-                 value: "CASE WHEN starts_with(learners_and_answers_1.kv1['#{@key}'], '\"{\"mode\":\"report\"') THEN '' ELSE (learners_and_answers_1.kv1['#{@key}']) END",
+                 value:
+                   ~S|CASE WHEN regexp_like(learners_and_answers_1.kv1['q39487a59642d'], '| <>
+                     ~S[^(?:"\{\\"mode\\":\\"report\\",\\"authoredState\\":|\{"mode":"report","authoredState":|"\{\\"version\\":1,\\"mode\\":\\"report\\",\\"authoredState\\":|\{"version":1,"mode":"report","authoredState":|"")] <>
+                     ~S|') THEN '' ELSE (learners_and_answers_1.kv1['q39487a59642d']) END|,
                  header: "activities_1.questions['#{@key}'].prompt"
                },
                %{
@@ -172,6 +181,60 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
 
         assert "res_1_#{@key}_url" in names, "#{type} lost its url column"
       end
+    end
+  end
+
+  describe "the open response text column with a stored report-state placeholder" do
+    ## Stored bytes as the writers produce them: the activity player and LARA save
+    ## the report state string as the answer, and the S3 sync JSON-encodes it.
+    ## The unencoded forms are parquet files written before that encoding began.
+    @activity_player ~S|"{\"mode\":\"report\",\"authoredState\":\"{\\\"version\\\":1,\\\"questionType\\\":\\\"open_response\\\",\\\"audioEnabled\\\":true}\",\"interactiveState\":\"{}\",\"interactive\":{\"id\":\"managed_interactive_360221\",\"name\":\"\"},\"version\":1}"|
+    @lara ~S|"{\"version\":1,\"mode\":\"report\",\"authoredState\":\"{\\\"version\\\":1,\\\"questionType\\\":\\\"open_response\\\"}\",\"interactiveState\":\"{}\"}"|
+    @activity_player_unencoded ~S|{"mode":"report","authoredState":"{\"version\":1}","interactiveState":"{}","version":1}|
+    @lara_unencoded ~S|{"version":1,"mode":"report","authoredState":"{\"version\":1}","interactiveState":"{}"}|
+
+    ## Evaluates the emitted CASE against a stored answer as Athena would: the
+    ## regexp_like pattern is read back out of the SQL and run on the bytes.
+    defp blanked?(stored) do
+      answer = Regex.escape("learners_and_answers_1.kv1['#{@key}']")
+      [text_column | _] = columns("open_response")
+
+      [_, pattern] =
+        Regex.run(
+          ~r/\ACASE WHEN regexp_like\(#{answer}, '((?:[^']|'')*)'\) THEN '' ELSE \(#{answer}\) END\z/,
+          text_column.value
+        )
+
+      pattern |> String.replace("''", "'") |> Regex.compile!() |> Regex.match?(stored)
+    end
+
+    test "blanks the activity player placeholder" do
+      assert blanked?(@activity_player)
+    end
+
+    test "blanks the LARA placeholder, which puts version before mode" do
+      assert blanked?(@lara)
+    end
+
+    test "blanks both placeholders when stored unencoded" do
+      assert blanked?(@activity_player_unencoded)
+      assert blanked?(@lara_unencoded)
+    end
+
+    test "blanks an answer the student typed and then cleared" do
+      assert blanked?(~S|""|)
+    end
+
+    test "keeps a text answer" do
+      refute blanked?(~S|"This is DougTest Two's text answer"|)
+    end
+
+    test "keeps a text answer that quotes a report state after other text" do
+      refute blanked?(~S|"see \"{\"mode\":\"report\",\"authoredState\":\" in the log"|)
+    end
+
+    test "keeps a text answer that begins like a report state" do
+      refute blanked?(~S|"{\"mode\":\"report\" is what I typed"|)
     end
   end
 

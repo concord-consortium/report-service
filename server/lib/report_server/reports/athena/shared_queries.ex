@@ -393,6 +393,25 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
       """}}
   end
 
+  # The keys each writer puts first in an unanswered open response's report state: the activity player, then LARA.
+  @report_state_prefixes [~s({"mode":"report","authoredState":), ~s({"version":1,"mode":"report","authoredState":)]
+
+  defp open_response_text(answer) do
+    # A cleared answer is stored as the encoded empty string, and no other encoded string starts with it.
+    pattern =
+      @report_state_prefixes
+      |> Enum.flat_map(&[json_string_prefix(&1), &1])
+      |> Enum.concat([Jason.encode!("")])
+      |> Enum.map_join("|", &Regex.escape/1)
+
+    "CASE WHEN regexp_like(#{answer}, '#{ReportUtils.escape_single_quote("^(?:#{pattern})")}') THEN '' ELSE (#{answer}) END"
+  end
+
+  # The opening of the JSON string that encodes a value starting with `prefix`.
+  defp json_string_prefix(prefix) do
+    prefix |> Jason.encode!() |> String.slice(0..-2//1)
+  end
+
   def get_columns_for_question(question_id, question, denormalized_resource, auth_domain, activity_index, opts \\ []) do
     remove_open_response_urls = Keyword.get(opts, :remove_open_response_urls, false)
     source_key = AthenaConfig.get_source_key()
@@ -459,14 +478,15 @@ defmodule ReportServer.Reports.Athena.SharedQueries do
           ]
 
         "open_response" ->
-          # When there is no answer to an open_response question the report state JSON is saved as the answer in Firebase.
-          # This detects if the answer looks like the report state JSON and if so returns an empty string to show there was
-          # no answer to the question.
+          # Opening an open response question without answering it saves the question's report state as the answer.
+          # Every answer is JSON-encoded on its way to S3, so the placeholder arrives as an encoded string
+          # (or, in parquet files written before April 2021, unencoded) and is blanked here, as is an answer the
+          # student typed and then cleared.
           # note: conditional_model_url.() is not used here as students can answer with only audio responses and in that
           # case the answer does not exist as open response answers are only the text of the answer due to the
           # question type being ported from the legacy LARA built in open response questions which only saved the text.
           # Without the url column an audio-only answer looks unanswered.
-          text_column = %{name: "#{column_prefix}_text", value: "CASE WHEN starts_with(#{answer}, '\"{\"mode\":\"report\"') THEN '' ELSE (#{answer}) END", header: prompt_header}
+          text_column = %{name: "#{column_prefix}_text", value: open_response_text(answer), header: prompt_header}
           url_column = %{name: "#{column_prefix}_url", value: model_url.(answers_source_key_with_no_answer_fallback), header: prompt_header}
 
           if remove_open_response_urls, do: [text_column], else: [text_column, url_column]
