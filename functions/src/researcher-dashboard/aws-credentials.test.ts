@@ -53,6 +53,20 @@ describe("webIdentityCredentials", () => {
     await expect(credentials()).rejects.toThrow("metadata server unavailable")
     expect((await credentials()).accessKeyId).toBe("ASIA-token-2")
   })
+
+  describe("when the ID token never arrives", () => {
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    it("gives up after one upstream call's time without assuming the role", async () => {
+      const failure = webIdentityCredentials(() => role, "session", () => new Promise<string>(() => undefined))()
+
+      jest.advanceTimersByTime(10 * 1000)
+
+      await expect(failure).rejects.toThrow("getting AWS credentials failed: no answer within 10 seconds")
+      expect(fromWebToken).not.toHaveBeenCalled()
+    })
+  })
 })
 
 describe("functionCredentials", () => {

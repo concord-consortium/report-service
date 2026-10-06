@@ -11,7 +11,8 @@ const LAUNCH_STATES = [undefined, "TERMINATING", "TERMINATED"]
 // holding it does not block the researcher for long.
 const LAUNCH_CLAIM_MS = 60 * 1000
 const RUN_HOOK_PAYLOAD_MAX_BYTES = 16384
-// Per upstream call, each made once; the four a launch makes fit the function's 60-second timeout.
+// Per upstream call, each made once; the four a launch makes, and fetching the AWS credentials they
+// use, fit the function's 60-second timeout.
 export const UPSTREAM_TIMEOUT_MS = 10 * 1000
 
 export interface VmDoc {
@@ -48,7 +49,7 @@ export class VmStepError extends Error {
 
 const reason = (e: unknown) => e instanceof Error ? e.message : String(e)
 
-const within = <T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> => new Promise((resolve, reject) => {
+export const within = <T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> => new Promise((resolve, reject) => {
   const timer = setTimeout(() => {
     onTimeout?.()
     reject(new Error(`no answer within ${ms / 1000} seconds`))

@@ -1,5 +1,6 @@
 import { fromWebToken } from "@aws-sdk/credential-provider-web-identity"
 import { GoogleAuth } from "google-auth-library"
+import { UPSTREAM_TIMEOUT_MS, within } from "./ensure-vm"
 
 /** A credential provider an AWS SDK client calls whenever its credentials are missing or near expiry. */
 export type AwsCredentials = ReturnType<typeof fromWebToken>
@@ -22,15 +23,24 @@ export const metadataIdToken: IdTokenSource = async audience => {
 
 /**
  * Assumes `role` with a Google ID token minted for each call. The SDK calls again shortly before
- * the returned expiration, so a long-lived client never presents an expired token.
+ * the returned expiration, so a long-lived client never presents an expired token. The token and
+ * the role together get one upstream call's time, since the SDK's request timeout covers neither;
+ * a failure here means the SDK sends nothing.
  */
 export function webIdentityCredentials(
   role: () => WebIdentityRole, roleSessionName: string, idToken: IdTokenSource = metadataIdToken
 ): AwsCredentials {
   return async awsIdentityProperties => {
     const { roleArn, audience } = role()
-    const webIdentityToken = await idToken(audience)
-    return fromWebToken({ roleArn, roleSessionName, webIdentityToken })(awsIdentityProperties)
+    const assume = async () => {
+      const webIdentityToken = await idToken(audience)
+      return fromWebToken({ roleArn, roleSessionName, webIdentityToken })(awsIdentityProperties)
+    }
+    try {
+      return await within(assume(), UPSTREAM_TIMEOUT_MS)
+    } catch (e) {
+      throw new Error(`getting AWS credentials failed: ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
 }
 
