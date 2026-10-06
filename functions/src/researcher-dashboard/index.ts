@@ -2,9 +2,10 @@ import admin from "firebase-admin"
 import * as functions from "firebase-functions"
 
 import { researcherDashboardApp } from "./app"
+import { functionCredentials } from "./aws-credentials"
 import {
-  functionUrl, portalPublicKeys, rdAwsKey, rdAwsSecretKey, rdDataBucket, rdExecutionRoleArn, rdMicrovmImageArn,
-  rdQueueCap, rdReportServerUrl, unsetLaunchSettings
+  functionUrl, portalPublicKeys, rdAwsAudience, rdDataBucket, rdExecutionRoleArn, rdLauncherRoleArn,
+  rdMicrovmImageArn, rdQueueCap, rdReportServerUrl, SERVICE_ACCOUNT_ID, unsetLaunchSettings
 } from "./config"
 import { ensureVm, EnsureVmDeps } from "./ensure-vm"
 import { makeMicrovmApi, MicrovmApi } from "./microvm"
@@ -15,14 +16,17 @@ import { RunPackageDeps, Db } from "./run-package"
 let parsedKeys: { json: string; keys: PortalKeys } | null = null
 function trustedPortalKeys(): PortalKeys {
   const json = portalPublicKeys.value()
-  if (parsedKeys?.json !== json) parsedKeys = { json, keys: parsePortalKeys(json) }
+  if (parsedKeys?.json !== json) {
+    parsedKeys = { json, keys: parsePortalKeys(json) }
+  }
   return parsedKeys.keys
 }
 
-// Built on first use, once the secrets are readable, and kept for the instance's life.
+// Built on first use and kept for the instance's life; its credentials refresh themselves.
 let microvms: MicrovmApi | null = null
 function microvmApi(): MicrovmApi {
-  microvms ??= makeMicrovmApi({ accessKeyId: rdAwsKey.value(), secretAccessKey: rdAwsSecretKey.value() })
+  const launcher = () => ({ roleArn: rdLauncherRoleArn.value(), audience: rdAwsAudience.value() })
+  microvms ??= makeMicrovmApi(functionCredentials(launcher, "researcher-dashboard-launcher"))
   return microvms
 }
 
@@ -54,8 +58,9 @@ function researcherDashboardDeps(): RunPackageDeps {
   }
 }
 
-// The Researcher Dashboard's function surface, authenticated by rigse's signed assertions
-// rather than the shared bearer, and the only function holding the MicroVM launcher's keys.
+// The Researcher Dashboard's function surface, authenticated by rigse's signed assertions rather
+// than the shared bearer. It runs as its own service account, so the runner stack's roles, which
+// trust only that account, cannot be assumed from any other function in the project.
 export const researcherDashboard = functions
-  .runWith({ secrets: [rdAwsKey, rdAwsSecretKey], timeoutSeconds: 60 })
+  .runWith({ serviceAccount: `${SERVICE_ACCOUNT_ID}@`, timeoutSeconds: 60 })
   .https.onRequest(researcherDashboardApp(researcherDashboardDeps))

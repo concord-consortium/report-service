@@ -197,20 +197,21 @@ Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`,
 | report-server URL | `defineString` | `RD_REPORT_SERVER_URL` | Where the launch mints the VM's report-server token |
 | Function URL | `defineString` | `RD_FUNCTION_URL` | Optional override of `function_url` |
 | Queue cap | `defineInt` | `RD_QUEUE_CAP` | Packages outstanding per researcher before a 409 (default 20) |
-| Launcher access key | `defineSecret` | `RD_AWS_KEY` | The runner stack's launcher user |
-| Launcher secret key | `defineSecret` | `RD_AWS_SECRET_KEY` | The runner stack's launcher user |
+| Launcher role | `defineString` | `RD_LAUNCHER_ROLE_ARN` | The runner stack's launcher role, which the function assumes for MicroVM calls |
+| AWS audience | `defineString` | `RD_AWS_AUDIENCE` | The audience the runner stack's roles require of the function's Google ID token |
 
-Each `PORTAL_PUBLIC_KEYS` entry is what `rake portal_signing_key:public` prints on that portal, with the portal's site URL (for example `https://learn.portal.staging.concord.org/`) as `iss`. A key is trusted only for its own `iss`, so staging and production portals must have their own entries, and a malformed value is answered 500 rather than trusted. Until the image, role, bucket and report-server URL are all set, `run-package` answers 503 and writes nothing. Every one of these params must still appear in each `.env.<project>` file, with an empty value where it has none yet: a deploy prompts for a declared param the file does not list, whatever its default, and fails outright when it cannot prompt.
+Each `PORTAL_PUBLIC_KEYS` entry is what `rake portal_signing_key:public` prints on that portal, with the portal's site URL (for example `https://learn.portal.staging.concord.org/`) as `iss`. A key is trusted only for its own `iss`, so staging and production portals must have their own entries, and a malformed value is answered 500 rather than trusted. Until the image, execution role, bucket, report-server URL, launcher role and audience are all set, `run-package` answers 503 and writes nothing. Every one of these params must still appear in each `.env.<project>` file, with an empty value where it has none yet: a deploy prompts for a declared param the file does not list, whatever its default, and fails outright when it cannot prompt.
 
-**Deploy order.** A deploy of a function that declares an unset secret fails, and `researcherDashboard` declares the launcher's two keys, so set them in each project before the first deploy that includes it, even in a project with no runner stack yet (any placeholder value will do there, since the 503 stops the function using them):
+**AWS credentials.** The function holds no AWS key. It runs as its own service account, `researcher-dashboard@<project>.iam.gserviceaccount.com`, mints a Google ID token for `RD_AWS_AUDIENCE` and exchanges it with `sts:AssumeRoleWithWebIdentity` for `RD_LAUNCHER_ROLE_ARN`'s credentials, minting a new token each time they near expiry. The runner stack's roles trust only that account's unique ID, so no other function in the project can assume them. In the emulator there is no service account, so the function makes no AWS call unless you start it with `RD_EMULATOR_AWS=default-chain`, which uses your own AWS credentials.
+
+**Deploy order.** A deploy of a function whose service account does not exist fails, so create the account in each project before the first deploy that includes `researcherDashboard`, even in a project with no runner stack yet:
 
 ```
-firebase use report-service-dev
-firebase functions:secrets:set RD_AWS_KEY
-firebase functions:secrets:set RD_AWS_SECRET_KEY
+scripts/setup-researcher-dashboard-iam.sh apply report-service-dev
+scripts/setup-researcher-dashboard-iam.sh grant-deployer report-service-dev user:<deployer>@concord.org
 ```
 
-Repeat for `report-service-pro`. Deploy report-server before the function, since a launch calls report-server's mint endpoint.
+Repeat for `report-service-pro`. `apply` creates the account and its grants and is safe to rerun; `check` reports what is missing without changing anything, and makes a good preflight before a deploy. Both print the account's unique ID, which the runner stack takes as a parameter. Never delete and recreate the account: the new one gets a new unique ID, and the runner stack's roles refuse it until the stack is updated. Deploy report-server before the function, since a launch calls report-server's mint endpoint.
 
 ## Rules
 

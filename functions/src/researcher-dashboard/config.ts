@@ -1,9 +1,8 @@
-import { defineInt, defineSecret, defineString } from "firebase-functions/params"
+import { defineInt, defineString } from "firebase-functions/params"
 
-// The runner stack's launcher user. Secrets of the researcherDashboard function alone, so no
-// shared-bearer route on `api` receives them.
-export const rdAwsKey = defineSecret("RD_AWS_KEY")
-export const rdAwsSecretKey = defineSecret("RD_AWS_SECRET_KEY")
+// The service account researcherDashboard runs as, in each project, and the only identity the
+// runner stack's roles trust. scripts/setup-researcher-dashboard-iam.sh creates it.
+export const SERVICE_ACCOUNT_ID = "researcher-dashboard"
 
 // Empty launch settings make run-package answer 503; each .env file must still list every param,
 // even empty, or a deploy prompts for it.
@@ -15,6 +14,9 @@ export const rdMicrovmImageArn = defineString("RD_MICROVM_IMAGE_ARN", { default:
 export const rdExecutionRoleArn = defineString("RD_EXECUTION_ROLE_ARN", { default: "" })
 export const rdDataBucket = defineString("RD_DATA_BUCKET", { default: "" })
 export const rdReportServerUrl = defineString("RD_REPORT_SERVER_URL", { default: "" })
+// The runner stack's launcher role, and the audience its trust policy requires of our ID token.
+export const rdLauncherRoleArn = defineString("RD_LAUNCHER_ROLE_ARN", { default: "" })
+export const rdAwsAudience = defineString("RD_AWS_AUDIENCE", { default: "" })
 // Empty means the function's own first-generation URL, derived from the project at runtime.
 export const rdFunctionUrl = defineString("RD_FUNCTION_URL", { default: "" })
 export const rdQueueCap = defineInt("RD_QUEUE_CAP", { default: 20 })
@@ -22,6 +24,7 @@ export const rdQueueCap = defineInt("RD_QUEUE_CAP", { default: 20 })
 export const functionUrl = () =>
   rdFunctionUrl.value() || `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/researcherDashboard`
 
-/** The names of the four params a launch needs (image, role, bucket, report-server URL) that are empty. */
+/** The names of the params a launch needs that are empty. */
 export const unsetLaunchSettings = () =>
-  [rdMicrovmImageArn, rdExecutionRoleArn, rdDataBucket, rdReportServerUrl].filter(p => !p.value()).map(p => p.name)
+  [rdMicrovmImageArn, rdExecutionRoleArn, rdDataBucket, rdReportServerUrl, rdLauncherRoleArn, rdAwsAudience]
+    .filter(p => !p.value()).map(p => p.name)
