@@ -24,7 +24,7 @@ defmodule ReportServerWeb.Api.CatalogCorsTest do
     end)
   end
 
-  defp access_token, do: sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read"))
+  defp access_token, do: sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read"))
   defp from(conn, origin), do: put_req_header(conn, "origin", origin)
   defp bearer(conn), do: put_req_header(conn, "authorization", "Bearer #{access_token()}")
   defp header(conn, name), do: get_resp_header(conn, name)

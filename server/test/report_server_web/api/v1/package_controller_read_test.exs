@@ -59,7 +59,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
 
   # rigse's scoped access token: its aud names rigse and this deployment, its scope packages:read.
   defp access_token(overrides \\ %{}),
-    do: sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read", Map.merge(%{"uid" => @uid}, overrides)))
+    do: sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read", Map.merge(%{"uid" => @uid}, overrides)))
   defp with_bearer(conn, token), do: put_req_header(conn, "authorization", "Bearer #{token}")
   defp names(conn), do: conn |> json_response(200) |> Map.fetch!("packages") |> Enum.map(& &1["name"]) |> Enum.sort()
 
@@ -161,7 +161,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
 
     test "an expired, wrong-audience or unknown-portal bearer is 401, never the anonymous answer", %{conn: conn} do
       now = System.system_time(:second)
-      expired = sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read", %{"iat" => now - 7200, "exp" => now - 1}))
+      expired = sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], "packages:read", %{"iat" => now - 7200, "exp" => now - 1}))
       wrong_audience = sign(:staging, claims(:staging, "report-server"))
 
       for token <- [expired, wrong_audience, "not-a-token"] do

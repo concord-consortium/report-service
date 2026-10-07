@@ -77,7 +77,7 @@ defmodule ReportServerWeb.Api.PortalTokenTest do
     end
 
     test "refuses an access token naming several services, this one among them" do
-      token = sign(:staging, access_claims(:staging, [iss(:staging), @audience], @capability))
+      token = sign_access(:staging, access_claims(:staging, [iss(:staging), @audience], @capability))
 
       assert PortalToken.verify(token, @audience) == {:error, :wrong_audience}
     end
@@ -153,43 +153,57 @@ defmodule ReportServerWeb.Api.PortalTokenTest do
 
   describe "verify_access_token/3" do
     test "accepts a token whose aud names this deployment and whose scope holds the capability" do
-      token = sign(:staging, access_claims(:staging, [iss(:staging), @catalog], @capability))
+      token = sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], @capability))
 
       assert {:ok, %{"uid" => 42}} = PortalToken.verify_access_token(token, @catalog, @capability)
     end
 
+    test "refuses a token without rigse's access-token header, whatever its claims" do
+      claims = access_claims(:staging, [iss(:staging), @catalog], @capability)
+
+      assert PortalToken.verify_access_token(sign(:staging, claims), @catalog, @capability) == {:error, :wrong_type}
+      assert PortalToken.verify_access_token(sign(:staging, claims, typ: "JWT"), @catalog, @capability) == {:error, :wrong_type}
+    end
+
+    test "accepts the access-token type in its full media-type form and in any case" do
+      claims = access_claims(:staging, [iss(:staging), @catalog], @capability)
+
+      assert {:ok, _} = PortalToken.verify_access_token(sign_access(:staging, claims, typ: "application/at+jwt"), @catalog, @capability)
+      assert {:ok, _} = PortalToken.verify_access_token(sign_access(:staging, claims, typ: "AT+JWT"), @catalog, @capability)
+    end
+
     test "reads the capability out of a space-separated scope" do
-      token = sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "class:researcher-read #{@capability} class:researcher-run"))
+      token = sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], "class:researcher-read #{@capability} class:researcher-run"))
 
       assert {:ok, _} = PortalToken.verify_access_token(token, @catalog, @capability)
     end
 
     test "refuses a token whose scope does not hold the capability" do
-      token = sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "class:researcher-read"))
+      token = sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], "class:researcher-read"))
 
       assert PortalToken.verify_access_token(token, @catalog, @capability) == {:error, :missing_capability}
     end
 
     test "refuses a token with no scope" do
-      token = sign(:staging, claims(:staging, [iss(:staging), @catalog]))
+      token = sign_access(:staging, claims(:staging, [iss(:staging), @catalog]))
 
       assert PortalToken.verify_access_token(token, @catalog, @capability) == {:error, :missing_capability}
     end
 
     test "refuses a token whose aud list does not name this deployment" do
-      token = sign(:staging, access_claims(:staging, [iss(:staging), "https://report-server.elsewhere"], @capability))
+      token = sign_access(:staging, access_claims(:staging, [iss(:staging), "https://report-server.elsewhere"], @capability))
 
       assert PortalToken.verify_access_token(token, @catalog, @capability) == {:error, :wrong_audience}
     end
 
     test "refuses an assertion, whose aud is one string, even when it is this deployment" do
-      token = sign(:staging, access_claims(:staging, [@catalog], @capability, %{"aud" => @catalog}))
+      token = sign_access(:staging, access_claims(:staging, [@catalog], @capability, %{"aud" => @catalog}))
 
       assert PortalToken.verify_access_token(token, @catalog, @capability) == {:error, :wrong_audience}
     end
 
     test "refuses a token presented as the old launch audience" do
-      token = sign(:staging, access_claims(:staging, ["researcher-dashboard"], @capability))
+      token = sign_access(:staging, access_claims(:staging, ["researcher-dashboard"], @capability))
 
       assert PortalToken.verify_access_token(token, @catalog, @capability) == {:error, :wrong_audience}
     end
@@ -212,7 +226,7 @@ defmodule ReportServerWeb.Api.PortalTokenTest do
 
   describe "PortalTokenPlug" do
     test "assigns the claims of an access token for its capability", %{conn: conn} do
-      token = sign(:staging, access_claims(:staging, [iss(:staging), @catalog], @capability))
+      token = sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], @capability))
 
       conn =
         conn
@@ -224,7 +238,7 @@ defmodule ReportServerWeb.Api.PortalTokenTest do
     end
 
     test "refuses an access token without the capability rather than treating it as anonymous", %{conn: conn} do
-      token = sign(:staging, access_claims(:staging, [iss(:staging), @catalog], "class:researcher-read"))
+      token = sign_access(:staging, access_claims(:staging, [iss(:staging), @catalog], "class:researcher-read"))
 
       conn =
         conn

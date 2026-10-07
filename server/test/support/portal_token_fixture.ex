@@ -41,12 +41,16 @@ defmodule ReportServerWeb.PortalTokenFixture do
     claims(key, audiences, Map.merge(%{"scope" => scope}, overrides))
   end
 
+  @doc "Signs an access token as rigse does, with the header `typ: at+jwt`. Takes `sign/3`'s options."
+  def sign_access(key, claims, opts \\ []), do: sign(key, claims, Keyword.put_new(opts, :typ, "at+jwt"))
+
   @doc """
-  Signs `claims` with the `key` portal's private key. `:kid` overrides the header's kid, and
-  `:without` drops claims.
+  Signs `claims` with the `key` portal's private key. `:kid` overrides the header's kid, `:typ`
+  sets the header's typ, and `:without` drops claims.
   """
   def sign(key, claims, opts \\ []) do
     header = %{"kid" => Keyword.get(opts, :kid, kid(key))}
+    header = if typ = Keyword.get(opts, :typ), do: Map.put(header, "typ", typ), else: header
     claims = Map.drop(claims, Keyword.get(opts, :without, []))
     signer = Joken.Signer.create("RS256", %{"pem" => private_pem(key)}, header)
     {:ok, token} = Joken.Signer.sign(claims, signer)

@@ -9,6 +9,8 @@ defmodule ReportServerWeb.Api.PortalToken do
   services can never pass as one. A scoped access token names every service it may be used at
   in an `aud` list and carries a space-separated `scope`; `verify_access_token/3` requires this
   deployment's own URL among those audiences and the capability the route needs in that scope.
+  rigse marks an access token with the header `typ: at+jwt` (RFC 9068), and `verify_access_token/3`
+  requires it, so no other token rigse signs can pass as one whatever its claims say.
   """
   alias ReportServerWeb.Api.PortalKeys
 
@@ -26,6 +28,7 @@ defmodule ReportServerWeb.Api.PortalToken do
   def verify_access_token(token, audience, capability)
       when is_binary(token) and is_binary(audience) and is_binary(capability) do
     with {:ok, claims} <- decode(token),
+         :ok <- check(access_token_type?(token), :wrong_type),
          :ok <- check(names?(claims["aud"], audience), :wrong_audience),
          :ok <- check(holds?(claims["scope"], capability), :missing_capability) do
       {:ok, claims}
@@ -65,6 +68,14 @@ defmodule ReportServerWeb.Api.PortalToken do
     end
   rescue
     _ -> {:error, :malformed}
+  end
+
+  # RFC 9068 section 4 allows the full media type too, and media types compare case-insensitively.
+  defp access_token_type?(token) do
+    case peek_header(token) do
+      {:ok, %{"typ" => typ}} when is_binary(typ) -> String.downcase(typ) in ["at+jwt", "application/at+jwt"]
+      _ -> false
+    end
   end
 
   # Requiring a list keeps an assertion, which names its one service in a string, from
