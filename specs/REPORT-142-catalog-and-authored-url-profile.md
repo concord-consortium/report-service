@@ -106,7 +106,7 @@ When a researcher opens a class, the dashboard lists only the packages that make
   - `assignment_urls` is an array of at most 500 strings of at most 2,048 characters each.
   - The whole body is at most 256 KiB, which keeps the queued task under Cloud Tasks' 1 MiB task limit.
   Anything else is 400 and nothing is queued. A valid request is answered 202 once the derivation is queued, and the function holds nothing open while it runs. While the authoring host allowlist (R22) is empty, every request is answered 503 naming it, before validation, and nothing is queued, since the deriver could only refuse every content URL.
-- R21. The derivation runs outside the request, because a first-generation HTTPS function is not guaranteed any CPU after it responds. It is retried on failure. It ends in one write of `researcher_dashboard/{portal}/classes/{class_hash}` with the Admin SDK.
+- R21. The derivation runs outside the request, because an HTTPS function is not guaranteed any CPU after it responds. It is retried on failure. It ends in one write of `researcher_dashboard/{portal}/classes/{class_hash}` with the Admin SDK.
 - R22. The deriver follows only a URL that names a container: an assignment URL carrying an `activity` or `sequence` query parameter whose value is an absolute URL. That value is the content URL. Every other assignment URL, a CLUE offering URL among them, is taken as it stands and not fetched.
   - A content URL is fetched only if its parsed hostname exactly equals an entry in a configured allowlist of authoring hosts (no suffix match, no userinfo, default port), and only over HTTPS. An `http:` URL on an allowlisted host is fetched as `https:`.
   - A redirect is not followed.
@@ -315,7 +315,7 @@ The catalog path now takes rigse's scoped access token in place of the launch to
 ---
 
 ### Derive in a Cloud Task, not after the response
-**Context**: The design has the function answer 202 and derive asynchronously. `researcherDashboard` is a first-generation HTTPS function (REPORT-141), and such a function is not guaranteed CPU once it has responded, so work started after `res.send` may never finish.
+**Context**: The design has the function answer 202 and derive asynchronously. `researcherDashboard` is an HTTPS function (REPORT-141), and an HTTPS function is not guaranteed CPU once it has responded, so work started after `res.send` may never finish. That holds for second-generation functions too: Cloud Run gives an instance CPU only while it handles a request unless CPU is always allocated, which costs more, and the task's retries would be worth keeping even then (scytacki, #430 review).
 **Options considered**:
 - A) Enqueue a Cloud Task to a v2 `onTaskDispatched` worker, as `submitTask` already does with `CloudTasksClient` and OIDC, running the worker directly under the emulator.
 - B) Derive inside the request and answer when done.
