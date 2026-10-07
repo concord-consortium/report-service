@@ -2,6 +2,8 @@
 // inside the Activity Player content they point at. It reads only structural fields whose meaning
 // is the same for every interactive, so a new interactive needs no change here.
 
+import { convertLegacyResource } from "../chat/convert"
+
 export const MAX_INTERACTIVE_URLS = 500
 const MAX_BODY_BYTES = 5 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 15_000
@@ -89,10 +91,17 @@ export function interactiveUrls(activity: unknown): string[] {
   return out
 }
 
-/** A sequence embeds its activities in full, so either shape yields its interactives in one fetch. */
-function contentInteractiveUrls(json: unknown): string[] {
-  if (isObject(json) && Array.isArray(json.activities)) return json.activities.flatMap(interactiveUrls)
-  return interactiveUrls(json)
+/**
+ * A sequence embeds its activities in full, so either shape yields its interactives in one fetch. A
+ * version-1 export wraps each page embeddable, so it is converted to the version-2 shape first, as
+ * the chat tutor does.
+ */
+export function contentInteractiveUrls(json: unknown): string[] {
+  const resource = isObject(json) && json.version === 1 ? convertLegacyResource(json) : json
+  if (isObject(resource) && Array.isArray(resource.activities)) {
+    return resource.activities.flatMap(interactiveUrls)
+  }
+  return interactiveUrls(resource)
 }
 
 class FetchFailure extends Error {

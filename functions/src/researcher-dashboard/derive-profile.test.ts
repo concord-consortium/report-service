@@ -1,7 +1,7 @@
 import * as fs from "fs"
 import * as path from "path"
 import {
-  allowedContentUrl, BUDGET_EXHAUSTED, contentUrlOf, deriveProfile, FetchResponse, interactiveUrls, MAX_INTERACTIVE_URLS,
+  allowedContentUrl, BUDGET_EXHAUSTED, contentInteractiveUrls, contentUrlOf, deriveProfile, FetchResponse, interactiveUrls, MAX_INTERACTIVE_URLS,
   ProfileDeps
 } from "./derive-profile"
 
@@ -63,6 +63,17 @@ function fakeFetch(routes: Record<string, Route | Route[]>) {
 
 const deps = (fetchImpl: ProfileDeps["fetchImpl"], extra: Partial<ProfileDeps> = {}): ProfileDeps =>
   ({ fetchImpl, allowedHosts: new Set(["authoring.concord.org"]), ...extra })
+
+describe("contentInteractiveUrls", () => {
+  it("converts a version-1 export, whose page embeddables are wrapped, before reading its interactives", () => {
+    const v1 = JSON.parse(fs.readFileSync(path.join(__dirname, "../chat/sample-activity-v1.json"), "utf8"))
+
+    expect(contentInteractiveUrls(v1).sort()).toEqual([
+      "https://lara-master.concordqa.org/example-interactive/index.html",
+      "https://models-resources.concord.org/question-interactives/branch/master/video-player/"
+    ])
+  })
+})
 
 describe("interactiveUrls", () => {
   it("reads the live fixtures' interactives exactly, and nothing from other embeddables", () => {
