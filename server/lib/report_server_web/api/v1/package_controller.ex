@@ -120,9 +120,12 @@ defmodule ReportServerWeb.Api.V1.PackageController do
     end
   end
 
+  # Parsed, so parameters and case are allowed and a longer subtype such as application/zipfoo is not.
   defp zip_content_type(conn) do
-    case get_req_header(conn, "content-type") do
-      ["application/zip" <> _] -> :ok
+    with [value] <- get_req_header(conn, "content-type"),
+         {:ok, "application", "zip", _params} <- Plug.Conn.Utils.media_type(value) do
+      :ok
+    else
       _ -> {:error, :bad_request, "the package must be sent as the request body with Content-Type: application/zip"}
     end
   end

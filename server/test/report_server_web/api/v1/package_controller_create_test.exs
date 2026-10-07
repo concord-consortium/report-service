@@ -15,9 +15,9 @@ defmodule ReportServerWeb.Api.V1.PackageControllerCreateTest do
     on_exit(&PackagesPortalStub.reset/0)
   end
 
-  defp publish(conn, body, query \\ "") do
+  defp publish(conn, body, query \\ "", content_type \\ "application/zip") do
     conn
-    |> put_req_header("content-type", "application/zip")
+    |> put_req_header("content-type", content_type)
     |> put_req_header("content-length", Integer.to_string(byte_size(body)))
     |> post("/api/v1/packages" <> query, body)
   end
@@ -269,6 +269,14 @@ defmodule ReportServerWeb.Api.V1.PackageControllerCreateTest do
     test "a content type other than application/zip is 400", %{conn: conn} do
       conn = conn |> put_req_header("content-type", "application/octet-stream") |> post("/api/v1/packages", package_zip())
       assert %{"error" => "BAD_REQUEST"} = json_response(conn, 400)
+    end
+
+    test "a content type that only starts with application/zip is 400", %{conn: conn} do
+      assert %{"error" => "BAD_REQUEST"} = conn |> publish(package_zip(), "", "application/zipfoo") |> json_response(400)
+    end
+
+    test "application/zip with a parameter, in any case, is accepted", %{conn: conn} do
+      assert conn |> publish(package_zip(), "", "Application/ZIP; charset=binary") |> json_response(201)
     end
 
     test "without a token, or with an unknown one, is 401" do
