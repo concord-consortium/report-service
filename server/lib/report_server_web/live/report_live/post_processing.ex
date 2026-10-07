@@ -6,7 +6,11 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
   alias Phoenix.PubSub
   alias ReportServer.AuditLog
   alias ReportServer.PostProcessing.{JobServer, JobSupervisor}
-  alias ReportServer.Reports.{Report, ReportRun}
+  alias ReportServer.PostProcessing.Steps.{HasAudio, TranscribeAudio}
+  alias ReportServer.Reports.{Report, ReportFilter, ReportRun}
+
+  # both steps find each answer through the open response _url column
+  @open_response_url_step_ids [HasAudio.step().id, TranscribeAudio.step().id]
 
   @button_class "rounded px-2 py-1 text-xs bg-orange border border-orange text-white text-sm hover:bg-light-orange hover:text-orange hover:border hover:border-orange disabled:bg-slate-500 disabled:border-slate-500 disabled:text-white disabled:opacity-35"
 
@@ -42,9 +46,7 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
     JobServer.register_client(query_id, self())
     JobServer.request_job_status(query_id)
 
-    report_type = get_report_type(report_run)
-
-    steps = JobServer.get_steps(report_type)
+    steps = steps_for_run(report_run)
     default_form_params =  steps |> Enum.map(fn step -> {step.id, false} end) |> Enum.into(%{})
     form = to_form(default_form_params)
 
@@ -202,10 +204,19 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
   defp get_report_type(%{report_slug: "student-answers"} = %ReportRun{}), do: "details"
   defp get_report_type(%{report_slug: report_slug} = %ReportRun{}), do: report_slug
 
+  @doc "The post-processing steps this run's output supports."
+  def steps_for_run(report_run = %ReportRun{}) do
+    steps = JobServer.get_steps(get_report_type(report_run))
+
+    case report_run.report_filter do
+      %ReportFilter{remove_open_response_urls: true} -> Enum.reject(steps, &(&1.id in @open_response_url_step_ids))
+      _ -> steps
+    end
+  end
+
   def show_component?(report = %Report{}, report_run = %ReportRun{}) do
     if report.type == :athena && report_run.athena_query_state == "succeeded" do
-      report_type = get_report_type(report_run)
-      steps = JobServer.get_steps(report_type)
+      steps = steps_for_run(report_run)
       length(steps) > 0
     else
       false

@@ -28,7 +28,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
     {view, user}
   end
 
-  # the date, hide-names and application controls only render once a first filter has a value
+  # the controls below the filter rows only render once a first filter has a value
   defp choose_first_filter(view, extra_params \\ %{}) do
     params = Map.merge(%{"filter1_type" => "cohort", "filter1" => ["1"]}, extra_params)
 
@@ -181,6 +181,70 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       })
 
       assert render(view) =~ ~s(id="live_select_app")
+    end
+  end
+
+  describe "the remove open response links checkbox" do
+    test "renders unchecked with its label on student answers", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-answers")
+      html = choose_first_filter(view)
+
+      assert html =~ ~s(id="remove_open_response_urls")
+      assert html =~ "Remove open response link columns (audio/report links)"
+      refute has_element?(view, "#remove_open_response_urls[checked]")
+    end
+
+    test "renders for a project researcher, who gets no hide names checkbox", %{conn: conn} do
+      researcher = user_fixture(%{portal_is_project_researcher: true})
+      {view, _user} = mount_form_as(conn, "student-answers", researcher)
+      choose_first_filter(view)
+
+      assert has_element?(view, "#remove_open_response_urls")
+      refute has_element?(view, "#hide_names")
+    end
+
+    test "does not render on a report without per-question columns", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+      choose_first_filter(view)
+
+      assert has_element?(view, "#start_date")
+      refute has_element?(view, "#remove_open_response_urls")
+    end
+
+    test "checking it stores the option on the run", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-answers")
+      choose_first_filter(view)
+
+      view
+      |> form("form[phx-submit=submit_form]", filter_form: %{"remove_open_response_urls" => "true"})
+      |> render_change(%{"_target" => ["filter_form", "remove_open_response_urls"]})
+
+      render_click(view, "submit_form")
+      assert_redirect(view)
+
+      assert [run] = Reports.list_user_report_runs(user, "student-answers")
+      assert run.report_filter.remove_open_response_urls == true
+    end
+
+    test "leaving it alone stores the option off", %{conn: conn} do
+      {view, user} = mount_form(conn, "student-answers")
+      choose_first_filter(view)
+
+      render_click(view, "submit_form")
+      assert_redirect(view)
+
+      assert [run] = Reports.list_user_report_runs(user, "student-answers")
+      assert run.report_filter.remove_open_response_urls == false
+    end
+
+    test "is refused on a report that does not offer it", %{conn: conn} do
+      {view, user} = mount_form(conn, "teacher-actions")
+      choose_first_filter(view, %{"remove_open_response_urls" => "true"})
+
+      html = render_click(view, "submit_form")
+
+      assert html =~ "does not support removing open response links"
+      assert Reports.list_user_report_runs(user, "teacher-actions") == []
     end
   end
 

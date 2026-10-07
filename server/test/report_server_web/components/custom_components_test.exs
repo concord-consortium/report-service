@@ -55,6 +55,15 @@ defmodule ReportServerWeb.CustomComponentsTest do
     refute html =~ "Start Date"
     refute html =~ "Hide Names"
     refute html =~ "Application"
+    refute html =~ "Remove Open Response Links"
+  end
+
+  test "report_filter_values renders the remove open response links row when the option is on" do
+    run = %ReportRun{report_filter: %ReportFilter{remove_open_response_urls: true}, report_filter_values: nil}
+
+    html = render_component(&CustomComponents.report_filter_values/1, report_run: run)
+
+    assert html =~ "Remove Open Response Links"
   end
 
   test "report_filter_values renders a populated report_filter" do

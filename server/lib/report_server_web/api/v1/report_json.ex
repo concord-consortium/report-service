@@ -46,7 +46,8 @@ defmodule ReportServerWeb.Api.V1.ReportJSON do
       start_date: presence(report_filter.start_date),
       end_date: presence(report_filter.end_date),
       hide_names: !!report_filter.hide_names,
-      exclude_internal: !!report_filter.exclude_internal
+      exclude_internal: !!report_filter.exclude_internal,
+      remove_open_response_urls: !!report_filter.remove_open_response_urls
     }
 
     Enum.reduce(ReportFilter.dimensions(), base, fn dimension, acc ->

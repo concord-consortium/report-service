@@ -28,18 +28,7 @@ import { taskWorker } from "./tasks/task-worker";
 
 import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigger
 
-import { researcherDashboardApp } from "./researcher-dashboard/app"
-import { DeriveProfileRouteDeps, parseAllowedHosts } from "./researcher-dashboard/derive-profile-route"
-import { defaultDerivationDeps, enqueueDerivation } from "./researcher-dashboard/derive-profile-worker"
-import { deriveProfileWorker } from "./researcher-dashboard/derive-profile-task"
-import { RunPackageDeps, Db } from "./researcher-dashboard/run-package"
-import { parsePortalKeys, PortalKeys } from "./researcher-dashboard/portal-token"
-import {
-  functionUrl, portalPublicKeys, rdAwsKey, rdAwsSecretKey, rdDataBucket, rdExecutionRoleArn, rdMicrovmImageArn,
-  rdAuthoringHosts, rdQueueCap, rdReportServerUrl, unsetLaunchSettings
-} from "./researcher-dashboard/config"
-import { ensureVm, EnsureVmDeps } from "./researcher-dashboard/ensure-vm"
-import { makeMicrovmApi, MicrovmApi } from "./researcher-dashboard/microvm"
+import { deriveProfileWorker, researcherDashboard } from "./researcher-dashboard"
 
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
@@ -88,64 +77,6 @@ const wrappedApi = functions
     }
     api(req, res)
   })
-
-// Parsed once per configured value rather than per request.
-let parsedKeys: { json: string; keys: PortalKeys } | null = null
-function trustedPortalKeys(): PortalKeys {
-  const json = portalPublicKeys.value()
-  if (parsedKeys?.json !== json) parsedKeys = { json, keys: parsePortalKeys(json) }
-  return parsedKeys.keys
-}
-
-// Built on first use, once the secrets are readable, and kept for the instance's life.
-let microvms: MicrovmApi | null = null
-function microvmApi(): MicrovmApi {
-  microvms ??= makeMicrovmApi({ accessKeyId: rdAwsKey.value(), secretAccessKey: rdAwsSecretKey.value() })
-  return microvms
-}
-
-function researcherDashboardDeps(): RunPackageDeps {
-  const db = admin.firestore() as unknown as Db
-  const timestamp = () => admin.firestore.FieldValue.serverTimestamp()
-  const vmDeps: EnsureVmDeps = {
-    db,
-    microvms: microvmApi(),
-    fetchImpl: fetch,
-    now: Date.now,
-    timestamp,
-    config: {
-      imageIdentifier: rdMicrovmImageArn.value(),
-      executionRoleArn: rdExecutionRoleArn.value(),
-      bucket: rdDataBucket.value(),
-      reportServerUrl: rdReportServerUrl.value(),
-      functionUrl: functionUrl()
-    }
-  }
-  return {
-    db,
-    keys: trustedPortalKeys,
-    timestamp,
-    ensureVm: (who, body) => ensureVm(vmDeps, who, body),
-    log: functions.logger,
-    config: { queueCap: rdQueueCap.value() },
-    unconfigured: unsetLaunchSettings()
-  }
-}
-
-function deriveProfileDeps(): DeriveProfileRouteDeps {
-  const allowedHosts = () => parseAllowedHosts(rdAuthoringHosts.value())
-  return {
-    enqueue: task => enqueueDerivation(task, () => defaultDerivationDeps(allowedHosts()), functions.logger),
-    allowedHosts,
-    now: Date.now
-  }
-}
-
-// The Researcher Dashboard's function surface, authenticated by rigse's signed assertions
-// rather than the shared bearer, and the only function holding the MicroVM launcher's keys.
-const researcherDashboard = functions
-  .runWith({ secrets: [rdAwsKey, rdAwsSecretKey], timeoutSeconds: 60 })
-  .https.onRequest(researcherDashboardApp(researcherDashboardDeps, deriveProfileDeps))
 
 module.exports = {
   api: wrappedApi,

@@ -20,7 +20,8 @@ jest.mock("@aws-sdk/client-lambda-microvms", () => {
 describe("makeMicrovmApi", () => {
   beforeEach(() => send.mockReset())
 
-  const api = () => makeMicrovmApi({ accessKeyId: "AKIA", secretAccessKey: "secret" })
+  const credentials = async () => ({ accessKeyId: "ASIA", secretAccessKey: "secret", sessionToken: "token" })
+  const api = () => makeMicrovmApi(credentials)
 
   it("runs a VM with internet egress, an eight-hour cap, and no idle policy or ingress connectors", async () => {
     send.mockResolvedValue({ microvmId: "vm-1", imageVersion: "7" })
@@ -39,10 +40,11 @@ describe("makeMicrovmApi", () => {
     })
   })
 
-  it("makes each call once and cuts it off at the timeout", () => {
+  it("makes each call once, cuts it off at the timeout, and takes the given credentials", () => {
     api()
 
     expect(clientConfigs[clientConfigs.length - 1]).toMatchObject({
+      credentials,
       maxAttempts: 1,
       requestHandler: { requestTimeout: 10000, throwOnRequestTimeout: true }
     })
@@ -76,7 +78,7 @@ describe("makeMicrovmApi", () => {
   })
 
   it("never mints a MicroVM auth token", () => {
-    const dashboardSources = ["microvm.ts", "ensure-vm.ts", "run-package.ts", "app.ts"]
+    const dashboardSources = ["microvm.ts", "ensure-vm.ts", "run-package.ts", "app.ts", "index.ts", "aws-credentials.ts"]
       .map(file => readFileSync(join(__dirname, file), "utf8"))
 
     for (const source of dashboardSources) expect(source).not.toMatch(/CreateMicrovm(Shell)?AuthToken/)

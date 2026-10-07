@@ -188,7 +188,7 @@ defmodule ReportServer.Reports.Tree do
           title: "Student Answers",
           subtitle: "Includes everything from the Assignment Usage by Student report plus details about student answers to all questions in the resource(s) in your query.",
           include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
-          form_options: [enable_hide_names: true]
+          form_options: [enable_hide_names: true, enable_remove_open_response_urls: true]
         }),
         StudentIdMappingReport.new(%Report{
           slug: "student-id-mapping",

@@ -80,6 +80,46 @@ defmodule ReportServer.Reports.FilterValidationTest do
     end
   end
 
+  describe "check_remove_open_response_urls_supported/2" do
+    test "true is accepted on the report that offers the checkbox" do
+      assert FilterValidation.check_remove_open_response_urls_supported(
+               %ReportFilter{remove_open_response_urls: true},
+               report("student-answers")
+             ) == :ok
+    end
+
+    test "true is rejected on a report that does not offer it" do
+      assert {:error, :invalid, message} =
+               FilterValidation.check_remove_open_response_urls_supported(
+                 %ReportFilter{remove_open_response_urls: true},
+                 report("student-actions")
+               )
+
+      assert message == "This report does not support removing open response links."
+    end
+
+    test "false is accepted on every report" do
+      for slug <- ["student-answers", "student-actions"] do
+        assert FilterValidation.check_remove_open_response_urls_supported(%ReportFilter{}, report(slug)) == :ok
+      end
+    end
+
+    test "validate/2 applies it" do
+      assert {:error, :invalid, _} =
+               FilterValidation.validate(%ReportFilter{cohort: [1], remove_open_response_urls: true}, app_report())
+    end
+  end
+
+  describe "offers_remove_open_response_urls?/1" do
+    test "only student answers offers it" do
+      reports = Enum.map(Tree.api_report_slugs(), &report/1)
+      assert length(reports) > 1
+
+      assert reports |> Enum.filter(&FilterValidation.offers_remove_open_response_urls?/1) |> Enum.map(& &1.slug) ==
+               ["student-answers"]
+    end
+  end
+
   describe "validate/2" do
     test "applies both rules" do
       assert FilterValidation.validate(%ReportFilter{cohort: [1], app: [known_app()]}, app_report()) == :ok

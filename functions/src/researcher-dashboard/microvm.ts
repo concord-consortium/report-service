@@ -5,6 +5,7 @@ import {
   ResumeMicrovmCommand,
   RunMicrovmCommand
 } from "@aws-sdk/client-lambda-microvms"
+import type { AwsCredentials } from "./aws-credentials"
 import { UPSTREAM_TIMEOUT_MS } from "./ensure-vm"
 
 // The runner stack's region
@@ -25,7 +26,7 @@ export interface MicrovmApi {
   resume(microvmId: string): Promise<void>
 }
 
-export function makeMicrovmApi(credentials: { accessKeyId: string; secretAccessKey: string }): MicrovmApi {
+export function makeMicrovmApi(credentials: AwsCredentials | undefined): MicrovmApi {
   // One attempt, cut off at the timeout: a failure is answered and the queued work kept, and
   // retries would not fit the function's own timeout.
   const client = new LambdaMicrovmsClient({

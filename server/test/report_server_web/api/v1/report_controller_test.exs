@@ -10,8 +10,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   alias ReportServer.Reports.{Report, ReportFilter, ReportQuery, Tree}
   alias ReportServer.Reports.Portal.Csv
 
-  @filter_keys ~w(filters state app start_date end_date hide_names exclude_internal cohort school
-                  teacher assignment class student permission_form country subject_area)
+  @filter_keys ~w(filters state app start_date end_date hide_names exclude_internal
+                  remove_open_response_urls cohort school teacher assignment class student
+                  permission_form country subject_area)
 
   @run_keys ~w(id report_slug report_type execution report_filter report_filter_values
                athena_query_id athena_query_state athena_query_error athena_query_guidance
@@ -306,6 +307,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       assert filter["state"] == nil
       assert filter["hide_names"] == false
       assert filter["exclude_internal"] == false
+      assert filter["remove_open_response_urls"] == false
       assert filter["app"] == []
     end
 

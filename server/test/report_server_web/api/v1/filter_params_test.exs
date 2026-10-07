@@ -94,12 +94,22 @@ defmodule ReportServerWeb.Api.V1.FilterParamsTest do
       assert {:ok, %ReportFilter{hide_names: false, exclude_internal: false}} = FilterParams.parse(%{})
     end
 
+    test "remove_open_response_urls is carried and defaults to false" do
+      assert {:ok, %ReportFilter{remove_open_response_urls: true}} =
+               FilterParams.parse(%{"remove_open_response_urls" => true})
+
+      assert {:ok, %ReportFilter{remove_open_response_urls: false}} = FilterParams.parse(%{})
+    end
+
     test "anything but a boolean is a client error" do
       assert {:error, message} = FilterParams.parse(%{"hide_names" => "true"})
       assert message =~ "hide_names must be true or false"
 
       assert {:error, message} = FilterParams.parse(%{"exclude_internal" => 1})
       assert message =~ "exclude_internal must be true or false"
+
+      assert {:error, message} = FilterParams.parse(%{"remove_open_response_urls" => 1})
+      assert message =~ "remove_open_response_urls must be true or false"
     end
   end
 end

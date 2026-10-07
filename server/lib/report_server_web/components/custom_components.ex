@@ -290,6 +290,10 @@ defmodule ReportServerWeb.CustomComponents do
         <div class="table-cell capitalize font-bold">Hide Names</div>
         <div class="table-cell pl-3">True</div>
       </div>
+      <div class="table-row" :if={@report_filter.remove_open_response_urls}>
+        <div class="table-cell capitalize font-bold">Remove Open Response Links</div>
+        <div class="table-cell pl-3">True</div>
+      </div>
     </div>
     """
   end

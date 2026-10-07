@@ -2,6 +2,7 @@ defmodule ReportServer.ReportFilterTest do
   use ExUnit.Case, async: true
 
   alias ReportServer.Reports.ReportFilter
+  alias ReportServer.Types.EctoReportFilter
 
   defp from_params(params, filter_index \\ 0),
     do: ReportFilter.from_form(Phoenix.Component.to_form(params, as: "filter_form"), filter_index)
@@ -72,6 +73,19 @@ defmodule ReportServer.ReportFilterTest do
       assert filter.start_date == "2024-09-01"
       assert filter.end_date == "2025-06-30"
       assert filter.hide_names
+    end
+
+    test "reads the remove open response links checkbox" do
+      assert from_params(%{"remove_open_response_urls" => "true"}).remove_open_response_urls
+      refute from_params(%{"remove_open_response_urls" => "false"}).remove_open_response_urls
+      refute from_params(%{}).remove_open_response_urls
+    end
+  end
+
+  describe "EctoReportFilter.load/1" do
+    test "a run stored before remove_open_response_urls existed loads with it off" do
+      assert {:ok, %ReportFilter{hide_names: true, remove_open_response_urls: false}} =
+               EctoReportFilter.load(%{"hide_names" => true})
     end
   end
 end
