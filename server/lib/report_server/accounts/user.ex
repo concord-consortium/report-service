@@ -17,6 +17,8 @@ defmodule ReportServer.Accounts.User do
     field :portal_is_admin, :boolean
     field :portal_is_project_admin, :boolean
     field :portal_is_project_researcher, :boolean
+    # granted only by an operator (ReportServer.Release), so never cast from portal info
+    field :package_publisher, :boolean, default: false
 
     has_many :report_runs, ReportRun, foreign_key: :user_id
 

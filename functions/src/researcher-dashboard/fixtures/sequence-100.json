@@ -1,0 +1,865 @@
+{
+ "title": "Conservation of Energy",
+ "activities": [
+  {
+   "name": "Energy on a Ramp",
+   "pages": [
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         },
+         "authored_state": "{\"version\":1,\"prompt\":\"\\u003Cp\\u003EPick two of the words, and for each word describe a sentence you would use that includes that word and what you mean by the word.\\u003C/p\\u003E\",\"defaultAnswer\":null,\"required\":false,\"questionType\":\"open_response\",\"predictionFeedback\":false,\"hint\":null}"
+        },
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Image Question",
+           "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Gravitational Potential Energy and Work",
+   "pages": [
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Image Question",
+           "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Refrigerator and Moving Van",
+   "pages": [
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "MwInteractive",
+         "url": "https://concord-consortium.github.io/button-interactive/"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Image Question",
+           "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "MwInteractive",
+         "url": "https://lab-demo.ritesproject.net/embeddable.html#interactives/sensor/labquest2.json"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "Embeddable::Xhtml"
+        }
+       ]
+      },
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Open Response",
+           "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "sections": [
+      {
+       "embeddables": [
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        },
+        {
+         "type": "ManagedInteractive",
+         "url_fragment": null,
+         "library_interactive": {
+          "data": {
+           "name": "Multiple Choice",
+           "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

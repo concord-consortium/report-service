@@ -4,9 +4,11 @@ import * as functions from "firebase-functions"
 import { researcherDashboardApp } from "./app"
 import { functionCredentials } from "./aws-credentials"
 import {
-  functionUrl, portalPublicKeys, rdAwsAudience, rdDataBucket, rdExecutionRoleArn, rdLauncherRoleArn,
+  functionUrl, portalPublicKeys, rdAuthoringHosts, rdAwsAudience, rdDataBucket, rdExecutionRoleArn, rdLauncherRoleArn,
   rdMicrovmImageArn, rdQueueCap, rdReportServerUrl, SERVICE_ACCOUNT_ID, unsetLaunchSettings
 } from "./config"
+import { DeriveProfileRouteDeps, parseAllowedHosts } from "./derive-profile-route"
+import { defaultDerivationDeps, enqueueDerivation } from "./derive-profile-worker"
 import { ensureVm, EnsureVmDeps } from "./ensure-vm"
 import { makeMicrovmApi, MicrovmApi } from "./microvm"
 import { parsePortalKeys, PortalKeys } from "./portal-token"
@@ -58,9 +60,20 @@ function researcherDashboardDeps(): RunPackageDeps {
   }
 }
 
+function deriveProfileDeps(): DeriveProfileRouteDeps {
+  const allowedHosts = () => parseAllowedHosts(rdAuthoringHosts.value())
+  return {
+    enqueue: task => enqueueDerivation(task, () => defaultDerivationDeps(allowedHosts()), functions.logger),
+    allowedHosts,
+    now: Date.now
+  }
+}
+
 // The Researcher Dashboard's function surface, authenticated by rigse's signed assertions rather
 // than the shared bearer. It runs as its own service account, so the runner stack's roles, which
 // trust only that account, cannot be assumed from any other function in the project.
 export const researcherDashboard = functions
   .runWith({ serviceAccount: `${SERVICE_ACCOUNT_ID}@`, timeoutSeconds: 60 })
-  .https.onRequest(researcherDashboardApp(researcherDashboardDeps))
+  .https.onRequest(researcherDashboardApp(researcherDashboardDeps, deriveProfileDeps))
+
+export { deriveProfileWorker } from "./derive-profile-task"

@@ -1,0 +1,29 @@
+{
+ "activity-100": [
+  "https://models-resources.concord.org/question-interactives/image-question/",
+  "https://models-resources.concord.org/question-interactives/image/",
+  "https://models-resources.concord.org/question-interactives/multiple-choice/",
+  "https://models-resources.concord.org/question-interactives/open-response/",
+  "https://s3.amazonaws.com/has-production/WaterModel/WaterModel-Gaining-Losing-Stream.html"
+ ],
+ "activity-1000": [
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+I&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true",
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+II&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true",
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+III&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true",
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+IV&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true",
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+I&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json",
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+II&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json",
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+III&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json",
+  "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+IV&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json",
+  "https://lab.concord.org/embeddable.html#interactives/itsi/energy-levels/atom-builder.json",
+  "https://models-resources.concord.org/question-interactives/image-question/",
+  "https://models-resources.concord.org/question-interactives/open-response/"
+ ],
+ "sequence-100": [
+  "https://concord-consortium.github.io/button-interactive/",
+  "https://lab-demo.ritesproject.net/embeddable.html#interactives/sensor/labquest2.json",
+  "https://models-resources.concord.org/question-interactives/image-question/",
+  "https://models-resources.concord.org/question-interactives/multiple-choice/",
+  "https://models-resources.concord.org/question-interactives/open-response/"
+ ]
+}

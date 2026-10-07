@@ -19,6 +19,8 @@ config :report_server, ReportServer.Repo,
 # you can enable the server option below.
 config :report_server, ReportServerWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
+  # a deployed server's URL, which is the audience rigse names in an access token
+  url: [host: "report-server.example", port: 443, scheme: "https"],
   secret_key_base: "dVgyX6OXy2LsFToLpy02eK9PKFcWe4MEGc8KHU1N+P9t9sr/fkV/hIQ3Owrrs44L",
   server: false
 
@@ -51,3 +53,11 @@ System.put_env(
   System.get_env("PORTAL_TEST_EXAMPLE_COM_DB") ||
     "mysql://#{mysql[:username]}:#{mysql[:password]}@#{mysql[:hostname]}:#{mysql[:port]}"
 )
+
+config :report_server, :packages,
+  store: ReportServer.PackagesMemoryStore,
+  portal: ReportServer.PackagesPortalStub,
+  buckets: %{
+    "learn.concord.org" => "runner-bucket-learn",
+    "learn.portal.staging.concord.org" => "runner-bucket-staging"
+  }

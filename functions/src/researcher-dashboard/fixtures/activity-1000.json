@@ -1,0 +1,703 @@
+{
+ "name": "Probability Clouds",
+ "pages": [
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       },
+       "authored_state": "{\"version\":1,\"prompt\":\"  \\u003Cp\\u003EYou can use HTML content to \\u003Cb\\u003Ewrite\\u003C/b\\u003E the prompt of the question ...\\u003C/p\\u003E\\n\",\"defaultAnswer\":\"\",\"required\":false,\"questionType\":\"open_response\",\"predictionFeedback\":false,\"hint\":null}"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+I&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+I&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true"
+      },
+      {
+       "type": "MwInteractive",
+       "url": "https://lab.concord.org/embeddable.html#interactives/itsi/energy-levels/atom-builder.json"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+II&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+II&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true"
+      },
+      {
+       "type": "MwInteractive",
+       "url": "https://lab.concord.org/embeddable.html#interactives/itsi/energy-levels/atom-builder.json"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+III&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+III&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true"
+      },
+      {
+       "type": "MwInteractive",
+       "url": "https://lab.concord.org/embeddable.html#interactives/itsi/energy-levels/atom-builder.json"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?globalStateKey=Prediction+IV&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fprediction-temperature.json"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "Embeddable::Labbook"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "//models-resources.concord.org/dataset-sync-wrapper/index.html?datasetName=sensor-dataset&globalStateKey=Prediction+IV&interactive=%2F%2Flab.concord.org%2Fembeddable.html%23interactives%2Fitsi%2Fsensor%2Fsensor-connector.json&loadOnly=true"
+      },
+      {
+       "type": "MwInteractive",
+       "url": "https://lab.concord.org/embeddable.html#interactives/itsi/energy-levels/atom-builder.json"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

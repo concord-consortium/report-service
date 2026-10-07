@@ -186,6 +186,8 @@ The bearer token value is managed as a secret in Google Cloud Secret Manager:
 
 - `researcherDashboard/run-package` queues a researcher's packages under `researcher_dashboard/{portal}/work/{platform_user_id}`, then launches, resumes or leaves that researcher's MicroVM, and answers 202 without waiting for it. Only on a launch does it relay rigse's `aud: report-server` assertion to report-server's `POST /api/v1/dashboard-tokens` for the VM's token.
 
+- `researcherDashboard/derive-profile` takes a class's assignment URLs from rigse, answers 202, and queues the derivation as a Cloud Task for `deriveProfileWorker`. The worker follows each Activity Player URL's `activity=` or `sequence=` to its public JSON, on an allowlisted authoring host only, and writes the class's authored URL profile to `researcher_dashboard/{portal}/classes/{class_hash}` with the Admin SDK. A write never replaces the profile of a later request.
+
 Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`, is also the `function_url` the runner calls back, derived at runtime from the project. `RD_FUNCTION_URL` overrides it only if the function moves region or behind a custom domain.
 
 | Parameter | Type | Env Var Name | Purpose |
@@ -197,6 +199,7 @@ Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`,
 | report-server URL | `defineString` | `RD_REPORT_SERVER_URL` | Where the launch mints the VM's report-server token |
 | Function URL | `defineString` | `RD_FUNCTION_URL` | Optional override of `function_url` |
 | Queue cap | `defineInt` | `RD_QUEUE_CAP` | Packages outstanding per researcher before a 409 (default 20) |
+| Authoring hosts | `defineString` | `RD_AUTHORING_HOSTS` | Comma-separated hostnames `derive-profile` may fetch activity JSON from; empty makes it answer 503 |
 | Launcher role | `defineString` | `RD_LAUNCHER_ROLE_ARN` | The runner stack's launcher role, which the function assumes for MicroVM calls |
 | AWS audience | `defineString` | `RD_AWS_AUDIENCE` | The audience the runner stack's roles require of the function's Google ID token |
 
@@ -212,6 +215,8 @@ scripts/setup-researcher-dashboard-iam.sh grant-deployer report-service-dev user
 ```
 
 Repeat for `report-service-pro`. `apply` creates the account and its grants and is safe to rerun; `check` reports what is missing without changing anything, and makes a good preflight before a deploy. Both print the account's unique ID, which the runner stack takes as a parameter. Never delete and recreate the account: the new one gets a new unique ID, and the runner stack's roles refuse it until the stack is updated. Deploy report-server before the function, since a launch calls report-server's mint endpoint.
+
+`deriveProfileWorker` deploys with `researcherDashboard` and must stay beside it: `derive-profile` queues its tasks on the `deriveProfileWorker` queue, which Firebase creates on the worker's first deploy, as it did for `taskWorker`. Each task carries an OIDC token for `researcher-dashboard@<project>`, the account `researcherDashboard` runs as. The worker's `invoker` option makes the deploy grant that account `run.invoker` on the worker and `cloudtasks.enqueuer` on its queue, and `setup-researcher-dashboard-iam.sh apply` grants it Service Account User on itself, which creating a task that names it requires. Under the emulator the derivation runs in the request's process instead, since Cloud Tasks cannot reach it.
 
 ## Rules
 

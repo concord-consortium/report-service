@@ -8,6 +8,26 @@ defmodule ReportServer.PortalDbs do
   @ping_timeout 300_000     # the default is 15 seconds, but we want to increase it to 5 minutes
   @query_timeout 300_000    # 5 minutes for long-running queries
 
+  # the three role flags of the user aliased `u`, as 0 or 1
+  @role_flags """
+  EXISTS (
+    SELECT 1
+    FROM roles r
+    JOIN roles_users ru ON ru.role_id = r.id
+    WHERE r.title = 'admin' AND ru.user_id = u.id
+  ) AS is_admin,
+  EXISTS (
+    SELECT 1
+    FROM admin_project_users apu
+    WHERE apu.is_admin = true AND apu.user_id = u.id
+  ) AS is_project_admin,
+  EXISTS (
+    SELECT 1
+    FROM admin_project_users apu
+    WHERE apu.is_researcher = true AND apu.user_id = u.id
+  ) AS is_project_researcher
+  """
+
   defmodule PortalUserInfo do
     defstruct id: nil, login: nil, first_name: nil, last_name: nil, email: nil, is_admin: false, is_project_admin: false, is_project_researcher: false, server: nil
   end
@@ -157,22 +177,7 @@ defmodule ReportServer.PortalDbs do
     sql = """
       SELECT
         u.id, u.login, u.first_name, u.last_name, u.email,
-        EXISTS (
-          SELECT 1
-          FROM roles r
-          JOIN roles_users ru ON ru.role_id = r.id
-          WHERE r.title = 'admin' AND ru.user_id = u.id
-        ) AS is_admin,
-        EXISTS (
-          SELECT 1
-          FROM admin_project_users apu
-          WHERE apu.is_admin = true AND apu.user_id = u.id
-        ) AS is_project_admin,
-        EXISTS (
-          SELECT 1
-          FROM admin_project_users apu
-          WHERE apu.is_researcher = true AND apu.user_id = u.id
-        ) AS is_project_researcher
+        #{@role_flags}
       FROM
         access_grants ag
       JOIN
@@ -191,6 +196,37 @@ defmodule ReportServer.PortalDbs do
 
         {:ok, struct(PortalUserInfo, user_info)}
 
+      error -> error
+    end
+  end
+
+  @doc """
+  The three portal role flags for a portal user id, read fresh rather than from report-server's
+  stored copy. `{:error, :not_found}` when the portal has no such user.
+  """
+  def get_user_roles(server, portal_user_id, options \\ []) do
+    sql = "SELECT #{@role_flags} FROM users u WHERE u.id = ?"
+
+    case query(server, sql, [portal_user_id], options) do
+      {:ok, %{rows: []}} ->
+        {:error, :not_found}
+
+      {:ok, result} ->
+        {:ok, result |> map_columns_on_rows() |> hd() |> cast_user_info()}
+
+      error ->
+        error
+    end
+  end
+
+  @doc "The names of the given admin projects, as a map of id to name."
+  def get_project_names(_server, [], _options), do: {:ok, %{}}
+
+  def get_project_names(server, project_ids, options) do
+    placeholders = Enum.map_join(project_ids, ", ", fn _ -> "?" end)
+
+    case query(server, "SELECT id, name FROM admin_projects WHERE id IN (#{placeholders})", project_ids, options) do
+      {:ok, %{rows: rows}} -> {:ok, Map.new(rows, fn [id, name] -> {id, name} end)}
       error -> error
     end
   end

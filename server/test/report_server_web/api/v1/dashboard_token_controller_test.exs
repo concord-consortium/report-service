@@ -28,8 +28,6 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenControllerTest do
           "uid" => 1001,
           "jti" => Ecto.UUID.generate(),
           "user_type" => "researcher",
-          "scope_kind" => "class",
-          "scope_id" => 7,
           "portal_user_id" => 1001,
           "portal_server" => @staging_server,
           "login" => "rresearcher",
@@ -132,7 +130,7 @@ defmodule ReportServerWeb.Api.V1.DashboardTokenControllerTest do
   end
 
   test "refuses an assertion of another audience", %{conn: conn} do
-    token = sign(:staging, assertion_claims(%{"aud" => "researcher-dashboard"}))
+    token = sign(:staging, assertion_claims(%{"aud" => "report-service-functions"}))
 
     assert conn |> mint(token) |> json_response(401)
   end

@@ -1,0 +1,292 @@
+{
+ "name": "Groundwater and Surface Water",
+ "pages": [
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       },
+       "authored_state": "{\"version\":1,\"prompt\":\"Describe the outcome of Experiment 1: Stream A.\\u003Cdiv\\u003E\\u003Cbr\\u003E\\u003C/div\\u003E\\u003Cdiv\\u003EHow did the groundwater move?\\u003C/div\\u003E\",\"defaultAnswer\":null,\"required\":false,\"questionType\":\"open_response\",\"predictionFeedback\":false,\"hint\":null}"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "https://s3.amazonaws.com/has-production/WaterModel/WaterModel-Gaining-Losing-Stream.html"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Interactive",
+         "base_url": "https://models-resources.concord.org/question-interactives/image/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Multiple Choice",
+         "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Multiple Choice",
+         "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Interactive",
+         "base_url": "https://models-resources.concord.org/question-interactives/image/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Question",
+         "base_url": "https://models-resources.concord.org/question-interactives/image-question/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Multiple Choice",
+         "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Multiple Choice",
+         "base_url": "https://models-resources.concord.org/question-interactives/multiple-choice/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "MwInteractive",
+       "url": "https://s3.amazonaws.com/has-production/WaterModel/WaterModel-Gaining-Losing-Stream.html"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      }
+     ]
+    },
+    {
+     "embeddables": [
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "embeddables": [
+      {
+       "type": "Embeddable::Xhtml"
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Open Response",
+         "base_url": "https://models-resources.concord.org/question-interactives/open-response/"
+        }
+       }
+      },
+      {
+       "type": "ManagedInteractive",
+       "url_fragment": null,
+       "library_interactive": {
+        "data": {
+         "name": "Image Interactive",
+         "base_url": "https://models-resources.concord.org/question-interactives/image/"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

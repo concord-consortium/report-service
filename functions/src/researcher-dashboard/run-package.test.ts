@@ -49,7 +49,7 @@ beforeEach(async () => {
     unconfigured: []
   }
   // Firebase parses the body before the app sees the request
-  server = express().use(express.json() as express.RequestHandler).use(researcherDashboardApp(() => deps)).listen(0)
+  server = express().use(express.json() as express.RequestHandler).use(researcherDashboardApp(() => deps, () => { throw new Error("no derive-profile here") })).listen(0)
   await new Promise(resolve => server.once("listening", resolve))
   port = (server.address() as AddressInfo).port
 })

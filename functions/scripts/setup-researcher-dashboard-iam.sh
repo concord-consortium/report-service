@@ -22,6 +22,12 @@ PROJECT_ROLES=(
   roles/datastore.user
 )
 
+# Roles the account holds on itself. Service Account User lets it name itself in a Cloud Task's
+# OIDC token, which createTask requires even when the caller is that account.
+SELF_ROLES=(
+  roles/iam.serviceAccountUser
+)
+
 DEPLOYER_ROLE=roles/iam.serviceAccountUser
 OPERATOR_ROLE=roles/iam.serviceAccountOpenIdTokenCreator
 
@@ -49,19 +55,24 @@ account_exists() {
   exit 2
 }
 
-# The project-level roles the account holds, one per line. A failure stops the script under set -e.
+# The roles the account holds, one per line, on the project or on itself. A failure stops the
+# script under set -e.
 held_project_roles() {
   gcloud projects get-iam-policy "$project" --flatten='bindings[].members' \
-    --filter="bindings.members=serviceAccount:$email" --format='value(bindings.role)'
+    --filter="bindings.members=serviceAccount:$email" --format='value(bindings.role)' --verbosity=error
+}
+
+held_self_roles() {
+  gcloud iam service-accounts get-iam-policy "$email" --project="$project" --flatten='bindings[].members' \
+    --filter="bindings.members=serviceAccount:$email" --format='value(bindings.role)' --verbosity=error
 }
 
 # A new account takes a few seconds to become visible to IAM policy writes, which answer "does not
 # exist" until then, so that answer alone is retried, for up to a minute.
-grant_project_role() {
-  local role=$1 out attempt
+retry_while_propagating() {
+  local out attempt
   for attempt in 1 2 3 4 5 6 7; do
-    if out=$(gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$email" --role="$role" \
-      --condition=None --format=none 2>&1); then
+    if out=$("$@" 2>&1); then
       return 0
     fi
     if ! grep -q 'does not exist' <<<"$out" || [[ $attempt -eq 7 ]]; then
@@ -91,8 +102,19 @@ apply() {
     if grep -qx "$role" <<<"$held"; then
       echo "Has: $role"
     else
-      grant_project_role "$role"
+      retry_while_propagating gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$email" \
+        --role="$role" --condition=None --format=none
       echo "Granted: $role"
+    fi
+  done
+  held=$(held_self_roles)
+  for role in "${SELF_ROLES[@]}"; do
+    if grep -qx "$role" <<<"$held"; then
+      echo "Has on itself: $role"
+    else
+      retry_while_propagating gcloud iam service-accounts add-iam-policy-binding "$email" --project="$project" \
+        --member="serviceAccount:$email" --role="$role" --format=none
+      echo "Granted on itself: $role"
     fi
   done
   print_unique_id
@@ -110,6 +132,15 @@ check() {
       echo "Has: $role"
     else
       echo "Missing: $role"
+      missing=1
+    fi
+  done
+  held=$(held_self_roles)
+  for role in "${SELF_ROLES[@]}"; do
+    if grep -qx "$role" <<<"$held"; then
+      echo "Has on itself: $role"
+    else
+      echo "Missing on itself: $role"
       missing=1
     fi
   done
