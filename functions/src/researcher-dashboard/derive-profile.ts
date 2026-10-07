@@ -5,6 +5,14 @@
 import { convertLegacyResource } from "../chat/convert"
 
 export const MAX_INTERACTIVE_URLS = 500
+// The longest URL kept, the same limit /derive-profile puts on an assignment URL.
+export const MAX_URL_LENGTH = 2048
+// What the kept interactive URLs may take of the profile document, which Firestore caps at 1 MiB;
+// the request body bounds the content and unread URLs to 256 KiB.
+export const MAX_INTERACTIVE_URL_BYTES = 512 * 1024
+// Collection stops here, well past what is kept, so a run of oversized responses cannot exhaust the
+// worker's memory. Only an activity set this large keeps an order-dependent subset.
+const MAX_COLLECTED_URLS = 4 * MAX_INTERACTIVE_URLS
 const MAX_BODY_BYTES = 5 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_IN_FLIGHT = 5
@@ -194,6 +202,14 @@ export async function deriveProfile(deps: ProfileDeps, assignmentUrls: string[])
   const read: string[] = []
   const unread: Unread[] = []
   const found = new Set<string>()
+  let dropped = false
+  const collect = (url: string) => {
+    if (url.length > MAX_URL_LENGTH || (found.size >= MAX_COLLECTED_URLS && !found.has(url))) {
+      dropped = true
+    } else {
+      found.add(url)
+    }
+  }
   const deadline = (deps.now ?? Date.now)() + (deps.budgetMs ?? DERIVATION_BUDGET_MS)
 
   await eachLimited(contentUrls, MAX_IN_FLIGHT, async contentUrl => {
@@ -203,7 +219,7 @@ export async function deriveProfile(deps: ProfileDeps, assignmentUrls: string[])
       return
     }
     try {
-      contentInteractiveUrls(await fetchJson(deps, target, deadline)).forEach(u => found.add(u))
+      contentInteractiveUrls(await fetchJson(deps, target, deadline)).forEach(collect)
       read.push(contentUrl)
     } catch (e) {
       unread.push({ url: contentUrl, reason: e instanceof FetchFailure ? e.message : "failed" })
@@ -211,10 +227,20 @@ export async function deriveProfile(deps: ProfileDeps, assignmentUrls: string[])
   })
 
   const sorted = Array.from(found).sort()
+  const kept: string[] = []
+  let bytes = 0
+  for (const url of sorted) {
+    const size = Buffer.byteLength(url)
+    if (kept.length === MAX_INTERACTIVE_URLS || bytes + size > MAX_INTERACTIVE_URL_BYTES) {
+      break
+    }
+    kept.push(url)
+    bytes += size
+  }
   return {
-    interactive_urls: sorted.slice(0, MAX_INTERACTIVE_URLS),
+    interactive_urls: kept,
     content_urls: read.sort(),
     unread: unread.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)),
-    truncated: sorted.length > MAX_INTERACTIVE_URLS
+    truncated: dropped || kept.length < sorted.length
   }
 }

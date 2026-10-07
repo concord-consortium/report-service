@@ -1,9 +1,9 @@
 import express from "express"
 import { Researcher } from "./run-package"
+import { MAX_URL_LENGTH } from "./derive-profile"
 
 export const MAX_BODY_BYTES = 256 * 1024
 const MAX_ASSIGNMENT_URLS = 500
-const MAX_URL_LENGTH = 2048
 const MAX_FINGERPRINT_LENGTH = 256
 // rigse's SecureRandom.hex(24); it becomes a Firestore path segment
 const CLASS_HASH = /^[0-9a-f]{48}$/

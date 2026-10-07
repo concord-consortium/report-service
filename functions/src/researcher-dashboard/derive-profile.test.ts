@@ -1,7 +1,8 @@
 import * as fs from "fs"
 import * as path from "path"
 import {
-  allowedContentUrl, BUDGET_EXHAUSTED, contentInteractiveUrls, contentUrlOf, deriveProfile, FetchResponse, interactiveUrls, MAX_INTERACTIVE_URLS,
+  allowedContentUrl, BUDGET_EXHAUSTED, contentInteractiveUrls, contentUrlOf, deriveProfile, FetchResponse, interactiveUrls, MAX_INTERACTIVE_URL_BYTES, MAX_INTERACTIVE_URLS,
+  MAX_URL_LENGTH,
   ProfileDeps
 } from "./derive-profile"
 
@@ -293,6 +294,38 @@ describe("deriveProfile", () => {
     expect(derived.truncated).toBe(true)
     expect(derived.interactive_urls).toHaveLength(MAX_INTERACTIVE_URLS)
     expect(derived.interactive_urls[499]).toBe("https://x.org/499")
+  })
+
+  const deriveFrom = (urls: string[]) => {
+    const embeddables = urls.map(url => ({ type: "MwInteractive", url }))
+    const f = fakeFetch({ [activity(1)]: response(200, JSON.stringify({ pages: [{ embeddables }] })) })
+    return deriveProfile(deps(f.fetchImpl), [ap(activity(1))])
+  }
+
+  it("drops an interactive URL longer than an assignment URL may be, and says so", async () => {
+    const long = `https://x.org/${"a".repeat(MAX_URL_LENGTH)}`
+    const derived = await deriveFrom(["https://x.org/kept", long])
+    expect(derived.interactive_urls).toEqual(["https://x.org/kept"])
+    expect(derived.truncated).toBe(true)
+  })
+
+  it("keeps the interactive URLs within their share of the profile document's 1 MiB", async () => {
+    const urls = Array.from({ length: 400 }, (_, i) => `https://x.org/${String(i).padStart(3, "0")}/${"a".repeat(1980)}`)
+    const derived = await deriveFrom(urls)
+    const kept = derived.interactive_urls.reduce((sum, u) => sum + Buffer.byteLength(u), 0)
+    expect(kept).toBeLessThanOrEqual(MAX_INTERACTIVE_URL_BYTES)
+    expect(derived.interactive_urls.length).toBe(Math.floor(MAX_INTERACTIVE_URL_BYTES / Buffer.byteLength(urls[0])))
+    expect(derived.interactive_urls[0]).toBe(urls[0])
+    expect(derived.truncated).toBe(true)
+  })
+
+  it("stops collecting at four times what it keeps, so a huge activity set cannot exhaust memory", async () => {
+    const urls = Array.from({ length: 2500 }, (_, i) => `https://x.org/${String(2499 - i).padStart(4, "0")}`)
+    const derived = await deriveFrom(urls)
+    expect(derived.truncated).toBe(true)
+    expect(derived.interactive_urls).toHaveLength(MAX_INTERACTIVE_URLS)
+    // the first 2000 seen were 2499 down to 0500, so the smallest kept is 0500, not 0000
+    expect(derived.interactive_urls[0]).toBe("https://x.org/0500")
   })
 
   it("gives the same result for the same inputs", async () => {
