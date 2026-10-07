@@ -1,5 +1,6 @@
 import * as admin from "firebase-admin"
 import { CloudTasksClient } from "@google-cloud/tasks"
+import { SERVICE_ACCOUNT_ID } from "./config"
 import { classPath } from "./firestore-paths"
 import { deriveProfile, Derived, ProfileDeps } from "./derive-profile"
 import { DeriveTask } from "./derive-profile-route"
@@ -76,7 +77,7 @@ export async function enqueueDerivation(task: DeriveTask, deps: () => Derivation
         url,
         headers: { "Content-Type": "application/json" },
         body: Buffer.from(JSON.stringify({ data: task })).toString("base64"),
-        oidcToken: { serviceAccountEmail: `${project}@appspot.gserviceaccount.com`, audience: url }
+        oidcToken: { serviceAccountEmail: `${SERVICE_ACCOUNT_ID}@${project}.iam.gserviceaccount.com`, audience: url }
       }
     }
   })

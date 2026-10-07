@@ -122,7 +122,7 @@ describe("enqueueDerivation", () => {
       httpMethod: "POST",
       url,
       headers: { "Content-Type": "application/json" },
-      oidcToken: { serviceAccountEmail: "proj@appspot.gserviceaccount.com", audience: url }
+      oidcToken: { serviceAccountEmail: "researcher-dashboard@proj.iam.gserviceaccount.com", audience: url }
     })
     expect(JSON.parse(Buffer.from(queued.httpRequest.body, "base64").toString())).toEqual({ data: task(1000) })
   })

@@ -216,7 +216,7 @@ scripts/setup-researcher-dashboard-iam.sh grant-deployer report-service-dev user
 
 Repeat for `report-service-pro`. `apply` creates the account and its grants and is safe to rerun; `check` reports what is missing without changing anything, and makes a good preflight before a deploy. Both print the account's unique ID, which the runner stack takes as a parameter. Never delete and recreate the account: the new one gets a new unique ID, and the runner stack's roles refuse it until the stack is updated. Deploy report-server before the function, since a launch calls report-server's mint endpoint.
 
-`deriveProfileWorker` deploys with `researcherDashboard` and must stay beside it: `derive-profile` queues its tasks on the `deriveProfileWorker` queue, which Firebase creates on the worker's first deploy, as it did for `taskWorker`. Under the emulator the derivation runs in the request's process instead, since Cloud Tasks cannot reach it.
+`deriveProfileWorker` deploys with `researcherDashboard` and must stay beside it: `derive-profile` queues its tasks on the `deriveProfileWorker` queue, which Firebase creates on the worker's first deploy, as it did for `taskWorker`. Each task carries an OIDC token for `researcher-dashboard@<project>`, the account `researcherDashboard` runs as. The worker's `invoker` option makes the deploy grant that account `run.invoker` on the worker and `cloudtasks.enqueuer` on its queue, and `setup-researcher-dashboard-iam.sh apply` grants it Service Account User on itself, which creating a task that names it requires. Under the emulator the derivation runs in the request's process instead, since Cloud Tasks cannot reach it.
 
 ## Rules
 
