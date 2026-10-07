@@ -15,5 +15,7 @@ cond do
     ExUnit.configure(exclude: [:portal_db])
 end
 
+ReportServerWeb.PortalTokenFixture.install!()
+
 ExUnit.start()
 Ecto.Adapters.SQL.Sandbox.mode(ReportServer.Repo, :manual)

@@ -5,6 +5,7 @@ defmodule ReportServer.Accounts do
   alias ReportServer.Pagination
   alias ReportServer.Accounts.ApiToken
   alias ReportServer.Accounts.AuthGrant
+  alias ReportServer.Accounts.UsedPortalAssertion
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs.PortalUserInfo
 
@@ -12,6 +13,10 @@ defmodule ReportServer.Accounts do
   @api_token_bytes 32
   @touch_threshold_seconds 60
   @auth_grant_ttl_seconds 5 * 60
+  @dashboard_token_label "researcher-dashboard"
+  # Just past the eight-hour maximum life of the VM that holds it: nothing revokes the token
+  # of a VM that dies without running its terminate hook.
+  @dashboard_token_ttl_seconds 9 * 60 * 60
 
   def find_or_create_user(portal_user_info = %PortalUserInfo{}) do
     query = from u in User,
@@ -75,14 +80,21 @@ defmodule ReportServer.Accounts do
 
   @doc """
   Mints an API token for a user. The raw token is returned exactly once — only its
-  SHA-256 hash is stored, so it cannot be recovered afterwards.
+  SHA-256 hash is stored, so it cannot be recovered afterwards. `expires_in:` (seconds) sets
+  an expiry; without it the token lives until revoked.
   """
-  def create_api_token(user = %User{}, label \\ nil) do
+  def create_api_token(user = %User{}, label \\ nil, opts \\ []) do
     raw_token = @api_token_prefix <> Base.url_encode64(:crypto.strong_rand_bytes(@api_token_bytes), padding: false)
+
+    expires_at =
+      case Keyword.get(opts, :expires_in) do
+        nil -> nil
+        seconds when is_integer(seconds) -> DateTime.utc_now(:second) |> DateTime.add(seconds)
+      end
 
     result =
       %ApiToken{}
-      |> ApiToken.changeset(%{user_id: user.id, token_hash: hash_secret(raw_token), label: label})
+      |> ApiToken.changeset(%{user_id: user.id, token_hash: hash_secret(raw_token), label: label, expires_at: expires_at})
       |> Repo.insert()
 
     case result do
@@ -91,10 +103,81 @@ defmodule ReportServer.Accounts do
     end
   end
 
+  def dashboard_token_label, do: @dashboard_token_label
+
+  @doc """
+  Mints the API token a Researcher Dashboard VM pulls with, as the researcher themselves.
+  Finds or creates the user from the portal's claims, revokes their live dashboard tokens so
+  one is live at a time, and mints one expiring in nine hours. Returns
+  `{:ok, {user, raw_token, api_token}}`.
+  """
+  def mint_dashboard_token(portal_user_info = %PortalUserInfo{}) do
+    Repo.transaction(fn ->
+      with {:ok, user} <- find_or_create_user(portal_user_info),
+           {:ok, _count} <- revoke_dashboard_tokens(user),
+           {:ok, raw_token, api_token} <-
+             create_api_token(user, @dashboard_token_label, expires_in: @dashboard_token_ttl_seconds) do
+        {user, raw_token, api_token}
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @doc """
+  Revokes every live dashboard token the user holds, attributed to the user themselves since
+  no operator asked for it.
+  """
+  def revoke_dashboard_tokens(user = %User{}) do
+    now = DateTime.utc_now(:second)
+
+    query =
+      from t in live_api_tokens(),
+        where: t.user_id == ^user.id and t.label == ^@dashboard_token_label
+
+    {count, _} = Repo.update_all(query, set: [revoked_at: now, revoked_by_user_id: user.id, updated_at: now])
+    {:ok, count}
+  end
+
+  @doc """
+  Records a portal assertion's jti, or refuses one already used. The unique index makes the
+  insert the check, so it holds across restarts and more than one node. Expired rows are
+  pruned first; they could never match a live assertion again.
+  """
+  def claim_assertion_jti(jti, exp) when is_binary(jti) and jti != "" and is_integer(exp) do
+    now = DateTime.utc_now(:second)
+    Repo.delete_all(from u in UsedPortalAssertion, where: u.expires_at < ^now)
+
+    with {:ok, expires_at} <- expiry(exp) do
+      %UsedPortalAssertion{}
+      |> UsedPortalAssertion.changeset(%{jti: jti, expires_at: expires_at})
+      |> Repo.insert()
+      |> case do
+        {:ok, _} ->
+          :ok
+
+        {:error, changeset} ->
+          case changeset.errors[:jti] do
+            {_message, opts} -> if opts[:constraint] == :unique, do: {:error, :replayed}, else: {:error, :invalid_jti}
+            nil -> {:error, :invalid_jti}
+          end
+      end
+    end
+  end
+
+  def claim_assertion_jti(_, _), do: {:error, :no_jti}
+
+  # A signed exp can lie outside what a DateTime (or the column) can hold.
+  defp expiry(exp) do
+    case DateTime.from_unix(exp) do
+      {:ok, expires_at} when expires_at.year <= 9999 -> {:ok, expires_at}
+      _ -> {:error, :invalid_expiry}
+    end
+  end
+
   def verify_api_token(raw_token) when is_binary(raw_token) do
-    query = from t in ApiToken,
+    query = from t in live_api_tokens(),
       where: t.token_hash == ^hash_secret(raw_token),
-      where: is_nil(t.revoked_at),
       preload: [:user]
 
     case Repo.one(query) do
@@ -119,30 +202,34 @@ defmodule ReportServer.Accounts do
 
   def list_active_api_tokens(user_id) do
     Repo.all(
-      from t in ApiToken,
-        where: t.user_id == ^user_id and is_nil(t.revoked_at),
+      from t in live_api_tokens(),
+        where: t.user_id == ^user_id,
         order_by: [desc: t.inserted_at, desc: t.id]
     )
   end
 
   def get_user_api_token(id, user_id) do
     Repo.one(
-      from t in ApiToken,
-        where: t.id == ^id and t.user_id == ^user_id and is_nil(t.revoked_at)
+      from t in live_api_tokens(),
+        where: t.id == ^id and t.user_id == ^user_id
     )
   end
 
   def get_active_api_token(id) do
-    Repo.one(from t in ApiToken, where: t.id == ^id and is_nil(t.revoked_at))
+    Repo.one(from t in live_api_tokens(), where: t.id == ^id)
   end
 
   def list_all_active_api_tokens(page) do
-    from(t in ApiToken,
-      where: is_nil(t.revoked_at),
+    from(t in live_api_tokens(),
       order_by: [desc: t.inserted_at, desc: t.id],
       preload: [:user]
     )
     |> Pagination.paginate(page)
+  end
+
+  defp live_api_tokens do
+    now = DateTime.utc_now(:second)
+    from t in ApiToken, where: is_nil(t.revoked_at) and (is_nil(t.expires_at) or t.expires_at > ^now)
   end
 
   @doc """

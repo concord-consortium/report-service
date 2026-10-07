@@ -28,6 +28,8 @@ import { taskWorker } from "./tasks/task-worker";
 
 import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigger
 
+import { researcherDashboard } from "./researcher-dashboard"
+
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
 
@@ -84,4 +86,5 @@ module.exports = {
   submitTask,
   taskWorker,
   chatTutorOnWrite, // per-page AI chat tutor trigger
+  researcherDashboard,
 }

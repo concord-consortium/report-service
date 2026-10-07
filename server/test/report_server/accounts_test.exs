@@ -99,6 +99,50 @@ defmodule ReportServer.AccountsTest do
     end
   end
 
+  describe "token expiry" do
+    test "create_api_token sets expires_at from expires_in and leaves it nil without it" do
+      user = user_fixture()
+
+      {:ok, _raw, expiring} = Accounts.create_api_token(user, "dashboard", expires_in: 9 * 60 * 60)
+      {:ok, _raw, lasting} = Accounts.create_api_token(user, "CLI login")
+
+      assert_in_delta DateTime.diff(expiring.expires_at, DateTime.utc_now()), 9 * 60 * 60, 5
+      assert is_nil(lasting.expires_at)
+    end
+
+    test "an expired token fails verification and is absent from the listings and lookups" do
+      user = user_fixture()
+      {:ok, raw, expired} = Accounts.create_api_token(user, "dashboard", expires_in: -1)
+
+      assert :error == Accounts.verify_api_token(raw)
+      assert [] == Accounts.list_active_api_tokens(user.id)
+      assert nil == Accounts.get_user_api_token(expired.id, user.id)
+      assert nil == Accounts.get_active_api_token(expired.id)
+      refute expired.id in Enum.map(Accounts.list_all_active_api_tokens(1).items, & &1.id)
+    end
+
+    test "a token whose expiry is in the future verifies and is listed" do
+      user = user_fixture()
+      {:ok, raw, live} = Accounts.create_api_token(user, "dashboard", expires_in: 60)
+
+      assert {:ok, _user, %ApiToken{id: id}} = Accounts.verify_api_token(raw)
+      assert id == live.id
+      assert [^id] = Enum.map(Accounts.list_active_api_tokens(user.id), & &1.id)
+      assert %ApiToken{} = Accounts.get_user_api_token(live.id, user.id)
+      assert %ApiToken{} = Accounts.get_active_api_token(live.id)
+      assert live.id in Enum.map(Accounts.list_all_active_api_tokens(1).items, & &1.id)
+    end
+
+    test "a token with no expiry keeps verifying beside an expired one, so CLI tokens are unaffected" do
+      user = user_fixture()
+      {cli_raw, cli} = api_token_fixture(user, "CLI login")
+      {:ok, _raw, _expired} = Accounts.create_api_token(user, "dashboard", expires_in: -1)
+
+      assert {:ok, _user, %ApiToken{expires_at: nil}} = Accounts.verify_api_token(cli_raw)
+      assert [cli.id] == Enum.map(Accounts.list_active_api_tokens(user.id), & &1.id)
+    end
+  end
+
   describe "list_active_api_tokens/1" do
     test "returns only the user's active tokens, newest-first, excluding revoked and other users'" do
       user = user_fixture()

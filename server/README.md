@@ -90,10 +90,13 @@ export REPORT_SERVICE_TOKEN=         # Authentication token for report service
 export REPORT_SERVICE_URL=           # URL of the report service
 export PORTAL_REPORT_URL=            # URL of the portal report endpoint
 export LEARN_PORTAL_STAGING_CONCORD_ORG_DB=mysql://<username>:<password>@<host>:<port>
+export PORTAL_PUBLIC_KEYS='[]'        # rigse's RS256 public keys (see below); optional for development
 
 # Optional: disable the stats server for development
 export DISABLE_STATS_SERVER=true
 ```
+
+`PORTAL_PUBLIC_KEYS` is a JSON array of `{"kid", "iss", "pem"}`, one entry per rigse signing key, each what `rake portal_signing_key:public` prints on that portal, with the portal's site URL as `iss`. It authenticates rigse's signed assertions, today only on `POST /api/v1/dashboard-tokens`, which mints a Researcher Dashboard VM's token. One report-server serves several portals, so it lists one entry per portal, and a key is trusted only for its own `iss`: the staging key can never sign for production. An entry it cannot trust (a missing field, an unreadable PEM, a `kid` listed twice) is logged and ignored. Unset, every assertion is refused and nothing else is affected.
 
 Note that if you cannot directly connect to the database (eg, it is in an AWS cluster), you may need to
 establish an ssh port-forwarding tunnel to it, something like:

@@ -52,6 +52,9 @@ config :report_server, :report_service,
   token: report_service_token,
   firebase_app: System.get_env("REPORT_SERVICE_FIREBASE_APP") || "report-service-pro" # production
 
+# rigse's RS256 public keys, a JSON array of {"kid", "iss", "pem"}, one entry per portal served
+config :report_server, :portal_public_keys, System.get_env("PORTAL_PUBLIC_KEYS")
+
 config :report_server, :portal_report,
   url: System.get_env("PORTAL_REPORT_URL") || "https://portal-report.concord.org/branch/master/" # production (yes, prod uses master)
 

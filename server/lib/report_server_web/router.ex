@@ -30,6 +30,11 @@ defmodule ReportServerWeb.Router do
     plug ReportServerWeb.Api.AuthPlug
   end
 
+  pipeline :api_portal_assertion do
+    plug :force_json
+    plug ReportServerWeb.Api.PortalTokenPlug, audience: "report-server"
+  end
+
   pipeline :api_token_only do
     plug :force_json
     plug ReportServerWeb.Api.AuthPlug, token_only: true
@@ -81,6 +86,14 @@ defmodule ReportServerWeb.Router do
 
     get "/tokens/current", TokenController, :show_current
     delete "/tokens/current", TokenController, :delete_current
+  end
+
+  # authenticated by a rigse-signed assertion rather than an API token; must stay above the
+  # /api/v1 catch-all scope below
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api_portal_assertion
+
+    post "/dashboard-tokens", DashboardTokenController, :create
   end
 
   # must stay below every real /api/v1 route: unknown API paths render the contract 404 rather
