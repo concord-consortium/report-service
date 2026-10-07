@@ -35,14 +35,24 @@ command=$1
 project=$2
 email="${SERVICE_ACCOUNT_ID}@${project}.iam.gserviceaccount.com"
 
+# Only a not-found answer means the account is missing; any other failure (expired credentials, no
+# permission) is printed and stops the script, so check never reports a missing account it could not see.
 account_exists() {
-  gcloud iam service-accounts describe "$email" --project="$project" --format='value(email)' >/dev/null 2>&1
+  local out
+  if out=$(gcloud iam service-accounts describe "$email" --project="$project" --format='value(email)' 2>&1); then
+    return 0
+  fi
+  if grep -q 'NOT_FOUND' <<<"$out"; then
+    return 1
+  fi
+  echo "$out" >&2
+  exit 2
 }
 
-has_project_role() {
+# The project-level roles the account holds, one per line. A failure stops the script under set -e.
+held_project_roles() {
   gcloud projects get-iam-policy "$project" --flatten='bindings[].members' \
-    --filter="bindings.role=$1 AND bindings.members=serviceAccount:$email" \
-    --format='value(bindings.role)' | grep -qx "$1"
+    --filter="bindings.members=serviceAccount:$email" --format='value(bindings.role)'
 }
 
 print_unique_id() {
@@ -58,8 +68,10 @@ apply() {
       --description="Runtime account of researcherDashboard; the runner stack's roles trust only this account"
     echo "Created: $email"
   fi
+  local held
+  held=$(held_project_roles)
   for role in "${PROJECT_ROLES[@]}"; do
-    if has_project_role "$role"; then
+    if grep -qx "$role" <<<"$held"; then
       echo "Has: $role"
     else
       gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$email" --role="$role" \
@@ -75,9 +87,10 @@ check() {
     echo "Missing: $email (run: $0 apply $project)"
     exit 1
   fi
-  local missing=0
+  local missing=0 held
+  held=$(held_project_roles)
   for role in "${PROJECT_ROLES[@]}"; do
-    if has_project_role "$role"; then
+    if grep -qx "$role" <<<"$held"; then
       echo "Has: $role"
     else
       echo "Missing: $role"
