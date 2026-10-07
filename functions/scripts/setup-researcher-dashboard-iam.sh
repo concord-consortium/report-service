@@ -55,6 +55,23 @@ held_project_roles() {
     --filter="bindings.members=serviceAccount:$email" --format='value(bindings.role)'
 }
 
+# A new account takes a few seconds to become visible to IAM policy writes, which answer "does not
+# exist" until then, so that answer alone is retried, for up to a minute.
+grant_project_role() {
+  local role=$1 out attempt
+  for attempt in 1 2 3 4 5 6 7; do
+    if out=$(gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$email" --role="$role" \
+      --condition=None --format=none 2>&1); then
+      return 0
+    fi
+    if ! grep -q 'does not exist' <<<"$out" || [[ $attempt -eq 7 ]]; then
+      echo "$out" >&2
+      exit 1
+    fi
+    sleep 10
+  done
+}
+
 print_unique_id() {
   echo "Unique ID of $email: $(gcloud iam service-accounts describe "$email" --project="$project" --format='value(uniqueId)')"
 }
@@ -74,8 +91,7 @@ apply() {
     if grep -qx "$role" <<<"$held"; then
       echo "Has: $role"
     else
-      gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$email" --role="$role" \
-        --condition=None --format=none
+      grant_project_role "$role"
       echo "Granted: $role"
     fi
   done
