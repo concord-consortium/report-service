@@ -98,7 +98,20 @@ defmodule ReportServerWeb.Api.V1.PackageController do
     end
   end
 
-  def index(conn, params) do
+  def index(conn, params), do: list_packages(conn, params, nil)
+
+  # The list with each row marked as applying to the scope's URLs or not, which a GET cannot carry.
+  # scope_urls is required, so a body that was never read is refused rather than read as no URLs.
+  def list(conn, params) do
+    with true <- Map.has_key?(params, "scope_urls") || {:error, :bad_request, "scope_urls is required, possibly empty"},
+         {:ok, urls} <- scope_urls(params) do
+      list_packages(conn, params, urls)
+    else
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  defp list_packages(conn, params, scope_urls) do
     result =
       case conn.assigns[:portal_claims] do
         nil ->
@@ -109,7 +122,7 @@ defmodule ReportServerWeb.Api.V1.PackageController do
       end
 
     case result do
-      {:ok, entries} -> conn |> no_store() |> json(PackageJSON.index(entries))
+      {:ok, entries} -> conn |> no_store() |> json(PackageJSON.index(entries, scope_urls))
       {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
     end
   end

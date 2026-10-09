@@ -173,6 +173,41 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
     end
   end
 
+  describe "the list with scope URLs" do
+    defp patterned(context) do
+      for {name, urls} <- [{"or", %{"any" => ["*open-response*"]}}, {"dr", %{"any" => ["*drawing*"]}}, {"open", %{}}] do
+        publish_fixture(context.other, %{"name" => name, "urls" => urls}) |> put_state(official: true, visibility: "public")
+      end
+    end
+
+    defp marks(conn), do: conn |> json_response(200) |> Map.fetch!("packages") |> Map.new(&{&1["name"], &1["applies"]})
+
+    test "marks each package anonymously, and leaves the GET unmarked", %{conn: conn} = context do
+      patterned(context)
+      list = post(conn, "/api/v1/packages/list?portal=#{@server}", %{"scope_urls" => ["https://qi/open-response/"]})
+      assert marks(list) == %{"or" => true, "dr" => false, "open" => true}
+
+      get = get(build_conn(), "/api/v1/packages?portal=#{@server}")
+      refute Enum.any?(json_response(get, 200)["packages"], &Map.has_key?(&1, "applies"))
+    end
+
+    test "marks the token's visible list", %{conn: conn} = context do
+      patterned(context)
+      publish_fixture(context.me, %{"name" => "mine", "urls" => %{"all" => ["*drawing*"]}})
+      list = conn |> with_bearer(access_token()) |> post("/api/v1/packages/list", %{"scope_urls" => ["https://qi/drawing/"]})
+      assert marks(list) == %{"or" => false, "dr" => true, "open" => true, "mine" => true}
+    end
+
+    test "a package with no patterns applies to an empty scope, and the scope is required", %{conn: conn} = context do
+      patterned(context)
+      assert marks(post(conn, "/api/v1/packages/list?portal=#{@server}", %{"scope_urls" => []})) == %{"or" => false, "dr" => false, "open" => true}
+
+      for body <- [%{}, %{"scope_urls" => List.duplicate("x", 1_001)}] do
+        assert %{"error" => "BAD_REQUEST"} = json_response(post(build_conn(), "/api/v1/packages/list?portal=#{@server}", body), 400)
+      end
+    end
+  end
+
   describe "resolve" do
     defp resolve(conn, identity, version, token \\ access_token()) do
       conn |> with_bearer(token) |> get("/api/v1/packages/resolve?identity=#{identity}&version=#{version}")

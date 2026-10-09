@@ -57,8 +57,8 @@ defmodule ReportServerWeb.Api.CatalogCorsTest do
     assert header(conn, "access-control-allow-origin") == []
   end
 
-  test "a preflight is answered for an allowlisted origin only", %{conn: conn} do
-    for path <- ["/api/v1/packages", "/api/v1/packages/resolve"] do
+  test "a preflight is answered for an allowlisted origin only" do
+    for path <- ["/api/v1/packages", "/api/v1/packages/resolve", "/api/v1/packages/list"] do
       conn =
         build_conn()
         |> from(@allowed)
@@ -68,11 +68,31 @@ defmodule ReportServerWeb.Api.CatalogCorsTest do
 
       assert conn.status == 204
       assert header(conn, "access-control-allow-origin") == [@allowed]
-      assert header(conn, "access-control-allow-headers") == ["authorization"]
-      assert header(conn, "access-control-allow-methods") == ["GET"]
+      assert header(conn, "access-control-allow-headers") == ["authorization, content-type"]
+      assert header(conn, "access-control-allow-methods") == ["GET, POST"]
     end
 
-    assert %{"error" => "FORBIDDEN"} = json_response(conn |> from("https://evil.example") |> options("/api/v1/packages"), 403)
+    refused =
+      build_conn()
+      |> from("https://evil.example")
+      |> put_req_header("access-control-request-headers", "authorization")
+      |> options("/api/v1/packages")
+
+    assert %{"error" => "FORBIDDEN"} = json_response(refused, 403)
+  end
+
+  test "a preflight that asks for no authorization is answered to every origin, for the anonymous list's POST" do
+    conn =
+      build_conn()
+      |> from("https://anywhere.example")
+      |> put_req_header("access-control-request-method", "POST")
+      |> put_req_header("access-control-request-headers", "content-type")
+      |> options("/api/v1/packages/list")
+
+    assert conn.status == 204
+    assert header(conn, "access-control-allow-origin") == ["*"]
+    assert header(conn, "access-control-allow-headers") == ["content-type"]
+    assert header(conn, "access-control-allow-methods") == ["GET, POST"]
   end
 
   test "no other API route gains CORS", %{conn: conn} do

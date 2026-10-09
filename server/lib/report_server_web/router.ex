@@ -74,8 +74,10 @@ defmodule ReportServerWeb.Router do
 
     get "/packages", PackageController, :index
     get "/packages/resolve", PackageController, :resolve
+    post "/packages/list", PackageController, :list
     options "/packages", PackageController, :preflight
     options "/packages/resolve", PackageController, :preflight
+    options "/packages/list", PackageController, :preflight
   end
 
   scope "/api/v1", ReportServerWeb.Api.V1 do
