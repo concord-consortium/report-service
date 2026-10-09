@@ -59,8 +59,10 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   end
 
   # Never answers 404, as validate. Assignment URLs are followed by report-service's deriver; scope
-  # URLs are matched as given.
-  def applies(conn, params) do
+  # URLs are matched as given. Only the JSON body counts, so the query cannot stand in for it.
+  def applies(conn, _params) do
+    params = json_body(conn)
+
     with {:ok, urls} <- applies_patterns(params["urls"]),
          {:ok, assignment_urls} <- string_list(params, "assignment_urls"),
          {:ok, scope_urls} <- scope_urls(params),
@@ -103,8 +105,10 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   # The list with each row marked as applying to the scope's URLs or not, which a GET cannot carry.
   # scope_urls is required, so a body that was never read is refused rather than read as no URLs.
   def list(conn, params) do
-    with true <- Map.has_key?(params, "scope_urls") || {:error, :bad_request, "scope_urls is required, possibly empty"},
-         {:ok, urls} <- scope_urls(params) do
+    body = json_body(conn)
+
+    with true <- Map.has_key?(body, "scope_urls") || {:error, :bad_request, "scope_urls is required, possibly empty"},
+         {:ok, urls} <- scope_urls(body) do
       list_packages(conn, params, urls)
     else
       {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
@@ -213,6 +217,10 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   end
 
   defp applies_patterns(_urls), do: {:error, :bad_request, "urls must be an object of all, any and none arrays"}
+
+  # a body Plug.Parsers passed through unread (any type but JSON) holds no fields
+  defp json_body(%{body_params: %Plug.Conn.Unfetched{}}), do: %{}
+  defp json_body(conn), do: conn.body_params
 
   defp bad_request({:error, message}), do: {:error, :bad_request, message}
   defp bad_request(ok), do: ok

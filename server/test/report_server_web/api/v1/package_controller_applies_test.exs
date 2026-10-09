@@ -78,6 +78,9 @@ defmodule ReportServerWeb.Api.V1.PackageControllerAppliesTest do
 
     text = again(conn) |> put_req_header("content-type", "text/plain") |> post("/api/v1/packages/applies", ~s({"urls":{"all":["*never*"]}}))
     assert %{"error" => "BAD_REQUEST"} = json_response(text, 400)
+
+    query = again(conn) |> put_req_header("content-type", "text/plain") |> post("/api/v1/packages/applies?urls[any][]=*x*", "unread")
+    assert %{"error" => "BAD_REQUEST"} = json_response(query, 400)
   end
 
   test "bounds a scope URL in code points, at the contract's limit", %{conn: conn} do

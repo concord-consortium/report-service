@@ -205,6 +205,9 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
       for body <- [%{}, %{"scope_urls" => List.duplicate("x", 1_001)}] do
         assert %{"error" => "BAD_REQUEST"} = json_response(post(build_conn(), "/api/v1/packages/list?portal=#{@server}", body), 400)
       end
+
+      query = build_conn() |> put_req_header("content-type", "text/plain") |> post("/api/v1/packages/list?portal=#{@server}&scope_urls[]=x", "unread")
+      assert %{"error" => "BAD_REQUEST"} = json_response(query, 400)
     end
   end
 
