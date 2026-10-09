@@ -36,7 +36,7 @@ defmodule ReportServer.Packages.Archive do
     with :ok <- check_size(bin),
          {:ok, entries} <- list_entries(bin),
          :ok <- check_paths(entries),
-         :ok <- check_links(bin),
+         :ok <- check_links(bin, length(entries)),
          :ok <- check_declared_total(entries),
          {:ok, entry} <- manifest_entry(entries),
          {:ok, json} <- read_entry(bin, entry),
@@ -78,8 +78,12 @@ defmodule ReportServer.Packages.Archive do
     String.starts_with?(name, ["/", "\\"]) or ".." in segments or String.match?(name, ~r/\A[A-Za-z]:/)
   end
 
-  defp check_links(bin) do
-    with {:ok, modes} <- central_modes(bin) do
+  # The central directory is walked to its recorded size rather than its recorded count, which
+  # ZIP64 caps at 65,535, and an archive holding entries :zip did not list is refused, since its
+  # path checks never saw them.
+  defp check_links(bin, listed) do
+    with {:ok, modes} <- central_modes(bin),
+         true <- length(modes) == listed || {:error, "the archive is not a readable zip"} do
       case Enum.find(modes, fn {_name, mode} -> Bitwise.band(mode, @file_type_mask) == @symlink_type end) do
         nil -> :ok
         {name, _mode} -> {:error, "the archive entry #{inspect(name)} is a symbolic link"}
@@ -93,10 +97,10 @@ defmodule ReportServer.Packages.Archive do
     last = byte_size(bin) - 22
 
     with {:ok, eocd} <- find_end_of_central_directory(bin, last, max(last - 65_535, 0)),
-         <<_::binary-size(eocd), @end_of_central_directory_signature::little-32, _disks::binary-size(6),
-           count::little-16, size::little-32, offset::little-32, _::binary>> <- bin,
+         <<_::binary-size(eocd), @end_of_central_directory_signature::little-32, _disks::binary-size(8),
+           size::little-32, offset::little-32, _::binary>> <- bin,
          true <- offset + size <= eocd || :error do
-      central_entries(binary_part(bin, offset, size), count, [])
+      central_entries(binary_part(bin, offset, size), [])
     else
       _ -> {:error, "the archive is not a readable zip"}
     end
@@ -111,18 +115,17 @@ defmodule ReportServer.Packages.Archive do
     end
   end
 
-  defp central_entries(_rest, 0, acc), do: {:ok, acc}
+  defp central_entries(<<>>, acc), do: {:ok, acc}
 
   defp central_entries(
          <<@central_header_signature::little-32, _::binary-size(24), name_len::little-16, extra_len::little-16,
            comment_len::little-16, _disk_and_internal::binary-size(4), external::little-32, _offset::little-32,
            name::binary-size(name_len), _::binary-size(extra_len), _::binary-size(comment_len), rest::binary>>,
-         count,
          acc
        ),
-       do: central_entries(rest, count - 1, [{name, Bitwise.bsr(external, 16)} | acc])
+       do: central_entries(rest, [{name, Bitwise.bsr(external, 16)} | acc])
 
-  defp central_entries(_rest, _count, _acc), do: {:error, "the archive is not a readable zip"}
+  defp central_entries(_rest, _acc), do: {:error, "the archive is not a readable zip"}
 
   defp check_declared_total(entries) do
     if Enum.sum(Enum.map(entries, & &1.size)) > @max_declared_total,
