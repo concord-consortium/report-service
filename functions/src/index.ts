@@ -16,6 +16,9 @@ import getStudentFeedbackMetadata from "./api/get-student-feedback-metadata"
 import bulkRead from "./api/bulk-read"
 import fetchAttachmentMeta from "./api/attachment-meta"
 import requireHeaderBearer from "./middleware/require-header-bearer"
+import { makeDeriveUrls } from "./api/derive-urls"
+import { rdAuthoringHosts } from "./researcher-dashboard/config"
+import { parseAllowedHosts } from "./researcher-dashboard/derive-profile-route"
 
 import {
   createSyncDocAfterAnswerWritten,
@@ -54,6 +57,7 @@ api.get("/", (req, res) => {
       "GET student_feedback_metadata?source=<SOURCE>&platform_id=<PLATFORM_ID>&platform_student_id=<PLATFORM_STUDENT_ID>": "Returns a map, keyed by offering id, of the student's activity and question feedback metadata",
       "POST bulk_read": "STORY 3: bulk answers/history read for a report run's authorized endpoints (Elixir-only, header bearer required)",
       "POST fetch_attachment_meta": "STORY 3: authoritative attachment metadata (publicPath/owner/contentType) for a batch of docs (Elixir-only, header bearer required)",
+      "POST derive_urls": "The interactive URLs inside assignment URLs, for report-server's package applies route; writes nothing (Elixir-only, header bearer required)",
     }
   })
 })
@@ -66,6 +70,10 @@ api.get("/plugin_states", getPluginStates)
 api.get("/student_feedback_metadata", getStudentFeedbackMetadata)
 api.post("/bulk_read", requireHeaderBearer, bulkRead)
 api.post("/fetch_attachment_meta", requireHeaderBearer, fetchAttachmentMeta)
+api.post("/derive_urls", requireHeaderBearer, makeDeriveUrls(() => ({
+  fetchImpl: (url, init) => fetch(url, init),
+  allowedHosts: parseAllowedHosts(rdAuthoringHosts.value())
+})))
 
 // Takes a standard express app and transforms it into a firebase function
 // handler that behaves 'correctly' with respect to trailing slashes.
