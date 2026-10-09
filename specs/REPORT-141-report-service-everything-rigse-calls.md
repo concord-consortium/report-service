@@ -124,7 +124,7 @@ Checks on the head commit: report-server 1065 tests pass (7 skipped) and compile
 
 ## Not Yet Implemented
 
-- No rigse signing key exists for either portal, so `PORTAL_PUBLIC_KEYS` is `'[]'` in both functions `.env` files and every assertion is refused until entries from `rake portal_signing_key:public` are added.
+- No rigse signing key exists for the production portal, so `PORTAL_PUBLIC_KEYS` is `'[]'` in `functions/.env.report-service-pro` and every production assertion is refused until that portal's entry from `rake portal_signing_key:public` is added. `functions/.env.report-service-dev` holds the staging portal's entry (`kid` `staging-2026-10-07`).
 - report-server reads `PORTAL_PUBLIC_KEYS` from its task environment, which comes from cloud-formation's `fargate/report-server.yml` in another repository. The variable has to be added to that stack.
 - There is no production runner stack yet, so production's image, role and bucket are empty and `/run-package` answers 503 there. No runner stack has a launcher role yet either, so `RD_LAUNCHER_ROLE_ARN` and `RD_AWS_AUDIENCE` are empty in both projects. The function's service account must still be created in both projects before the first deploy (`setup-researcher-dashboard-iam.sh apply`), as the functions README says.
 
