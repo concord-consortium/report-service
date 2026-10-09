@@ -5,16 +5,13 @@ defmodule ReportServer.Packages.Manifest do
   runner executes, and the checksum ties the two together.
   """
 
-  alias ReportServer.Packages.{Archive, Identity}
+  alias ReportServer.Packages.{Archive, Identity, Patterns}
 
   @catalog_state_keys ~w(owner maintainer origin visibility project official)
-  @pattern_groups ~w(all any none)
   @version ~r/\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?\z/
   @max_version_length 64
   @max_title_length 200
   @max_description_length 500
-  @max_patterns 20
-  @max_pattern_length 256
   # the runner's own ceiling (its PACKAGE_MAX_DURATION_SECONDS default), so nothing published is refused on the VM
   @max_duration_seconds 2 * 60 * 60
 
@@ -93,52 +90,11 @@ defmodule ReportServer.Packages.Manifest do
        else: invalid("description must be one line of at most #{@max_description_length} characters")
   end
 
-  defp urls(nil), do: {:ok, Map.new(@pattern_groups, &{&1, []})}
-
-  defp urls(urls) when is_map(urls) do
-    with :ok <- known_groups(urls),
-         {:ok, groups} <- pattern_groups(urls),
-         :ok <- pattern_count(groups) do
-      {:ok, groups}
+  defp urls(urls) do
+    case Patterns.validate(urls) do
+      {:ok, groups} -> {:ok, groups}
+      {:error, message} -> invalid(message)
     end
-  end
-
-  defp urls(_), do: invalid("urls must be an object of all, any and none arrays")
-
-  # an unknown group, such as a misspelt "any", would otherwise leave the package offered everywhere
-  defp known_groups(urls) do
-    case Map.keys(urls) -- @pattern_groups do
-      [] -> :ok
-      keys -> invalid("urls has unknown keys #{Enum.join(keys, ", ")}; only all, any and none are allowed")
-    end
-  end
-
-  defp pattern_groups(urls) do
-    Enum.reduce_while(@pattern_groups, {:ok, %{}}, fn group, {:ok, acc} ->
-      case patterns(group, Map.get(urls, group, [])) do
-        {:ok, patterns} -> {:cont, {:ok, Map.put(acc, group, patterns)}}
-        error -> {:halt, error}
-      end
-    end)
-  end
-
-  defp patterns(group, patterns) when is_list(patterns) do
-    if Enum.all?(patterns, &valid_pattern?/1),
-      do: {:ok, patterns},
-      else: invalid("urls.#{group} patterns must be non-empty strings of at most #{@max_pattern_length} characters with no whitespace or control characters")
-  end
-
-  defp patterns(group, _), do: invalid("urls.#{group} must be an array of strings")
-
-  defp valid_pattern?(pattern) do
-    is_binary(pattern) and String.valid?(pattern) and pattern != "" and
-      chars(pattern) <= @max_pattern_length and not Regex.match?(~r/[\s\p{Cc}]/u, pattern)
-  end
-
-  defp pattern_count(groups) do
-    if groups |> Map.values() |> Enum.map(&length/1) |> Enum.sum() > @max_patterns,
-      do: invalid("urls declares more than #{@max_patterns} patterns across all, any and none"),
-      else: :ok
   end
 
   defp clue_prepull(nil), do: {:ok, false}
