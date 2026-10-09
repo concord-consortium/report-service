@@ -153,6 +153,7 @@
     }
   ],
   "limits": {
+    "max_duration_seconds": 7200,
     "max_url_length": 2048
   }
 }

@@ -15,7 +15,8 @@ defmodule ReportServer.Packages.Manifest do
   @max_description_length 500
   @max_patterns 20
   @max_pattern_length 256
-  @max_duration_seconds 8 * 60 * 60
+  # the runner's own ceiling (its PACKAGE_MAX_DURATION_SECONDS default), so nothing published is refused on the VM
+  @max_duration_seconds 2 * 60 * 60
 
   @type projection :: %{
           name: String.t(),

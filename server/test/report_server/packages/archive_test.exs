@@ -38,6 +38,18 @@ defmodule ReportServer.Packages.ArchiveTest do
     end
   end
 
+  test "refuses an archive holding a symbolic link, naming the entry" do
+    for {fixture, entry} <- [
+          {"symlink-entry.zip", "passwd"},
+          {"symlink-entry-commented.zip", "passwd"},
+          {"symlink-entrypoint.zip", "start.py"},
+          {"symlink-entry-go.zip", "passwd"}
+        ] do
+      assert {:error, message} = Archive.read_manifest(File.read!(Path.join(@fixtures, fixture)))
+      assert message == "the archive entry #{inspect(entry)} is a symbolic link", fixture
+    end
+  end
+
   test "refuses a body that is not a zip" do
     assert {:error, "the archive is not a readable zip"} = Archive.read_manifest("not a zip")
     assert {:error, "the archive is not a readable zip"} = Archive.read_manifest(<<>>)

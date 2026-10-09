@@ -37,6 +37,10 @@ defmodule ReportServer.Packages.ManifestTest do
     end
   end
 
+  test "accepts the runner's ceiling of 7,200 declared seconds" do
+    assert {:ok, %{expected_duration_seconds: 7_200}} = project(valid(%{"expected_duration_seconds" => 7_200}))
+  end
+
   test "defaults urls to three empty groups, clue_prepull to false and description to nil" do
     manifest = valid() |> Map.drop(["urls", "clue_prepull", "description"])
     assert {:ok, %{urls: %{"all" => [], "any" => [], "none" => []}, clue_prepull: false, description: nil}} = project(manifest)
@@ -88,7 +92,7 @@ defmodule ReportServer.Packages.ManifestTest do
       {"entrypoint", "/run.py", "entrypoint"},
       {"entrypoint", nil, "entrypoint"},
       {"expected_duration_seconds", 0, "expected_duration_seconds"},
-      {"expected_duration_seconds", 28_801, "expected_duration_seconds"},
+      {"expected_duration_seconds", 7_201, "expected_duration_seconds"},
       {"expected_duration_seconds", 1.5, "expected_duration_seconds"},
       {"expected_duration_seconds", nil, "expected_duration_seconds"}
     ]
