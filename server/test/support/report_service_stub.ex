@@ -3,6 +3,7 @@ defmodule ReportServer.ReportServiceStub do
 
   def bulk_read(req), do: apply_stub(:bulk_read, [req])
   def fetch_attachment_meta(req), do: apply_stub(:fetch_attachment_meta, [req])
+  def derive_urls(urls), do: apply_stub(:derive_urls, [urls])
 
   defp apply_stub(name, args) do
     Agent.get(__MODULE__, &Map.fetch!(&1, name)) |> apply(args)

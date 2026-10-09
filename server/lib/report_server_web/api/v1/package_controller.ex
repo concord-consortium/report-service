@@ -2,7 +2,7 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   use ReportServerWeb, :controller
 
   alias ReportServer.{Packages, PortalDbs}
-  alias ReportServer.Packages.{Archive, Identity}
+  alias ReportServer.Packages.{Archive, Identity, Patterns}
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.PackageJSON
 
@@ -15,8 +15,13 @@ defmodule ReportServerWeb.Api.V1.PackageController do
     already_exists: "ALREADY_EXISTS",
     portal_unavailable: "SERVICE_UNAVAILABLE",
     busy: "SERVICE_UNAVAILABLE",
-    store_failed: "SERVICE_UNAVAILABLE"
+    store_failed: "SERVICE_UNAVAILABLE",
+    unavailable: "SERVICE_UNAVAILABLE"
   }
+
+  # a profile's 500 assignment URLs plus its 500 interactive URLs, each within the deriver's limit
+  @max_scope_urls 1_000
+  @max_url_length 2_048
 
   # The zip is the raw body: Plug.Parsers passes application/zip through unread.
   def create(conn, params) do
@@ -48,6 +53,27 @@ defmodule ReportServerWeb.Api.V1.PackageController do
          {:ok, official?} <- official_param(params["official"]),
          {:ok, validated} <- Packages.validate(conn.assigns.current_user, body, params["origin"], official?) do
       json(conn, validated)
+    else
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  # Never answers 404, as validate. Assignment URLs are followed by report-service's deriver; scope
+  # URLs are matched as given.
+  def applies(conn, params) do
+    with {:ok, urls} <- applies_patterns(params["urls"]),
+         {:ok, assignment_urls} <- string_list(params, "assignment_urls"),
+         {:ok, scope_urls} <- scope_urls(params),
+         {:ok, derived} <- derive(assignment_urls) do
+      verdict = Patterns.applies(urls, assignment_urls ++ derived["interactive_urls"] ++ scope_urls)
+
+      json(conn, %{
+        applies: verdict == :ok,
+        reason: with({:error, reason} <- verdict, do: reason, else: (_ -> nil)),
+        interactive_urls: derived["interactive_urls"],
+        unread: derived["unread"],
+        truncated: derived["truncated"]
+      })
     else
       {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
     end
@@ -166,6 +192,48 @@ defmodule ReportServerWeb.Api.V1.PackageController do
       {:error, _reason} -> {:error, :bad_request, "the request body could not be read"}
     end
   end
+
+  # Required, so a body that was never read (not JSON) is refused rather than read as "no
+  # patterns". cc-data builds the groups from Go slices, and a nil slice arrives as null.
+  defp applies_patterns(urls) when is_map(urls) do
+    urls |> Map.reject(fn {_group, patterns} -> is_nil(patterns) end) |> Patterns.validate() |> bad_request()
+  end
+
+  defp applies_patterns(_urls), do: {:error, :bad_request, "urls must be an object of all, any and none arrays"}
+
+  defp bad_request({:error, message}), do: {:error, :bad_request, message}
+  defp bad_request(ok), do: ok
+
+  # code points, the unit Manifest counts: never more than the function's UTF-16 count of the same
+  # URL, so a URL the deriver keeps always passes, and unlike graphemes they bound the matcher's work
+  defp scope_urls(params) do
+    with {:ok, urls} <- string_list(params, "scope_urls") do
+      if length(urls) <= @max_scope_urls and Enum.all?(urls, &(length(String.codepoints(&1)) <= @max_url_length)),
+        do: {:ok, urls},
+        else: {:error, :bad_request, "scope_urls must hold at most #{@max_scope_urls} URLs of at most #{@max_url_length} characters"}
+    end
+  end
+
+  defp string_list(params, key) do
+    case Map.get(params, key) do
+      nil -> {:ok, []}
+      list when is_list(list) -> if Enum.all?(list, &is_binary/1), do: {:ok, list}, else: {:error, :bad_request, "#{key} must be an array of strings"}
+      _ -> {:error, :bad_request, "#{key} must be an array of strings"}
+    end
+  end
+
+  defp derive([]), do: {:ok, %{"interactive_urls" => [], "unread" => [], "truncated" => false}}
+
+  # the function's bounds on assignment URLs are the only copy, so its 400 comes back as a 400
+  defp derive(assignment_urls) do
+    case report_service().derive_urls(assignment_urls) do
+      {:ok, derived} -> {:ok, derived}
+      {:error, {:bad_request, message}} -> {:error, :bad_request, message}
+      {:error, _} -> {:error, :unavailable, "report-service could not derive the assignments' interactive URLs; retry"}
+    end
+  end
+
+  defp report_service, do: Application.get_env(:report_server, :report_service_client, ReportServer.ReportService)
 
   defp official_param(nil), do: {:ok, false}
   defp official_param("false"), do: {:ok, false}
