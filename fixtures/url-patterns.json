@@ -1,5 +1,5 @@
 {
-  "about": "The URL glob matcher's cases, asserted by report-server's ReportServer.Packages.Patterns, the only matcher. A pattern matches the whole URL; * is the only metacharacter and matches any run of characters, including none and including /; every other character, ? included, matches only itself. `matches` asserts one pattern against one URL; `applies` asserts the all, any and none senses over a scope's URLs.",
+  "about": "The URL glob matcher's cases, asserted by report-server's ReportServer.Packages.Patterns, the matcher the other components are designed to ask rather than copy. A pattern matches the whole URL; * is the only metacharacter and matches any run of characters, including none and including /; every other character, ? included, matches only itself. `matches` asserts one pattern against one URL; `applies` asserts the all, any and none senses over a scope's URLs.",
   "matches": [
     {
       "pattern": "*",

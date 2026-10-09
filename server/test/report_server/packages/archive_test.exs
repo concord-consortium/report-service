@@ -51,7 +51,7 @@ defmodule ReportServer.Packages.ArchiveTest do
   end
 
   test "refuses an archive whose end record counts fewer entries than its central directory holds" do
-    # ZIP64 caps the count at 65,535 and :zip lists only that many, so only a walk to the directory's size sees the rest
+    # :zip lists only as many entries as the end record's 16-bit count says, which can be fewer than the directory holds
     bin = File.read!(Path.join(@fixtures, "symlink-entry.zip"))
     eocd = byte_size(bin) - 22
     <<head::binary-size(eocd), signature::binary-size(8), 3::little-16, 3::little-16, tail::binary>> = bin

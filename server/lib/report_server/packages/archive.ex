@@ -78,9 +78,10 @@ defmodule ReportServer.Packages.Archive do
     String.starts_with?(name, ["/", "\\"]) or ".." in segments or String.match?(name, ~r/\A[A-Za-z]:/)
   end
 
-  # The central directory is walked to its recorded size rather than its recorded count, which
-  # ZIP64 caps at 65,535, and an archive holding entries :zip did not list is refused, since its
-  # path checks never saw them.
+  # The end record's 16-bit entry count can be lower than the true number of entries, through its
+  # 65,535 limit or an archive built to hide them, so the central directory is read to its recorded
+  # size, and an archive holding entries :zip did not list is refused, since its path checks never
+  # saw them.
   defp check_links(bin, listed) do
     with {:ok, modes} <- central_modes(bin),
          true <- length(modes) == listed || {:error, "the archive is not a readable zip"} do

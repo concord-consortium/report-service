@@ -1,7 +1,7 @@
 defmodule ReportServer.Packages.Patterns do
   @moduledoc """
-  A package's URL patterns and the only glob matcher in the system. The dashboard
-  app, the runner and cc-data ask report-server rather than keeping a copy.
+  A package's URL patterns and the glob matcher the system is designed to share: the dashboard
+  app, the runner and cc-data ask report-server for applicability rather than keeping a copy.
 
   A pattern matches the whole URL. `*` matches any run of characters, including none and
   including `/`; every other character, `?` included, matches only itself, because URLs carry

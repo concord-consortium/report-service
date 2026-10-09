@@ -75,7 +75,7 @@ defmodule ReportServer.ReportService do
   The interactive URLs inside assignment URLs, from report-service's profile deriver. Writes
   nothing. Answers `{:ok, %{"interactive_urls", "unread", "truncated"}}`, `{:error, {:bad_request,
   message}}` when the function refuses the URLs, or `{:error, :unavailable}` for anything else,
-  a function without the route included.
+  including a function that does not have the route yet (a 404).
   """
   def derive_urls(assignment_urls) do
     {url, token} = get_endpoint("derive_urls")
