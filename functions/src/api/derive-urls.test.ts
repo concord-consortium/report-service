@@ -27,10 +27,10 @@ function body(text: string) {
 
 const activity = { pages: [{ embeddables: [{ type: "MwInteractive", url: "https://lab/x" }] }] }
 
-async function answerStatus(allowedHosts: string[], requestBody: any) {
+async function answer(allowedHosts: string[], requestBody: any) {
   const res = mockRes()
   await makeDeriveUrls(() => ({ fetchImpl: jest.fn(), allowedHosts: new Set(allowedHosts) }))({ body: requestBody } as any, res)
-  return res._status
+  return [res._status, res._message]
 }
 
 describe("derive_urls", () => {
@@ -52,13 +52,22 @@ describe("derive_urls", () => {
   })
 
   it("is 503 without an allowlist", async () => {
-    expect(await answerStatus([], { assignment_urls: [] })).toBe(503)
+    expect((await answer([], { assignment_urls: [] }))[0]).toBe(503)
   })
 
-  it("is 400 outside /derive-profile's bounds", async () => {
-    expect(await answerStatus(["h"], [])).toBe(400)
-    expect(await answerStatus(["h"], { assignment_urls: Array(501).fill("x") })).toBe(400)
-    expect(await answerStatus(["h"], { assignment_urls: ["x".repeat(2049)] })).toBe(400)
-    expect(await answerStatus(["h"], { assignment_urls: Array(200).fill("x".repeat(2000)) })).toBe(400)
+  it("is 400 outside /derive-profile's bounds, naming the bound", async () => {
+    expect(await answer(["h"], [])).toEqual([400, "the body must be a JSON object"])
+    expect(await answer(["h"], { assignment_urls: Array(501).fill("x") })).toEqual([400, "assignment_urls must be an array of at most 500 strings"])
+    expect(await answer(["h"], { assignment_urls: ["x".repeat(2049)] })).toEqual([400, "each assignment URL must be a string of at most 2048 characters"])
+    expect(await answer(["h"], { assignment_urls: Array(200).fill("x".repeat(2000)) })).toEqual([400, "the body exceeds 256 KiB"])
+  })
+
+  it("is 502 when the derivation itself fails", async () => {
+    const res = mockRes()
+    const now = () => {
+      throw new Error("clock failed")
+    }
+    await makeDeriveUrls(() => ({ fetchImpl: jest.fn(), allowedHosts: new Set(["h"]), now }))({ body: { assignment_urls: [] } } as any, res)
+    expect([res._status, res._message]).toEqual([502, "the derivation failed: clock failed"])
   })
 })
