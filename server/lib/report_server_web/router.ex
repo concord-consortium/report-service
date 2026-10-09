@@ -74,8 +74,10 @@ defmodule ReportServerWeb.Router do
 
     get "/packages", PackageController, :index
     get "/packages/resolve", PackageController, :resolve
+    post "/packages/list", PackageController, :list
     options "/packages", PackageController, :preflight
     options "/packages/resolve", PackageController, :preflight
+    options "/packages/list", PackageController, :preflight
   end
 
   scope "/api/v1", ReportServerWeb.Api.V1 do
@@ -93,6 +95,8 @@ defmodule ReportServerWeb.Router do
     get "/reports/:id/jobs", ReportJobController, :index
     get "/reports/:id/jobs/:job_id/download", ReportJobController, :download
     post "/packages", PackageController, :create
+    post "/packages/validate", PackageController, :validate
+    post "/packages/applies", PackageController, :applies
     post "/packages/:kind/:owner_id/:name/:state", PackageController, :update_state
   end
 

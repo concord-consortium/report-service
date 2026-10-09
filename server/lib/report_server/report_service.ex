@@ -3,6 +3,8 @@ defmodule ReportServer.ReportService do
 
   # must exceed the ~300s Node/Cloud-Function ceiling (Req default is 15_000)
   @bulk_receive_timeout 310_000
+  # past the deriver's 240-second budget and inside cc-data's 5-minute wait on applies
+  @derive_receive_timeout 270_000
 
   @doc """
   Bulk Firestore read (STORY 3). `req` is the internal wire request:
@@ -69,6 +71,33 @@ defmodule ReportServer.ReportService do
     end
   end
 
+  @doc """
+  The interactive URLs inside assignment URLs, from report-service's profile deriver. Writes
+  nothing. Answers `{:ok, %{"interactive_urls", "unread", "truncated"}}`, `{:error, {:bad_request,
+  message}}` when the function refuses the URLs, or `{:error, :unavailable}` for anything else,
+  including a function that does not have the route yet (a 404).
+  """
+  def derive_urls(assignment_urls) do
+    {url, token} = get_endpoint("derive_urls")
+
+    result =
+      get_request()
+      |> Req.post(
+        url: url,
+        auth: {:bearer, token},
+        json: %{assignment_urls: assignment_urls},
+        receive_timeout: @derive_receive_timeout,
+        retry: false,
+        debug: false
+      )
+
+    case result do
+      {:ok, %{status: 200, body: %{"success" => true} = body}} -> {:ok, Map.take(body, ["interactive_urls", "unread", "truncated"])}
+      {:ok, %{status: 400, body: %{"error" => error}}} when is_binary(error) -> {:error, {:bad_request, error}}
+      _ -> {:error, :unavailable}
+    end
+  end
+
   def get_answer(source, remote_endpoint, question_id) do
     with {:ok, resp} <- request_answer(source, remote_endpoint, question_id),
          {:ok, answer} <- get_answer_from_response(resp.body) do
@@ -132,7 +161,7 @@ defmodule ReportServer.ReportService do
   end
 
   def get_request() do
-    Req.new()
+    Req.new(Application.get_env(:report_server, :report_service_req_options, []))
     |> Req.Request.register_options([:debug])
     |> Req.Request.append_request_steps(debug: &debug/1)
   end

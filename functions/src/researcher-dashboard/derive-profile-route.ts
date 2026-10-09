@@ -36,6 +36,11 @@ export function deriveBodyProblem(body: unknown): string | null {
   if (typeof assignment_fingerprint !== "string" || !assignment_fingerprint || assignment_fingerprint.length > MAX_FINGERPRINT_LENGTH) {
     return `assignment_fingerprint must be a non-empty string of at most ${MAX_FINGERPRINT_LENGTH} characters`
   }
+  return assignmentUrlsProblem(assignment_urls)
+}
+
+/** The first problem with a list of assignment URLs, or null; /derive_urls applies the same bounds. */
+export function assignmentUrlsProblem(assignment_urls: unknown): string | null {
   if (!Array.isArray(assignment_urls) || assignment_urls.length > MAX_ASSIGNMENT_URLS) {
     return `assignment_urls must be an array of at most ${MAX_ASSIGNMENT_URLS} strings`
   }

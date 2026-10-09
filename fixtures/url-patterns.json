@@ -1,0 +1,284 @@
+{
+  "about": "The URL glob matcher's cases, asserted by report-server's ReportServer.Packages.Patterns, the matcher the other components are designed to ask rather than copy. A pattern matches the whole URL; * is the only metacharacter and matches any run of characters, including none and including /; every other character, ? included, matches only itself. `matches` asserts one pattern against one URL; `applies` asserts the all, any and none senses over a scope's URLs.",
+  "matches": [
+    {
+      "pattern": "*",
+      "url": "",
+      "match": true
+    },
+    {
+      "pattern": "*",
+      "url": "https://authoring.concord.org/activities/1",
+      "match": true
+    },
+    {
+      "pattern": "",
+      "url": "",
+      "match": true
+    },
+    {
+      "pattern": "",
+      "url": "x",
+      "match": false
+    },
+    {
+      "pattern": "concord.org",
+      "url": "https://concord.org",
+      "match": false
+    },
+    {
+      "pattern": "https://concord.org",
+      "url": "https://concord.org",
+      "match": true
+    },
+    {
+      "pattern": "*concord.org",
+      "url": "https://concord.org/",
+      "match": false
+    },
+    {
+      "pattern": "*concord.org*",
+      "url": "https://concord.org/",
+      "match": true
+    },
+    {
+      "pattern": "*question-interactives/*open-response/*",
+      "url": "https://models-resources.concord.org/question-interactives/branch/master/open-response/",
+      "match": true
+    },
+    {
+      "pattern": "*question-interactives/*open-response/*",
+      "url": "https://models-resources.concord.org/question-interactives/branch/master/multiple-choice/",
+      "match": false
+    },
+    {
+      "pattern": "*collaborative-learning/*unit=dataflow*",
+      "url": "https://models-resources.concord.org/collaborative-learning/version/5.6.0/index.html?unit=dataflow&problem=1.1",
+      "match": true
+    },
+    {
+      "pattern": "*collaborative-learning/*unit=dataflow*",
+      "url": "https://models-resources.concord.org/collaborative-learning/version/5.6.0/index.html?unit=moth&problem=1.2",
+      "match": false
+    },
+    {
+      "pattern": "*lab.concord.org/embeddable*#*atom-builder*",
+      "url": "//lab.concord.org/embeddable.html#interactives/itsi/energy-levels/atom-builder.json",
+      "match": true
+    },
+    {
+      "pattern": "*lab.concord.org/embeddable*#*atom-builder*",
+      "url": "//lab.concord.org/embeddable.html#interactives/itsi/energy-levels/energy-levels.json",
+      "match": false
+    },
+    {
+      "pattern": "*//ep-erosion.concord.org/*",
+      "url": "https://ep-erosion.concord.org/index.html",
+      "match": true
+    },
+    {
+      "pattern": "*//ep-erosion.concord.org/*",
+      "url": "//ep-erosion.concord.org/",
+      "match": true
+    },
+    {
+      "pattern": "*//ep-erosion.concord.org/*",
+      "url": "https://not-ep-erosion.concord.org/",
+      "match": false
+    },
+    {
+      "pattern": "*bar-graph*",
+      "url": "https://models-resources.concord.org/question-interactives/branch/master/bar-graph/",
+      "match": true
+    },
+    {
+      "pattern": "*index.html?unit=moth*",
+      "url": "https://x.org/index.html?unit=moth&problem=1.2",
+      "match": true
+    },
+    {
+      "pattern": "*index.html?unit=moth*",
+      "url": "https://x.org/indexXhtml?unit=moth",
+      "match": false
+    },
+    {
+      "pattern": "a?c",
+      "url": "abc",
+      "match": false
+    },
+    {
+      "pattern": "a?c",
+      "url": "a?c",
+      "match": true
+    },
+    {
+      "pattern": "*interactive=%2F%2Flab.concord.org*",
+      "url": "https://models-resources.concord.org/dataset-sync-wrapper/index.html?interactive=%2F%2Flab.concord.org%2Fembeddable.html",
+      "match": true
+    },
+    {
+      "pattern": "*a*a*a*a*b",
+      "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "match": false
+    },
+    {
+      "pattern": "*a*a*a*a*b",
+      "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+      "match": true
+    },
+    {
+      "pattern": "**",
+      "url": "anything",
+      "match": true
+    },
+    {
+      "pattern": "https://*/x",
+      "url": "https://a/b/x",
+      "match": true
+    }
+  ],
+  "applies": [
+    {
+      "urls": {},
+      "scope": [],
+      "ok": true,
+      "note": "no patterns applies to every scope"
+    },
+    {
+      "urls": {
+        "all": [],
+        "any": [],
+        "none": []
+      },
+      "scope": [
+        "https://a"
+      ],
+      "ok": true
+    },
+    {
+      "urls": {
+        "any": [
+          "*open-response*"
+        ]
+      },
+      "scope": [
+        "https://a/open-response/",
+        "https://a/drawing/"
+      ],
+      "ok": true
+    },
+    {
+      "urls": {
+        "any": [
+          "*open-response*"
+        ]
+      },
+      "scope": [
+        "https://a/drawing/"
+      ],
+      "ok": false
+    },
+    {
+      "urls": {
+        "any": [
+          "*open-response*"
+        ]
+      },
+      "scope": [],
+      "ok": false
+    },
+    {
+      "urls": {
+        "all": [
+          "*drawing*",
+          "*bar-graph*"
+        ]
+      },
+      "scope": [
+        "https://a/drawing/",
+        "https://a/bar-graph/"
+      ],
+      "ok": true
+    },
+    {
+      "urls": {
+        "all": [
+          "*drawing*",
+          "*bar-graph*"
+        ]
+      },
+      "scope": [
+        "https://a/drawing/"
+      ],
+      "ok": false
+    },
+    {
+      "urls": {
+        "none": [
+          "*collaborative-learning*"
+        ]
+      },
+      "scope": [
+        "https://a/open-response/"
+      ],
+      "ok": true
+    },
+    {
+      "urls": {
+        "none": [
+          "*collaborative-learning*"
+        ]
+      },
+      "scope": [
+        "https://a/collaborative-learning/index.html"
+      ],
+      "ok": false
+    },
+    {
+      "urls": {
+        "none": [
+          "*collaborative-learning*"
+        ]
+      },
+      "scope": [],
+      "ok": true
+    },
+    {
+      "urls": {
+        "all": [
+          "*x*"
+        ],
+        "any": [
+          "*y*"
+        ],
+        "none": [
+          "*z*"
+        ]
+      },
+      "scope": [
+        "x",
+        "y"
+      ],
+      "ok": true
+    },
+    {
+      "urls": {
+        "all": [
+          "*x*"
+        ],
+        "any": [
+          "*y*"
+        ],
+        "none": [
+          "*z*"
+        ]
+      },
+      "scope": [
+        "x",
+        "y",
+        "z"
+      ],
+      "ok": false
+    }
+  ]
+}

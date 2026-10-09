@@ -187,6 +187,7 @@ The bearer token value is managed as a secret in Google Cloud Secret Manager:
 - `researcherDashboard/run-package` queues a researcher's packages under `researcher_dashboard/{portal}/work/{platform_user_id}`, then launches, resumes or leaves that researcher's MicroVM, and answers 202 without waiting for it. Only on a launch does it relay rigse's `aud: report-server` assertion to report-server's `POST /api/v1/dashboard-tokens` for the VM's token.
 
 - `researcherDashboard/derive-profile` takes a class's assignment URLs from rigse, answers 202, and queues the derivation as a Cloud Task for `deriveProfileWorker`. The worker follows each Activity Player URL's `activity=` or `sequence=` to its public JSON, on an allowlisted authoring host only, and writes the class's authored URL profile to `researcher_dashboard/{portal}/classes/{class_hash}` with the Admin SDK. A write never replaces the profile of a later request.
+- The `api` function's `POST derive_urls` runs the same derivation for report-server's package applies route and answers the interactive URLs, what it could not read, and whether it was truncated. It sits behind the shared bearer, as `bulk_read` does, writes nothing and takes no class. Its assignment URLs come from a researcher through report-server rather than from rigse, so the `RD_AUTHORING_HOSTS` allowlist is its only defense on what it fetches.
 
 Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`, is also the `function_url` the runner calls back, derived at runtime from the project. `RD_FUNCTION_URL` overrides it only if the function moves region or behind a custom domain.
 
@@ -199,7 +200,7 @@ Its URL, `https://us-central1-<project>.cloudfunctions.net/researcherDashboard`,
 | report-server URL | `defineString` | `RD_REPORT_SERVER_URL` | Where the launch mints the VM's report-server token |
 | Function URL | `defineString` | `RD_FUNCTION_URL` | Optional override of `function_url` |
 | Queue cap | `defineInt` | `RD_QUEUE_CAP` | Packages outstanding per researcher before a 409 (default 20) |
-| Authoring hosts | `defineString` | `RD_AUTHORING_HOSTS` | Comma-separated hostnames `derive-profile` may fetch activity JSON from; empty makes it answer 503 |
+| Authoring hosts | `defineString` | `RD_AUTHORING_HOSTS` | Comma-separated hostnames `derive-profile` and the `api` function's `derive_urls` may fetch activity JSON from; empty makes both answer 503 |
 | Launcher role | `defineString` | `RD_LAUNCHER_ROLE_ARN` | The runner stack's launcher role, which the function assumes for MicroVM calls |
 | AWS audience | `defineString` | `RD_AWS_AUDIENCE` | The audience the runner stack's roles require of the function's Google ID token |
 

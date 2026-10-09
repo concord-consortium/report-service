@@ -246,6 +246,21 @@ defmodule ReportServerWeb.Api.V1.PackageControllerCreateTest do
       assert %{"error" => "UNPROCESSABLE", "message" => "the archive exceeds 10 MiB"} = json_response(conn, 422)
     end
 
+    test "an archive whose entrypoint is a symbolic link is 422 and stores nothing", %{conn: conn} do
+      body = File.read!(Path.expand("../../../support/fixtures/packages/symlink-entrypoint.zip", __DIR__))
+
+      assert %{"error" => "UNPROCESSABLE", "message" => "the archive entry \"start.py\" is a symbolic link"} =
+               json_response(publish(conn, body), 422)
+
+      assert Repo.aggregate(PackageVersion, :count) == 0
+      assert PackagesMemoryStore.objects() == %{}
+    end
+
+    test "more than the runner's 7,200 declared seconds is 422", %{conn: conn} do
+      assert %{"error" => "UNPROCESSABLE", "message" => "manifest.json: expected_duration_seconds" <> _} =
+               json_response(publish(conn, package_zip(%{"expected_duration_seconds" => 7_201})), 422)
+    end
+
     test "an invalid manifest is 422 naming it", %{conn: conn} do
       assert %{"error" => "UNPROCESSABLE", "message" => "manifest.json: " <> _} =
                json_response(publish(conn, package_zip(%{"official" => true})), 422)

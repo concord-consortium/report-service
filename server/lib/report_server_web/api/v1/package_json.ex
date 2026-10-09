@@ -1,10 +1,14 @@
 defmodule ReportServerWeb.Api.V1.PackageJSON do
   @moduledoc """
-  The catalog's read shapes, which the dashboard app lists and matches and rigse resolves on
-  the run path.
+  The catalog's read shapes, which the dashboard app lists, with applicability from
+  `POST /api/v1/packages/list`, and rigse resolves on the run path.
   """
 
-  def index(entries), do: %{packages: Enum.map(entries, &entry/1)}
+  def index(entries, nil), do: %{packages: Enum.map(entries, &entry/1)}
+
+  def index(entries, scope_urls) do
+    %{packages: Enum.map(entries, &(&1 |> entry() |> Map.put(:applies, ReportServer.Packages.Patterns.applies(&1.version.urls, scope_urls) == :ok)))}
+  end
 
   defp entry(%{package: p, version: v, mine: mine, project: project}) do
     %{

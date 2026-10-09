@@ -38,6 +38,30 @@ defmodule ReportServer.Packages.ArchiveTest do
     end
   end
 
+  test "refuses an archive holding a symbolic link, naming the entry" do
+    for {fixture, entry} <- [
+          {"symlink-entry.zip", "passwd"},
+          {"symlink-entry-commented.zip", "passwd"},
+          {"symlink-entrypoint.zip", "start.py"},
+          {"symlink-entry-go.zip", "passwd"}
+        ] do
+      assert {:error, message} = Archive.read_manifest(File.read!(Path.join(@fixtures, fixture)))
+      assert message == "the archive entry #{inspect(entry)} is a symbolic link", fixture
+    end
+  end
+
+  test "refuses an archive whose end record counts fewer entries than its central directory holds" do
+    # :zip lists only as many entries as the end record's 16-bit count says, which can be fewer than the directory holds
+    bin = File.read!(Path.join(@fixtures, "symlink-entry.zip"))
+    eocd = byte_size(bin) - 22
+    <<head::binary-size(eocd), signature::binary-size(8), 3::little-16, 3::little-16, tail::binary>> = bin
+    hidden = <<head::binary, signature::binary, 2::little-16, 2::little-16, tail::binary>>
+
+    assert {:ok, listing} = :zip.list_dir(hidden)
+    assert length(listing) == 3, "the comment and two of the three entries"
+    assert {:error, "the archive is not a readable zip"} = Archive.read_manifest(hidden)
+  end
+
   test "refuses a body that is not a zip" do
     assert {:error, "the archive is not a readable zip"} = Archive.read_manifest("not a zip")
     assert {:error, "the archive is not a readable zip"} = Archive.read_manifest(<<>>)

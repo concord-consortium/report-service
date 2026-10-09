@@ -65,7 +65,8 @@ export class Refusal extends Error {
   }
 }
 
-const IDENTITY = /^(users|projects)\/[0-9]+\/[a-z0-9][a-z0-9-]{0,62}$/
+// The catalog's identity grammar, asserted against fixtures/package-contract.json
+export const IDENTITY = /^(users|projects)\/[1-9][0-9]{0,17}\/[a-z0-9][a-z0-9-]{0,62}$/
 const CHECKSUM = /^sha256:[0-9a-f]{64}$/
 // rigse's SecureRandom.hex(24); it becomes a Firestore path segment
 const CLASS_HASH = /^[0-9a-f]{48}$/

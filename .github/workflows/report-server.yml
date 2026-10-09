@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'server/**'
+      - 'fixtures/**'
       - '.github/workflows/**'
 
 jobs:
