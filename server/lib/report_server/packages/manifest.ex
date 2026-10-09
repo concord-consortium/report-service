@@ -68,8 +68,11 @@ defmodule ReportServer.Packages.Manifest do
       else: invalid("name must match ^[a-z0-9][a-z0-9-]{0,62}$")
   end
 
+  @doc "Whether `version` is a version the catalog accepts: the grammar `fixtures/package-contract.json` asserts."
+  def valid_version?(version), do: is_binary(version) and chars(version) <= @max_version_length and Regex.match?(@version, version)
+
   defp version(version) do
-    if is_binary(version) and chars(version) <= @max_version_length and Regex.match?(@version, version),
+    if valid_version?(version),
       do: {:ok, version},
       else: invalid("version must be MAJOR.MINOR.PATCH with an optional -prerelease, at most #{@max_version_length} characters")
   end

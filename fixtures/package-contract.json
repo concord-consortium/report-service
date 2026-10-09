@@ -1,0 +1,158 @@
+{
+  "about": "The package contract: which strings are identities and versions, the package key of an identity (its / as __, one Firestore document id and one path segment), and the limits report-server takes from other components. Asserted by report-server (ReportServer.Packages.Identity, ReportServer.Packages.Manifest) and by the researcherDashboard function (run-package.ts, firestore-paths.ts, derive-profile.ts). The runner and the dashboard app assert against it too; the runner's contract:check fetches this file from report-service's master at fixtures/package-contract.json, so its path and keys are a contract. limits.max_url_length counts characters: code points in report-server, UTF-16 units in the function, which are never fewer, so a URL the function keeps always passes report-server. Two copies keep their own grammar on purpose: rigse's RunRequest, which only sees identities the catalog resolved, and cc-data's package init name check, which runs before report-server has seen anything.",
+  "identity": [
+    {
+      "value": "users/1/counts",
+      "valid": true
+    },
+    {
+      "value": "projects/20/class-counts",
+      "valid": true
+    },
+    {
+      "value": "users/123456789012345678/x",
+      "valid": true,
+      "note": "an 18-digit id"
+    },
+    {
+      "value": "users/1/abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "valid": true,
+      "note": "a 63-character name"
+    },
+    {
+      "value": "users/1/0",
+      "valid": true
+    },
+    {
+      "value": "users/0/counts",
+      "valid": false
+    },
+    {
+      "value": "users/007/counts",
+      "valid": false
+    },
+    {
+      "value": "users/1234567890123456789/x",
+      "valid": false,
+      "note": "a 19-digit id"
+    },
+    {
+      "value": "users/1/abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbc",
+      "valid": false,
+      "note": "a 64-character name"
+    },
+    {
+      "value": "users/1/Counts",
+      "valid": false
+    },
+    {
+      "value": "users/1/class_counts",
+      "valid": false
+    },
+    {
+      "value": "users/1/-counts",
+      "valid": false
+    },
+    {
+      "value": "groups/1/counts",
+      "valid": false
+    },
+    {
+      "value": "users/1",
+      "valid": false
+    },
+    {
+      "value": "users/1/counts/extra",
+      "valid": false
+    },
+    {
+      "value": "users/1/counts/",
+      "valid": false
+    },
+    {
+      "value": "/users/1/counts",
+      "valid": false
+    },
+    {
+      "value": "users/-1/counts",
+      "valid": false
+    },
+    {
+      "value": "",
+      "valid": false
+    }
+  ],
+  "version": [
+    {
+      "value": "1.0.0",
+      "valid": true
+    },
+    {
+      "value": "0.0.0",
+      "valid": true
+    },
+    {
+      "value": "10.20.30",
+      "valid": true
+    },
+    {
+      "value": "1.0.0-beta.1",
+      "valid": true
+    },
+    {
+      "value": "1.0.0-rc-1",
+      "valid": true
+    },
+    {
+      "value": "1.0.0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": true,
+      "note": "64 characters"
+    },
+    {
+      "value": "1.0.0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "note": "65 characters"
+    },
+    {
+      "value": "01.0.0",
+      "valid": false
+    },
+    {
+      "value": "1.0",
+      "valid": false
+    },
+    {
+      "value": "1.0.0+build.1",
+      "valid": false
+    },
+    {
+      "value": "1.0.0-",
+      "valid": false
+    },
+    {
+      "value": "1.0.0-beta_1",
+      "valid": false
+    },
+    {
+      "value": "v1.0.0",
+      "valid": false
+    },
+    {
+      "value": "",
+      "valid": false
+    }
+  ],
+  "package_key": [
+    {
+      "identity": "users/1/counts",
+      "key": "users__1__counts"
+    },
+    {
+      "identity": "projects/20/class-counts",
+      "key": "projects__20__class-counts"
+    }
+  ],
+  "limits": {
+    "max_url_length": 2048
+  }
+}
