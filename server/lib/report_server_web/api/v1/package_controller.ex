@@ -41,6 +41,18 @@ defmodule ReportServerWeb.Api.V1.PackageController do
     end
   end
 
+  # Never answers 404: cc-data reads a 404 from this route as a server without it.
+  def validate(conn, params) do
+    with :ok <- zip_content_type(conn),
+         {:ok, body, conn} <- read_archive(conn),
+         {:ok, official?} <- official_param(params["official"]),
+         {:ok, validated} <- Packages.validate(conn.assigns.current_user, body, params["origin"], official?) do
+      json(conn, validated)
+    else
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
   def update_state(conn, %{"kind" => kind, "owner_id" => owner_id, "name" => name, "state" => state} = params) do
     identity = Identity.identity("#{kind}/#{owner_id}", name)
 

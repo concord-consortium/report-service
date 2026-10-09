@@ -62,15 +62,9 @@ defmodule ReportServer.Packages do
   `:already_exists`, `:portal_unavailable`, `:store_failed` or `:busy` (a lock conflict; retry).
   """
   def publish(%User{} = user, body, origin_param, official?) do
-    with :ok <- check_publisher(user, official?),
-         {:ok, manifest, entries} <- tag(Archive.read_manifest(body), :unprocessable),
-         {:ok, attrs} <- tag(Manifest.project(manifest, entries), :unprocessable),
-         {:ok, bucket} <- tag(Store.bucket_for(user.portal_server), :unprocessable),
-         {:ok, origin} <- publish_origin(user, origin_param),
-         identity = Identity.identity(origin, attrs.name),
-         {:ok, allowed} <- allowed_project_ids(user, [origin, maintainer_of(user.portal_server, identity)]) do
-      checksum = "sha256:" <> Base.encode16(:crypto.hash(:sha256, body), case: :lower)
-
+    with {:ok, %{attrs: attrs, bucket: bucket_lookup, origin: origin, identity: identity, allowed: allowed, checksum: checksum}} <-
+           prepare(user, body, origin_param, official?),
+         {:ok, bucket} <- tag(bucket_lookup, :unprocessable) do
       Repo.transaction(fn ->
         {package, created?} = lock_or_insert_package(user, identity, origin, attrs.name)
 
@@ -99,6 +93,51 @@ defmodule ReportServer.Packages do
     end
   rescue
     e in MyXQL.Error -> busy_or_reraise(e, __STACKTRACE__)
+  end
+
+  @doc """
+  Runs every check `publish/4` runs and writes nothing: no row, no object and no locking read.
+  Answers what a publish would record now, or the error a publish would give. Two conditions that
+  decide only whether this zip can be published now are reported rather than refused: the version
+  is already published (publish refuses it with `:already_exists`), and the portal has no bucket
+  (publish refuses it with `:unprocessable`).
+  """
+  def validate(%User{} = user, body, origin_param, official?) do
+    with {:ok, plan} <- prepare(user, body, origin_param, official?) do
+      package = package_query(user.portal_server, plan.identity) |> Repo.one()
+      would_be = package || %Package{maintainer: plan.origin, visibility: "private"}
+
+      if administers?(would_be, user.portal_user_id, plan.allowed) do
+        published? =
+          !!package and Repo.exists?(from v in PackageVersion, where: v.package_id == ^package.id and v.version == ^plan.attrs.version)
+
+        {:ok,
+         %{
+           identity: plan.identity,
+           version: plan.attrs.version,
+           checksum: plan.checksum,
+           visibility: if(official?, do: "public", else: would_be.visibility),
+           already_published: published?,
+           publishing_unavailable: with({:error, message} <- plan.bucket, do: message, else: (_ -> nil))
+         }}
+      else
+        {:error, :forbidden, "you do not administer #{plan.identity}"}
+      end
+    end
+  end
+
+  # the checks publish makes before its transaction, in order, with the bucket lookup carried rather than refused
+  defp prepare(user, body, origin_param, official?) do
+    with :ok <- check_publisher(user, official?),
+         {:ok, manifest, entries} <- tag(Archive.read_manifest(body), :unprocessable),
+         {:ok, attrs} <- tag(Manifest.project(manifest, entries), :unprocessable),
+         bucket = Store.bucket_for(user.portal_server),
+         {:ok, origin} <- publish_origin(user, origin_param),
+         identity = Identity.identity(origin, attrs.name),
+         {:ok, allowed} <- allowed_project_ids(user, [origin, maintainer_of(user.portal_server, identity)]) do
+      checksum = "sha256:" <> Base.encode16(:crypto.hash(:sha256, body), case: :lower)
+      {:ok, %{attrs: attrs, bucket: bucket, origin: origin, identity: identity, allowed: allowed, checksum: checksum}}
+    end
   end
 
   defp busy_or_reraise(error, stacktrace) do

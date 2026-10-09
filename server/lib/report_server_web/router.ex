@@ -93,6 +93,7 @@ defmodule ReportServerWeb.Router do
     get "/reports/:id/jobs", ReportJobController, :index
     get "/reports/:id/jobs/:job_id/download", ReportJobController, :download
     post "/packages", PackageController, :create
+    post "/packages/validate", PackageController, :validate
     post "/packages/:kind/:owner_id/:name/:state", PackageController, :update_state
   end
 
