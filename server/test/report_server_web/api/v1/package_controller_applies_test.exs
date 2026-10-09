@@ -50,6 +50,21 @@ defmodule ReportServerWeb.Api.V1.PackageControllerAppliesTest do
              json_response(applies(again(conn), %{"urls" => %{"any" => ["*drawing*"]}, "assignment_urls" => ["https://ap/?activity=x"]}), 200)
   end
 
+  test "matches scope URLs and derived interactive URLs together", %{conn: conn} do
+    stub_derive(fn ["https://ap/?activity=x"] -> {:ok, %{"interactive_urls" => ["https://qi/drawing/"], "unread" => [], "truncated" => false}} end)
+
+    body = %{
+      "urls" => %{"all" => ["*drawing*", "*open-response*"]},
+      "assignment_urls" => ["https://ap/?activity=x"],
+      "scope_urls" => ["https://qi/open-response/"]
+    }
+
+    assert %{"applies" => true, "interactive_urls" => ["https://qi/drawing/"]} = json_response(applies(conn, body), 200)
+
+    assert %{"applies" => false, "reason" => "no URL in this class matches the required pattern *open-response*"} =
+             json_response(applies(again(conn), Map.delete(body, "scope_urls")), 200)
+  end
+
   test "a deriver refusal is a 400 and any other failure a 503, never a 404", %{conn: conn} do
     body = %{"urls" => %{}, "assignment_urls" => ["x"]}
 

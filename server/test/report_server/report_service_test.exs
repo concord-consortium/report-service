@@ -20,6 +20,14 @@ defmodule ReportServer.ReportServiceTest do
     end
   end
 
+  test "a connection that fails or times out is unavailable" do
+    for reason <- [:econnrefused, :timeout] do
+      fail = fn request -> {request, %Mint.TransportError{reason: reason}} end
+      Application.put_env(:report_server, :report_service_req_options, adapter: fail)
+      assert {:error, :unavailable} = ReportService.derive_urls(["x"])
+    end
+  end
+
   test "sends the assignment URLs with the bearer" do
     Req.Test.stub(__MODULE__, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
