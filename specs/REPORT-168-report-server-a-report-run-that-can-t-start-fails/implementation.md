@@ -148,7 +148,11 @@ defp start_query(report_run = %ReportRun{}) do
       {:error, :permanent, "Unable to find report: #{report_run.report_slug}"}
 
     {step, {:error, message}} when is_binary(message) ->
-      if permanent?(step, message), do: {:error, :permanent, message}, else: {:error, :transient, message}
+      if permanent?(step, message) do
+        {:error, :permanent, message}
+      else
+        {:error, :transient, message}
+      end
 
     {_step, {:error, reason}} ->
       {:error, :transient, inspect(reason)}
@@ -209,7 +213,8 @@ Tests, in `athena_run_ops_test.exs` (the existing `run_fixture/2`, `athena_repor
 - **The retry window:** a run aged 11 minutes with a transient failure is `"failed"` with the gave-up message; one aged 9 minutes is retrying.
 - **A raise:** `get_query` raising `AllowedProjectsLookupError` leaves the run retrying (state null, the retrying message), and `ensure_current/1` does not raise.
 - **An abandoned claim:** a run with state `"queued"`, no query id and `updated_at` 31 minutes ago becomes `"failed"` with the abandoned message without calling either stub; at 29 minutes it is served as `"queued"` untouched (the existing losing-path test, with its raising stubs, covers that shape).
-- **R7's guard:** a `get_query` stub that, before returning, writes `athena_query_state: "failed"` to the row (simulating the abandoned-claim clause winning) leaves that row as it was and returns its stored state; the same with a stub that writes a query id.
+- **R7's guard:** a `get_query` stub that, before returning, writes `athena_query_state: "failed"` to the row (simulating the abandoned-claim clause winning) leaves that row as it was and returns its stored state; the same with a stub that writes a query id; and one that moves the row's `updated_at` (a later claim of the same run), which fails if the timestamp guard is dropped.
+- **The 409 contract (R8), in `report_controller_test.exs`:** the existing "releases the claim" download test also asserts the retrying message and a null query id in the body, and a new test asserts a no-learners start failure answers 409 `NOT_READY` with state `"failed"`, a null query id, the message and the no-learners guidance.
 - **Kept:** the passed-filter test, rewritten to call `ensure_current/1`; the single-flight winning, losing and stale-struct tests, unchanged.
 
 ---
@@ -233,9 +238,7 @@ defp run_report(%Report{type: :athena}, report_run = %ReportRun{}, _sort_columns
   {:ok, %{report_results: nil}}
 end
 
-# A start holds the run's claim for as long as its learner query runs. Run in a process linked to
-# the page, a page closed mid-start would kill it and leave the claim to the abandoned-claim bound,
-# and run in the page's own process, a retry would block the page for the whole attempt.
+# Unlinked, so closing the page can't kill a start holding the run's claim, and a start never blocks the page.
 defp ensure_current_async(report_run = %ReportRun{}, live_view_pid) do
   Task.Supervisor.start_child(ReportServer.PostProcessingTaskSupervisor, fn ->
     AthenaRunOps.ensure_current(report_run)
@@ -278,7 +281,7 @@ Tests, using the existing `AthenaDBStub` setup in `report_run_show_live_test.exs
 - **A permanent failure on mount is shown:** a never-started run whose `get_query` returns the no-learners error; after mount the page renders "failed" and the guidance, and the row is failed.
 - **A retrying run shows why and isn't hammered:** a never-started run whose `get_query` returns a transient message; the page renders the retrying message, and `get_query` was called once (the next poll is 30 seconds out).
 - **Closing the page mid-start doesn't strand the claim:** a `get_query` stub that reports its pid and then blocks; the test stops the page's process with `{:shutdown, :closed}`, checks the stub's process is still alive, unblocks it, and asserts the row is no longer `"queued"`.
-- **Kept, with the wait added:** "mounting a never-started Athena run starts the query" and "a stored running run refreshes its state on poll". As written they read the row straight after `render_async/1` or `render/1` and would race the task.
+- **Kept, with the wait added:** "mounting a never-started Athena run starts the query" and "a stored running run refreshes its state on poll". The close test traps exits, since stopping the page signals the test process linked to it; it fails if `ensure_current_async/2` runs the start inline. As written they read the row straight after `render_async/1` or `render/1` and would race the task.
 
 ---
 
