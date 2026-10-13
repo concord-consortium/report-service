@@ -19,9 +19,13 @@ const CLASS_B = "b".repeat(48)
 const CHECKSUM = `sha256:${"0".repeat(64)}`
 const NOW = Date.parse("2026-09-25T12:00:00Z")
 const HOUR = 3600 * 1000
+const MIN = 60 * 1000
+const LAUNCHED = NOW - HOUR
+const seconds = (ms: number) => Math.floor(ms / 1000)
 
 const runnerClaims: RunnerClaims = {
-  uid: "firebase-uid-42", platform_id: PLATFORM, platform_user_id: 42, user_type: "researcher", researcher_dashboard_runner: true
+  uid: "firebase-uid-42", platform_id: PLATFORM, platform_user_id: 42, user_type: "researcher", researcher_dashboard_runner: true,
+  auth_time: seconds(LAUNCHED + MIN)
 }
 // Bearer strings the fake verifier knows, standing for verified ID tokens
 const tokens: Record<string, RunnerClaims> = {
@@ -32,7 +36,12 @@ const tokens: Record<string, RunnerClaims> = {
   wildcardId: { ...runnerClaims, platform_user_id: "4*" },
   zeroId: { ...runnerClaims, platform_user_id: 0 },
   noPlatform: { ...runnerClaims, platform_id: "not a url" },
-  stringId: { ...runnerClaims, platform_user_id: "42" }
+  stringId: { ...runnerClaims, platform_user_id: "42" },
+  noAuthTime: { ...runnerClaims, auth_time: undefined },
+  // VM_LIFE_MS is eight hours and ten minutes
+  outlived: { ...runnerClaims, auth_time: seconds(NOW - 8 * HOUR - 10 * MIN - 1000) },
+  beforeLaunch: { ...runnerClaims, auth_time: seconds(LAUNCHED - MIN - 1000) },
+  duringLaunch: { ...runnerClaims, auth_time: seconds(LAUNCHED - MIN + 1000) }
 }
 
 let db: FakeDb
@@ -59,7 +68,7 @@ function seed(packages: ReturnType<typeof entry>[], statuses: Record<string, str
 
 beforeEach(async () => {
   db = new FakeDb()
-  db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", launched_at: NOW - HOUR })
+  db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", launched_at: LAUNCHED })
   deps = {
     db,
     verifyIdToken: jest.fn(async (t: string) => {
@@ -116,7 +125,7 @@ describe("the VM's authentication", () => {
     expect(deps.broker.assume).not.toHaveBeenCalled()
   })
 
-  const refusedTokens = ["truthyClaim", "learner", "wildcardId", "zeroId", "noPlatform"]
+  const refusedTokens = ["truthyClaim", "learner", "wildcardId", "zeroId", "noPlatform", "noAuthTime"]
   it.each(["/work", "/idle", "/storage-credentials"].flatMap(path => refusedTokens.map(name => [path, name])))(
     "%s refuses a token with %s", async (path, name) => {
       seed([entry("users/1/a")], { "users/1/a": "done" })
@@ -126,6 +135,29 @@ describe("the VM's authentication", () => {
       expect(deps.microvms.suspend).not.toHaveBeenCalled()
       expect(deps.broker.assume).not.toHaveBeenCalled()
     })
+
+  it.each(["/work", "/idle", "/storage-credentials"])("%s refuses a session that signed in longer ago than any VM lives with 401", async path => {
+    seed([entry("users/1/a")])
+    db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1" })
+    const res = await post(path, undefined, "outlived")
+    expect(res.status).toBe(401)
+    expect(JSON.stringify(res.body)).not.toMatch(/rigse-|minted|ASIA/)
+    expect(deps.microvms.suspend).not.toHaveBeenCalled()
+    expect(deps.broker.assume).not.toHaveBeenCalled()
+  })
+
+  it.each(["/work", "/idle", "/storage-credentials"])("%s refuses a session that signed in before the recorded VM's launch with 409", async path => {
+    seed([entry("users/1/a")])
+    const res = await post(path, undefined, "beforeLaunch")
+    expect(res.status).toBe(409)
+    expect(JSON.stringify(res.body)).not.toMatch(/rigse-|minted|ASIA/)
+    expect(deps.microvms.suspend).not.toHaveBeenCalled()
+    expect(deps.broker.assume).not.toHaveBeenCalled()
+  })
+
+  it.each(["/work", "/idle", "/storage-credentials"])("%s takes a session that signed in while its launch was being recorded", async path => {
+    expect((await post(path, undefined, "duringLaunch")).status).toBe(200)
+  })
 
   const elsewhere = { microvm_id: "vm-1", platform_user_id: 7, platform_id: "https://evil.example/" }
 

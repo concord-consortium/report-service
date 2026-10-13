@@ -20,7 +20,7 @@ export const IDLE_SWEEP_MS = 30 * 60 * 1000
 // refresh and 10 for itself, so one in flight and its write finish inside the function's 60 seconds.
 export const BUDGET_MS = 30 * 1000
 // Past this, every VM that could have claimed work queued before it is gone
-const VM_LIFE_MS = MAXIMUM_DURATION_SECONDS * 1000 + MARGIN_MS
+export const VM_LIFE_MS = MAXIMUM_DURATION_SECONDS * 1000 + MARGIN_MS
 
 export const MACHINE_STOPPED = "The machine running it stopped before the run finished; run it again."
 export const NOT_CLAIMED = "No VM took this package before its VM's life ended; run it again"

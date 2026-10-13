@@ -10,12 +10,15 @@ export interface RunnerClaims {
   platform_user_id?: unknown
   user_type?: unknown
   researcher_dashboard_runner?: unknown
+  /** When the session signed in, in seconds; refreshing its ID token keeps it. */
+  auth_time?: unknown
   [claim: string]: unknown
 }
 
-/** The researcher a VM's token names, and the Firebase uid it signed in as. */
+/** The researcher a VM's token names, the Firebase uid it signed in as, and when it signed in. */
 export interface Runner extends Researcher {
   firebaseUid: string
+  signedInAt: number
 }
 
 const platformUrl = (value: unknown): URL | null => {
@@ -41,11 +44,13 @@ export function runnerFromClaims(claims: RunnerClaims): Runner | null {
     return null
   }
   const uid = Number(platformUserId)
-  if (!Number.isSafeInteger(uid) || !platformUrl(claims.platform_id)) {
+  if (!Number.isSafeInteger(uid) || !platformUrl(claims.platform_id) || !Number.isInteger(claims.auth_time)) {
     return null
   }
   const platformId = claims.platform_id as string
-  return { uid, platformUserId, platformId, portal: portalSegment(platformId), firebaseUid: claims.uid }
+  return {
+    uid, platformUserId, platformId, portal: portalSegment(platformId), firebaseUid: claims.uid, signedInAt: (claims.auth_time as number) * 1000
+  }
 }
 
 /**

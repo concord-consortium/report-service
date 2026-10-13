@@ -17,7 +17,10 @@ const ROOT = `researcher_dashboard/${PORTAL}`;
 const CLASS_A = "a".repeat(48);
 const CLASS_B = "b".repeat(48);
 
-const researcher = { uid: "uid-42", platform_id: PLATFORM, platform_user_id: 42, user_type: "researcher" };
+// A session signed in now; the harness would otherwise sign every token in at the epoch.
+const researcher = { uid: "uid-42", platform_id: PLATFORM, platform_user_id: 42, user_type: "researcher", auth_time: Math.floor(Date.now() / 1000) };
+// A VM's life, eight hours and ten minutes, the longest a runner session may write for
+const VM_LIFE_SECONDS = 29400;
 const shapes = {
   browser: { ...researcher, class_hash: CLASS_A },
   sessionRunner: { ...researcher, researcher_dashboard_runner: true },
@@ -28,6 +31,7 @@ const shapes = {
   newResearcher: { ...researcher, uid: "uid-44", platform_user_id: 44 },
   teacher: { ...researcher, user_type: "teacher", class_hash: CLASS_A },
   otherResearcherRunner: { ...researcher, uid: "uid-43", platform_user_id: 43, researcher_dashboard_runner: true, class_hash: CLASS_A },
+  outlivedRunner: { ...researcher, researcher_dashboard_runner: true, class_hash: CLASS_A, auth_time: researcher.auth_time - VM_LIFE_SECONDS - 60 },
   anon: null,
 };
 
@@ -253,6 +257,13 @@ describe("a runner write", () => {
 
   it("is refused a result carrying another platform's platform_id", async () => {
     await firebase.assertFails(db("classRunner").doc(resultPath(nextKey())).set(running({ platform_id: "https://other.example/" })));
+  });
+
+  it("is refused once its session signed in longer ago than a VM lives", async () => {
+    await firebase.assertFails(db("outlivedRunner").doc(`${ROOT}/runners/42`).set({ platform_id: PLATFORM, updated_at: serverTime() }));
+    await firebase.assertFails(db("outlivedRunner").doc(`${ROOT}/classes/${CLASS_A}/researchers/42`).set({ platform_id: PLATFORM, scope: { kind: "class" } }));
+    await firebase.assertFails(db("outlivedRunner").doc(resultPath(nextKey())).set(running()));
+    await firebase.assertSucceeds(db("classRunner").doc(resultPath(nextKey())).set(running()));
   });
 });
 

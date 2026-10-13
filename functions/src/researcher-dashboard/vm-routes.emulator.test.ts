@@ -11,7 +11,8 @@ const PORTAL = "learn_portal_staging_concord_org"
 const ROOT = `researcher_dashboard/${PORTAL}`
 const CLASS_A = "a".repeat(48)
 const runner: Runner = {
-  uid: 42, platformUserId: "42", platformId: "https://learn.portal.staging.concord.org/", portal: PORTAL, firebaseUid: "firebase-uid-42"
+  uid: 42, platformUserId: "42", platformId: "https://learn.portal.staging.concord.org/", portal: PORTAL, firebaseUid: "firebase-uid-42",
+  signedInAt: Date.now()
 }
 
 function mockRes() {

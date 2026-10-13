@@ -1,5 +1,5 @@
 import express from "express"
-import { MAXIMUM_DURATION_SECONDS, reason, UPSTREAM_TIMEOUT_MS, VmDoc, within } from "./ensure-vm"
+import { LAUNCH_CLAIM_MS, MAXIMUM_DURATION_SECONDS, reason, UPSTREAM_TIMEOUT_MS, VmDoc, within } from "./ensure-vm"
 import { packageKey, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
 import { prune, readQueue, runningOn, toMillis, withStanding } from "./queue"
@@ -8,6 +8,7 @@ import type { StorageBroker } from "./storage-broker"
 import { REGION } from "./region"
 import { BrokerRefusal } from "./storage-policy"
 import { Runner, RunnerClaims } from "./vm-auth"
+import { VM_LIFE_MS } from "./watchdog"
 
 export interface VmRouteDeps {
   db: Db
@@ -36,6 +37,20 @@ function requireRecorded(vm: VmDoc | undefined, microvmId: string) {
   }
 }
 
+/**
+ * Refuses a session that no live VM can hold. A session keeps refreshing its ID token for as long
+ * as its refresh token lives, so it is bounded by when it signed in: no VM lives longer than
+ * VM_LIFE_MS, and a VM signs in only once its launch has begun, which the launch claim bounds.
+ */
+function requireCurrentSession(vm: VmDoc | undefined, who: Runner, now: number) {
+  if (now - who.signedInAt > VM_LIFE_MS) {
+    throw new Refusal(401, "This runner session signed in longer ago than any VM lives")
+  }
+  if (who.signedInAt < toMillis(vm?.launched_at) - LAUNCH_CLAIM_MS) {
+    throw new Refusal(409, "This runner session signed in before the researcher's recorded VM was launched")
+  }
+}
+
 // The runner's claims as a verifier sees them; rigse's user_id is replaced by the uid in every
 // ID token, so nothing reads it.
 const identity = (who: Runner) => ({
@@ -58,6 +73,7 @@ export function makeWork(deps: VmRouteDeps) {
     try {
       taken = await deps.db.runTransaction(async tx => {
         const recorded = (await tx.get(deps.db.doc(vmPath(who.portal, who.platformUserId)))).data() as VmDoc | undefined
+        requireCurrentSession(recorded, who, deps.now())
         requireRecorded(recorded, microvmId)
         const q = await readQueue(deps.db, tx, who)
         prune(tx, q)
@@ -131,6 +147,7 @@ export function makeIdle(deps: VmRouteDeps) {
       // Every read before any write: Firestore refuses a read after prune() has written.
       answer = await deps.db.runTransaction(async tx => {
         const recorded = (await tx.get(deps.db.doc(vmPath(who.portal, who.platformUserId)))).data() as VmDoc | undefined
+        requireCurrentSession(recorded, who, deps.now())
         const q = await readQueue(deps.db, tx, who)
         let next: IdleAnswer = "suspend"
         if (withStanding(q, "queued").length > 0) {
@@ -175,6 +192,15 @@ export function makeStorageCredentials(deps: VmRouteDeps) {
     const { bucket, brokerRoleArn, audience, unconfigured } = deps.config
     if (unconfigured.length > 0) {
       return res.error(503, notConfigured(unconfigured))
+    }
+    try {
+      requireCurrentSession((await deps.db.doc(vmPath(who.portal, who.platformUserId)).get()).data() as VmDoc | undefined, who, deps.now())
+    } catch (e) {
+      if (e instanceof Refusal) {
+        return res.error(e.status, e.message)
+      }
+      deps.log.error("storage-credentials failed", { platformUserId: who.platformUserId, portal: who.portal, error: reason(e) })
+      return res.error(500, "storage-credentials failed")
     }
 
     try {

@@ -9,7 +9,7 @@ export type VmOutcome = "launched" | "launching" | "resumed" | "running" | "susp
 const LAUNCH_STATES = [undefined, "TERMINATING", "TERMINATED"]
 // Longer than RunMicrovm plus the mint round trip, short enough that a launcher that crashed
 // holding it does not block the researcher for long.
-const LAUNCH_CLAIM_MS = 60 * 1000
+export const LAUNCH_CLAIM_MS = 60 * 1000
 const RUN_HOOK_PAYLOAD_MAX_BYTES = 16384
 // A VM's maximum life: the platform terminates it this long after launch, suspended or not. It
 // also bounds how long an old image keeps serving.
