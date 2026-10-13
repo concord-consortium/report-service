@@ -5,6 +5,8 @@ import { PortalKeys, verifyPortalToken } from "./portal-token"
 import { portalSegment } from "./firestore-paths"
 import { makeRunPackage, Researcher, RunPackageDeps } from "./run-package"
 import { DeriveProfileRouteDeps, makeDeriveProfile } from "./derive-profile-route"
+import { runnerAuth } from "./vm-auth"
+import { makeIdle, makeStorageCredentials, makeWork, VmRouteDeps } from "./vm-routes"
 
 const FUNCTIONS_AUDIENCE = "report-service-functions"
 
@@ -41,13 +43,23 @@ export function portalAssertionAuth(keys: () => PortalKeys) {
   }
 }
 
-/** The researcherDashboard function's app. It has no shared-bearer middleware. */
-export function researcherDashboardApp(deps: () => RunPackageDeps, deriveDeps: () => DeriveProfileRouteDeps) {
+/**
+ * The researcherDashboard function's app. It has no shared-bearer middleware. rigse's routes take
+ * its signed assertion; the VM's take the VM's own Firebase ID token with the runner claim, and
+ * neither accepts the other's credential.
+ */
+export function researcherDashboardApp(
+  deps: () => RunPackageDeps, deriveDeps: () => DeriveProfileRouteDeps, vmDeps: () => VmRouteDeps
+) {
   const app = express()
   app.use(responseMethods)
   app.use(requireHeaderBearer)
-  app.use(portalAssertionAuth(() => deps().keys()))
-  app.post("/run-package", (req, res) => makeRunPackage(deps())(req, res))
-  app.post("/derive-profile", (req, res) => makeDeriveProfile(deriveDeps())(req, res))
+  const fromRigse = portalAssertionAuth(() => deps().keys())
+  const fromVm = runnerAuth(() => vmDeps().verifyIdToken)
+  app.post("/run-package", fromRigse, (req, res) => makeRunPackage(deps())(req, res))
+  app.post("/derive-profile", fromRigse, (req, res) => makeDeriveProfile(deriveDeps())(req, res))
+  app.post("/work", fromVm, (req, res) => makeWork(vmDeps())(req, res))
+  app.post("/idle", fromVm, (req, res) => makeIdle(vmDeps())(req, res))
+  app.post("/storage-credentials", fromVm, (req, res) => makeStorageCredentials(vmDeps())(req, res))
   return app
 }

@@ -49,7 +49,7 @@ beforeEach(async () => {
     unconfigured: []
   }
   // Firebase parses the body before the app sees the request
-  server = express().use(express.json() as express.RequestHandler).use(researcherDashboardApp(() => deps, () => { throw new Error("no derive-profile here") })).listen(0)
+  server = express().use(express.json() as express.RequestHandler).use(researcherDashboardApp(() => deps, () => { throw new Error("no derive-profile here") }, () => { throw new Error("no VM routes here") })).listen(0)
   await new Promise(resolve => server.once("listening", resolve))
   port = (server.address() as AddressInfo).port
 })
@@ -160,6 +160,94 @@ describe("POST /run-package queueing", () => {
 
     expect(workDoc().scopes[CLASS_A].class_tokens).toEqual({ "report-service": "t3" })
     expect(workDoc().packages).toHaveLength(2)
+  })
+
+  it("queues a finished package again, and writes its result queued", async () => {
+    await post(requestBody())
+    db.docs.set(`researcher_dashboard/${PORTAL}/classes/${CLASS_A}/researchers/42/results/projects__20__class-counts`, { status: "done" })
+
+    const res = await post(requestBody({ packages: [pkg("class-counts")] }))
+
+    expect(res.body.appended).toEqual(["projects__20__class-counts"])
+    expect(resultDoc(CLASS_A, "projects__20__class-counts")).toMatchObject({ status: "queued" })
+    expect(workDoc().packages.map((p: any) => p.identity)).toEqual(["projects/20/answers-summary", "projects/20/class-counts"])
+  })
+
+  it("skips a running package as already queued, and leaves it out of the mirrored queue", async () => {
+    await post(requestBody())
+    db.docs.set(`researcher_dashboard/${PORTAL}/classes/${CLASS_A}/researchers/42/results/projects__20__class-counts`, { status: "running" })
+
+    const res = await post(requestBody())
+
+    expect(res.body.appended).toEqual([])
+    expect(runnerDoc().queue).toEqual([{ class_hash: CLASS_A, package_key: "projects__20__answers-summary" }])
+    expect(workDoc().packages).toHaveLength(2)
+  })
+
+  it("counts only outstanding packages against the cap, and drops a finished class's scope", async () => {
+    deps.config.queueCap = 2
+    await post(requestBody({}, CLASS_B))
+    for (const k of ["class-counts", "answers-summary"]) {
+      db.docs.set(`researcher_dashboard/${PORTAL}/classes/${CLASS_B}/researchers/42/results/projects__20__${k}`, { status: "failed" })
+    }
+
+    const res = await post(requestBody())
+
+    expect(res.status).toBe(202)
+    expect(workDoc().packages.map((p: any) => p.class_hash)).toEqual([CLASS_A, CLASS_A])
+    expect(Object.keys(workDoc().scopes)).toEqual([CLASS_A])
+  })
+
+  describe("previous", () => {
+    const RESULT = `researcher_dashboard/${PORTAL}/classes/${CLASS_A}/researchers/42/results/projects__20__class-counts`
+    const finished = {
+      package: { identity: "projects/20/class-counts", version: "0.9.0", checksum: CHECKSUM },
+      image_version: "6",
+      summary: "3 classes",
+      display: "# Counts",
+      started_at: "<started>",
+      finished_at: "<finished>"
+    }
+    const requeue = async (current: Record<string, unknown>) => {
+      await post(requestBody())
+      db.docs.set(RESULT, current)
+      await post(requestBody({ packages: [pkg("class-counts")] }))
+      return resultDoc(CLASS_A, "projects__20__class-counts")
+    }
+
+    it("keeps exactly a done result's six fields, and not its own previous", async () => {
+      const result = await requeue({ status: "done", ...finished, microvm_id: "vm-1", previous: { summary: "older" } })
+
+      expect(result.status).toBe("queued")
+      expect(result.previous).toEqual(finished)
+    })
+
+    it("leaves out a field the done result lacks, writing no undefined", async () => {
+      const { summary, ...rest } = finished
+      const result = await requeue({ status: "done", ...rest })
+
+      expect(result.previous).toEqual(rest)
+      expect(Object.keys(result.previous)).toHaveLength(5)
+    })
+
+    it("carries a failed result's previous forward unchanged", async () => {
+      const result = await requeue({ status: "failed", error: "boom", previous: finished })
+
+      expect(result.previous).toEqual(finished)
+    })
+
+    it("writes no previous for a failed result that has none", async () => {
+      const result = await requeue({ status: "failed", error: "boom" })
+
+      expect(result.status).toBe("queued")
+      expect("previous" in result).toBe(false)
+    })
+
+    it("writes no previous on a first run", async () => {
+      await post(requestBody())
+
+      expect("previous" in resultDoc(CLASS_A, "projects__20__class-counts")).toBe(false)
+    })
   })
 
   it("accepts an assignment with an empty url and a null name", async () => {

@@ -23,4 +23,13 @@ describe("FakeDb", () => {
 
     expect(((await ref.get()).data() as { nested: { n: number } }).nested.n).toBe(1)
   })
+
+  it("refuses a read after a write in the same transaction, and commits nothing", async () => {
+    const db = new FakeDb()
+    await expect(db.runTransaction(async tx => {
+      tx.set(db.doc("things/1"), { n: 1 })
+      await tx.get(db.doc("things/2"))
+    })).rejects.toThrow(/all reads to be executed before all writes/)
+    expect(db.docs.has("things/1")).toBe(false)
+  })
 })
