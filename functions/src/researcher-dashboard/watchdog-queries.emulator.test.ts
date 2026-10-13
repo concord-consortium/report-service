@@ -47,7 +47,7 @@ it("fails a stalled result as the query returned it, so its updated_at check hol
   await db.doc(result("old")).set({ status: "running", updated_at: at(NOW - 3600e3), microvm_id: "vm-1" })
   const [stale] = await makeWatchdogQueries(db).runningUpdatedBefore(NOW - 600e3)
 
-  expect(await failResult(deps, stale, "running", MACHINE_STOPPED, "vm-1")).toBe(true)
+  expect(await failResult(deps, stale, "running", MACHINE_STOPPED, "vm-1")).toEqual({ failed: true, runnerEnded: false })
   expect((await db.doc(result("old")).get()).data()).toMatchObject({ status: "failed", error: MACHINE_STOPPED })
 })
 
@@ -74,8 +74,8 @@ it("fails work no VM took only while the researcher's VM was launched before the
   await db.doc(`${ROOT}/vms/42`).set({ microvm_id: "vm-42", launched_at: at(NOW - 3600e3) })
   const [stale] = await makeWatchdogQueries(db).queuedUpdatedBefore(NOW - 8.2 * 3600e3)
 
-  expect(await failResult(deps, stale, "queued", NOT_CLAIMED, undefined, NOW - 8.2 * 3600e3)).toBe(false)
+  expect(await failResult(deps, stale, "queued", NOT_CLAIMED, undefined, NOW - 8.2 * 3600e3)).toEqual({ failed: false, runnerEnded: false })
   await db.doc(`${ROOT}/vms/42`).set({ microvm_id: "vm-42", launched_at: at(NOW - 9 * 3600e3) })
-  expect(await failResult(deps, stale, "queued", NOT_CLAIMED, undefined, NOW - 8.2 * 3600e3)).toBe(true)
+  expect(await failResult(deps, stale, "queued", NOT_CLAIMED, undefined, NOW - 8.2 * 3600e3)).toEqual({ failed: true, runnerEnded: false })
   expect((await db.doc(result("old")).get()).data()).toMatchObject({ status: "failed", error: NOT_CLAIMED })
 })

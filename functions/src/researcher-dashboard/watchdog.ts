@@ -148,7 +148,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
       }
       const runner = (await deps.db.doc(runnerPath(stale.portal, stale.platformUserId)).get()).data() as RunnerDoc | undefined
       if (leaseLapsed && movedOn(runner, stale, microvmId)) {
-        if (await failResult(deps, stale, "running", MACHINE_STOPPED)) {
+        if ((await failResult(deps, stale, "running", MACHINE_STOPPED)).failed) {
           act("watchdog.result_failed", { ...data, cause: "moved_on" })
         }
         continue
@@ -162,8 +162,12 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
         continue
       }
       if (GONE.includes(state) && leaseLapsed) {
-        if (await failResult(deps, stale, "running", MACHINE_STOPPED, microvmId)) {
+        const { failed, runnerEnded } = await failResult(deps, stale, "running", MACHINE_STOPPED, microvmId)
+        if (failed) {
           act("watchdog.result_failed", { ...data, cause: "vm_gone" })
+        }
+        if (runnerEnded) {
+          act("watchdog.runner_terminated", { ...data, state })
         }
         continue
       }
@@ -196,7 +200,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
   for (const stale of await deps.queries.queuedUpdatedBefore(started - VM_LIFE_MS)) {
     const data = { portal: stale.portal, platformUserId: stale.platformUserId, classHash: stale.classHash, packageKey: stale.packageKey }
     try {
-      if (await failResult(deps, stale, "queued", NOT_CLAIMED, undefined, started - VM_LIFE_MS)) {
+      if ((await failResult(deps, stale, "queued", NOT_CLAIMED, undefined, started - VM_LIFE_MS)).failed) {
         act("watchdog.result_failed", { ...data, cause: "not_claimed" })
       }
     } catch (e) {
@@ -282,12 +286,12 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
  * and `updated_at` that were read. Given the VM that is gone, the runner document is marked
  * terminated while it still names that VM and does not already say the session ended. Work no VM
  * took is failed only while the researcher's recorded VM, if any, was launched before
- * `launchedBefore`, so a VM that may still claim it keeps it.
+ * `launchedBefore`, so a VM that may still claim it keeps it. Returns which of the two it wrote.
  */
 export async function failResult(
   deps: Pick<WatchdogDeps, "db" | "timestamp">, stale: StaleResult, status: "running" | "queued", error: string,
   goneVm?: string, launchedBefore?: number
-) {
+): Promise<{ failed: boolean; runnerEnded: boolean }> {
   const now = deps.timestamp()
   return deps.db.runTransaction(async tx => {
     const ref = deps.db.doc(resultPath(stale.portal, stale.classHash, stale.platformUserId, stale.packageKey))
@@ -296,15 +300,12 @@ export async function failResult(
     const runner = (await tx.get(runnerRef)).data() as RunnerDoc | undefined
     const vm = (await tx.get(deps.db.doc(vmPath(stale.portal, stale.platformUserId)))).data() as VmDoc | undefined
     if (result?.status !== status || toMillis(result.updated_at) !== stale.updatedAt) {
-      return false
+      return { failed: false, runnerEnded: false }
     }
     if (launchedBefore !== undefined && toMillis(vm?.launched_at) >= launchedBefore) {
-      return false
+      return { failed: false, runnerEnded: false }
     }
     tx.set(ref, { status: "failed", error, finished_at: now, updated_at: now }, { merge: true })
-    if (goneVm) {
-      endRunner(tx, runnerRef, runner, goneVm, now)
-    }
-    return true
+    return { failed: true, runnerEnded: goneVm !== undefined && endRunner(tx, runnerRef, runner, goneVm, now) }
   })
 }

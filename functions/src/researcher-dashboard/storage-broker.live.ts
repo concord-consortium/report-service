@@ -1,15 +1,6 @@
-// The storage broker against a real stack. Not a Jest test: it calls AWS, so it runs under Node's
-// own runner against the built code, and only when an operator sets it up. It is the function's
-// own broker with one difference: its ID tokens are the function's account's, minted for the
-// operator by the setup script's id-token, which needs OpenID Token Creator on the account
-// (grant-operator, revoked afterward). No AWS credential is used.
-//
-//   npm run build
-//   RD_LIVE_PROJECT=report-service-dev RD_LIVE_AUDIENCE=<the stack's name> RD_LIVE_ROLE_ARN=<BrokerRoleArn> \
-//   RD_LIVE_BUCKET=<DataBucketName> RD_LIVE_PACKAGE_KEY=<a published packages/ key> \
-//   node --test lib/researcher-dashboard/storage-broker.live.js
-//
-// It writes and deletes probe objects under two test researcher ids' prefixes, and nothing else.
+// The storage broker against a real stack, under node --test against the built code; see
+// functions/README.md, "The broker's live check". It writes and deletes probe objects under two test
+// researcher ids' prefixes only.
 // node:test has no unprefixed name, and its test() returns a promise the runner itself awaits.
 // tslint:disable:no-implicit-dependencies no-floating-promises
 import { after, before, test } from "node:test"

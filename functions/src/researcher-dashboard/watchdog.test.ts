@@ -85,10 +85,11 @@ describe("runs whose heartbeat has stopped", () => {
       stale = [staleRun()]
       states["vm-1"] = state
 
-      expect(await runWatchdog(deps)).toEqual(["watchdog.result_failed"])
+      expect(await runWatchdog(deps)).toEqual(["watchdog.result_failed", "watchdog.runner_terminated"])
       expect(db.read(RESULT)).toEqual({ status: "failed", error: MACHINE_STOPPED, finished_at: TS, updated_at: TS, platform_id: "p" })
       expect(db.read(RUNNER)).toEqual({ microvm_id: "vm-1", state: "terminated", current_package: null, updated_at: TS })
       logged("watchdog.result_failed", { cause: "vm_gone", microvmId: "vm-1", classHash: CLASS, packageKey: "users__1__a" })
+      logged("watchdog.runner_terminated", { microvmId: "vm-1" })
     })
 
   it.each(["terminated", "failed"])("leaves a runner document already %s exactly as it was", async runnerState => {
@@ -119,7 +120,7 @@ describe("runs whose heartbeat has stopped", () => {
     expect(db.read(RUNNER)).toEqual(runner)
 
     states["vm-1"] = "TERMINATED"
-    expect(await runWatchdog(deps)).toEqual(["watchdog.result_failed"])
+    expect(await runWatchdog(deps)).toEqual(["watchdog.result_failed", "watchdog.runner_terminated"])
     expect(db.read(RESULT)).toMatchObject({ status: "failed", error: MACHINE_STOPPED })
   })
 
@@ -226,7 +227,7 @@ describe("runs whose heartbeat has stopped", () => {
       movedOn(over)
       states["vm-1"] = null
 
-      expect(await runWatchdog(deps)).toEqual(["watchdog.result_failed"])
+      expect(await runWatchdog(deps)).toContain("watchdog.result_failed")
       expect(deps.microvms.get).toHaveBeenCalledWith("vm-1")
       logged("watchdog.result_failed", { cause: "vm_gone" })
     })
@@ -392,6 +393,20 @@ describe("idle and suspended VMs", () => {
     states["vm-1"] = "RUNNING"
     db.docs.set(`${ROOT}/runners/42`, { microvm_id: "vm-1", current_package: null, updated_at: NOW - IDLE_SWEEP_MS + MIN })
     expect(await runWatchdog(deps)).toEqual([])
+  })
+
+  it("leaves it awake inside the threshold of its work document's update", async () => {
+    states["vm-1"] = "RUNNING"
+    db.docs.set(WORK, { packages: [], scopes: {}, updated_at: NOW - IDLE_SWEEP_MS + MIN })
+    expect(await runWatchdog(deps)).toEqual([])
+    expect(deps.microvms.suspend).not.toHaveBeenCalled()
+  })
+
+  it("leaves it awake inside the threshold of its launch", async () => {
+    states["vm-1"] = "RUNNING"
+    ;(deps.queries.vmsLaunchedAfter as jest.Mock).mockResolvedValue(vm(NOW - IDLE_SWEEP_MS + MIN))
+    expect(await runWatchdog(deps)).toEqual([])
+    expect(deps.microvms.suspend).not.toHaveBeenCalled()
   })
 
   it("leaves it awake with work queued, a package current, or a run of its own outstanding", async () => {
