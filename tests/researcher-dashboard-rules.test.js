@@ -148,6 +148,26 @@ describe("results", () => {
     await firebase.assertFails(doc.update({ started_at: new Date(), updated_at: serverTime() }));
   });
 
+  it("refuse a running result created with a null started_at", async () => {
+    await firebase.assertFails(db("classRunner").doc(resultPath(nextKey())).set(running({ started_at: null })));
+  });
+
+  it("take a result created without started_at, which a later write may not set to a client clock", async () => {
+    const doc = db("classRunner").doc(resultPath(nextKey()));
+    await firebase.assertSucceeds(doc.set(running({ status: "queued", started_at: undefined })));
+    await firebase.assertFails(doc.update({ started_at: new Date(), updated_at: serverTime() }));
+    await firebase.assertSucceeds(doc.update({ started_at: serverTime(), updated_at: serverTime() }));
+  });
+
+  it.each([
+    ["sets it to null", () => null],
+    ["deletes it", () => firebase.firestore.FieldValue.delete()],
+  ])("refuse an update to a stored started_at that %s", async (_, value) => {
+    const doc = db("classRunner").doc(resultPath(nextKey()));
+    await firebase.assertSucceeds(doc.set(running()));
+    await firebase.assertFails(doc.update({ started_at: value(), updated_at: serverTime() }));
+  });
+
   it("are not written by a token without the class, by the browser, or into another researcher's", async () => {
     const key = nextKey();
     await firebase.assertFails(db("sessionRunner").doc(resultPath(key)).set(running()));
@@ -248,5 +268,17 @@ describe("a document of another platform", () => {
 
   it("is not written onto the runner document", async () => {
     await firebase.assertFails(db("sessionRunner").doc(`${ROOT}/runners/42`).set({ platform_id: "https://other.example/", updated_at: serverTime() }));
+  });
+
+  it.each([
+    ["the runner document", "sessionRunner", () => `${ROOT}/runners/42`, () => ({ platform_id: PLATFORM, updated_at: serverTime() })],
+    ["the scope document", "classRunner", () => `${ROOT}/classes/${CLASS_A}/researchers/42`, () => ({ platform_id: PLATFORM, scope: { kind: "class" } })],
+    ["a result", "classRunner", () => resultPath(nextKey()), () => running()],
+  ])("is not overwritten by this platform's runner: %s", async (_, shape, pathOf, data) => {
+    const path = pathOf();
+    await adminDb().doc(path).set({ platform_id: "https://other.example/" });
+    await firebase.assertFails(db(shape).doc(path).set(data()));
+    await adminDb().doc(path).set({ platform_id: PLATFORM });
+    await firebase.assertSucceeds(db(shape).doc(path).set(data()));
   });
 });

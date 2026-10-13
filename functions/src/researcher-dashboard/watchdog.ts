@@ -19,8 +19,6 @@ export const IDLE_SWEEP_MS = 30 * 60 * 1000
 // No upstream call starts after this. A call can take 20 seconds, 10 for the AWS credentials it may
 // refresh and 10 for itself, so one in flight and its write finish inside the function's 60 seconds.
 export const BUDGET_MS = 30 * 1000
-// The cap the runner applies to a manifest's declared duration, and the watchdog's default
-const MAX_DECLARED_SECONDS = MAXIMUM_DURATION_SECONDS
 // Past this, every VM that could have claimed work queued before it is gone
 const VM_LIFE_MS = MAXIMUM_DURATION_SECONDS * 1000 + MARGIN_MS
 
@@ -103,8 +101,9 @@ const movedOn = (runner: RunnerDoc | undefined, stale: StaleResult, microvmId: s
   && !(runner.current_package?.class_hash === stale.classHash && runner.current_package?.package_key === stale.packageKey)
   && toMillis(runner.updated_at) > stale.updatedAt
 
+// The runner caps a manifest's declared duration at the VM's maximum life, which is also the default
 const declaredSeconds = (value: unknown) =>
-  Number.isInteger(value) && (value as number) > 0 ? Math.min(value as number, MAX_DECLARED_SECONDS) : MAX_DECLARED_SECONDS
+  Number.isInteger(value) && (value as number) > 0 ? Math.min(value as number, MAXIMUM_DURATION_SECONDS) : MAXIMUM_DURATION_SECONDS
 
 /** One minute's reconciliation. Returns the actions taken, for logs and tests. */
 export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
@@ -116,16 +115,27 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
     deps.log.info(event, data)
   }
 
-  // A VM's state, null when the API does not know it, or undefined when asking failed and this
-  // run should leave it alone
-  const stateOf = async (microvmId: string, data: object): Promise<string | null | undefined> => {
+  // A VM's state, null when the API does not know it, or undefined when asking failed or the
+  // answer had no state and this run should leave it alone. Asked once per VM per run.
+  const states = new Map<string, string | null | undefined>()
+  const askState = async (microvmId: string, data: object): Promise<string | null | undefined> => {
     try {
       const vm = await deps.microvms.get(microvmId)
-      return vm ? vm.state ?? null : null
+      if (vm && !vm.state) {
+        act("watchdog.upstream_failed", { ...data, call: "GetMicrovm", error: "the answer has no state" })
+        return undefined
+      }
+      return vm ? vm.state! : null
     } catch (e) {
       act("watchdog.upstream_failed", { ...data, call: "GetMicrovm", error: reason(e) })
       return undefined
     }
+  }
+  const stateOf = async (microvmId: string, data: object): Promise<string | null | undefined> => {
+    if (!states.has(microvmId)) {
+      states.set(microvmId, await askState(microvmId, data))
+    }
+    return states.get(microvmId)
   }
 
   // Runs whose heartbeat has stopped: the runner moved on, or its VM is ended and the run failed
@@ -189,6 +199,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
         act("watchdog.upstream_failed", { ...data, call: "TerminateMicrovm", error: reason(e) })
         continue
       }
+      // So the sweep below does not resume a VM this run is ending
+      states.set(microvmId, "TERMINATING")
       act("watchdog.vm_terminated", { ...data, reason: why })
     } catch (e) {
       act("watchdog.upstream_failed", { ...data, call: "Firestore", error: reason(e) })
@@ -228,9 +240,11 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
         const runnerRef = deps.db.doc(runnerPath(vm.portal, vm.platformUserId))
         const runner = (await tx.get(runnerRef)).data() as RunnerDoc | undefined
         const current = runner?.current_package
-        const currentRunning = typeof current?.class_hash === "string" && typeof current.package_key === "string"
-          && ((await tx.get(deps.db.doc(resultPath(vm.portal, current.class_hash, vm.platformUserId, current.package_key)))).data() as
-            { status?: unknown } | undefined)?.status === "running"
+        const currentResult = typeof current?.class_hash === "string" && typeof current.package_key === "string"
+          ? (await tx.get(deps.db.doc(resultPath(vm.portal, current.class_hash, vm.platformUserId, current.package_key)))).data() as
+            { status?: unknown; microvm_id?: unknown } | undefined
+          : undefined
+        const currentRunning = currentResult?.status === "running" && currentResult.microvm_id === vm.microvmId
         const q = await readQueue(deps.db, tx, who)
         prune(tx, q)
         const ended = gone && endRunner(tx, runnerRef, runner, vm.microvmId, now)
@@ -287,10 +301,11 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
  * and `updated_at` that were read. Given the VM that is gone, the runner document is marked
  * terminated while it still names that VM and does not already say the session ended. Work no VM
  * took is failed only while the researcher's recorded VM, if any, was launched before
- * `launchedBefore`, so a VM that may still claim it keeps it. Returns which of the two it wrote.
+ * `launchedBefore` and no launch is under way, so a VM that may still claim it keeps it. Returns
+ * which of the two it wrote.
  */
 export async function failResult(
-  deps: Pick<WatchdogDeps, "db" | "timestamp">, stale: StaleResult, status: "running" | "queued", error: string,
+  deps: Pick<WatchdogDeps, "db" | "now" | "timestamp">, stale: StaleResult, status: "running" | "queued", error: string,
   goneVm?: string, launchedBefore?: number
 ): Promise<{ failed: boolean; runnerEnded: boolean }> {
   const now = deps.timestamp()
@@ -299,11 +314,13 @@ export async function failResult(
     const result = (await tx.get(ref)).data() as { status?: unknown; updated_at?: unknown } | undefined
     const runnerRef = deps.db.doc(runnerPath(stale.portal, stale.platformUserId))
     const runner = (await tx.get(runnerRef)).data() as RunnerDoc | undefined
-    const vm = (await tx.get(deps.db.doc(vmPath(stale.portal, stale.platformUserId)))).data() as VmDoc | undefined
+    const vm = launchedBefore === undefined
+      ? undefined
+      : (await tx.get(deps.db.doc(vmPath(stale.portal, stale.platformUserId)))).data() as VmDoc | undefined
     if (result?.status !== status || toMillis(result.updated_at) !== stale.updatedAt) {
       return { failed: false, runnerEnded: false }
     }
-    if (launchedBefore !== undefined && toMillis(vm?.launched_at) >= launchedBefore) {
+    if (launchedBefore !== undefined && (toMillis(vm?.launched_at) >= launchedBefore || (vm?.launching_until ?? 0) > deps.now())) {
       return { failed: false, runnerEnded: false }
     }
     tx.set(ref, { status: "failed", error, finished_at: now, updated_at: now }, { merge: true })

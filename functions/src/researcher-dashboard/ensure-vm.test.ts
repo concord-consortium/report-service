@@ -287,6 +287,14 @@ describe("ensureVm", () => {
     await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: "GetMicrovm failed: AccessDenied" })
   })
 
+  it("answers a VM found with no state with 502, and launches nothing beside it", async () => {
+    recordVm({ microvm_id: "vm-old" })
+    microvms.get.mockResolvedValue({})
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: "GetMicrovm failed: the answer has no state" })
+    expect(microvms.run).not.toHaveBeenCalled()
+  })
+
   it("answers a ResumeMicrovm failure with 502 naming it", async () => {
     recordVm({ microvm_id: "vm-old" })
     microvms.get.mockResolvedValue({ state: "SUSPENDED" })

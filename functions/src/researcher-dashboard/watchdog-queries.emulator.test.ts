@@ -10,7 +10,7 @@ const CLASS = "a".repeat(48)
 const NOW = Date.parse("2026-09-25T12:00:00Z")
 const at = (ms: number) => admin.firestore.Timestamp.fromMillis(ms)
 const result = (key: string) => `${ROOT}/classes/${CLASS}/researchers/42/results/${key}`
-const deps = { db: db as unknown as Db, timestamp: () => admin.firestore.FieldValue.serverTimestamp() }
+const deps = { db: db as unknown as Db, now: () => NOW, timestamp: () => admin.firestore.FieldValue.serverTimestamp() }
 
 beforeEach(async () => {
   await db.recursiveDelete(db.collection("researcher_dashboard"))

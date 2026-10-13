@@ -77,7 +77,12 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   const seen = (await vmRef.get()).data() as VmDoc | undefined
   let state: string | undefined
   try {
-    state = seen?.microvm_id ? (await deps.microvms.get(seen.microvm_id))?.state : undefined
+    const vm = seen?.microvm_id ? await deps.microvms.get(seen.microvm_id) : null
+    // a VM with no state may be live, so it must not read as one to replace
+    if (vm && !vm.state) {
+      throw new Error("the answer has no state")
+    }
+    state = vm?.state
   } catch (e) {
     throw new VmStepError(502, `GetMicrovm failed: ${reason(e)}`)
   }

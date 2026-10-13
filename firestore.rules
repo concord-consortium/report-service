@@ -386,17 +386,19 @@ service cloud.firestore {
       }
       // A result's started_at is compared with learners' server-time activity to decide whether a
       // package needs running again, so a write that sets or changes it must use the server's
-      // time too. A write that keeps the stored one passes.
+      // time too. A write that keeps the stored one passes; none clears it or sets it to null.
       function rdStartedAt() {
-        return request.resource.data.get("started_at", null) == null
-          || request.resource.data.started_at == request.time
-          || (resource != null && request.resource.data.started_at == resource.data.get("started_at", null));
+        let next = request.resource.data.get("started_at", null);
+        let stored = resource == null ? null : resource.data.get("started_at", null);
+        return (!("started_at" in request.resource.data) && stored == null)
+          || next == request.time
+          || (stored != null && next == stored);
       }
 
       match /runners/{platformUserId} {
         allow get: if rdIsResearcher() && rdTokenUserId() == platformUserId && rdReadable();
         allow create, update: if rdIsResearcher() && rdIsRunner() && rdTokenUserId() == platformUserId
-          && rdSamePlatform(request.resource.data) && rdServerTime();
+          && rdSamePlatform(request.resource.data) && rdReadable() && rdServerTime();
       }
 
       match /classes/{classHash} {
@@ -410,7 +412,7 @@ service cloud.firestore {
             return rdResearcherOfClass() && rdTokenUserId() == platformUserId;
           }
           allow get: if rdOwnScope() && rdReadable();
-          allow create, update: if rdOwnScope() && rdIsRunner() && rdSamePlatform(request.resource.data);
+          allow create, update: if rdOwnScope() && rdIsRunner() && rdSamePlatform(request.resource.data) && rdReadable();
 
           // One package's current result for this researcher and class.
           match /results/{packageKey} {
@@ -429,7 +431,7 @@ service cloud.firestore {
             allow get: if rdOwnScope() && rdReadable();
             allow list: if rdOwnScope();
             allow create, update: if rdOwnScope() && rdIsRunner() && rdSamePlatform(request.resource.data)
-              && rdServerTime() && rdStartedAt() && rdRunningFields();
+              && rdReadable() && rdServerTime() && rdStartedAt() && rdRunningFields();
           }
         }
       }

@@ -124,6 +124,19 @@ describe("runs whose heartbeat has stopped", () => {
     expect(db.read(RESULT)).toMatchObject({ status: "failed", error: MACHINE_STOPPED })
   })
 
+  it("leaves a run, and its runner document, whose VM is found with no state", async () => {
+    stale = [staleRun()]
+    ;(deps.microvms.get as jest.Mock).mockResolvedValue({})
+    ;(deps.queries.vmsLaunchedAfter as jest.Mock).mockResolvedValue([{ portal: PORTAL, platformUserId: "42", microvmId: "vm-1", launchedAt: NOW - 60 * MIN }])
+    const runner = db.read(RUNNER)
+
+    expect(await runWatchdog(deps)).toEqual(["watchdog.upstream_failed"])
+    logged("watchdog.upstream_failed", { call: "GetMicrovm", error: "the answer has no state" })
+    expect(db.read(RESULT)).toMatchObject({ status: "running" })
+    expect(db.read(RUNNER)).toEqual(runner)
+    expect(deps.microvms.terminate).not.toHaveBeenCalled()
+  })
+
   it("logs a terminate that throws and writes nothing", async () => {
     stale = [staleRun()]
     states["vm-1"] = "RUNNING"
@@ -163,6 +176,22 @@ describe("runs whose heartbeat has stopped", () => {
 
       quiet(8 * 60 * MIN + 11 * MIN, { expectedSeconds: undefined })
       expect(await runWatchdog(deps)).toEqual(["watchdog.vm_terminated"])
+    })
+
+    it("is not resumed by the same run that terminates it, which asks its state once", async () => {
+      quiet(30 * MIN, { expectedSeconds: 60 })
+      db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1" })
+      const other = `${ROOT}/classes/${CLASS}/researchers/42/results/users__1__q`
+      db.docs.set(other, { status: "queued" })
+      db.docs.set(`${ROOT}/work/42`, {
+        packages: [{ identity: "users/1/q", version: "1", checksum: "c", catalog_id: 1, class_hash: CLASS }], updated_at: NOW - MIN
+      })
+      ;(deps.queries.vmsLaunchedAfter as jest.Mock).mockResolvedValue([{ portal: PORTAL, platformUserId: "42", microvmId: "vm-1", launchedAt: NOW - 60 * MIN }])
+
+      expect(await runWatchdog(deps)).toEqual(["watchdog.vm_terminated"])
+      expect(deps.microvms.resume).not.toHaveBeenCalled()
+      expect(deps.microvms.get).toHaveBeenCalledTimes(1)
+      expect(db.read(`${ROOT}/vms/42`)).toEqual({ microvm_id: "vm-1" })
     })
 
     it("is not postponed by a resumed_at that a failing resume keeps writing", async () => {
@@ -328,6 +357,15 @@ describe("work no VM took", () => {
     expect(db.read(RESULT)).toMatchObject({ status: "queued" })
   })
 
+  it("leaves it while a launch is under way, and fails it once that claim has lapsed", async () => {
+    db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", launched_at: NOW - LIFE - 2 * MIN, launching_until: NOW + 30 * SEC })
+    expect(await runWatchdog(deps)).toEqual([])
+    expect(db.read(RESULT)).toMatchObject({ status: "queued" })
+
+    db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", launched_at: NOW - LIFE - 2 * MIN, launching_until: NOW - SEC })
+    expect(await runWatchdog(deps)).toEqual(["watchdog.result_failed"])
+  })
+
   it("does not overwrite one a VM has claimed since the query", async () => {
     db.docs.set(RESULT, { status: "running", updated_at: NOW - MIN })
     expect(await runWatchdog(deps)).toEqual([])
@@ -430,6 +468,21 @@ describe("idle and suspended VMs", () => {
     db.docs.set(`${ROOT}/classes/${CLASS}/researchers/42/results/users__1__x`, { status: "failed", microvm_id: "vm-1" })
     db.docs.set(`${ROOT}/runners/42`, { microvm_id: "vm-1", current_package: { class_hash: CLASS, package_key: "users__1__x" }, updated_at: NOW - 40 * MIN })
     expect(await runWatchdog(deps)).toEqual(["watchdog.vm_suspended"])
+  })
+
+  it("is not kept awake by a current package whose run another VM holds", async () => {
+    states["vm-1"] = "RUNNING"
+    db.docs.set(`${ROOT}/classes/${CLASS}/researchers/42/results/users__1__x`, { status: "running", microvm_id: "vm-2" })
+    db.docs.set(`${ROOT}/runners/42`, { microvm_id: "vm-1", current_package: { class_hash: CLASS, package_key: "users__1__x" }, updated_at: NOW - 40 * MIN })
+    expect(await runWatchdog(deps)).toEqual(["watchdog.vm_suspended"])
+  })
+
+  it("leaves a VM found with no state, and its runner document, alone", async () => {
+    ;(deps.microvms.get as jest.Mock).mockResolvedValue({})
+    const runner = db.read(`${ROOT}/runners/42`)
+    expect(await runWatchdog(deps)).toEqual(["watchdog.upstream_failed"])
+    expect(db.read(`${ROOT}/runners/42`)).toEqual(runner)
+    expect(deps.microvms.suspend).not.toHaveBeenCalled()
   })
 
   it("is not kept awake by a stale run another VM claimed", async () => {
