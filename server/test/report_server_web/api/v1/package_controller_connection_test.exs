@@ -30,7 +30,13 @@ defmodule ReportServerWeb.Api.V1.PackageControllerConnectionTest do
 
   defp receive_response(socket) do
     :ok = :inet.setopts(socket, packet: :http_bin)
-    {:ok, {:http_response, _version, status, _reason}} = :gen_tcp.recv(socket, 0, 5_000)
+
+    status =
+      case :gen_tcp.recv(socket, 0, 5_000) do
+        {:ok, {:http_response, _version, status, _reason}} -> status
+        {:error, reason} -> flunk("the request got no answer on its connection (#{reason})")
+      end
+
     headers = receive_headers(socket, %{})
     :ok = :inet.setopts(socket, packet: :raw)
 
@@ -77,6 +83,8 @@ defmodule ReportServerWeb.Api.V1.PackageControllerConnectionTest do
 
   test "a validate whose body stalls past the read timeout leaves the next request on the connection intact", %{raw_token: token} do
     socket = listen(thousand_island_options: [read_timeout: 1_000])
+    # Bandit reads a body in steps of its default read_length, 1,000,000 bytes, and only a stall after
+    # at least one full step leaves the earlier conn's unread count wrong, so the bytes sent cross one.
     declared = 2_500_000
     sent = 1_500_000
 

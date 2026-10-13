@@ -202,8 +202,9 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   end
 
   # Bandit reads a chunked body whole, ignoring read_body's :length, so the size must be declared.
-  # Every response after the read uses the conn read_body returned: rendered with the earlier conn,
-  # Bandit would drain the body again from the next request on the connection.
+  # Every response after a successful or stalled read uses the conn read_body returned: rendered with
+  # the earlier conn, Bandit would read the body's length again from the socket after the response,
+  # which takes those bytes from the next request on the connection.
   defp read_archive(conn) do
     with {:ok, declared} <- content_length(conn),
          :ok <- if(declared > Archive.max_archive_bytes(), do: {:error, :unprocessable, "the archive exceeds 10 MiB"}, else: :ok) do
