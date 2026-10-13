@@ -26,8 +26,16 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   # The zip is the raw body: Plug.Parsers passes application/zip through unread.
   def create(conn, params) do
     with :ok <- zip_content_type(conn),
-         {:ok, body, conn} <- read_archive(conn),
-         {:ok, official?} <- official_param(params["official"]),
+         {:ok, body, conn} <- read_archive(conn) do
+      publish(conn, body, params)
+    else
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+      {:error, kind, message, conn} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  defp publish(conn, body, params) do
+    with {:ok, official?} <- official_param(params["official"]),
          {:ok, %{package: package, version: version}} <-
            Packages.publish(conn.assigns.current_user, body, params["origin"], official?) do
       conn
@@ -49,8 +57,16 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   # Never answers 404: cc-data reads a 404 from this route as a server without it.
   def validate(conn, params) do
     with :ok <- zip_content_type(conn),
-         {:ok, body, conn} <- read_archive(conn),
-         {:ok, official?} <- official_param(params["official"]),
+         {:ok, body, conn} <- read_archive(conn) do
+      validate_archive(conn, body, params)
+    else
+      {:error, kind, message} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+      {:error, kind, message, conn} -> ErrorHelpers.render_error(conn, Map.fetch!(@error_codes, kind), message)
+    end
+  end
+
+  defp validate_archive(conn, body, params) do
+    with {:ok, official?} <- official_param(params["official"]),
          {:ok, validated} <- Packages.validate(conn.assigns.current_user, body, params["origin"], official?) do
       json(conn, validated)
     else
@@ -186,6 +202,9 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   end
 
   # Bandit reads a chunked body whole, ignoring read_body's :length, so the size must be declared.
+  # Every response after a successful or stalled read uses the conn read_body returned: rendered with
+  # the earlier conn, Bandit would read the body's length again from the socket after the response,
+  # which takes those bytes from the next request on the connection.
   defp read_archive(conn) do
     with {:ok, declared} <- content_length(conn),
          :ok <- if(declared > Archive.max_archive_bytes(), do: {:error, :unprocessable, "the archive exceeds 10 MiB"}, else: :ok) do
@@ -205,7 +224,7 @@ defmodule ReportServerWeb.Api.V1.PackageController do
   defp read_declared(conn) do
     case read_body(conn, length: Archive.max_archive_bytes()) do
       {:ok, body, conn} -> {:ok, body, conn}
-      {:more, _partial, _conn} -> {:error, :unprocessable, "the archive exceeds 10 MiB"}
+      {:more, _partial, conn} -> {:error, :unprocessable, "the archive exceeds 10 MiB", conn}
       {:error, _reason} -> {:error, :bad_request, "the request body could not be read"}
     end
   end
