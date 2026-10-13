@@ -179,15 +179,9 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   end
 
   defp run_report(%Report{type: :athena}, report_run = %ReportRun{athena_query_id: nil}, _sort_columns, _row_limit, live_view_pid) do
-    case AthenaRunOps.start_query(report_run) do
-      {:ok, _report_run} ->
-        send(live_view_pid, :poll_query_state)
-        {:ok, %{report_results: nil}}
-
-      {:error, error} ->
-        Logger.error(error)
-        {:error, error}
-    end
+    AthenaRunOps.ensure_current(report_run)
+    send(live_view_pid, :poll_query_state)
+    {:ok, %{report_results: nil}}
   end
 
   defp run_report(%Report{type: :athena}, report_run = %ReportRun{}, _sort_columns, _row_limit, live_view_pid) do
