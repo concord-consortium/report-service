@@ -9,6 +9,24 @@ describe("config", () => {
     expect(script).toMatch(new RegExp(`^SERVICE_ACCOUNT_ID=${SERVICE_ACCOUNT_ID}$`, "m"))
   })
 
+  it("has the setup script grant what /work's custom tokens need", () => {
+    const script = readFileSync(join(__dirname, "../../scripts/setup-researcher-dashboard-iam.sh"), "utf8")
+    const list = (name: string) => script.match(new RegExp(`^${name}=\\(\\n([^)]*)\\)`, "m"))?.[1].split(/\s+/).filter(Boolean)
+
+    expect(list("SELF_ROLES")).toContain("roles/iam.serviceAccountTokenCreator")
+    expect(list("SERVICES")).toEqual(["iamcredentials.googleapis.com"])
+  })
+
+  it("has operators mint ID tokens with OpenID Token Creator alone", () => {
+    const script = readFileSync(join(__dirname, "../../scripts/setup-researcher-dashboard-iam.sh"), "utf8")
+
+    expect(script).toMatch(/^OPERATOR_ROLE=roles\/iam\.serviceAccountOpenIdTokenCreator$/m)
+    expect(script).toMatch(/serviceAccounts\/\$email:generateIdToken/)
+    // gcloud's impersonation mints an access token first, which that role does not allow.
+    const code = script.split("\n").filter(line => !/^\s*#/.test(line)).join("\n")
+    expect(code).not.toMatch(/--impersonate-service-account/)
+  })
+
   it("lists every param in both projects' .env files", () => {
     const params = [...readFileSync(join(__dirname, "config.ts"), "utf8").matchAll(/define(?:String|Int)\("([A-Z_]+)"/g)].map(m => m[1])
     expect(params).toContain("RD_BROKER_ROLE_ARN")

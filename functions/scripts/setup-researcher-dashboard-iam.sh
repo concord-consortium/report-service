@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Creates and checks the service account researcherDashboard runs as, with the grants its code needs.
+# Creates and checks the service account researcherDashboard runs as, with the grants and APIs its code needs.
 #
 #   setup-researcher-dashboard-iam.sh apply <project>                   create what is missing; safe to rerun
 #   setup-researcher-dashboard-iam.sh check <project>                   report what is missing; changes nothing
 #   setup-researcher-dashboard-iam.sh grant-deployer <project> <member>   let <member> deploy functions as it
 #   setup-researcher-dashboard-iam.sh grant-operator <project> <member>   let <member> mint its ID tokens for a live check
 #   setup-researcher-dashboard-iam.sh revoke-operator <project> <member>
+#   setup-researcher-dashboard-iam.sh id-token <project> <audience>     print its ID token, for a live check
 #
 # <project> is report-service-dev or report-service-pro; <member> is e.g. user:someone@concord.org.
 # apply and check print the account's unique ID, which the runner stack takes as a parameter.
@@ -23,16 +24,23 @@ PROJECT_ROLES=(
 )
 
 # Roles the account holds on itself. Service Account User lets it name itself in a Cloud Task's
-# OIDC token, which createTask requires even when the caller is that account.
+# OIDC token, which createTask requires even when the caller is that account. Token Creator lets it
+# sign the runner's Firebase custom tokens in /work, which firebase-admin does through signBlob.
 SELF_ROLES=(
   roles/iam.serviceAccountUser
+  roles/iam.serviceAccountTokenCreator
+)
+
+# APIs the project must have enabled: signBlob is served by the IAM Service Account Credentials API.
+SERVICES=(
+  iamcredentials.googleapis.com
 )
 
 DEPLOYER_ROLE=roles/iam.serviceAccountUser
 OPERATOR_ROLE=roles/iam.serviceAccountOpenIdTokenCreator
 
 usage() {
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -83,11 +91,25 @@ retry_while_propagating() {
   done
 }
 
+enabled_services() {
+  gcloud services list --enabled --project="$project" --format='value(config.name)' --verbosity=error
+}
+
 print_unique_id() {
   echo "Unique ID of $email: $(gcloud iam service-accounts describe "$email" --project="$project" --format='value(uniqueId)')"
 }
 
 apply() {
+  local enabled
+  enabled=$(enabled_services)
+  for service in "${SERVICES[@]}"; do
+    if grep -qx "$service" <<<"$enabled"; then
+      echo "Enabled: $service"
+    else
+      gcloud services enable "$service" --project="$project"
+      echo "Enabled now: $service"
+    fi
+  done
   if account_exists; then
     echo "Exists: $email"
   else
@@ -125,7 +147,16 @@ check() {
     echo "Missing: $email (run: $0 apply $project)"
     exit 1
   fi
-  local missing=0 held
+  local missing=0 held enabled
+  enabled=$(enabled_services)
+  for service in "${SERVICES[@]}"; do
+    if grep -qx "$service" <<<"$enabled"; then
+      echo "Enabled: $service"
+    else
+      echo "Not enabled: $service"
+      missing=1
+    fi
+  done
   held=$(held_project_roles)
   for role in "${PROJECT_ROLES[@]}"; do
     if grep -qx "$role" <<<"$held"; then
@@ -154,11 +185,33 @@ account_binding() {
   echo "${action%%-*}: $role for $member on $email"
 }
 
+# The account's ID token for <audience>, minted with the caller's own login through generateIdToken,
+# which needs only the OpenID Token Creator role grant-operator gives. gcloud's
+# --impersonate-service-account is not used: it mints an access token first, which needs Token Creator.
+id_token() {
+  local audience=$1 answer token
+  if [[ ! $audience =~ ^[A-Za-z0-9._:/-]+$ ]]; then
+    echo "Not an audience: $audience" >&2
+    exit 2
+  fi
+  answer=$(curl -sS -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H 'Content-Type: application/json' -d "{\"audience\":\"$audience\"}" \
+    "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$email:generateIdToken")
+  token=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' <<<"$answer")
+  if [[ -z $token ]]; then
+    echo "$answer" >&2
+    echo "Minting needs OpenID Token Creator on $email: $0 grant-operator $project user:<you>@concord.org" >&2
+    exit 1
+  fi
+  echo "$token"
+}
+
 case "$command" in
   apply) apply ;;
   check) check ;;
   grant-deployer) [[ $# -eq 3 ]] || usage; account_binding add-iam-policy-binding "$3" "$DEPLOYER_ROLE" ;;
   grant-operator) [[ $# -eq 3 ]] || usage; account_binding add-iam-policy-binding "$3" "$OPERATOR_ROLE" ;;
   revoke-operator) [[ $# -eq 3 ]] || usage; account_binding remove-iam-policy-binding "$3" "$OPERATOR_ROLE" ;;
+  id-token) [[ $# -eq 3 ]] || usage; id_token "$3" ;;
   *) usage ;;
 esac
