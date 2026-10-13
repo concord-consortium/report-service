@@ -173,8 +173,8 @@ defmodule ReportServer.AthenaDB do
   end
 
   defp check_query_size(sql) do
-    case String.length(sql) do
-      len when len > 262144 ->
+    case byte_size(sql) do
+      size when size > 262_144 ->
         {:error, query_too_large_error()}
       _ ->
         :ok
