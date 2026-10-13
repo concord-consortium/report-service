@@ -46,7 +46,7 @@ beforeEach(async () => {
   // Firebase parses the body, with a larger limit than express's 100 KB default, before the app sees it
   server = express()
     .use(express.json({ limit: "10mb" }) as express.RequestHandler)
-    .use(researcherDashboardApp(() => runDeps, () => deriveDeps))
+    .use(researcherDashboardApp(() => runDeps, () => deriveDeps, () => { throw new Error("no VM routes here") }))
     .listen(0)
   await new Promise(resolve => server.once("listening", resolve))
   port = (server.address() as AddressInfo).port

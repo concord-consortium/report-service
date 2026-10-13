@@ -94,6 +94,15 @@ describe("makeStorageBroker", () => {
       expect(call?.[0]).toMatch(/\bpolicy,/)
     })
 
+    it("is handed the broker role, which nothing else is", () => {
+      const users = sources.filter(f => /rdBrokerRoleArn/.test(read(f))).sort()
+      expect(users).toEqual(["config.ts", "index.ts"])
+      const wiring = read("index.ts")
+      expect(wiring.match(/rdBrokerRoleArn/g)).toHaveLength(2)
+      expect(wiring).toMatch(/brokerRoleArn: rdBrokerRoleArn\.value\(\)/)
+      expect(wiring).not.toMatch(/(webIdentityCredentials|functionCredentials)\([^)]*rdBrokerRoleArn/)
+    })
+
     it("leaves no STS client anywhere in the function", () => {
       const all = [...sources.map(read), readFileSync(join(__dirname, "..", "index.ts"), "utf8")]
       for (const source of all) {
