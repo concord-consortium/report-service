@@ -72,7 +72,7 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
     eventually(fn -> Reports.get_report_run!(run.id).athena_query_id == "qid-teacher" end)
   end
 
-  test "a stored running run refreshes its state on poll", %{conn: conn} do
+  test "a stored running run is refreshed again on the next poll", %{conn: conn} do
     user = user_fixture()
 
     {:ok, run} =
@@ -87,11 +87,18 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
 
     Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
     test_pid = self()
+    calls = :counters.new(1, [])
 
     start_athena_stub(%{
       get_query_info: fn "qid-existing" ->
+        :counters.add(calls, 1, 1)
         send(test_pid, :get_query_info)
-        {:ok, "succeeded", "s3://bucket/done.csv", nil}
+
+        if :counters.get(calls, 1) == 1 do
+          {:ok, "running", nil, nil}
+        else
+          {:ok, "succeeded", "s3://bucket/done.csv", nil}
+        end
       end
     })
 
@@ -99,9 +106,10 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
     {:ok, view, _html} = live(conn, ~p"/reports/runs/#{run.id}")
     render_async(view)
 
-    send(view.pid, :poll_query_state)
-
     assert_receive :get_query_info
+    refute render(view) =~ "Only CSV download is available"
+
+    assert_receive :get_query_info, 2_000
     eventually(fn -> render(view) =~ "Only CSV download is available" end)
 
     reloaded = Reports.get_report_run!(run.id)
@@ -162,7 +170,11 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
 
       assert_receive :get_query
       eventually(fn -> render(view) =~ @retrying end)
-      refute_receive :get_query, 300
+      refute_receive :get_query, 1_200
+
+      reloaded = Reports.get_report_run!(run.id)
+      assert reloaded.athena_query_state == nil
+      assert reloaded.athena_query_error == @retrying
     end
 
     test "closing the page mid-start does not strand the claim", %{conn: conn} do
