@@ -2,7 +2,7 @@ import express from "express"
 import { MAXIMUM_DURATION_SECONDS, UPSTREAM_TIMEOUT_MS, VmDoc, within } from "./ensure-vm"
 import { packageKey, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
-import { prune, readQueue, toMillis, withStanding } from "./queue"
+import { heldBy, prune, readQueue, toMillis, withStanding } from "./queue"
 import { Db, Refusal, WorkDoc, WorkEntry } from "./run-package"
 import type { StorageBroker } from "./storage-broker"
 import { REGION } from "./region"
@@ -24,8 +24,6 @@ export interface VmRouteDeps {
 }
 
 const reason = (e: unknown) => e instanceof Error ? e.message : String(e)
-
-export const heldBy = (claimedBy: unknown, microvmId: string) => claimedBy === microvmId
 
 const microvmIdOf = (body: unknown): string | null => {
   const id = (body as { microvm_id?: unknown } | null)?.microvm_id

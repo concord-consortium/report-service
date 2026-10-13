@@ -31,7 +31,7 @@ import { taskWorker } from "./tasks/task-worker";
 
 import { chatTutorOnWrite } from "./chat-tutor"; // per-page AI chat tutor trigger
 
-import { deriveProfileWorker, researcherDashboard } from "./researcher-dashboard"
+import { deriveProfileWorker, researcherDashboard, researcherDashboardWatchdog } from "./researcher-dashboard"
 
 const packageJSON = require("../package.json")
 const buildInfo = require("../build-info.json")
@@ -95,5 +95,6 @@ module.exports = {
   taskWorker,
   chatTutorOnWrite, // per-page AI chat tutor trigger
   researcherDashboard,
+  researcherDashboardWatchdog,
   deriveProfileWorker,
 }

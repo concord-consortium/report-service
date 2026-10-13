@@ -69,6 +69,8 @@ export function previousOf(current: ResultDoc | undefined): Record<string, unkno
   return Object.fromEntries(PREVIOUS_FIELDS.filter(field => current[field] !== undefined).map(field => [field, current[field]]))
 }
 
+export const heldBy = (claimedBy: unknown, microvmId: string) => claimedBy === microvmId
+
 /** A Firestore Timestamp, or epoch milliseconds, as milliseconds; NaN for anything else. */
 export const toMillis = (value: unknown): number => {
   if (typeof value === "number") {

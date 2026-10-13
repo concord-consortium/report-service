@@ -16,6 +16,8 @@ import { RunPackageDeps, Db } from "./run-package"
 import { makeStorageBroker } from "./storage-broker"
 import { RunnerClaims } from "./vm-auth"
 import { VmRouteDeps } from "./vm-routes"
+import { runWatchdog } from "./watchdog"
+import { makeWatchdogQueries } from "./watchdog-queries"
 
 // Parsed once per configured value rather than per request.
 let parsedKeys: { json: string; keys: PortalKeys } | null = null
@@ -98,5 +100,22 @@ function deriveProfileDeps(): DeriveProfileRouteDeps {
 export const researcherDashboard = functions
   .runWith({ serviceAccount: `${SERVICE_ACCOUNT_ID}@`, timeoutSeconds: 60 })
   .https.onRequest(researcherDashboardApp(researcherDashboardDeps, deriveProfileDeps, vmRouteDeps))
+
+// Every minute: ends runs whose heartbeat has stopped, fails work no VM took, suspends idle VMs,
+// resumes a suspended VM with work queued behind its suspend, and marks a gone VM's runner document
+// terminated. Runs as the same account, for the launcher role.
+export const researcherDashboardWatchdog = functions
+  .runWith({ serviceAccount: `${SERVICE_ACCOUNT_ID}@`, timeoutSeconds: 60 })
+  .pubsub.schedule("every 1 minutes")
+  .onRun(async () => {
+    await runWatchdog({
+      db: admin.firestore() as unknown as Db,
+      queries: makeWatchdogQueries(admin.firestore()),
+      microvms: microvmApi(),
+      now: Date.now,
+      timestamp: () => admin.firestore.FieldValue.serverTimestamp(),
+      log: functions.logger
+    })
+  })
 
 export { deriveProfileWorker } from "./derive-profile-task"
