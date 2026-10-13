@@ -2,7 +2,7 @@ import { MAXIMUM_DURATION_SECONDS, reason, VmDoc, VmStepError, wakeSuspended } f
 import { resultPath, runnerPath, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
 import { heldBy, prune, readQueue, toMillis, withStanding } from "./queue"
-import { Db, Researcher } from "./run-package"
+import { Db, DocRef, Researcher, Transaction } from "./run-package"
 
 // A runner rewrites a claimed result's updated_at every heartbeat_seconds, which the rules bound;
 // a result quiet for LEASE_BEATS beats has lost its runner
@@ -81,6 +81,18 @@ const isHeartbeat = (value: unknown): value is number =>
   Number.isInteger(value) && (value as number) >= HEARTBEAT_MIN_SECONDS && (value as number) <= HEARTBEAT_MAX_SECONDS
 
 const isTerminal = (runner: RunnerDoc | undefined) => TERMINAL_RUNNER_STATES.includes(runner?.state as string)
+
+/**
+ * Marks the runner document terminated when its VM is gone, while it still names that VM and does
+ * not already say the session ended. Returns whether it wrote.
+ */
+function endRunner(tx: Transaction, ref: DocRef, runner: RunnerDoc | undefined, goneVm: string, now: unknown) {
+  if (runner?.microvm_id !== goneVm || isTerminal(runner)) {
+    return false
+  }
+  tx.set(ref, { state: "terminated", current_package: null, updated_at: now }, { merge: true })
+  return true
+}
 
 /**
  * The runner on the result's VM has written its document since the result's last beat without
@@ -217,10 +229,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
             { status?: unknown } | undefined)?.status === "running"
         const q = await readQueue(deps.db, tx, who)
         prune(tx, q)
-        const ended = gone && runner?.microvm_id === vm.microvmId && !isTerminal(runner)
-        if (ended) {
-          tx.set(runnerRef, { state: "terminated", current_package: null, updated_at: now }, { merge: true })
-        }
+        const ended = gone && endRunner(tx, runnerRef, runner, vm.microvmId, now)
         return { q, runner, currentRunning, ended }
       })
       if (gone) {
@@ -293,8 +302,8 @@ export async function failResult(
       return false
     }
     tx.set(ref, { status: "failed", error, finished_at: now, updated_at: now }, { merge: true })
-    if (goneVm && runner?.microvm_id === goneVm && !isTerminal(runner)) {
-      tx.set(runnerRef, { state: "terminated", current_package: null, updated_at: now }, { merge: true })
+    if (goneVm) {
+      endRunner(tx, runnerRef, runner, goneVm, now)
     }
     return true
   })

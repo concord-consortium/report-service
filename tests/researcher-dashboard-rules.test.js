@@ -1,7 +1,9 @@
 // Researcher Dashboard security rules against the Firestore emulator.
 //
-// Run from tests/ with:  npx firebase -c ../firebase.json emulators:exec --only firestore "npm test"
-// (the same @firebase/rules-unit-testing v1 harness as the other suites: `auth` is the token).
+// Run from tests/ with the functions' firebase-tools, since this directory's own cannot start the
+// emulator, and Jest under Node 18 as CI does:
+//   ../functions/node_modules/.bin/firebase -c ../firebase.json emulators:exec --only firestore "npm test"
+// The same @firebase/rules-unit-testing v1 harness as the other suites: `auth` is the token.
 //
 // The browser reads; only a token carrying researcher_dashboard_runner writes, and only its own
 // researcher's documents on its own portal. vms/ and work/ are the function's alone. Admin app
