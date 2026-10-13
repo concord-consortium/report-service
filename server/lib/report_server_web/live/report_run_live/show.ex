@@ -14,6 +14,8 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   alias ReportServerWeb.ReportRunLive.Duplicate
 
   @row_limit 100
+  @retry_poll_ms 30_000
+  @poll_ms 1_000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -138,12 +140,15 @@ defmodule ReportServerWeb.ReportRunLive.Show do
 
   @impl true
   def handle_info(:poll_query_state, socket = %{assigns: %{report_run: report_run}}) do
-    # need to load report run each time as it is set async in run_report
-    report_run = Reports.get_report_run_with_user!(report_run.id)
-
-    socket = socket
-      |> assign(:report_run, check_query_state(report_run, self()))
+    ensure_current_async(Reports.get_report_run_with_user!(report_run.id), self())
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(:report_run_changed, socket = %{assigns: %{report_run: report_run}}) do
+    report_run = Reports.get_report_run_with_user!(report_run.id)
+    maybe_poll_query_state(report_run, self())
+    {:noreply, assign(socket, :report_run, report_run)}
   end
 
   # the post-processing component flashes via its parent: a LiveComponent's own flash never
@@ -178,14 +183,8 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:error, error}
   end
 
-  defp run_report(%Report{type: :athena}, report_run = %ReportRun{athena_query_id: nil}, _sort_columns, _row_limit, live_view_pid) do
-    AthenaRunOps.ensure_current(report_run)
-    send(live_view_pid, :poll_query_state)
-    {:ok, %{report_results: nil}}
-  end
-
   defp run_report(%Report{type: :athena}, report_run = %ReportRun{}, _sort_columns, _row_limit, live_view_pid) do
-    maybe_poll_query_state(report_run, live_view_pid)
+    ensure_current_async(report_run, live_view_pid)
 
     # return nil - the template will use the report_run to provide status updates
     {:ok, %{report_results: nil}}
@@ -217,22 +216,23 @@ defmodule ReportServerWeb.ReportRunLive.Show do
     {:error, "Unknown file type or malformed data: #{filetype}"}
   end
 
-  defp check_query_state(report_run = %ReportRun{}, live_view_pid) do
-    case AthenaRunOps.refresh_query_state(report_run) do
-      {:ok, report_run} ->
-        maybe_poll_query_state(report_run, live_view_pid)
-        report_run
-
-      {:error, _} ->
-        report_run
-    end
+  # Unlinked, so closing the page can't kill a start holding the run's claim, and a start never blocks the page.
+  defp ensure_current_async(report_run = %ReportRun{}, live_view_pid) do
+    Task.Supervisor.start_child(ReportServer.PostProcessingTaskSupervisor, fn ->
+      AthenaRunOps.ensure_current(report_run)
+      send(live_view_pid, :report_run_changed)
+    end)
   end
 
   defp maybe_poll_query_state(report_run = %ReportRun{}, live_view_pid) do
     if AthenaRunOps.non_terminal?(report_run) do
-      Process.send_after(live_view_pid, :poll_query_state, 1000)
+      Process.send_after(live_view_pid, :poll_query_state, poll_interval(report_run))
     end
   end
+
+  # An unstarted run with a null state is retried on every read, which reruns the learner query.
+  defp poll_interval(%ReportRun{athena_query_id: nil, athena_query_state: nil}), do: @retry_poll_ms
+  defp poll_interval(_report_run), do: @poll_ms
 
   defp get_download_filename(filetype, report_run = %ReportRun{}), do: "#{report_run.report_slug}-run-#{report_run.id}.#{filetype}"
 
