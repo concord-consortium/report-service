@@ -1,4 +1,4 @@
-import { readFileSync } from "fs"
+import { readdirSync, readFileSync } from "fs"
 import { join } from "path"
 import { makeMicrovmApi } from "./microvm"
 
@@ -13,7 +13,9 @@ jest.mock("@aws-sdk/client-lambda-microvms", () => {
     GetMicrovmCommand: command("GetMicrovm"),
     GetMicrovmImageCommand: command("GetMicrovmImage"),
     ResumeMicrovmCommand: command("ResumeMicrovm"),
-    RunMicrovmCommand: command("RunMicrovm")
+    RunMicrovmCommand: command("RunMicrovm"),
+    SuspendMicrovmCommand: command("SuspendMicrovm"),
+    TerminateMicrovmCommand: command("TerminateMicrovm")
   }
 })
 
@@ -35,7 +37,7 @@ describe("makeMicrovmApi", () => {
       imageVersion: "7",
       executionRoleArn: "arn:role",
       runHookPayload: "{}",
-      egressNetworkConnectors: ["INTERNET_EGRESS"],
+      egressNetworkConnectors: ["arn:aws:lambda:us-east-1:aws:network-connector:aws-network-connector:INTERNET_EGRESS"],
       maximumDurationInSeconds: 8 * 60 * 60
     })
   })
@@ -70,6 +72,14 @@ describe("makeMicrovmApi", () => {
     expect(send.mock.calls[0][0]).toMatchObject({ name: "ResumeMicrovm", input: { microvmIdentifier: "vm-1" } })
   })
 
+  it.each([["suspend", "SuspendMicrovm"], ["terminate", "TerminateMicrovm"]])("%ss by microvm id", async (method, name) => {
+    send.mockResolvedValue({})
+
+    await api()[method as "suspend" | "terminate"]("vm-1")
+
+    expect(send.mock.calls[0][0]).toMatchObject({ name, input: { microvmIdentifier: "vm-1" } })
+  })
+
   it("reads the image's latest active version", async () => {
     send.mockResolvedValue({ latestActiveImageVersion: "7" })
 
@@ -78,8 +88,9 @@ describe("makeMicrovmApi", () => {
   })
 
   it("never mints a MicroVM auth token", () => {
-    const dashboardSources = ["microvm.ts", "ensure-vm.ts", "run-package.ts", "app.ts", "index.ts", "aws-credentials.ts"]
+    const dashboardSources = readdirSync(__dirname).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"))
       .map(file => readFileSync(join(__dirname, file), "utf8"))
+    expect(dashboardSources.length).toBeGreaterThan(10)
 
     for (const source of dashboardSources) expect(source).not.toMatch(/CreateMicrovm(Shell)?AuthToken/)
   })

@@ -3,7 +3,7 @@ import { runnerPath, vmPath } from "./firestore-paths"
 import { Db, Researcher, RunPackageBody } from "./run-package"
 
 // PENDING or RUNNING: the VM asks for work at the end of /run and again before it idles.
-// SUSPENDING: the watchdog resumes a SUSPENDED VM that has work outstanding.
+// SUSPENDING: the watchdog resumes a SUSPENDED VM that has work queued.
 export type VmOutcome = "launched" | "launching" | "resumed" | "running" | "suspending"
 
 const LAUNCH_STATES = [undefined, "TERMINATING", "TERMINATED"]
@@ -11,6 +11,9 @@ const LAUNCH_STATES = [undefined, "TERMINATING", "TERMINATED"]
 // holding it does not block the researcher for long.
 const LAUNCH_CLAIM_MS = 60 * 1000
 const RUN_HOOK_PAYLOAD_MAX_BYTES = 16384
+// A VM's maximum life: the platform terminates it this long after launch, suspended or not. It
+// also bounds how long an old image keeps serving.
+export const MAXIMUM_DURATION_SECONDS = 8 * 60 * 60
 // Per upstream call, each made once; the four a launch makes, and fetching the AWS credentials they
 // use, fit the function's 60-second timeout.
 export const UPSTREAM_TIMEOUT_MS = 10 * 1000
@@ -19,6 +22,10 @@ export interface VmDoc {
   microvm_id?: string
   image_version?: string
   launching_until?: number | null
+  // a server timestamp; the watchdog sweeps the VMs launched within their maximum life
+  launched_at?: unknown
+  // a server timestamp written before each resume, from which the watchdog restarts a run's lease
+  resumed_at?: unknown
 }
 
 export interface EnsureVmDeps {
@@ -75,7 +82,9 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
     throw new VmStepError(502, `GetMicrovm failed: ${reason(e)}`)
   }
 
-  if (state === "SUSPENDED") return resume(deps, seen!.microvm_id!)
+  if (state === "SUSPENDED") {
+    return wakeSuspended(deps, who, { microvm_id: seen!.microvm_id!, image_version: seen!.image_version })
+  }
   if (state === "SUSPENDING") return "suspending"
   if (!LAUNCH_STATES.includes(state)) return "running"
 
@@ -110,9 +119,24 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   return "launched"
 }
 
-async function resume(deps: EnsureVmDeps, microvmId: string): Promise<VmOutcome> {
+export type WakeDeps = Pick<EnsureVmDeps, "db" | "timestamp"> & { microvms: Pick<MicrovmApi, "resume"> }
+
+/**
+ * Wakes a suspended VM. Both ensureVm and the watchdog decide here, given the VM as `vms/`
+ * records it, so a rule about which suspended VMs to wake has one place to live. `resumed_at` is
+ * written before the resume, so no watchdog pass sees the VM running with only the run's
+ * pre-suspend heartbeat.
+ */
+export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string }): Promise<VmOutcome> {
+  const vmRef = deps.db.doc(vmPath(who.portal, who.platformUserId))
+  await deps.db.runTransaction(async tx => {
+    const current = (await tx.get(vmRef)).data() as VmDoc | undefined
+    if (current?.microvm_id === vm.microvm_id) {
+      tx.set(vmRef, { resumed_at: deps.timestamp() }, { merge: true })
+    }
+  })
   try {
-    await deps.microvms.resume(microvmId)
+    await deps.microvms.resume(vm.microvm_id)
   } catch (e) {
     throw new VmStepError(502, `ResumeMicrovm failed: ${reason(e)}`)
   }
@@ -193,7 +217,7 @@ async function recordLaunch(deps: EnsureVmDeps, who: Researcher, vm: Launched) {
   const now = deps.timestamp()
   await deps.db.runTransaction(async tx => {
     tx.set(deps.db.doc(vmPath(who.portal, who.platformUserId)),
-      { microvm_id: vm.microvmId, image_version: vm.imageVersion ?? null, launching_until: null }, { merge: true })
+      { microvm_id: vm.microvmId, image_version: vm.imageVersion ?? null, launching_until: null, launched_at: now, resumed_at: null }, { merge: true })
     // the queue is already on the runner document, written when the work was queued
     tx.set(deps.db.doc(runnerPath(who.portal, who.platformUserId)),
       { state: "starting", microvm_id: vm.microvmId, platform_id: who.platformId, started_at: now, updated_at: now }, { merge: true })

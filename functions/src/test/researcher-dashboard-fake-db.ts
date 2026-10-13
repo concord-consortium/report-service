@@ -60,7 +60,12 @@ export class FakeDb implements Db {
   private async transact<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
     const writes: [string, Record<string, unknown>, { merge?: boolean; mergeFields?: string[] } | undefined][] = []
     const tx: Transaction = {
-      get: async ref => ({ data: () => this.read(ref.path) }),
+      get: async ref => {
+        if (writes.length > 0) {
+          throw new Error("Firestore transactions require all reads to be executed before all writes.")
+        }
+        return { data: () => this.read(ref.path) }
+      },
       set: (ref, data, options) => { writes.push([ref.path, data as Record<string, unknown>, options]) }
     }
     const result = await fn(tx)

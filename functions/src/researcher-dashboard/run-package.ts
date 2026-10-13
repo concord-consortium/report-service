@@ -1,6 +1,7 @@
 import express from "express"
 import { PortalKeys, verifyPortalToken } from "./portal-token"
-import { packageKey, resultPath, runnerPath, workPath } from "./firestore-paths"
+import { packageKey, resultPath, runnerPath } from "./firestore-paths"
+import { keptScopes, mirror, outstanding, previousOf, readQueue, ResultDoc, withStanding } from "./queue"
 import { VmOutcome, VmStepError } from "./ensure-vm"
 
 export interface Researcher {
@@ -32,6 +33,9 @@ export interface WorkEntry extends PackageRef { class_hash: string }
 export interface WorkDoc {
   packages?: WorkEntry[]
   scopes?: Record<string, { scope: ScopeBlock; class_tokens: Record<string, string> }>
+  session_token?: string
+  firebase_project?: string
+  updated_at?: unknown
 }
 export interface QueueEntry { class_hash: string; package_key: string }
 
@@ -143,7 +147,10 @@ const entryKey = (e: { class_hash: string; identity: string }) => `${e.class_has
 /**
  * Appends the batch to the researcher's queue, keyed by class and package, and writes a
  * `queued` result for each package appended, in one transaction: a refusal writes nothing.
- * Returns the whole queue and the keys appended.
+ * A package is already queued only while it is outstanding (queued or running) for that class,
+ * so a finished one runs again, keeping its last finished run as `previous`, and finished entries
+ * leave the queue here as in /work. Returns the queued entries, which the runner document
+ * mirrors, and the keys appended.
  */
 export async function queuePackages(deps: RunPackageDeps, who: Researcher, body: RunPackageBody) {
   const { portal, platformUserId, platformId } = who
@@ -151,38 +158,46 @@ export async function queuePackages(deps: RunPackageDeps, who: Researcher, body:
   const now = deps.timestamp()
 
   return deps.db.runTransaction(async tx => {
-    const workRef = deps.db.doc(workPath(portal, platformUserId))
-    const work = (await tx.get(workRef)).data() as WorkDoc | undefined
-    const existing = work?.packages ?? []
-    const queued = new Set(existing.map(entryKey))
+    const q = await readQueue(deps.db, tx, who)
+    const existing = outstanding(q)
+    const known = new Set(existing.map(entryKey))
     const appended: WorkEntry[] = body.packages
       .map(({ identity, version, checksum, catalog_id }) => ({ identity, version, checksum, catalog_id, class_hash: classHash }))
-      .filter(p => !queued.has(entryKey(p)))
+      .filter(p => !known.has(entryKey(p)))
     const packages = [...existing, ...appended]
     if (packages.length > deps.config.queueCap) {
       throw new Refusal(409, `queue at its cap (${deps.config.queueCap} outstanding)`)
     }
 
-    // replaces this class's scope and tokens whole, keeping other classes'
-    tx.set(workRef, {
+    const resultRefs = appended.map(p => deps.db.doc(resultPath(portal, classHash, platformUserId, packageKey(p.identity))))
+    const currents: (ResultDoc | undefined)[] = []
+    for (const ref of resultRefs) {
+      currents.push((await tx.get(ref)).data() as ResultDoc | undefined)
+    }
+
+    // replaces this class's scope and tokens whole, keeping the classes that still have outstanding work
+    tx.set(q.ref, {
       packages,
-      scopes: { [classHash]: { scope: body.scope, class_tokens: body.class_tokens } },
+      scopes: { ...keptScopes(q.work, packages), [classHash]: { scope: body.scope, class_tokens: body.class_tokens } },
       session_token: body.session_token,
       firebase_project: body.firebase_project,
       updated_at: now
-    }, { mergeFields: ["packages", `scopes.${classHash}`, "session_token", "firebase_project", "updated_at"] })
+    }, { mergeFields: ["packages", "scopes", "session_token", "firebase_project", "updated_at"] })
 
-    for (const p of appended) {
-      tx.set(deps.db.doc(resultPath(portal, classHash, platformUserId, packageKey(p.identity))), {
+    appended.forEach((p, i) => {
+      const previous = previousOf(currents[i])
+      tx.set(resultRefs[i], {
         status: "queued",
         queued_at: now,
         updated_at: now,
         platform_id: platformId,
-        package: { identity: p.identity, version: p.version, checksum: p.checksum }
+        package: { identity: p.identity, version: p.version, checksum: p.checksum },
+        ...(previous === undefined ? {} : { previous })
       })
-    }
+    })
 
-    const queue: QueueEntry[] = packages.map(e => ({ class_hash: e.class_hash, package_key: packageKey(e.identity) }))
+    // a running package is the runner's current_package, not a place in the queue
+    const queue: QueueEntry[] = mirror([...withStanding(q, "queued"), ...appended])
     tx.set(deps.db.doc(runnerPath(portal, platformUserId)), { queue, platform_id: platformId, updated_at: now }, { merge: true })
 
     return { queue, appended: appended.map(p => packageKey(p.identity)) }

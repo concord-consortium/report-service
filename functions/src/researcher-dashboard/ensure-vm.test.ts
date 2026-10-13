@@ -1,4 +1,4 @@
-import { ensureVm, EnsureVmDeps, VmStepError } from "./ensure-vm"
+import { ensureVm, EnsureVmDeps, VmStepError, wakeSuspended } from "./ensure-vm"
 import { MicrovmApi } from "./microvm"
 import { Researcher, RunPackageBody } from "./run-package"
 import { FakeDb } from "../test/researcher-dashboard-fake-db"
@@ -35,7 +35,9 @@ beforeEach(() => {
     currentImageVersion: jest.fn().mockResolvedValue("7"),
     get: jest.fn().mockResolvedValue(null),
     run: jest.fn().mockResolvedValue({ microvmId: "vm-new", imageVersion: "7" }),
-    resume: jest.fn().mockResolvedValue(undefined)
+    resume: jest.fn().mockResolvedValue(undefined),
+    suspend: jest.fn().mockResolvedValue(undefined),
+    terminate: jest.fn().mockResolvedValue(undefined)
   }
   fetchImpl = jest.fn().mockResolvedValue(okResponse({ token: "ccd_minted", expires_at: "later", user_id: 3 }))
   deps = {
@@ -86,7 +88,7 @@ describe("ensureVm", () => {
 
     await ensureVm(deps, who, body())
 
-    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-new", image_version: "7", launching_until: null })
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-new", image_version: "7", launching_until: null, launched_at: TIMESTAMP, resumed_at: null })
     expect(db.docs.get(RUNNER_PATH)).toEqual({
       queue: [{ class_hash: "a", package_key: "projects__20__x" }],
       state: "starting",
@@ -95,6 +97,15 @@ describe("ensureVm", () => {
       started_at: TIMESTAMP,
       updated_at: TIMESTAMP
     })
+  })
+
+  it("clears the last VM's resumed_at when it records a launch", async () => {
+    recordVm({ microvm_id: "vm-old", resumed_at: "an old resume" })
+    microvms.get.mockResolvedValue({ state: "TERMINATED" })
+
+    await ensureVm(deps, who, body())
+
+    expect(db.docs.get(VM_PATH)).toMatchObject({ microvm_id: "vm-new", resumed_at: null })
   })
 
   it.each([["TERMINATED"], ["TERMINATING"]])("launches when the recorded VM is %s", async state => {
@@ -118,6 +129,7 @@ describe("ensureVm", () => {
 
     expect(await ensureVm(deps, who, body())).toBe("resumed")
     expect(microvms.resume).toHaveBeenCalledWith("vm-old")
+    expect(db.docs.get(VM_PATH)).toMatchObject({ resumed_at: TIMESTAMP })
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(microvms.run).not.toHaveBeenCalled()
   })
@@ -276,5 +288,33 @@ describe("ensureVm", () => {
     await expect(ensureVm(deps, who, body({ session_token: "x".repeat(17000) }))).rejects.toMatchObject({ status: 500 })
     expect(microvms.run).not.toHaveBeenCalled()
     expect(db.docs.get(VM_PATH)).toEqual({ launching_until: null })
+  })
+})
+
+describe("wakeSuspended", () => {
+  it("writes resumed_at before it calls ResumeMicrovm", async () => {
+    recordVm({ microvm_id: "vm-old" })
+    let seenAtResume: unknown
+    microvms.resume.mockImplementation(async () => { seenAtResume = db.docs.get(VM_PATH)?.resumed_at })
+
+    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" })).toBe("resumed")
+    expect(seenAtResume).toBe(TIMESTAMP)
+  })
+
+  it("writes no resumed_at when vms/ records another VM, and still resumes the one it was given", async () => {
+    recordVm({ microvm_id: "vm-newer" })
+
+    await wakeSuspended(deps, who, { microvm_id: "vm-old" })
+
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-newer" })
+    expect(microvms.resume).toHaveBeenCalledWith("vm-old")
+  })
+
+  it("answers 502 when ResumeMicrovm fails, with resumed_at already written", async () => {
+    recordVm({ microvm_id: "vm-old" })
+    microvms.resume.mockRejectedValue(new Error("ConflictException"))
+
+    await expect(wakeSuspended(deps, who, { microvm_id: "vm-old" })).rejects.toMatchObject({ status: 502 })
+    expect(db.docs.get(VM_PATH)).toMatchObject({ resumed_at: TIMESTAMP })
   })
 })

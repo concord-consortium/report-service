@@ -3,15 +3,16 @@ import {
   GetMicrovmImageCommand,
   LambdaMicrovmsClient,
   ResumeMicrovmCommand,
-  RunMicrovmCommand
+  RunMicrovmCommand,
+  SuspendMicrovmCommand,
+  TerminateMicrovmCommand
 } from "@aws-sdk/client-lambda-microvms"
 import type { AwsCredentials } from "./aws-credentials"
-import { UPSTREAM_TIMEOUT_MS } from "./ensure-vm"
+import { MAXIMUM_DURATION_SECONDS, UPSTREAM_TIMEOUT_MS } from "./ensure-vm"
+import { REGION } from "./region"
 
-// The runner stack's region
-const REGION = "us-east-1"
-// A VM's maximum life, which also bounds how long an old image keeps serving
-const MAXIMUM_DURATION_SECONDS = 8 * 60 * 60
+// RunMicrovm takes the connector's full ARN; the bare name is refused
+const INTERNET_EGRESS = `arn:aws:lambda:${REGION}:aws:network-connector:aws-network-connector:INTERNET_EGRESS`
 
 /**
  * The MicroVM calls the function makes. There is deliberately no auth-token method: nothing
@@ -24,6 +25,8 @@ export interface MicrovmApi {
   run(input: { imageIdentifier: string; imageVersion?: string; executionRoleArn: string; runHookPayload: string }):
     Promise<{ microvmId: string; imageVersion?: string }>
   resume(microvmId: string): Promise<void>
+  suspend(microvmId: string): Promise<void>
+  terminate(microvmId: string): Promise<void>
 }
 
 export function makeMicrovmApi(credentials: AwsCredentials | undefined): MicrovmApi {
@@ -60,7 +63,7 @@ export function makeMicrovmApi(credentials: AwsCredentials | undefined): Microvm
         imageVersion,
         executionRoleArn,
         runHookPayload,
-        egressNetworkConnectors: ["INTERNET_EGRESS"],
+        egressNetworkConnectors: [INTERNET_EGRESS],
         maximumDurationInSeconds: MAXIMUM_DURATION_SECONDS
       }))
       if (!vm.microvmId) throw new Error("RunMicrovm returned no microvm id")
@@ -69,6 +72,14 @@ export function makeMicrovmApi(credentials: AwsCredentials | undefined): Microvm
 
     async resume(microvmId) {
       await client.send(new ResumeMicrovmCommand({ microvmIdentifier: microvmId }))
+    },
+
+    async suspend(microvmId) {
+      await client.send(new SuspendMicrovmCommand({ microvmIdentifier: microvmId }))
+    },
+
+    async terminate(microvmId) {
+      await client.send(new TerminateMicrovmCommand({ microvmIdentifier: microvmId }))
     }
   }
 }
