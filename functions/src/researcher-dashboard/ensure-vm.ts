@@ -83,7 +83,8 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   }
 
   if (state === "SUSPENDED") {
-    return wakeSuspended(deps, who, { microvm_id: seen!.microvm_id!, image_version: seen!.image_version })
+    // a VM recorded since the read above is the one to take the work, and its launch is under way
+    return await wakeSuspended(deps, who, { microvm_id: seen!.microvm_id!, image_version: seen!.image_version }) ? "resumed" : "launching"
   }
   if (state === "SUSPENDING") return "suspending"
   if (!LAUNCH_STATES.includes(state)) return "running"
@@ -119,28 +120,38 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   return "launched"
 }
 
-export type WakeDeps = Pick<EnsureVmDeps, "db" | "timestamp"> & { microvms: Pick<MicrovmApi, "resume"> }
+export type WakeDeps = Pick<EnsureVmDeps, "db" | "timestamp"> & {
+  microvms: Pick<MicrovmApi, "resume">
+  /** Asked just before ResumeMicrovm; the watchdog passes its budget. */
+  mayCall?(): boolean
+}
 
 /**
  * Wakes a suspended VM. Both ensureVm and the watchdog decide here, given the VM as `vms/`
  * records it, so a rule about which suspended VMs to wake has one place to live. `resumed_at` is
  * written before the resume, so no watchdog pass sees the VM running with only the run's
- * pre-suspend heartbeat.
+ * pre-suspend heartbeat. Resumes nothing, and answers false, once `vms/` records another VM, which
+ * is the one to take the work, or when `mayCall` says no.
  */
-export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string }): Promise<VmOutcome> {
+export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string }): Promise<boolean> {
   const vmRef = deps.db.doc(vmPath(who.portal, who.platformUserId))
-  await deps.db.runTransaction(async tx => {
+  const recorded = await deps.db.runTransaction(async tx => {
     const current = (await tx.get(vmRef)).data() as VmDoc | undefined
-    if (current?.microvm_id === vm.microvm_id) {
-      tx.set(vmRef, { resumed_at: deps.timestamp() }, { merge: true })
+    if (current?.microvm_id !== vm.microvm_id) {
+      return false
     }
+    tx.set(vmRef, { resumed_at: deps.timestamp() }, { merge: true })
+    return true
   })
+  if (!recorded || (deps.mayCall && !deps.mayCall())) {
+    return false
+  }
   try {
     await deps.microvms.resume(vm.microvm_id)
   } catch (e) {
     throw new VmStepError(502, `ResumeMicrovm failed: ${reason(e)}`)
   }
-  return "resumed"
+  return true
 }
 
 // Only on the launch branch: minting revokes the researcher's previous token, which a live VM

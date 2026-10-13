@@ -32,7 +32,7 @@ describe("sessionPolicy", () => {
     expect(() => sessionPolicy(BUCKET, id)).toThrow(BrokerRefusal)
   })
 
-  it.each(["", "*", "bucket*", "b?", "Bucket", "a"])("refuses the bucket %j", bucket => {
+  it.each(["", "*", "bucket*", "b?", "Bucket", "a", "a..b", "192.168.0.1", "xn--bucket", "sthree-bucket", "bucket-s3alias", "bucket--ol-s3"])("refuses the bucket %j", bucket => {
     expect(() => sessionPolicy(bucket, "136")).toThrow(BrokerRefusal)
   })
 })

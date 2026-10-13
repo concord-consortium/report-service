@@ -458,6 +458,7 @@ describe("idle and suspended VMs", () => {
 
   it("logs a ResumeMicrovm that fails", async () => {
     states["vm-1"] = "SUSPENDED"
+    db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1" })
     db.docs.set(WORK, { packages: [queued("users/1/q")], updated_at: NOW - MIN })
     ;(deps.microvms.resume as jest.Mock).mockRejectedValue(new Error("throttled"))
     expect(await runWatchdog(deps)).toEqual(["watchdog.upstream_failed"])
@@ -478,6 +479,23 @@ describe("idle and suspended VMs", () => {
     }) as never)
     expect(await runWatchdog(deps)).toEqual(["watchdog.upstream_failed"])
     logged("watchdog.upstream_failed", { call: "Firestore" })
+    expect(deps.microvms.resume).not.toHaveBeenCalled()
+  })
+
+  it("starts no ResumeMicrovm when the wake's own write runs past the budget", async () => {
+    states["vm-1"] = "SUSPENDED"
+    db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1" })
+    db.docs.set(WORK, { packages: [queued("users/1/q")], updated_at: NOW - MIN })
+    const transact = db.runTransaction.bind(db)
+    let calls = 0
+    jest.spyOn(db, "runTransaction").mockImplementation((async (fn: never) => {
+      calls += 1
+      if (calls === 2) {
+        clock += 31 * 1000
+      }
+      return transact(fn)
+    }) as never)
+    expect(await runWatchdog(deps)).toEqual([])
     expect(deps.microvms.resume).not.toHaveBeenCalled()
   })
 

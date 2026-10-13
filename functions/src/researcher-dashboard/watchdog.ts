@@ -252,8 +252,9 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
           continue
         }
         try {
-          await wakeSuspended(deps, who, { microvm_id: vm.microvmId, image_version: vm.imageVersion })
-          act("watchdog.vm_resumed", { ...data, queued })
+          if (await wakeSuspended({ ...deps, mayCall: inBudget }, who, { microvm_id: vm.microvmId, image_version: vm.imageVersion })) {
+            act("watchdog.vm_resumed", { ...data, queued })
+          }
         } catch (e) {
           act("watchdog.upstream_failed", { ...data, call: e instanceof VmStepError ? "ResumeMicrovm" : "Firestore", error: reason(e) })
         }

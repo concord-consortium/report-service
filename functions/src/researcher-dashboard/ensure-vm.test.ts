@@ -134,6 +134,17 @@ describe("ensureVm", () => {
     expect(microvms.run).not.toHaveBeenCalled()
   })
 
+  it("resumes nothing when a newer VM was recorded after it read the suspended one", async () => {
+    recordVm({ microvm_id: "vm-old" })
+    microvms.get.mockImplementation(async () => {
+      recordVm({ microvm_id: "vm-newer" })
+      return { state: "SUSPENDED" }
+    })
+
+    expect(await ensureVm(deps, who, body())).toBe("launching")
+    expect(microvms.resume).not.toHaveBeenCalled()
+  })
+
   it.each([["RUNNING"], ["PENDING"]])("leaves a %s VM alone and does not mint", async state => {
     recordVm({ microvm_id: "vm-old" })
     microvms.get.mockResolvedValue({ state })
@@ -297,17 +308,26 @@ describe("wakeSuspended", () => {
     let seenAtResume: unknown
     microvms.resume.mockImplementation(async () => { seenAtResume = db.docs.get(VM_PATH)?.resumed_at })
 
-    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" })).toBe("resumed")
+    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" })).toBe(true)
     expect(seenAtResume).toBe(TIMESTAMP)
   })
 
-  it("writes no resumed_at when vms/ records another VM, and still resumes the one it was given", async () => {
+  it("writes and resumes nothing when vms/ records another VM", async () => {
     recordVm({ microvm_id: "vm-newer" })
 
-    await wakeSuspended(deps, who, { microvm_id: "vm-old" })
+    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" })).toBe(false)
 
     expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-newer" })
-    expect(microvms.resume).toHaveBeenCalledWith("vm-old")
+    expect(microvms.resume).not.toHaveBeenCalled()
+  })
+
+  it("resumes nothing when mayCall says no, with resumed_at written", async () => {
+    recordVm({ microvm_id: "vm-old" })
+
+    expect(await wakeSuspended({ ...deps, mayCall: () => false }, who, { microvm_id: "vm-old" })).toBe(false)
+
+    expect(microvms.resume).not.toHaveBeenCalled()
+    expect(db.docs.get(VM_PATH)).toMatchObject({ resumed_at: TIMESTAMP })
   })
 
   it("answers 502 when ResumeMicrovm fails, with resumed_at already written", async () => {
