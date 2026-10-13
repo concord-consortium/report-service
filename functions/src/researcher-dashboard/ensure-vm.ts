@@ -54,7 +54,7 @@ export class VmStepError extends Error {
   }
 }
 
-const reason = (e: unknown) => e instanceof Error ? e.message : String(e)
+export const reason = (e: unknown) => e instanceof Error ? e.message : String(e)
 
 export const within = <T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> => new Promise((resolve, reject) => {
   const timer = setTimeout(() => {

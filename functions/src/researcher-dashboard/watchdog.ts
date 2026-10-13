@@ -1,4 +1,4 @@
-import { MAXIMUM_DURATION_SECONDS, VmDoc, wakeSuspended } from "./ensure-vm"
+import { MAXIMUM_DURATION_SECONDS, reason, VmDoc, VmStepError, wakeSuspended } from "./ensure-vm"
 import { resultPath, runnerPath, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
 import { heldBy, prune, readQueue, toMillis, withStanding } from "./queue"
@@ -67,7 +67,6 @@ export interface WatchdogDeps {
   log: { info(message: string, data: object): void }
 }
 
-const reason = (e: unknown) => e instanceof Error ? e.message : String(e)
 const researcher = (portal: string, platformUserId: string): Researcher =>
   ({ portal, platformUserId, uid: Number(platformUserId), platformId: "" })
 
@@ -243,7 +242,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
           await wakeSuspended(deps, who, { microvm_id: vm.microvmId, image_version: vm.imageVersion })
           act("watchdog.vm_resumed", { ...data, queued })
         } catch (e) {
-          act("watchdog.upstream_failed", { ...data, call: "ResumeMicrovm", error: reason(e) })
+          act("watchdog.upstream_failed", { ...data, call: e instanceof VmStepError ? "ResumeMicrovm" : "Firestore", error: reason(e) })
         }
         continue
       }

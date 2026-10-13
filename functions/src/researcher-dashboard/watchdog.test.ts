@@ -449,6 +449,23 @@ describe("idle and suspended VMs", () => {
     logged("watchdog.upstream_failed", { call: "ResumeMicrovm" })
   })
 
+  it("logs a failed resumed_at write as Firestore's, without calling ResumeMicrovm", async () => {
+    states["vm-1"] = "SUSPENDED"
+    db.docs.set(WORK, { packages: [queued("users/1/q")], updated_at: NOW - MIN })
+    const transact = db.runTransaction.bind(db)
+    let calls = 0
+    jest.spyOn(db, "runTransaction").mockImplementation((async (fn: never) => {
+      calls += 1
+      if (calls === 2) {
+        throw new Error("contention")
+      }
+      return transact(fn)
+    }) as never)
+    expect(await runWatchdog(deps)).toEqual(["watchdog.upstream_failed"])
+    logged("watchdog.upstream_failed", { call: "Firestore" })
+    expect(deps.microvms.resume).not.toHaveBeenCalled()
+  })
+
   it("leaves a suspended VM with nothing queued asleep", async () => {
     states["vm-1"] = "SUSPENDED"
     expect(await runWatchdog(deps)).toEqual([])

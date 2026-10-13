@@ -1,5 +1,5 @@
 import express from "express"
-import { MAXIMUM_DURATION_SECONDS, UPSTREAM_TIMEOUT_MS, VmDoc, within } from "./ensure-vm"
+import { MAXIMUM_DURATION_SECONDS, reason, UPSTREAM_TIMEOUT_MS, VmDoc, within } from "./ensure-vm"
 import { packageKey, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
 import { heldBy, prune, readQueue, toMillis, withStanding } from "./queue"
@@ -23,7 +23,6 @@ export interface VmRouteDeps {
   config: { bucket: string; brokerRoleArn: string; audience: string }
 }
 
-const reason = (e: unknown) => e instanceof Error ? e.message : String(e)
 
 const microvmIdOf = (body: unknown): string | null => {
   const id = (body as { microvm_id?: unknown } | null)?.microvm_id

@@ -225,6 +225,7 @@ describe("POST /work", () => {
     seed([entry("users/1/a")])
     expect((await post("/work", { microvm_id: "vm-stray" })).status).toBe(409)
     expect((await post("/work", {})).status).toBe(400)
+    expect((await post("/work", { microvm_id: 5 })).status).toBe(400)
   })
 
   it("passes rigse's tokens through for a queue recorded for another project", async () => {
@@ -245,6 +246,13 @@ describe("POST /work", () => {
 })
 
 describe("POST /idle", () => {
+  it("refuses a missing or non-string microvm_id with 400 and suspends nothing", async () => {
+    seed([entry("users/1/a")], { "users/1/a": "done" })
+    expect((await post("/idle", {})).status).toBe(400)
+    expect((await post("/idle", { microvm_id: 5 })).status).toBe(400)
+    expect(deps.microvms.suspend).not.toHaveBeenCalled()
+  })
+
   it("suspends the recorded VM when nothing is queued", async () => {
     seed([entry("users/1/a")], { "users/1/a": "done" })
     const res = await post("/idle")
