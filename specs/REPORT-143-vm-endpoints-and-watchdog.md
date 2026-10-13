@@ -1,50 +1,22 @@
 # report-service: everything the VM calls, and the watchdog
 
 **Jira**: https://concord-consortium.atlassian.net/browse/REPORT-143
-**Repo**: https://github.com/concord-consortium/report-service
-**Branch**: `REPORT-143-vm-endpoints-and-watchdog`, from `master`, rebased onto `f5adf65` (REPORT-141, REPORT-142 and REPORT-167 merged), no child branch in report-service
-**Implementation Spec**: [implementation.md](implementation.md)
-**Status**: **In Development**
+
+**Status**: **Closed**
 
 ## Overview
 
 The report-service function's `researcherDashboard` app gains the three endpoints a researcher's MicroVM calls with its own Firebase session: `POST /work`, which hands the VM its queued packages and the credentials to run them; `POST /idle`, which suspends the VM once it has nothing to do; and `POST /storage-credentials`, the storage broker, which returns AWS credentials limited to that researcher's S3 prefix and the published packages, assumed with the function's own Google identity rather than any AWS key. A new scheduled function, the watchdog, runs every minute and reconciles what a VM cannot report for itself: a run whose runner has stopped reporting, because its VM died, hung, lost its final write or was suspended mid-run, an idle VM that never asked to be suspended, and a suspended VM with work queued for it. The dashboard's Firestore tree gets its rules, with emulator tests, for the first time on this branch.
 
-## Project Owner Overview
-
 When a researcher runs packages from the dashboard, the portal already hands the work to report-service, which records it and starts or wakes that researcher's private machine (REPORT-141). This story is the other half: the machine now asks report-service for its work instead of being sent it, asks to be put to sleep when it has finished, and asks for storage credentials that reach only its own researcher's data. That last part is what lets packages written by anyone other than Concord run safely, because a stranger's package can no longer reach another researcher's student data.
 
 It also adds a safety net. A machine that crashes, hangs, or is put to sleep in the middle of a run cannot report that anything went wrong, so the machine checks in every minute while it runs a package, and a scheduled check that runs every minute stops a machine that has gone quiet for five minutes and marks its run as failed, puts forgotten idle machines to sleep so they stop costing money, and wakes a sleeping machine that has work waiting. And it adds the database rules that decide which browser and which machine may read or write each part of the dashboard's data, so a researcher's browser can read their own results but can never see the credentials queued for their machine.
-
-## Background
-
-**The story's scope** is its Jira description, against `final-design.md` sections 7.2, 9, 10, 11.3 and 11.4. Where they differ, this spec decides: the description's first watchdog pass, which fails a run only past its declared duration plus a margin, is replaced by R17's heartbeat lease (Q13). Two points the description leaves out are in scope: `packages/` in the broker's policy is all of `packages/*` (Doug, 2026-09-25, RD-1 pass 2's Q1), and the watchdog resumes any `SUSPENDED` VM whose `work/` document has packages outstanding, the clause REPORT-141 added to this story (REPORT-141's closed spec, R16, Doug, 2026-09-23; `speccing.md`, "REPORT-141 changed three contracts"), which is R19.
-
-**What exists on `master`.** REPORT-141 and REPORT-142, both merged (`e07b985`, `067a1c4`), built the `researcherDashboard` first-generation HTTPS function with two routes, `/run-package` and `/derive-profile`, both behind `portalAssertionAuth`, which accepts only rigse's `aud: report-service-functions` assertion (`functions/src/researcher-dashboard/app.ts`). `app.use(portalAssertionAuth(...))` is applied to the whole app, so a route added to it today would refuse a VM's Firebase token. The function's wiring, caches and definitions live in `functions/src/researcher-dashboard/index.ts`, and `functions/src/index.ts` only imports `researcherDashboard` and `deriveProfileWorker` and keys them in `module.exports`. The function runs as its own service account, `researcher-dashboard@<project>.iam.gserviceaccount.com` (`runWith({ serviceAccount: "researcher-dashboard@" })`), and holds no AWS key: `aws-credentials.ts`'s `webIdentityCredentials` mints a Google ID token for `RD_AWS_AUDIENCE` on every refresh and exchanges it with `fromWebToken` for `RD_LAUNCHER_ROLE_ARN`'s credentials, and `functionCredentials` makes no AWS call from the emulator unless `RD_EMULATOR_AWS=default-chain`. It calls only `GetMicrovmImage`, `GetMicrovm`, `RunMicrovm` and `ResumeMicrovm` (`microvm.ts`). RD-1's `LauncherRole` also grants `SuspendMicrovm` and `TerminateMicrovm` and no `sts:` action, and its `BrokerRole` trusts the same Google identity directly, so the broker reaches it with an unsigned `AssumeRoleWithWebIdentity` and no role chain (RD-1 R8, R10, R11; `speccing.md`, "RD-1's runner stack, as spec'd"). The account and its grants come from `functions/scripts/setup-researcher-dashboard-iam.sh`, which each story extends with the grants its own code needs. It exists in both projects, unique IDs `101230238764588293065` (report-service-dev) and `114768968256413137012` (report-service-pro), with `roles/datastore.user` and Service Account User on itself.
-
-**The documents the function writes** (REPORT-141 as built, `run-package.ts`, `ensure-vm.ts`, `firestore-paths.ts`), all under `researcher_dashboard/{portal}`, where `{portal}` is the verified `iss`'s host with dots as underscores:
-
-- `work/{platform_user_id}`: `packages: [{class_hash, identity, version, checksum, catalog_id}]`, `scopes: {<class_hash>: {scope, class_tokens}}`, and the latest request's `session_token`, `firebase_project` and `updated_at`.
-- `runners/{platform_user_id}`: `queue` as `{class_hash, package_key}` pairs, `platform_id` and `updated_at` on every append; on a launch also `state: starting`, `microvm_id` and `started_at`.
-- `vms/{platform_user_id}`: `microvm_id`, `image_version` and the launch claim `launching_until`.
-- `classes/{class_hash}/researchers/{platform_user_id}/results/{package_key}`: `status: queued`, `queued_at`, `updated_at` (a server timestamp), `platform_id` and `package: {identity, version, checksum}`, written whole for each package appended.
-- `classes/{class_hash}` (REPORT-142): the authored profile, with `platform_id`.
-
-**Nothing ever leaves `work/`.** REPORT-141's `queuePackages` treats every entry already in `work/` as queued, whatever its result says, and counts every entry against the cap (`RD_QUEUE_CAP`, 20). REPORT-141 left taking work to this story and specified no removal. A throwaway test against the code on this branch showed both consequences: a second request for a package whose result is `done` appends nothing and leaves the result `done`, so a re-run silently does nothing; and with a cap of 2, a third package is refused although one of the two is finished. So this story defines when an entry leaves the queue (R7, R8).
-
-**The runner the endpoints serve** is RD-4 pass 2's (`RD-4-pass-2-pull-loop` in researcher-dashboard). It polls `/work` every 30 seconds through a 5-minute idle period, then flushes and calls `/idle` with its `microvm_id`, and builds every S3 client from `/storage-credentials`, fetching again within 5 minutes of `expiration` (its R10, R14, R15). Its side of the heartbeat lease is in Technical Notes, "The runner's side of the lease". The runner on researcher-dashboard's `main` is the spike's: it takes work by dispatch (`POST /run-package` into the VM), never calls the function, learns its own MicroVM id from Lambda's `/run` hook body (`runner/server/runner.js`, `run({ microvmId, runHookPayload })`), and writes its status to the spike's `researchers/{platform_user_id}` path with ISO-string timestamps.
-
-**The tokens.** rigse mints every runner token as a Firebase custom token for one project (`ResearcherDashboard::RunnerTokens`, `rails/lib/firebase_token_claims.rb` on `RIGSE-368-dashboard-api`): `uid` is the MD5 of `<site_url>/users/<id>`, and the claims are `platform_id` (the site URL), `platform_user_id` (an integer), `user_id` (that URL), `user_type: researcher` and `researcher_dashboard_runner: true`, plus `class_hash` on a class token. A custom token lives at most one hour (`final-design.md` 7.1; `speccing.md`, "A Firebase custom token lives at most one hour"). The browser's researcher token (`jwt/firebase?researcher=true`) carries `user_type: researcher`, `class_hash` and the same identity, without the runner claim. Once the runner signs in, the ID token it presents carries these claims at top level, `platform_user_id` as a number and `platform_id` with the site URL's trailing slash if it has one; its `user_id` is Firebase's uid, not rigse's URL (Technical Notes, "Checked against the emulators").
-
-**The deployed rules.** report-service-pro's live Firestore rules equal this branch's `firestore.rules`; report-service-dev's are the spike's (`RIGSE-365-researcher-dashboard-rules`, deployed 2026-09-18), which grant the spike runner writes under `researchers/{platform_user_id}` and a shared `classes/{class_hash}/results/`. Both were read on 2026-09-25 through the Firebase Rules API, and neither release has changed since (report-service-dev's `cloud.firestore` release last updated 2026-09-18, report-service-pro's 2026-08-04, read 2026-10-07). This story's rules deploy replaces the spike's on report-service-dev, after which the spike runner's status writes are refused. Both projects hold 26 composite indexes, the same count as `firestore.indexes.json`.
-
-**Section 3's two strings exist only on the spike.** `firestore.rules`'s "Analyze Class results" and `index.ts`'s "Runs an analysis package" are on `RIGSE-365-researcher-dashboard-rules` and not on this branch, so under the branching rule their renames are set aside (`fy26-sprint-26.md`, "Story branches are never based on a spike branch"). The new rules block is headed "Package results" in any case.
 
 ## Requirements
 
 ### The suspend-hook verification (the story's first task)
 
-- **R1.** The question section 17 names is answered by a real launch and recorded: does an API-initiated `SuspendMicrovm` deliver the `/suspend` lifecycle hook to the VM? The answer, either way, is written into this spec and into `final-design.md` 7.2(b), replacing "That last part rests on one thing not yet verified".
+- **R1.** *(not yet run: it runs after the deploy; see Not Yet Implemented)* The question section 17 names is answered by a real launch and recorded: does an API-initiated `SuspendMicrovm` deliver the `/suspend` lifecycle hook to the VM? The answer, either way, is written into this spec and into `final-design.md` 7.2(b), replacing "That last part rests on one thing not yet verified".
   - **It needs RD-4 pass 2's runner.** The runner on researcher-dashboard's `main` cannot finish `/run` on the QA stack, so no VM on its image reaches `ready` to be suspended: `run()` awaits its status write to the spike's `researchers/` path with no catch, and this story's rules refuse that write; and its package pull uses the default AWS credential chain, while RD-1's `ExecutionRole` grants only CloudWatch logs. Either failure makes `/run` answer 500, and Lambda destroys the VM.
   - **When it can be run**: after RD-4 pass 2's runner is released to the QA stack (`landing-tracker.md` 3.4), with this story deployed to `report-service-dev`. That runner calls `/idle` after its 5-minute idle period, and `/idle`'s `SuspendMicrovm` (R10) is the API-initiated suspend. The evidence is the runner's CloudWatch log group: the `/suspend` hook's lines between its last activity and `SUSPENDED`, and no `lifecycle.resume_without_suspend` warning when it is next resumed.
   - **What the spec assumes meanwhile**: that the hook fires, as the evidence in `final-design.md` 7.2(b) indicates. Nothing in this story's code depends on it: the function only calls `SuspendMicrovm`, and the flush is the runner's.
@@ -91,7 +63,7 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 - **R13.** The broker refuses to mint unless `<id>` matches `^[1-9][0-9]*$` (R3 already refuses the request), and unless the bucket is a valid S3 bucket name, which contains no `*` or `?`; both are checked before a token is minted. No code path assumes the broker role without the session policy: the broker's one call builds the policy itself from the id and the bucket, so no caller can leave it out; the broker role setting is handed to that call and to nothing else, so the launcher's credential provider, which passes no policy, can never be pointed at it; and no STS client exists anywhere in the function.
 - **R14.** It answers 200 `{success: true, access_key_id, secret_access_key, session_token, expiration, bucket, prefix, region}`, where `expiration` is STS's expiry as an ISO 8601 string, which the runner checks against the wall clock before each use; `prefix` is `researchers/<id>/`; and `region` is `us-east-1`. While the broker role setting, `RD_DATA_BUCKET` or `RD_AWS_AUDIENCE` is empty it answers 503 naming them, and while `RD_DATA_BUCKET` is not a valid bucket name it answers 503 saying the broker is misconfigured (both Doug, 2026-09-25). It answers 502 with the reason when the ID token cannot be minted, when STS refuses, or when the two together take more than 10 seconds. Nothing is retried: the STS call is made once (`maxAttempts` 1).
 - **R14a.** In the emulator the broker refuses with 502 and makes no call, whatever `RD_EMULATOR_AWS` says: the emulator has no service account, and a session from the developer's own credentials would not be the function's (`final-design.md` 11.4, "The emulator").
-- **R15.** The broker is tested two ways. Unit tests assert the exact policy for a given bucket and id, that every broker call carries it with `DurationSeconds` 3600 and a freshly minted token for the stack's audience, that ids like `*`, `1*`, `?`, `0`, `-1`, `1.5` and the empty string are refused before a token is minted, and the source guard of R13. A live check, run by an operator against a stack, drives the function's own broker code with the account's ID tokens for the stack's audience, minted for the operator by the setup script's `id-token` subcommand (R27b), the operator holding OpenID Token Creator on the account from the setup script's `grant-operator` and losing it with `revoke-operator` afterward, and no AWS credential of their own (Q12). It prints the account, audience and role before any call, and asserts with real calls that one researcher's session cannot read or list another researcher's existing object, can read a published archive, cannot write, delete or list under `packages/`, and can read, write, list and delete its own prefix. The live check is a required rollout step (Doug, 2026-09-25): it runs against each stack after this story's deploy and must pass before RD-4 pass 2's runner, the first that syncs with broker credentials, is released to that stack, and its result is recorded against this spec. CI runs only the unit tests, since it holds no Google or AWS credential. No `packages-read` check precedes the deploy: RD-1 is one pass, so `BrokerRole` holds `packages-read` from the stack's creation (`speccing.md`, "The storage broker's contract for REPORT-143").
+- **R15.** *(the live check is built; its run against each stack is a rollout step not yet taken; see Not Yet Implemented)* The broker is tested two ways. Unit tests assert the exact policy for a given bucket and id, that every broker call carries it with `DurationSeconds` 3600 and a freshly minted token for the stack's audience, that ids like `*`, `1*`, `?`, `0`, `-1`, `1.5` and the empty string are refused before a token is minted, and the source guard of R13. A live check, run by an operator against a stack, drives the function's own broker code with the account's ID tokens for the stack's audience, minted for the operator by the setup script's `id-token` subcommand (R27b), the operator holding OpenID Token Creator on the account from the setup script's `grant-operator` and losing it with `revoke-operator` afterward, and no AWS credential of their own (Q12). It prints the account, audience and role before any call, and asserts with real calls that one researcher's session cannot read or list another researcher's existing object, can read a published archive, cannot write, delete or list under `packages/`, and can read, write, list and delete its own prefix. The live check is a required rollout step (Doug, 2026-09-25): it runs against each stack after this story's deploy and must pass before RD-4 pass 2's runner, the first that syncs with broker credentials, is released to that stack, and its result is recorded against this spec. CI runs only the unit tests, since it holds no Google or AWS credential. No `packages-read` check precedes the deploy: RD-1 is one pass, so `BrokerRole` holds `packages-read` from the stack's creation (`speccing.md`, "The storage broker's contract for REPORT-143").
 
 ### The watchdog
 
@@ -170,9 +142,18 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 - CLUE-692's rules in collaborative-learning, which are unrelated to this story's.
 - Section 3's two renames, which exist only on the spike (Background).
 
-## Open Questions
+## Not Yet Implemented
 
-### RESOLVED: Q1. Does the function mint `/work`'s tokens, or pass rigse's through?
+- **The suspend-hook check (R1)**: it needs a real launch on RD-4 pass 2's runner, so it runs once that runner is released to the QA stack (`landing-tracker.md` 3.4) and this story is deployed to `report-service-dev`. It does not gate the merge (Doug, 2026-09-25), but the story is not closed until its answer is recorded here and in `final-design.md` 7.2(b). The same launch shows whether `/run`'s body carries `microvmId` (Technical Notes, "The VM's own id"): the runner logs it as `microvm_id` on every line.
+  1. From the staging portal's dashboard, run any package for a staging class, which launches a VM on RD-4 pass 2's image.
+  2. Wait for the runner's CloudWatch log group (`/aws/lambda-microvms/researcher-dashboard-runner-staging`) to show the package finishing, then wait out the runner's 5-minute idle period for its `/idle` call, which suspends the VM through the API (R10).
+  3. Read the same log group for the `/suspend` hook's lines between the last activity and the VM reaching `SUSPENDED`; run another package to resume it, and check that no `lifecycle.resume_without_suspend` warning follows.
+  4. Record the answer, with the `microvm_id` and the times, in this spec's R1 and in `final-design.md` 7.2(b), and terminate the VM.
+- **The broker's live check against each stack (R15)**: `storage-broker.live.ts` is built and skips without settings; it is a required rollout step after this story's deploy, run before RD-4 pass 2's runner is released to that stack, and its result is recorded against this spec. `setup-researcher-dashboard-iam.sh apply` is likewise run in report-service-dev and report-service-pro before that release (R27a).
+
+## Decisions
+
+### Q1. Does the function mint `/work`'s tokens, or pass rigse's through?
 **Context**: `final-design.md` 7.1(b) says every `/work` response carries "a freshly minted session token and the class tokens that run needs". Minting needs a signing grant the function's account lacks by default (Technical Notes, "Signing `/work`'s tokens"). rigse mints the tokens when a run is requested, and a custom token cannot be exchanged more than an hour after it is minted. Every resume follows a request or the watchdog's resume of work queued during a suspend, so the latest tokens are minutes old then. The case that breaks is a long queue: a researcher queues a two-hour package for class A, then a package for class B ten minutes later. The runner learns of B's package at its next `/work`, after A's finishes, and B's tokens are then 110 minutes old, so it cannot sign in to write B's result.
 **Options considered**:
 - A) Pass rigse's tokens through. No infrastructure change. The long-queue case fails at the runner's sign-in, and RD-4 pass 2 has to report it as a failed run naming the reason.
@@ -183,7 +164,9 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 
 **Decision**: B (Doug, 2026-09-25). The function mints the session token and its own project's class tokens on every `/work`, and passes CLUE's through. It signs as `researcher-dashboard@<project>`, which needs `roles/iam.serviceAccountTokenCreator` on itself and the IAM Service Account Credentials API enabled, both from the setup script (R27a), before RD-4 pass 2's runner is released.
 
-### RESOLVED: Q2. Should the rules enforce the write contract the watchdog relies on?
+---
+
+### Q2. Should the rules enforce the write contract the watchdog relies on?
 **Context**: The watchdog reads three fields the runner writes when it claims a package: `updated_at`, `expected_duration_seconds` and `microvm_id` (R17). Firestore compares a range only against values of the same type, so a result whose `updated_at` is an ISO string, as the spike runner writes today, is invisible to the stalled-run query and never failed. A client-supplied timestamp also comes from the VM's clock, which is not real after a suspend (`final-design.md` 7.1), so a resumed VM could stamp a fresh run with a time that makes it look stalled, or a stalled one look fresh. Adding the constraint changes what RD-4 pass 2 must write, which is a contract another story consumes.
 **Options considered**:
 - A) The rules require every runner write to `runners/…` and `…/results/…` to set `updated_at` to the server's time (`request.resource.data.updated_at == request.time`, which the client SDK's `serverTimestamp()` satisfies), and a write of a result as `running` to carry `expected_duration_seconds` as an integer from 1 to 28,800 and `microvm_id` as a string. Emulator tests cover each refusal.
@@ -193,10 +176,14 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 
 **Decision**: A (Doug, 2026-09-25). The rules require a server-time `updated_at` on every runner write to `runners/…` and `…/results/…`, and `expected_duration_seconds` (an integer from 1 to 28,800), `microvm_id` (a string) and, since Q13, `heartbeat_seconds` on a result written `running`. Recorded as R22a.
 
-### RESOLVED: Q3. Does this branch point `functions/.env.report-service-dev` at the QA runner stack?
+---
+
+### Q3. Does this branch point `functions/.env.report-service-dev` at the QA runner stack?
 **Decision**: Yes (Doug, 2026-09-25). The branch carries whichever of the QA stack's launch settings `master` lacks, each checked against the stack's outputs before the deploy, so the deploy that introduces `RD_BROKER_ROLE_ARN` is the one that sets it. Recorded as R26a.
 
-### RESOLVED: Q4. Does the function still publish metrics, now that no alarms are built?
+---
+
+### Q4. Does the function still publish metrics, now that no alarms are built?
 **Context**: `final-design.md` 16 has the function publish "watchdog terminations and VMs the watchdog had to suspend", and says whether they are still worth publishing without alarms "is left to RD-4 and REPORT-143" (Doug, 2026-09-25, "No alarms are built"). R21 already logs every action as a structured line.
 **Options considered**:
 - A) Structured log lines only (R21), with stable event names that a log-based metric can count later with no code change.
@@ -207,24 +194,36 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 
 **Decision**: A (Doug, 2026-09-25). Structured log lines only, with the stable event names in R21, and no Cloud Monitoring metrics.
 
-### RESOLVED: Q5. When does an entry leave `work/`, given nothing removes one today?
+---
+
+### Q5. When does an entry leave `work/`, given nothing removes one today?
 **Context**: Background, "Nothing ever leaves `work/`". Three shapes were considered: `/work` takes the work and removes it; the runner reports completions in its next call; or the queue is pruned by the status the runner already writes on each result.
 **Decision** (from the code): pruned by result status (R5 to R8). A take loses work if the VM dies between `/work` and its claim, and leaves the page showing work nobody holds. A completion report adds a field to every runner call and trusts it. Result status is written by the runner on every claim and finish, by the watchdog when it fails a run, and read by the function with the Admin SDK in the same transaction that reads the queue, so nothing new is written and no work can be lost. The cost is reading up to 20 result documents per transaction, the cap's size.
 
-### RESOLVED: Q6. Which VM does `/idle` suspend?
+---
+
+### Q6. Which VM does `/idle` suspend?
 **Decision** (from the code): the one the caller names, and only if it is the recorded one (R10). The runner knows its own id (`runner.js`, `run({ microvmId })`). Suspending the recorded VM without the check would let a stray VM, which REPORT-141's lapsed launch claim can leave, suspend the researcher's current VM mid-run.
 
-### RESOLVED: Q7. How does the watchdog find the VMs to sweep?
+---
+
+### Q7. How does the watchdog find the VMs to sweep?
 **Context**: `final-design.md` 7.2(c) sweeps "a session", which could be read from the runner documents, whose `state` a dead VM leaves stale, or from `vms/`, which accumulates one document per researcher ever.
 **Decision**: from `vms/` launched within the last eight hours and ten minutes (R20), so the set is the researchers with a VM that can still exist, however many researchers there have ever been. `get-microvm` is the authority on state (`final-design.md` 7.3), so the runner document is read only for `current_package` and `updated_at`.
 
-### RESOLVED: Q8. What does the watchdog write to the runner document when a VM is gone?
+---
+
+### Q8. What does the watchdog write to the runner document when a VM is gone?
 **Decision**: `state: terminated`, with `current_package` cleared and the queue kept, once `GetMicrovm` no longer knows the VM or reports it `TERMINATED`, and only while the document records that VM (R17, R19a); terminating a VM writes nothing. `final-design.md` 7.3 notes that a suspended VM that is terminated leaves the document saying `suspended` for a VM that no longer exists. The watchdog is the one component that sees every recorded VM's state, and the page renders from that document. The queue is kept, since the work is still queued and the researcher's next request launches a VM that takes it.
 
-### RESOLVED: Q9. The idle sweep's threshold, and the stalled-run margin
+---
+
+### Q9. The idle sweep's threshold, and the stalled-run margin
 **Decision**: 30 minutes of nothing for an idle VM, and 10 minutes past a run's declared duration for a VM suspended mid-run (an awake VM's run is judged by the heartbeat lease, Q13), both constants in the code rather than params. Neither number is in the design. 30 minutes leaves the runner's own idle period (RD-4's setting) room to act first, and costs at most about $0.13 of running time for a VM that died. 10 minutes is well above the spacing of the runner's result writes and below any declared duration worth waiting on. Each is one constant to change.
 
-### RESOLVED: Q10. Judgment call: how does the broker make its keyless call?
+---
+
+### Q10. Judgment call: how does the broker make its keyless call?
 **Options considered**:
 - A) Call `fromWebToken` once per session, with `policy` and `durationSeconds`, from the broker's own module.
 - B) Give the launcher's `webIdentityCredentials` an optional policy and reuse it for the broker.
@@ -232,14 +231,18 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 
 **Decision** (2026-10-07): A. B makes the one helper that is safe without a policy also able to take the broker role, so the guard that no session lacks its policy would rest on every caller remembering an optional argument. C adds a dependency for the request `fromWebToken` already sends byte for byte (Technical Notes), and a second client that cannot load under Jest.
 
-### RESOLVED: Q11. Judgment call: does `RD_EMULATOR_AWS=default-chain` reach the broker?
+---
+
+### Q11. Judgment call: does `RD_EMULATOR_AWS=default-chain` reach the broker?
 **Options considered**:
 - A) No: the broker refuses in the emulator whatever the setting (R14a).
 - B) Yes: with the setting, assume the broker role with the developer's own credentials.
 
 **Decision** (2026-10-07): A. The broker role trusts only the function's Google identity, so a developer's credentials cannot assume it, and a session that came from anything else would not be the broker's. The setting stays what `aws-credentials.ts` makes it, the MicroVM calls' escape hatch.
 
-### RESOLVED: Q12. How does an operator mint the account's ID token for a live check?
+---
+
+### Q12. How does an operator mint the account's ID token for a live check?
 **Context**: The keyless plan gives operators OpenID Token Creator on the function's account for live checks, deliberately not Token Creator, "which also mints access tokens and signs blobs" (`oidc-launcher-plan.md`, "Operators and manual checks"; `final-design.md` 11.4), and mints the check's token with `gcloud auth print-identity-token --impersonate-service-account=… --audiences=…` (the same plan, RD-1 R20 and its README's `assume` helper, and this story's re-spec brief). gcloud 583.0.0's impersonation always mints an access token for the account first (`googlecloudsdk/core/credentials/store.py` `Load` calls `GetElevationAccessTokenGoogleAuth`, which refreshes `google.auth.impersonated_credentials.Credentials`) and only then the ID token, so it needs `iam.serviceAccounts.getAccessToken`, which OpenID Token Creator does not grant. Run on 2026-10-07 as `developer@concord.org`, holding neither role, the command was refused on `iam.serviceAccounts.getAccessToken`, while a direct `POST https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/researcher-dashboard@report-service-dev.iam.gserviceaccount.com:generateIdToken` with the operator's own access token was refused on `iam.serviceAccounts.getOpenIdToken`, the one permission OpenID Token Creator carries.
 **Options considered**:
 - A) Mint with `generateIdToken` directly, keeping operators at OpenID Token Creator. This story's live check already does (R15). RD-1's `assume` helper becomes `TOKEN=$(curl -s -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" -H 'Content-Type: application/json' https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$SA:generateIdToken -d "{\"audience\":\"$STACK\"}" | jq -r .token)`, and the plan, `final-design.md` 11.4 and `speccing.md` name that call instead of the gcloud flag.
@@ -249,7 +252,9 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 
 **Decision**: A, as one command (Doug, 2026-10-07: "this seems like a footgun"). The obvious command fails with an error that says to grant Token Creator, which would quietly undo the narrow grant, so the fix removes the choice rather than documenting around it: the setup script's `id-token` subcommand is the only way an operator mints the account's token (R27b), this story's live check calls it, and RD-1's `assume` helper, `oidc-launcher-plan.md`, `final-design.md` 11.4 and `speccing.md` name it instead of the gcloud flag.
 
-### RESOLVED: Q13. What ends a `running` result whose runner has stopped reporting?
+---
+
+### Q13. What ends a `running` result whose runner has stopped reporting?
 **Context**: A result can stay `running` with nobody working on it: both final writes lost or refused, a runner crash, a runner bug. Judged only past `expected_duration_seconds` plus 10 minutes, and never on an awake VM, such a result would read "running" for up to 8 hours, `/idle` would keep the VM awake for it, and RD-3 would not call it stuck. Two analyses are in `10-13-2026-orphaned-run-analysis.md`.
 **Options considered**:
 - A runner-only retry before `/idle`. Rejected: misses refused writes, crashes and bugs.
@@ -258,3 +263,21 @@ It also adds a safety net. A machine that crashes, hangs, or is put to sleep in 
 - A heartbeat lease that terminates the VM and fails the result once the VM is gone (kill then fail). No live runner is left to write late, so no guard.
 
 **Decision** (Doug, 2026-10-13, `landing-tracker.md`, Open decisions item 2a): kill then fail. (1) A VM suspended mid-run keeps the declared duration plus 10 minutes, then is terminated and the run failed on a later pass; the lease applies to awake VMs and restarts at each resume. (2) A runner that has moved on gets the stale result failed without a kill. (3) No run id guard. (4) The rules require `heartbeat_seconds` on every claim, an integer from 30 to 120, with no fallback. (5) 60-second beats and a lease of five beats. (6) One reason for every lost-machine failure, from the watchdog and the runner's `/terminate` hook, "The machine running it stopped before the run finished; run it again."; the log records why. Recorded as R16 to R22a.
+
+---
+
+### Judgment call: are `/work`'s mints bounded each, or together?
+**Options considered**:
+- A) Run them together under one 10-second bound.
+- B) Bound each at 10 seconds, one after another.
+
+**Decision** (2026-10-07): A. With up to 20 classes, B's worst case is 210 seconds, far past the function's 60; A's is 10, and the signBlob calls are independent.
+
+---
+
+### Judgment call: is the live check the function's code, or RD-1's shell helper?
+**Options considered**:
+- A) A `node --test` file driving `makeStorageBroker` with an operator's token source.
+- B) RD-1's `assume` helper with the policy pasted in, as RD-1's own broker check already does.
+
+**Decision** (2026-10-07): A. RD-1's check proves the stack's ceiling and a hand-written policy; this story's has to prove its own code builds and sends the policy, which only running that code shows (`oidc-launcher-plan.md`, acceptance gate step 4: "through the function's real provider").
