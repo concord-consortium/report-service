@@ -69,7 +69,9 @@ export function previousOf(current: ResultDoc | undefined): Record<string, unkno
   return Object.fromEntries(PREVIOUS_FIELDS.filter(field => current[field] !== undefined).map(field => [field, current[field]]))
 }
 
-export const heldBy = (claimedBy: unknown, microvmId: string) => claimedBy === microvmId
+/** Whether a `running` result in the queue was claimed by this VM. */
+export const runningOn = (q: QueueRead, microvmId: string) =>
+  q.entries.some(e => e.standing === "running" && e.result?.microvm_id === microvmId)
 
 /** A Firestore Timestamp, or epoch milliseconds, as milliseconds; NaN for anything else. */
 export const toMillis = (value: unknown): number => {

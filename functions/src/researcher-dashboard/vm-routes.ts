@@ -2,7 +2,7 @@ import express from "express"
 import { MAXIMUM_DURATION_SECONDS, reason, UPSTREAM_TIMEOUT_MS, VmDoc, within } from "./ensure-vm"
 import { packageKey, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
-import { heldBy, prune, readQueue, toMillis, withStanding } from "./queue"
+import { prune, readQueue, runningOn, toMillis, withStanding } from "./queue"
 import { Db, notConfigured, Refusal, WorkDoc, WorkEntry } from "./run-package"
 import type { StorageBroker } from "./storage-broker"
 import { REGION } from "./region"
@@ -135,7 +135,7 @@ export function makeIdle(deps: VmRouteDeps) {
         let next: IdleAnswer = "suspend"
         if (withStanding(q, "queued").length > 0) {
           next = "work_queued"
-        } else if (q.entries.some(e => e.standing === "running" && heldBy(e.result?.microvm_id, microvmId))) {
+        } else if (runningOn(q, microvmId)) {
           // The runner never asks mid-run, so suspending would only interrupt a run it lost track of.
           next = "run_in_progress"
         } else {

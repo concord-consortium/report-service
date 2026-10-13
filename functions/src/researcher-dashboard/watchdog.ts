@@ -1,7 +1,7 @@
 import { MAXIMUM_DURATION_SECONDS, reason, VmDoc, VmStepError, wakeSuspended } from "./ensure-vm"
 import { resultPath, runnerPath, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
-import { heldBy, prune, readQueue, toMillis, withStanding } from "./queue"
+import { prune, readQueue, runningOn, toMillis, withStanding } from "./queue"
 import { Db, DocRef, Researcher, Transaction } from "./run-package"
 
 // A runner rewrites a claimed result's updated_at every heartbeat_seconds, which the rules bound;
@@ -260,7 +260,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
         continue
       }
 
-      const ownRun = seen.q.entries.some(e => e.standing === "running" && heldBy(e.result?.microvm_id, vm.microvmId))
+      const ownRun = runningOn(seen.q, vm.microvmId)
       if (queued > 0 || ownRun || seen.currentRunning) {
         continue
       }
