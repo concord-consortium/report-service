@@ -12,10 +12,16 @@ export interface RunnerClaims {
   researcher_dashboard_runner?: unknown
   /** When the session signed in, in seconds; refreshing its ID token keeps it. */
   auth_time?: unknown
+  /** When the VM first signed in, in seconds, carried into every token /work mints for it. */
+  runner_signed_in_at?: unknown
   [claim: string]: unknown
 }
 
-/** The researcher a VM's token names, the Firebase uid it signed in as, and when it signed in. */
+/**
+ * The researcher a VM's token names, the Firebase uid it signed in as, and when the VM first
+ * signed in: a token /work minted says so in runner_signed_in_at, since signing in with it starts
+ * a session with a new auth_time.
+ */
 export interface Runner extends Researcher {
   firebaseUid: string
   signedInAt: number
@@ -44,12 +50,13 @@ export function runnerFromClaims(claims: RunnerClaims): Runner | null {
     return null
   }
   const uid = Number(platformUserId)
-  if (!Number.isSafeInteger(uid) || !platformUrl(claims.platform_id) || !Number.isInteger(claims.auth_time)) {
+  const signedIn = claims.runner_signed_in_at ?? claims.auth_time
+  if (!Number.isSafeInteger(uid) || !platformUrl(claims.platform_id) || !Number.isInteger(signedIn)) {
     return null
   }
   const platformId = claims.platform_id as string
   return {
-    uid, platformUserId, platformId, portal: portalSegment(platformId), firebaseUid: claims.uid, signedInAt: (claims.auth_time as number) * 1000
+    uid, platformUserId, platformId, portal: portalSegment(platformId), firebaseUid: claims.uid, signedInAt: (signedIn as number) * 1000
   }
 }
 

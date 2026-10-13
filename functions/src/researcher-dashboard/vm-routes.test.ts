@@ -41,7 +41,10 @@ const tokens: Record<string, RunnerClaims> = {
   // VM_LIFE_MS is eight hours and ten minutes
   outlived: { ...runnerClaims, auth_time: seconds(NOW - 8 * HOUR - 10 * MIN - 1000) },
   beforeLaunch: { ...runnerClaims, auth_time: seconds(LAUNCHED - MIN - 1000) },
-  duringLaunch: { ...runnerClaims, auth_time: seconds(LAUNCHED - MIN + 1000) }
+  duringLaunch: { ...runnerClaims, auth_time: seconds(LAUNCHED - MIN + 1000) },
+  // Signed in just now with a token /work minted, for a VM that first signed in long ago
+  reminted: { ...runnerClaims, auth_time: seconds(NOW), runner_signed_in_at: runnerClaims.auth_time },
+  remintedOutlived: { ...runnerClaims, auth_time: seconds(NOW), runner_signed_in_at: seconds(NOW - 8 * HOUR - 10 * MIN - 1000) }
 }
 
 let db: FakeDb
@@ -136,15 +139,16 @@ describe("the VM's authentication", () => {
       expect(deps.broker.assume).not.toHaveBeenCalled()
     })
 
-  it.each(["/work", "/idle", "/storage-credentials"])("%s refuses a session that signed in longer ago than any VM lives with 401", async path => {
-    seed([entry("users/1/a")])
-    db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1" })
-    const res = await post(path, undefined, "outlived")
-    expect(res.status).toBe(401)
-    expect(JSON.stringify(res.body)).not.toMatch(/rigse-|minted|ASIA/)
-    expect(deps.microvms.suspend).not.toHaveBeenCalled()
-    expect(deps.broker.assume).not.toHaveBeenCalled()
-  })
+  it.each(["/work", "/idle", "/storage-credentials"].flatMap(path => ["outlived", "remintedOutlived"].map(name => [path, name])))(
+    "%s refuses a VM that first signed in longer ago than any VM lives with 401: %s", async (path, name) => {
+      seed([entry("users/1/a")])
+      db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1" })
+      const res = await post(path, undefined, name)
+      expect(res.status).toBe(401)
+      expect(JSON.stringify(res.body)).not.toMatch(/rigse-|minted|ASIA/)
+      expect(deps.microvms.suspend).not.toHaveBeenCalled()
+      expect(deps.broker.assume).not.toHaveBeenCalled()
+    })
 
   it.each(["/work", "/idle", "/storage-credentials"])("%s refuses a session that signed in before the recorded VM's launch with 409", async path => {
     seed([entry("users/1/a")])
@@ -226,8 +230,16 @@ describe("POST /work", () => {
     const res = await post("/work")
     expect(res.body.session_token).toBe("minted:firebase-uid-42:session")
     expect(res.body.scopes[CLASS_A].class_tokens).toEqual({ "report-service-dev": `minted:firebase-uid-42:${CLASS_A}`, "collaborative-learning": "clue-a" })
-    expect(deps.mint).toHaveBeenCalledWith("firebase-uid-42",
-      { platform_id: PLATFORM, platform_user_id: 42, user_type: "researcher", researcher_dashboard_runner: true, class_hash: CLASS_A })
+    expect(deps.mint).toHaveBeenCalledWith("firebase-uid-42", {
+      platform_id: PLATFORM, platform_user_id: 42, user_type: "researcher", researcher_dashboard_runner: true,
+      runner_signed_in_at: runnerClaims.auth_time, class_hash: CLASS_A
+    })
+  })
+
+  it("carries the VM's first sign-in through a token it minted, which a re-mint keeps", async () => {
+    seed([entry("users/1/a")])
+    expect((await post("/work", undefined, "reminted")).status).toBe(200)
+    expect(deps.mint).toHaveBeenCalledWith("firebase-uid-42", expect.objectContaining({ runner_signed_in_at: runnerClaims.auth_time }))
   })
 
   it("passes rigse's tokens through when the recorded VM is past its maximum life", async () => {

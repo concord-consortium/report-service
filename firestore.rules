@@ -363,10 +363,12 @@ service cloud.firestore {
       // .get with a default: a bare read of an absent claim is an evaluation error, which
       // would deny every token rather than only non-runners. A session refreshes its ID token for
       // as long as its refresh token lives, so a runner writes only within a VM's life, 29400
-      // seconds, of signing in.
+      // seconds, of the VM's first sign-in: runner_signed_in_at in a token the function minted,
+      // whose own auth_time is later, and otherwise auth_time.
       function rdIsRunner() {
+        let signedIn = request.auth.token.get("runner_signed_in_at", request.auth.token.get("auth_time", 0));
         return request.auth.token.get("researcher_dashboard_runner", false) == true
-          && request.time < timestamp.value(request.auth.token.get("auth_time", 0) * 1000) + duration.value(29400, "s");
+          && request.time < timestamp.value(signedIn * 1000) + duration.value(29400, "s");
       }
       function rdIsResearcher() {
         return rdAuthed() && request.auth.token.user_type == "researcher";

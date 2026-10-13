@@ -57,7 +57,8 @@ const identity = (who: Runner) => ({
   platform_id: who.platformId,
   platform_user_id: who.uid,
   user_type: "researcher",
-  researcher_dashboard_runner: true
+  researcher_dashboard_runner: true,
+  runner_signed_in_at: Math.floor(who.signedInAt / 1000)
 })
 
 /** POST /work: the queued packages, their scopes, and fresh tokens to run them with. */

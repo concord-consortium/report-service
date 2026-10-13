@@ -32,6 +32,11 @@ const shapes = {
   teacher: { ...researcher, user_type: "teacher", class_hash: CLASS_A },
   otherResearcherRunner: { ...researcher, uid: "uid-43", platform_user_id: 43, researcher_dashboard_runner: true, class_hash: CLASS_A },
   outlivedRunner: { ...researcher, researcher_dashboard_runner: true, class_hash: CLASS_A, auth_time: researcher.auth_time - VM_LIFE_SECONDS - 60 },
+  // Signed in now with a token the function minted for a VM that first signed in a VM's life ago
+  remintedOutlivedRunner: {
+    ...researcher, researcher_dashboard_runner: true, class_hash: CLASS_A, runner_signed_in_at: researcher.auth_time - VM_LIFE_SECONDS - 60,
+  },
+  remintedRunner: { ...researcher, researcher_dashboard_runner: true, class_hash: CLASS_A, runner_signed_in_at: researcher.auth_time - 3600 },
   anon: null,
 };
 
@@ -259,11 +264,15 @@ describe("a runner write", () => {
     await firebase.assertFails(db("classRunner").doc(resultPath(nextKey())).set(running({ platform_id: "https://other.example/" })));
   });
 
-  it("is refused once its session signed in longer ago than a VM lives", async () => {
-    await firebase.assertFails(db("outlivedRunner").doc(`${ROOT}/runners/42`).set({ platform_id: PLATFORM, updated_at: serverTime() }));
-    await firebase.assertFails(db("outlivedRunner").doc(`${ROOT}/classes/${CLASS_A}/researchers/42`).set({ platform_id: PLATFORM, scope: { kind: "class" } }));
-    await firebase.assertFails(db("outlivedRunner").doc(resultPath(nextKey())).set(running()));
+  it.each(["outlivedRunner", "remintedOutlivedRunner"])("is refused once its VM first signed in longer ago than a VM lives: %s", async (shape) => {
+    await firebase.assertFails(db(shape).doc(`${ROOT}/runners/42`).set({ platform_id: PLATFORM, updated_at: serverTime() }));
+    await firebase.assertFails(db(shape).doc(`${ROOT}/classes/${CLASS_A}/researchers/42`).set({ platform_id: PLATFORM, scope: { kind: "class" } }));
+    await firebase.assertFails(db(shape).doc(resultPath(nextKey())).set(running()));
+  });
+
+  it("is allowed within a VM's life of its first sign-in, from a token signed in now or one the function minted", async () => {
     await firebase.assertSucceeds(db("classRunner").doc(resultPath(nextKey())).set(running()));
+    await firebase.assertSucceeds(db("remintedRunner").doc(resultPath(nextKey())).set(running()));
   });
 });
 
