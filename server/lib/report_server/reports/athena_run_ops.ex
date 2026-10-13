@@ -80,20 +80,31 @@ defmodule ReportServer.Reports.AthenaRunOps do
   defp self_start(report_run) do
     case start_query_rescued(report_run) do
       {:ok, athena_query_id, athena_query_state} ->
-        record_outcome(report_run, athena_query_id: athena_query_id, athena_query_state: athena_query_state, athena_query_error: nil)
+        record_started(report_run, athena_query_id, athena_query_state)
 
       {:error, :permanent, message} ->
         Logger.error("API self-start failed for report run #{report_run.id}, permanently: #{message}")
         record_outcome(report_run, athena_query_state: "failed", athena_query_error: message)
 
       {:error, :transient, detail} ->
-        Logger.error("API self-start failed for report run #{report_run.id}: #{detail}")
+        record_transient(report_run, detail)
+    end
+  end
 
-        if older_than?(report_run.inserted_at, @retry_window_seconds) do
-          record_outcome(report_run, athena_query_state: "failed", athena_query_error: @gave_up)
-        else
-          record_outcome(report_run, athena_query_state: nil, athena_query_error: @retrying)
-        end
+  defp record_started(report_run, athena_query_id, athena_query_state) do
+    record_outcome(report_run, athena_query_id: athena_query_id, athena_query_state: athena_query_state, athena_query_error: nil)
+  rescue
+    exception ->
+      record_transient(report_run, "storing Athena query #{athena_query_id} failed: " <> Exception.format(:error, exception, __STACKTRACE__))
+  end
+
+  defp record_transient(report_run, detail) do
+    Logger.error("API self-start failed for report run #{report_run.id}: #{detail}")
+
+    if older_than?(report_run.inserted_at, @retry_window_seconds) do
+      record_outcome(report_run, athena_query_state: "failed", athena_query_error: @gave_up)
+    else
+      record_outcome(report_run, athena_query_state: nil, athena_query_error: @retrying)
     end
   end
 

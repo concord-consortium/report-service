@@ -323,6 +323,15 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
       assert_retrying(AthenaRunOps.ensure_current(run))
     end
 
+    test "a failure storing the started query releases the run to be retried" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
+      too_long_for_the_column = String.duplicate("q", 300)
+      start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, too_long_for_the_column, "queued"} end})
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+    end
+
     test "a transient failure on a run older than the retry window fails it" do
       run = unstarted_run() |> age(:inserted_at, 11 * 60)
       put_tree_report(athena_report(fn _filter, _user -> {:error, "Unable to upload the learner data for the report."} end))

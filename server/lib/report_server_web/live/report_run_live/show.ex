@@ -219,8 +219,11 @@ defmodule ReportServerWeb.ReportRunLive.Show do
   # Unlinked, so closing the page can't kill a start holding the run's claim, and a start never blocks the page.
   defp ensure_current_async(report_run = %ReportRun{}, live_view_pid) do
     Task.Supervisor.start_child(ReportServer.PostProcessingTaskSupervisor, fn ->
-      AthenaRunOps.ensure_current(report_run)
-      send(live_view_pid, :report_run_changed)
+      try do
+        AthenaRunOps.ensure_current(report_run)
+      after
+        send(live_view_pid, :report_run_changed)
+      end
     end)
   end
 

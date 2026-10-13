@@ -117,6 +117,45 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
     assert reloaded.athena_result_url == "s3://bucket/done.csv"
   end
 
+  test "a poll that raises still schedules the next poll", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, run} =
+      Reports.create_report_run(%{
+        user_id: user.id,
+        report_slug: "teacher-actions",
+        report_filter: %ReportFilter{filters: [:cohort], cohort: [1]},
+        report_filter_values: %{"cohort" => %{"1" => "Cohort One"}},
+        athena_query_id: "qid-flaky",
+        athena_query_state: "running"
+      })
+
+    Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+    test_pid = self()
+    calls = :counters.new(1, [])
+
+    start_athena_stub(%{
+      get_query_info: fn "qid-flaky" ->
+        :counters.add(calls, 1, 1)
+        send(test_pid, :get_query_info)
+
+        if :counters.get(calls, 1) == 1 do
+          raise "Athena unreachable"
+        else
+          {:ok, "succeeded", "s3://bucket/done.csv", nil}
+        end
+      end
+    })
+
+    conn = log_in_conn(conn, user)
+    {:ok, view, _html} = live(conn, ~p"/reports/runs/#{run.id}")
+    render_async(view)
+
+    assert_receive :get_query_info
+    assert_receive :get_query_info, 2_000
+    eventually(fn -> render(view) =~ "Only CSV download is available" end)
+  end
+
   describe "a run that has not started" do
     test "a run that failed to start is not restarted", %{conn: conn} do
       user = user_fixture()
