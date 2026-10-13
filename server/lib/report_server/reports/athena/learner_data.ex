@@ -12,6 +12,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   alias ReportServer.{PortalDbs, AthenaDB}
   alias ReportServer.Reports.{LearnerBaseQuery, ReportFilter, ReportQuery}
 
+  def no_learners_error, do: "No learners were found matching the filters you selected."
+
   def fetch_and_upload(report_filter = %ReportFilter{}, user = %User{}) do
     with {:ok, learner_data} <- fetch(report_filter, user),
          {:ok, learner_data} <- upload(learner_data) do
@@ -152,7 +154,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
 
   defp maybe_ensure_not_empty(rows, true), do: {:ok, rows}
   defp maybe_ensure_not_empty(rows, false),
-    do: ensure_not_empty(rows, "No learners were found matching the filters you selected.")
+    do: ensure_not_empty(rows, no_learners_error())
 
   defp get_unique_ids(rows, key) do
     rows

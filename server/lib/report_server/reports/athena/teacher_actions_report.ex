@@ -3,6 +3,8 @@ defmodule ReportServer.Reports.Athena.TeacherActionsReport do
 
   alias ReportServer.PortalDbs
 
+  def no_match_error, do: "No teachers or activities found to match the requested filter(s)."
+
   def get_query(report_filter = %ReportFilter{start_date: start_date, end_date: end_date}, user = %User{}) do
 
     with {:ok, usernames} <- get_usernames(report_filter, user),
@@ -36,7 +38,7 @@ defmodule ReportServer.Reports.Athena.TeacherActionsReport do
           where: where
         }}
       else
-        {:error, "No teachers or activities found to match the requested filter(s)."}
+        {:error, no_match_error()}
       end
     else
       error -> error

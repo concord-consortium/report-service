@@ -9,6 +9,7 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
   alias ReportServer.Reports
   alias ReportServer.Reports.{Report, ReportFilter, ReportQuery, Tree}
   alias ReportServer.Reports.Portal.Csv
+  alias ReportServer.Reports.Athena.LearnerData
 
   @filter_keys ~w(filters state app start_date end_date hide_names exclude_internal
                   remove_open_response_urls cohort school teacher assignment class student
@@ -662,10 +663,39 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
       start_athena_stub(%{query: fn _sql, _id, _user -> {:error, "boom"} end})
 
       conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
-      assert json_response(conn, 409)["athena_query_state"] == nil
+      body = json_response(conn, 409)
+      assert body["athena_query_state"] == nil
+      assert body["athena_query_id"] == nil
+      assert body["athena_query_error"] == "The report could not be started because of a temporary error; it will be retried."
 
       reloaded = Reports.get_report_run!(run.id)
       assert reloaded.athena_query_state == nil
+      assert entry_count() == 0
+    end
+
+    test "fails a run that can't start and returns 409 with its error and guidance", %{raw_token: raw_token, user: user} do
+      run = run_fixture(user, %{report_slug: "student-answers"})
+
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      Application.put_env(:report_server, :report_tree, TreeStub)
+
+      Application.put_env(
+        :report_server,
+        :test_tree_report,
+        %Report{
+          type: :athena,
+          slug: "student-answers",
+          get_query: fn _filter, _user -> {:error, LearnerData.no_learners_error()} end
+        }
+      )
+
+      conn = get(authed_conn(raw_token), ~p"/api/v1/reports/#{run.id}/download")
+      body = json_response(conn, 409)
+      assert body["error"] == "NOT_READY"
+      assert body["athena_query_state"] == "failed"
+      assert body["athena_query_id"] == nil
+      assert body["athena_query_error"] == LearnerData.no_learners_error()
+      assert body["athena_query_guidance"] =~ "No student work matches these filters."
       assert entry_count() == 0
     end
 
@@ -802,7 +832,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
       conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
 
-      assert json_response(conn, 422)["error"] == "UNPROCESSABLE"
+      body = json_response(conn, 422)
+      assert body["error"] == "UNPROCESSABLE"
+      assert body["message"] == "This report run has no filters and cannot be downloaded."
       # nothing streamed, so no audit row was written
       assert entry_count() == 0
     end

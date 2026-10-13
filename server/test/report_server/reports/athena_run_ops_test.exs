@@ -1,11 +1,15 @@
 defmodule ReportServer.Reports.AthenaRunOpsTest do
   use ReportServer.DataCase, async: false
 
+  import ExUnit.CaptureLog
   import ReportServer.AccountsFixtures
 
+  alias ReportServer.{AthenaDB, PortalFixture}
   alias ReportServer.Reports
+  alias ReportServer.Reports.Athena.{LearnerData, TeacherActionsReport}
 
   alias ReportServer.Reports.{
+    AllowedProjectsLookupError,
     AthenaFailure,
     AthenaRunOps,
     Report,
@@ -177,20 +181,6 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
       assert result.athena_query_state == "running"
     end
 
-    test "releases the claim and serves the stored run when self-start fails" do
-      user = user_fixture()
-      run = run_fixture(user, %{}) |> with_user(user)
-      put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
-      start_athena_stub(%{query: fn _sql, _id, _user -> {:error, "boom"} end})
-
-      result = AthenaRunOps.ensure_current(run)
-      assert result.athena_query_id == nil
-
-      reloaded = Reports.get_report_run!(run.id)
-      assert reloaded.athena_query_id == nil
-      assert reloaded.athena_query_state == nil
-    end
-
     test "single-flight winning path claims the row and runs the start" do
       user = user_fixture()
       run = run_fixture(user, %{}) |> with_user(user)
@@ -230,7 +220,11 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
     end
   end
 
-  describe "start_query/1" do
+  describe "ensure_current/1 starting a run" do
+    @retrying "The report could not be started because of a temporary error; it will be retried."
+    @gave_up "The report could not be started because of a temporary error. Duplicate the run to try again."
+    @abandoned "The report could not be started; the attempt to start it did not finish."
+
     test "passes the loaded (round-tripped) filter form to the report's get_query and persists the result" do
       user = user_fixture()
 
@@ -250,7 +244,7 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
 
       start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, "athena-qid", "queued"} end})
 
-      assert {:ok, updated} = AthenaRunOps.start_query(reloaded)
+      updated = AthenaRunOps.ensure_current(reloaded)
       assert updated.athena_query_id == "athena-qid"
       assert updated.athena_query_state == "queued"
 
@@ -259,13 +253,217 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
       assert filter.cohort == [1, 2]
     end
 
-    test "returns a generic message (not the inspected detail) when a step returns an unexpected value" do
-      user = user_fixture()
-      run = run_fixture(user, %{}) |> with_user(user)
+    for {name, message} <- [
+          {"no learners in the learner data", LearnerData.no_learners_error()},
+          {"no filters", ReportQuery.no_filters_error()},
+          {"no learners in the query", ReportQuery.no_learners_error()},
+          {"an unknown application", ReportQuery.unknown_app_error(["x"])},
+          {"no teachers or activities", TeacherActionsReport.no_match_error()}
+        ] do
+      @message message
+
+      test "fails at once when get_query reports #{name}" do
+        run = unstarted_run()
+        put_tree_report(athena_report(fn _filter, _user -> {:error, @message} end))
+        start_athena_stub(%{query: fn _sql, _id, _user -> raise "query should not be called" end})
+
+        assert_failed(AthenaRunOps.ensure_current(run), @message)
+      end
+    end
+
+    test "fails at once for an unknown report" do
+      run = unstarted_run()
+      put_tree_report(nil)
+
+      assert_failed(AthenaRunOps.ensure_current(run), "Unable to find report: student-answers")
+    end
+
+    test "fails at once for a query too large for Athena" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
+      start_athena_stub(%{query: fn _sql, _id, _user -> {:error, AthenaDB.query_too_large_error()} end})
+
+      assert_failed(AthenaRunOps.ensure_current(run), AthenaDB.query_too_large_error())
+    end
+
+    test "fails with a generic message, not the inspected detail, when a step returns an unexpected value" do
+      run = unstarted_run()
       put_tree_report(athena_report(fn _filter, _user -> :unexpected end))
 
-      assert {:error, "An unexpected error occurred while running the report."} =
-               AthenaRunOps.start_query(run)
+      assert_failed(AthenaRunOps.ensure_current(run), "An unexpected error occurred while running the report.")
+    end
+
+    test "a transient failure releases the run to be retried, and a later success clears the error" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> {:error, "Unable to upload the learner data for the report."} end))
+      start_athena_stub(%{query: fn _sql, _id, _user -> raise "query should not be called" end})
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+
+      put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
+      Agent.update(ReportServer.AthenaDBStub, &Map.put(&1, :query, fn _sql, _id, _user -> {:ok, "athena-qid", "queued"} end))
+
+      result = AthenaRunOps.ensure_current(reload(run))
+      assert result.athena_query_id == "athena-qid"
+      assert result.athena_query_error == nil
+
+      reloaded = Reports.get_report_run!(run.id)
+      assert reloaded.athena_query_id == "athena-qid"
+      assert reloaded.athena_query_state == "queued"
+      assert reloaded.athena_query_error == nil
+    end
+
+    test "a transient failure logs its detail and stores only the retrying message" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
+
+      start_athena_stub(%{
+        query: fn _sql, _id, _user -> {:error, "User: arn:aws:iam::1:user/x is not authorized"} end
+      })
+
+      log = capture_log(fn -> assert_retrying(AthenaRunOps.ensure_current(run)) end)
+      assert log =~ "arn:aws:iam::1:user/x"
+    end
+
+    test "a failure storing the started query logs the query id and releases the run to be retried" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
+      too_long_for_the_column = String.duplicate("q", 300)
+      start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, too_long_for_the_column, "queued"} end})
+
+      log = capture_log(fn -> assert_retrying(AthenaRunOps.ensure_current(run)) end)
+      assert log =~ "storing Athena query #{too_long_for_the_column} failed"
+    end
+
+    test "a transient failure on a run older than the retry window fails it" do
+      run = unstarted_run() |> age(:inserted_at, 11 * 60)
+      put_tree_report(athena_report(fn _filter, _user -> {:error, "Unable to upload the learner data for the report."} end))
+
+      assert_failed(AthenaRunOps.ensure_current(run), @gave_up)
+    end
+
+    test "a transient failure on a run inside the retry window is retried" do
+      run = unstarted_run() |> age(:inserted_at, 9 * 60)
+      put_tree_report(athena_report(fn _filter, _user -> {:error, "Unable to upload the learner data for the report."} end))
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+    end
+
+    test "a raise during the start is retried, not raised" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> raise AllowedProjectsLookupError end))
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+    end
+
+    test "an exit during the start is retried, not propagated" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> exit(:timeout) end))
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+    end
+
+    test "a throw during the start is retried, not propagated" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> throw(:unexpected) end))
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+    end
+
+    test "a claim older than the abandoned-claim bound fails the run without starting it" do
+      user = user_fixture()
+      run = run_fixture(user, %{athena_query_state: "queued"}) |> age(:updated_at, 31 * 60)
+      put_tree_report(athena_report(fn _filter, _user -> raise "get_query should not be called" end))
+      start_athena_stub(%{query: fn _sql, _id, _user -> raise "query should not be called" end})
+
+      assert_failed(AthenaRunOps.ensure_current(run), @abandoned)
+    end
+
+    test "a claim inside the abandoned-claim bound is served untouched" do
+      user = user_fixture()
+      run = run_fixture(user, %{athena_query_state: "queued"}) |> age(:updated_at, 29 * 60)
+      put_tree_report(athena_report(fn _filter, _user -> raise "get_query should not be called" end))
+
+      result = AthenaRunOps.ensure_current(run)
+      assert result.athena_query_state == "queued"
+      assert result.athena_query_error == nil
+      assert Reports.get_report_run!(run.id).athena_query_state == "queued"
+    end
+
+    test "a start's outcome does not overwrite a run failed while it ran" do
+      run = unstarted_run()
+
+      put_tree_report(
+        athena_report(fn _filter, _user ->
+          set_row(run, athena_query_state: "failed", athena_query_error: @abandoned)
+          {:ok, %ReportQuery{raw_sql: "SELECT 1"}}
+        end)
+      )
+
+      start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, "athena-qid", "queued"} end})
+
+      log = capture_log(fn -> assert_failed(AthenaRunOps.ensure_current(run), @abandoned) end)
+      assert log =~ "athena-qid"
+    end
+
+    test "a start's outcome does not overwrite a later claim of the same run" do
+      run = unstarted_run()
+      reclaimed_at = DateTime.add(DateTime.utc_now(:second), 60)
+
+      put_tree_report(
+        athena_report(fn _filter, _user ->
+          set_row(run, updated_at: reclaimed_at)
+          {:ok, %ReportQuery{raw_sql: "SELECT 1"}}
+        end)
+      )
+
+      start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, "athena-qid", "queued"} end})
+
+      result = AthenaRunOps.ensure_current(run)
+      assert result.athena_query_id == nil
+      assert result.athena_query_state == "queued"
+
+      reloaded = Reports.get_report_run!(run.id)
+      assert reloaded.athena_query_id == nil
+      assert reloaded.updated_at == reclaimed_at
+    end
+
+    test "a start's outcome does not overwrite a run started while it ran" do
+      run = unstarted_run()
+
+      put_tree_report(
+        athena_report(fn _filter, _user ->
+          set_row(run, athena_query_id: "other-qid", athena_query_state: "running")
+          {:error, LearnerData.no_learners_error()}
+        end)
+      )
+
+      result = AthenaRunOps.ensure_current(run)
+      assert result.athena_query_id == "other-qid"
+      assert result.athena_query_state == "running"
+
+      reloaded = Reports.get_report_run!(run.id)
+      assert reloaded.athena_query_id == "other-qid"
+      assert reloaded.athena_query_state == "running"
+      assert reloaded.athena_query_error == nil
+    end
+  end
+
+  describe "ensure_current/1 starting a real report" do
+    @describetag :portal_db
+
+    test "a Student Answers run whose assignment is in none of the researcher's projects fails with the no-learners error" do
+      Application.put_env(:report_server, :report_tree, Tree)
+      start_athena_stub(%{query: fn _sql, _id, _user -> raise "query should not be called" end})
+
+      researcher =
+        user_fixture(%{portal_server: PortalFixture.server(), portal_user_id: 557, portal_is_project_researcher: true})
+
+      run =
+        run_fixture(researcher, %{report_filter: %ReportFilter{filters: [:class, :assignment], class: [601], assignment: [802]}})
+        |> with_user(researcher)
+
+      assert_failed(AthenaRunOps.ensure_current(reload(run)), LearnerData.no_learners_error())
     end
   end
 
@@ -287,4 +485,44 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
   end
 
   defp with_user(run = %ReportRun{}, user), do: %{run | user: user}
+
+  defp unstarted_run() do
+    user = user_fixture()
+    run_fixture(user, %{}) |> with_user(user)
+  end
+
+  defp reload(run = %ReportRun{}), do: Reports.get_report_run_with_user!(run.id)
+
+  defp set_row(run = %ReportRun{id: id}, changes) do
+    Repo.update_all(from(r in ReportRun, where: r.id == ^id), set: changes)
+    run
+  end
+
+  defp age(run = %ReportRun{}, field, seconds) do
+    run
+    |> set_row([{field, DateTime.add(DateTime.utc_now(:second), -seconds)}])
+    |> reload()
+  end
+
+  defp assert_failed(result = %ReportRun{}, message) do
+    assert result.athena_query_state == "failed"
+    assert result.athena_query_error == message
+    assert result.athena_query_id == nil
+
+    reloaded = Reports.get_report_run!(result.id)
+    assert reloaded.athena_query_state == "failed"
+    assert reloaded.athena_query_error == message
+    assert reloaded.athena_query_id == nil
+  end
+
+  defp assert_retrying(result = %ReportRun{}) do
+    assert result.athena_query_state == nil
+    assert result.athena_query_error == @retrying
+    assert result.athena_query_id == nil
+
+    reloaded = Reports.get_report_run!(result.id)
+    assert reloaded.athena_query_state == nil
+    assert reloaded.athena_query_error == @retrying
+    assert reloaded.athena_query_id == nil
+  end
 end

@@ -7,6 +7,13 @@ defmodule ReportServer.Reports.ReportQuery do
 
   defstruct cols: [], from: "", join: [], where: [], group_by: "", order_by: [], raw_sql: nil
 
+  @unknown_app_prefix "Unknown application filter: "
+
+  def no_filters_error, do: "Cannot run query with no filters"
+  def no_learners_error, do: "No learners found to match the requested filter(s)."
+  def unknown_app_error(app), do: @unknown_app_prefix <> inspect(app)
+  def unknown_app_error?(message), do: String.starts_with?(message, @unknown_app_prefix)
+
   def get_sql(%ReportQuery{raw_sql: raw_sql}) when not is_nil(raw_sql) do
     {:ok, raw_sql}
   end
@@ -41,7 +48,7 @@ defmodule ReportServer.Reports.ReportQuery do
 
     # Must have some filters in order to be valid
     if Enum.empty?(join) && Enum.empty?(where) do
-      {:error, "Cannot run query with no filters"}
+      {:error, no_filters_error()}
     else
       {:ok, %{report_query | join: [ join | report_query.join ], where: [ where | report_query.where ]}}
     end
@@ -94,10 +101,10 @@ defmodule ReportServer.Reports.ReportQuery do
     cond do
       # checked before the data-dependent outcome so a bad value is not reported as no learners
       !valid_app?(app) ->
-        {:error, "Unknown application filter: #{inspect(app)}"}
+        {:error, unknown_app_error(app)}
 
       Enum.empty?(query_ids) ->
-        {:error, "No learners found to match the requested filter(s)."}
+        {:error, no_learners_error()}
 
       true ->
         hide_names = report_filter.hide_names

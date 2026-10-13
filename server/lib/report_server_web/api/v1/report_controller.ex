@@ -176,6 +176,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
 
   defp portal_download(conn, user, report, report_run) do
     filename = "#{report_run.report_slug}-run-#{report_run.id}.csv"
+    no_filters = ReportQuery.no_filters_error()
 
     with {:ok, query} <- build_query(report, report_run),
          {:ok, sql} <- ReportQuery.get_sql(query) do
@@ -191,7 +192,7 @@ defmodule ReportServerWeb.Api.V1.ReportController do
           end
       end
     else
-      {:error, "Cannot run query with no filters"} ->
+      {:error, ^no_filters} ->
         ErrorHelpers.unprocessable(conn, "This report run has no filters and cannot be downloaded.")
 
       {:error, reason} ->
