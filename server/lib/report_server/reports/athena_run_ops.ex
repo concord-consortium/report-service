@@ -8,9 +8,10 @@ defmodule ReportServer.Reports.AthenaRunOps do
   alias ReportServer.Reports.{AthenaFailure, Report, ReportQuery, ReportRun, Tree}
   alias ReportServer.Reports.Athena.{LearnerData, TeacherActionsReport}
 
-  # A start can run several portal queries, each allowed 5 minutes (PortalDbs @query_timeout), so a
-  # claim this old belongs to a process that died. The retry window keeps a run that can't start
-  # well inside a client's poll budget.
+  # The retry window bounds how long a run keeps retrying, not when it answers: a start already
+  # underway runs to completion, so clients still need their own timeout. A start can run several
+  # portal queries, each allowed 5 minutes (PortalDbs @query_timeout), so a claim older than the
+  # abandoned bound belongs to a process that died.
   @retry_window_seconds 10 * 60
   @abandoned_claim_seconds 30 * 60
 
@@ -40,6 +41,13 @@ defmodule ReportServer.Reports.AthenaRunOps do
   end
   def refresh_query_state(report_run = %ReportRun{}), do: {:ok, report_run}
 
+  @doc """
+  Brings a run up to date, starting its Athena query when nothing has yet.
+
+  A run is started by claiming it: an atomic write moves it from a null state to `queued` and
+  stamps `updated_at`, so only one caller starts it, and that caller's outcome is written only
+  while the row still holds that claim.
+  """
   def ensure_current(report_run = %ReportRun{id: id, athena_query_id: nil, athena_query_state: nil}) do
     claimed_at = DateTime.utc_now(:second)
 
@@ -72,18 +80,18 @@ defmodule ReportServer.Reports.AthenaRunOps do
         report_run
 
       {:error, error} ->
-        Logger.error("API state refresh failed for report run #{report_run.id}: #{inspect(error)}")
+        Logger.error("State refresh failed for report run #{report_run.id}: #{inspect(error)}")
         report_run
     end
   end
 
   defp self_start(report_run) do
-    case start_query_rescued(report_run) do
+    case try_start_query(report_run) do
       {:ok, athena_query_id, athena_query_state} ->
         record_started(report_run, athena_query_id, athena_query_state)
 
       {:error, :permanent, message} ->
-        Logger.error("API self-start failed for report run #{report_run.id}, permanently: #{message}")
+        Logger.error("Starting report run #{report_run.id} failed permanently: #{message}")
         record_outcome(report_run, athena_query_state: "failed", athena_query_error: message)
 
       {:error, :transient, detail} ->
@@ -93,13 +101,13 @@ defmodule ReportServer.Reports.AthenaRunOps do
 
   defp record_started(report_run, athena_query_id, athena_query_state) do
     record_outcome(report_run, athena_query_id: athena_query_id, athena_query_state: athena_query_state, athena_query_error: nil)
-  rescue
-    exception ->
-      record_transient(report_run, "storing Athena query #{athena_query_id} failed: " <> Exception.format(:error, exception, __STACKTRACE__))
+  catch
+    kind, reason ->
+      record_transient(report_run, "storing Athena query #{athena_query_id} failed: " <> Exception.format(kind, reason, __STACKTRACE__))
   end
 
   defp record_transient(report_run, detail) do
-    Logger.error("API self-start failed for report run #{report_run.id}: #{detail}")
+    Logger.error("Starting report run #{report_run.id} failed: #{detail}")
 
     if older_than?(report_run.inserted_at, @retry_window_seconds) do
       record_outcome(report_run, athena_query_state: "failed", athena_query_error: @gave_up)
@@ -108,11 +116,11 @@ defmodule ReportServer.Reports.AthenaRunOps do
     end
   end
 
-  defp start_query_rescued(report_run) do
+  defp try_start_query(report_run) do
     start_query(report_run)
-  rescue
-    exception ->
-      {:error, :transient, Exception.format(:error, exception, __STACKTRACE__)}
+  catch
+    kind, reason ->
+      {:error, :transient, Exception.format(kind, reason, __STACKTRACE__)}
   end
 
   defp start_query(report_run = %ReportRun{}) do
@@ -151,8 +159,8 @@ defmodule ReportServer.Reports.AthenaRunOps do
   end
   defp permanent?(:athena, message), do: message == AthenaDB.query_too_large_error()
 
-  # Written only while the row still holds the claim this outcome belongs to, so a start that
-  # outlives the abandoned-claim bound can't revive a run that bound has failed.
+  # Written only while the row still holds the claim this outcome belongs to, so a late start can't
+  # overwrite a run that has since failed, started or been claimed again.
   defp record_outcome(report_run = %ReportRun{id: id, updated_at: claimed_at}, changes) do
     changes = Keyword.update(changes, :athena_query_error, nil, &AthenaFailure.truncate/1)
     now = DateTime.utc_now(:second)
@@ -166,7 +174,7 @@ defmodule ReportServer.Reports.AthenaRunOps do
         struct(report_run, [{:updated_at, now} | changes])
 
       _ ->
-        Logger.warning("Report run #{id} changed while it was being started; the start's outcome was not recorded")
+        Logger.warning("Report run #{id} changed while it was being started; the start's outcome was not recorded: #{inspect(changes)}")
         current = Repo.get!(ReportRun, id)
         struct(report_run, Map.take(current, [:athena_query_id, :athena_query_state, :athena_query_error, :athena_result_url, :updated_at]))
     end

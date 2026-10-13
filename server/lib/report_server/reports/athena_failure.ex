@@ -82,8 +82,8 @@ defmodule ReportServer.Reports.AthenaFailure do
   def offers_app_filter?(_report), do: false
 
   @doc """
-  The reason-to-suggestion table, ordered, first match wins. It covers the reasons a run failed to
-  start as well as Athena's `StateChangeReason`.
+  The reason-to-suggestion table, ordered, first match wins. It covers Athena's `StateChangeReason`,
+  and one reason a run failed to start: no learners.
 
   Patterns are lowercase because `guidance_for/2` downcases the reason: S3 spells its throttling code
   `SlowDown` while Athena spells the generic condition `Slowdown`. `hive_s3_throttling` must precede

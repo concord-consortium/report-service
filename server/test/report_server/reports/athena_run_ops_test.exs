@@ -1,9 +1,10 @@
 defmodule ReportServer.Reports.AthenaRunOpsTest do
   use ReportServer.DataCase, async: false
 
+  import ExUnit.CaptureLog
   import ReportServer.AccountsFixtures
 
-  alias ReportServer.AthenaDB
+  alias ReportServer.{AthenaDB, PortalFixture}
   alias ReportServer.Reports
   alias ReportServer.Reports.Athena.{LearnerData, TeacherActionsReport}
 
@@ -312,7 +313,7 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
       assert reloaded.athena_query_error == nil
     end
 
-    test "a transient failure stores the retrying message, not its detail" do
+    test "a transient failure logs its detail and stores only the retrying message" do
       run = unstarted_run()
       put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
 
@@ -320,16 +321,18 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
         query: fn _sql, _id, _user -> {:error, "User: arn:aws:iam::1:user/x is not authorized"} end
       })
 
-      assert_retrying(AthenaRunOps.ensure_current(run))
+      log = capture_log(fn -> assert_retrying(AthenaRunOps.ensure_current(run)) end)
+      assert log =~ "arn:aws:iam::1:user/x"
     end
 
-    test "a failure storing the started query releases the run to be retried" do
+    test "a failure storing the started query logs the query id and releases the run to be retried" do
       run = unstarted_run()
       put_tree_report(athena_report(fn _filter, _user -> {:ok, %ReportQuery{raw_sql: "SELECT 1"}} end))
       too_long_for_the_column = String.duplicate("q", 300)
       start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, too_long_for_the_column, "queued"} end})
 
-      assert_retrying(AthenaRunOps.ensure_current(run))
+      log = capture_log(fn -> assert_retrying(AthenaRunOps.ensure_current(run)) end)
+      assert log =~ "storing Athena query #{too_long_for_the_column} failed"
     end
 
     test "a transient failure on a run older than the retry window fails it" do
@@ -349,6 +352,20 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
     test "a raise during the start is retried, not raised" do
       run = unstarted_run()
       put_tree_report(athena_report(fn _filter, _user -> raise AllowedProjectsLookupError end))
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+    end
+
+    test "an exit during the start is retried, not propagated" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> exit(:timeout) end))
+
+      assert_retrying(AthenaRunOps.ensure_current(run))
+    end
+
+    test "a throw during the start is retried, not propagated" do
+      run = unstarted_run()
+      put_tree_report(athena_report(fn _filter, _user -> throw(:unexpected) end))
 
       assert_retrying(AthenaRunOps.ensure_current(run))
     end
@@ -385,7 +402,8 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
 
       start_athena_stub(%{query: fn _sql, _id, _user -> {:ok, "athena-qid", "queued"} end})
 
-      assert_failed(AthenaRunOps.ensure_current(run), @abandoned)
+      log = capture_log(fn -> assert_failed(AthenaRunOps.ensure_current(run), @abandoned) end)
+      assert log =~ "athena-qid"
     end
 
     test "a start's outcome does not overwrite a later claim of the same run" do
@@ -428,6 +446,24 @@ defmodule ReportServer.Reports.AthenaRunOpsTest do
       assert reloaded.athena_query_id == "other-qid"
       assert reloaded.athena_query_state == "running"
       assert reloaded.athena_query_error == nil
+    end
+  end
+
+  describe "ensure_current/1 starting a real report" do
+    @describetag :portal_db
+
+    test "a Student Answers run whose assignment is in none of the researcher's projects fails with the no-learners error" do
+      Application.put_env(:report_server, :report_tree, Tree)
+      start_athena_stub(%{query: fn _sql, _id, _user -> raise "query should not be called" end})
+
+      researcher =
+        user_fixture(%{portal_server: PortalFixture.server(), portal_user_id: 557, portal_is_project_researcher: true})
+
+      run =
+        run_fixture(researcher, %{report_filter: %ReportFilter{filters: [:class, :assignment], class: [601], assignment: [802]}})
+        |> with_user(researcher)
+
+      assert_failed(AthenaRunOps.ensure_current(reload(run)), LearnerData.no_learners_error())
     end
   end
 

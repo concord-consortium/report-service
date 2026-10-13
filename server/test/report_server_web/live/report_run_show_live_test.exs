@@ -1,6 +1,7 @@
 defmodule ReportServerWeb.ReportRunShowLiveTest do
   use ReportServerWeb.ConnCase, async: false
 
+  import ExUnit.CaptureLog
   import Phoenix.LiveViewTest
   import ReportServer.AccountsFixtures
 
@@ -19,6 +20,7 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
       Application.delete_env(:report_server, :athena_db)
       Application.delete_env(:report_server, :report_tree)
       Application.delete_env(:report_server, :test_tree_report)
+      Application.delete_env(:report_server, :run_page_retry_poll_ms)
     end)
 
     :ok
@@ -117,7 +119,7 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
     assert reloaded.athena_result_url == "s3://bucket/done.csv"
   end
 
-  test "a poll that raises still schedules the next poll", %{conn: conn} do
+  test "a refresh that raises still schedules the next poll", %{conn: conn} do
     user = user_fixture()
 
     {:ok, run} =
@@ -216,6 +218,31 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
       assert reloaded.athena_query_error == @retrying
     end
 
+    test "a retrying run is retried again after the retry interval", %{conn: conn} do
+      Application.put_env(:report_server, :run_page_retry_poll_ms, 200)
+      user = user_fixture()
+      run = unstarted_run(user)
+      test_pid = self()
+      calls = :counters.new(1, [])
+
+      put_athena_report(fn _filter, _user ->
+        :counters.add(calls, 1, 1)
+        send(test_pid, :get_query)
+
+        if :counters.get(calls, 1) == 1 do
+          {:error, "Unable to upload the learner data for the report."}
+        else
+          {:error, LearnerData.no_learners_error()}
+        end
+      end)
+
+      view = mount_run(conn, user, run)
+
+      assert_receive :get_query
+      assert_receive :get_query, 900
+      eventually(fn -> render(view) =~ "No student work matches these filters." end)
+    end
+
     test "closing the page mid-start does not strand the claim", %{conn: conn} do
       user = user_fixture()
       run = unstarted_run(user)
@@ -244,6 +271,24 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
       end)
     end
   end
+  test "a sort event on an Athena run page starts nothing", %{conn: conn} do
+    user = user_fixture()
+    run = failed_run(user, %{athena_query_error: "HIVE_MYSTERY: something else"})
+    test_pid = self()
+    put_athena_report(fn _filter, _user -> send(test_pid, :get_query) end)
+    view = mount_run(conn, user, run)
+
+    log =
+      capture_log(fn ->
+        render_hook(view, "sort_column", %{"column" => "student_name"})
+        render_async(view)
+        Process.sleep(200)
+      end)
+
+    refute log =~ "ArgumentError"
+    refute_received :get_query
+  end
+
   defp failed_run(user, attrs) do
     {:ok, run} =
       Reports.create_report_run(
@@ -294,7 +339,7 @@ defmodule ReportServerWeb.ReportRunShowLiveTest do
   end
 
   # The page starts and refreshes runs in tasks it does not await, so their effects land later.
-  defp eventually(condition, attempts \\ 50) do
+  defp eventually(condition, attempts \\ 150) do
     cond do
       condition.() -> :ok
       attempts == 0 -> flunk("the condition never held")
