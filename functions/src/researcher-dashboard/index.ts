@@ -5,7 +5,7 @@ import { researcherDashboardApp } from "./app"
 import { brokerIdToken, functionCredentials } from "./aws-credentials"
 import {
   functionUrl, portalPublicKeys, rdAuthoringHosts, rdAwsAudience, rdBrokerRoleArn, rdDataBucket, rdExecutionRoleArn,
-  rdLauncherRoleArn, rdMicrovmImageArn, rdQueueCap, rdReportServerUrl, SERVICE_ACCOUNT_ID, unsetLaunchSettings
+  rdLauncherRoleArn, rdMicrovmImageArn, rdQueueCap, rdReportServerUrl, SERVICE_ACCOUNT_ID, unsetBrokerSettings, unsetLaunchSettings
 } from "./config"
 import { DeriveProfileRouteDeps, parseAllowedHosts } from "./derive-profile-route"
 import { defaultDerivationDeps, enqueueDerivation } from "./derive-profile-worker"
@@ -52,7 +52,9 @@ function vmRouteDeps(): VmRouteDeps {
     ownProject: process.env.GCLOUD_PROJECT ?? "",
     now: Date.now,
     log: functions.logger,
-    config: { bucket: rdDataBucket.value(), brokerRoleArn: rdBrokerRoleArn.value(), audience: rdAwsAudience.value() }
+    config: {
+      bucket: rdDataBucket.value(), brokerRoleArn: rdBrokerRoleArn.value(), audience: rdAwsAudience.value(), unconfigured: unsetBrokerSettings()
+    }
   }
 }
 

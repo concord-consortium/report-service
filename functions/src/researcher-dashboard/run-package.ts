@@ -204,12 +204,14 @@ export async function queuePackages(deps: RunPackageDeps, who: Researcher, body:
   })
 }
 
+export const notConfigured = (unset: string[]) => `researcherDashboard is not configured: ${unset.join(", ")} unset`
+
 /** POST /run-package. Expects `res.locals.researcher` from the portal-assertion middleware. */
 export function makeRunPackage(deps: RunPackageDeps) {
   return async function runPackage(req: express.Request, res: express.Response) {
     const who = res.locals.researcher as Researcher
     if (deps.unconfigured.length > 0) {
-      return res.error(503, `researcherDashboard is not configured: ${deps.unconfigured.join(", ")} unset`)
+      return res.error(503, notConfigured(deps.unconfigured))
     }
     const body: Record<string, unknown> = isObject(req.body) ? req.body : {}
 

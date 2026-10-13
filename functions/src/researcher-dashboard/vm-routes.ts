@@ -3,7 +3,7 @@ import { MAXIMUM_DURATION_SECONDS, reason, UPSTREAM_TIMEOUT_MS, VmDoc, within } 
 import { packageKey, vmPath } from "./firestore-paths"
 import { MicrovmApi } from "./microvm"
 import { heldBy, prune, readQueue, toMillis, withStanding } from "./queue"
-import { Db, Refusal, WorkDoc, WorkEntry } from "./run-package"
+import { Db, notConfigured, Refusal, WorkDoc, WorkEntry } from "./run-package"
 import type { StorageBroker } from "./storage-broker"
 import { REGION } from "./region"
 import { BrokerRefusal } from "./storage-policy"
@@ -20,9 +20,9 @@ export interface VmRouteDeps {
   ownProject: string
   now(): number
   log: { error(message: string, data: object): void }
-  config: { bucket: string; brokerRoleArn: string; audience: string }
+  /** The broker's settings, and the names of those that are empty. */
+  config: { bucket: string; brokerRoleArn: string; audience: string; unconfigured: string[] }
 }
-
 
 const microvmIdOf = (body: unknown): string | null => {
   const id = (body as { microvm_id?: unknown } | null)?.microvm_id
@@ -172,10 +172,9 @@ export function makeIdle(deps: VmRouteDeps) {
 export function makeStorageCredentials(deps: VmRouteDeps) {
   return async (req: express.Request, res: express.Response) => {
     const who = res.locals.runner as Runner
-    const { bucket, brokerRoleArn, audience } = deps.config
-    const unset = [!brokerRoleArn && "RD_BROKER_ROLE_ARN", !bucket && "RD_DATA_BUCKET", !audience && "RD_AWS_AUDIENCE"].filter(Boolean)
-    if (unset.length > 0) {
-      return res.error(503, `researcherDashboard is not configured: ${unset.join(", ")} unset`)
+    const { bucket, brokerRoleArn, audience, unconfigured } = deps.config
+    if (unconfigured.length > 0) {
+      return res.error(503, notConfigured(unconfigured))
     }
 
     try {

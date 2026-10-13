@@ -29,7 +29,11 @@ export const rdAuthoringHosts = defineString("RD_AUTHORING_HOSTS", { default: ""
 export const functionUrl = () =>
   rdFunctionUrl.value() || `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/researcherDashboard`
 
+const unset = (params: { name: string; value(): string }[]) => params.filter(p => !p.value()).map(p => p.name)
+
 /** The names of the params a launch needs that are empty. */
 export const unsetLaunchSettings = () =>
-  [rdMicrovmImageArn, rdExecutionRoleArn, rdDataBucket, rdReportServerUrl, rdLauncherRoleArn, rdAwsAudience, rdBrokerRoleArn]
-    .filter(p => !p.value()).map(p => p.name)
+  unset([rdMicrovmImageArn, rdExecutionRoleArn, rdDataBucket, rdReportServerUrl, rdLauncherRoleArn, rdAwsAudience, rdBrokerRoleArn])
+
+/** The names of the params the storage broker needs that are empty. */
+export const unsetBrokerSettings = () => unset([rdBrokerRoleArn, rdDataBucket, rdAwsAudience])

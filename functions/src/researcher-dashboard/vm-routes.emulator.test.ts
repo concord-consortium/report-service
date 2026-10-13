@@ -31,7 +31,7 @@ const deps = (): VmRouteDeps => ({
   ownProject: "report-service-dev",
   now: Date.now,
   log: { error: jest.fn() },
-  config: { bucket: "b", brokerRoleArn: "r", audience: "a" }
+  config: { bucket: "b", brokerRoleArn: "r", audience: "a", unconfigured: [] }
 })
 
 async function seed(launchedAt: admin.firestore.Timestamp | admin.firestore.FieldValue) {

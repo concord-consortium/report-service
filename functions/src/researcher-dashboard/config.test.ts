@@ -1,6 +1,6 @@
 import { readFileSync } from "fs"
 import { join } from "path"
-import { SERVICE_ACCOUNT_ID, unsetLaunchSettings } from "./config"
+import { SERVICE_ACCOUNT_ID, unsetBrokerSettings, unsetLaunchSettings } from "./config"
 
 describe("config", () => {
   it("names the same service account the setup script creates", () => {
@@ -40,5 +40,9 @@ describe("config", () => {
 
   it("counts the launcher role, the broker role and their audience as launch settings", () => {
     expect(unsetLaunchSettings()).toEqual(expect.arrayContaining(["RD_LAUNCHER_ROLE_ARN", "RD_AWS_AUDIENCE", "RD_BROKER_ROLE_ARN"]))
+  })
+
+  it("counts the broker role, the bucket and the audience as the broker's settings", () => {
+    expect(unsetBrokerSettings()).toEqual(["RD_BROKER_ROLE_ARN", "RD_DATA_BUCKET", "RD_AWS_AUDIENCE"])
   })
 })

@@ -31,7 +31,8 @@ const tokens: Record<string, RunnerClaims> = {
   learner: { ...runnerClaims, user_type: "learner" },
   wildcardId: { ...runnerClaims, platform_user_id: "4*" },
   zeroId: { ...runnerClaims, platform_user_id: 0 },
-  noPlatform: { ...runnerClaims, platform_id: "not a url" }
+  noPlatform: { ...runnerClaims, platform_id: "not a url" },
+  stringId: { ...runnerClaims, platform_user_id: "42" }
 }
 
 let db: FakeDb
@@ -73,7 +74,9 @@ beforeEach(async () => {
     ownProject: "report-service-dev",
     now: () => NOW,
     log: { error: jest.fn() },
-    config: { bucket: "researcher-dashboard-runner-staging", brokerRoleArn: "arn:aws:iam::1:role/broker", audience: "researcher-dashboard-runner-staging" }
+    config: {
+      bucket: "researcher-dashboard-runner-staging", brokerRoleArn: "arn:aws:iam::1:role/broker", audience: "researcher-dashboard-runner-staging", unconfigured: []
+    }
   }
   const noRigse = () => { throw new Error("no rigse routes here") }
   server = express().use(express.json() as express.RequestHandler)
@@ -137,6 +140,13 @@ describe("the VM's authentication", () => {
     const res = await post("/idle", elsewhere)
     expect(res.body).toMatchObject({ suspended: true })
     expect(deps.microvms.suspend).toHaveBeenCalledWith("vm-1")
+  })
+
+  it("accepts platform_user_id as its decimal string", async () => {
+    seed([entry("users/1/a")])
+    expect((await post("/work", undefined, "stringId")).body.packages).toHaveLength(1)
+    await post("/storage-credentials", undefined, "stringId")
+    expect(deps.broker.assume).toHaveBeenCalledWith(expect.objectContaining({ platformUserId: "42" }))
   })
 
   it("/storage-credentials takes the researcher from the token, not the body", async () => {
@@ -310,10 +320,10 @@ describe("POST /storage-credentials", () => {
   })
 
   it("answers 503 naming the unset settings", async () => {
-    deps.config = { bucket: "", brokerRoleArn: "", audience: "" }
+    deps.config = { ...deps.config, unconfigured: ["RD_BROKER_ROLE_ARN", "RD_AWS_AUDIENCE"] }
     const res = await post("/storage-credentials")
     expect(res.status).toBe(503)
-    expect(res.body.error).toMatch(/RD_BROKER_ROLE_ARN, RD_DATA_BUCKET, RD_AWS_AUDIENCE/)
+    expect(res.body.error).toBe("researcherDashboard is not configured: RD_BROKER_ROLE_ARN, RD_AWS_AUDIENCE unset")
     expect(deps.broker.assume).not.toHaveBeenCalled()
   })
 
