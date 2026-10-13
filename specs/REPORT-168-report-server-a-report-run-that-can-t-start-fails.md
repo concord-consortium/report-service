@@ -68,6 +68,8 @@ The case that found it: on 2026-10-09 a researcher's Student Answers run on stag
 
 - cc-data changes: REPORT-169 (stop waiting on a retrying run, retire the oscillation detector).
 - Backing off the API's retries between polls. Each read of a retrying run reruns the learner query; the 10-minute bound limits how long that lasts.
+- Moving the API's retry out of the GET request into a background task, as the run page does: REPORT-177.
+- Classifying start failures where they are made rather than by message text, so bad SQL and portal configuration errors fail at once: REPORT-175.
 - Retrying or restarting a failed run in place. A researcher who fixes the cause duplicates the run.
 - Portal (sync) reports, which have no self-start.
 - Renaming `athena_query_error` or adding a field for the failure's origin.
@@ -130,7 +132,7 @@ The case that found it: on 2026-10-09 a researcher's Student Answers run on stag
 - A) Match state `queued`, no query id and the claim's `updated_at`.
 - B) Match state `queued` and no query id only.
 
-**Decision**: A. B would let a start that outlived its abandoned claim write over a later claim's outcome; A ties each write to the claim it belongs to at no extra cost. The cost of either, an orphaned Athena query in that rare case, is accepted.
+**Decision**: A. B would let a start that outlived its abandoned claim write over a later claim's outcome; A ties each write to the claim it belongs to at no extra cost. The cost of either, accepted because it is rare, is an orphaned Athena query whose id only the log keeps. The same cost follows a failure to store a started query's id. A learner-data report's retries then reuse the run's Athena request token with new SQL, which Athena rejects, so the run also fails after its retry window; REPORT-176 is to recover the query instead.
 
 ---
 

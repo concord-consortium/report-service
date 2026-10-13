@@ -271,6 +271,7 @@ defmodule ReportServer.Reports do
   # Starting an Athena query runs the portal learner query and uploads the learner file before
   # Athena is contacted, so it is far too slow to hold a request open for. ensure_current/1's
   # atomic claim is what keeps a concurrent GET /reports/:id from starting the same query twice.
+  # TODO(REPORT-177): a GET of a run waiting to retry still runs the whole start inside the request.
   defp start_athena_query_async(report_run, %Report{type: :athena}) do
     run_starter().(report_run)
     report_run
