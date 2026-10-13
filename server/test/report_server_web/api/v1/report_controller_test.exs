@@ -802,7 +802,9 @@ defmodule ReportServerWeb.Api.V1.ReportControllerTest do
 
       conn = get(authed_conn(token), ~p"/api/v1/reports/#{run.id}/download")
 
-      assert json_response(conn, 422)["error"] == "UNPROCESSABLE"
+      body = json_response(conn, 422)
+      assert body["error"] == "UNPROCESSABLE"
+      assert body["message"] == "This report run has no filters and cannot be downloaded."
       # nothing streamed, so no audit row was written
       assert entry_count() == 0
     end

@@ -1,6 +1,7 @@
 defmodule ReportServer.Reports.AthenaFailure do
   @moduledoc """
-  Bounding and interpreting the `StateChangeReason` Athena returns for a failed or cancelled query.
+  Bounding and interpreting why a report run failed: the `StateChangeReason` Athena returns for a
+  failed or cancelled query, or the reason the run's query could not be started.
   """
 
   alias ReportServer.Reports.Report
@@ -16,6 +17,8 @@ defmodule ReportServer.Reports.AthenaFailure do
   # The wording is specified externally and must ship verbatim. It must never suggest narrowing:
   # Slowdown is an internal Athena condition that neither the researcher nor this server can act on.
   @slowdown "Your query was delayed due to high traffic in AWS Athena. Please try again in a few moments. This is a temporary issue caused by heavy usage."
+
+  @no_learners "No student work matches these filters. If you chose a class or an assignment, check that the assignment itself is in one of your projects' cohorts or material lists: a class whose teacher is in your project is not enough on its own."
 
   # `secure_key` is an injected projection column, so Athena expands the query's IN list into
   # partition values during planning and rejects the query outright once that list is too long.
@@ -79,7 +82,8 @@ defmodule ReportServer.Reports.AthenaFailure do
   def offers_app_filter?(_report), do: false
 
   @doc """
-  The reason-to-suggestion table, ordered, first match wins.
+  The reason-to-suggestion table, ordered, first match wins. It covers the reasons a run failed to
+  start as well as Athena's `StateChangeReason`.
 
   Patterns are lowercase because `guidance_for/2` downcases the reason: S3 spells its throttling code
   `SlowDown` while Athena spells the generic condition `Slowdown`. `hive_s3_throttling` must precede
@@ -94,6 +98,7 @@ defmodule ReportServer.Reports.AthenaFailure do
     narrowing = narrowing(app_filter?)
 
     [
+      {"no learners", @no_learners},
       {"hive_exceeded_partition_limit",
        "This query covers too many Athena partitions. Narrow it with #{narrowing} and run it again."},
       {"injected projected partition column", @too_many_students},

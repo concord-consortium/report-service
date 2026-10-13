@@ -1,7 +1,8 @@
 defmodule ReportServer.Reports.AthenaFailureTest do
   use ExUnit.Case, async: true
 
-  alias ReportServer.Reports.{AthenaFailure, Report, Tree}
+  alias ReportServer.Reports.{AthenaFailure, Report, ReportQuery, Tree}
+  alias ReportServer.Reports.Athena.{LearnerData, TeacherActionsReport}
 
   @athena_slugs ~w(student-actions student-actions-with-metadata student-answers
                    student-assignment-usage teacher-actions)
@@ -233,6 +234,22 @@ defmodule ReportServer.Reports.AthenaFailureTest do
     end
   end
 
+  describe "guidance_for/2 start failures" do
+    test "both no-learners messages get the no-learners advice" do
+      for report <- [with_app_filter(), without_app_filter()],
+          message <- [LearnerData.no_learners_error(), ReportQuery.no_learners_error()] do
+        advice = AthenaFailure.guidance_for(report, message)
+
+        assert advice =~ "No student work matches these filters."
+        assert advice =~ "cohorts or material lists"
+      end
+    end
+
+    test "no teachers or activities found gets no suggestion" do
+      assert AthenaFailure.guidance_for(without_app_filter(), TeacherActionsReport.no_match_error()) == nil
+    end
+  end
+
   describe "guidance_for/2 matching hazards" do
     test "a reason carrying both the throttling code and SlowDown gets the throttling advice" do
       assert @throttling_reason =~ "HIVE_S3_THROTTLING"
@@ -253,7 +270,7 @@ defmodule ReportServer.Reports.AthenaFailureTest do
     test "every pattern is lowercase, so it can match a downcased reason" do
       for app_filter? <- [true, false] do
         patterns = Enum.map(AthenaFailure.guidance(app_filter?), &elem(&1, 0))
-        assert length(patterns) == 5
+        assert length(patterns) == 6
 
         for pattern <- patterns do
           assert pattern == String.downcase(pattern)

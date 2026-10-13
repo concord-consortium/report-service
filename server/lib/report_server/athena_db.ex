@@ -10,6 +10,8 @@ defmodule ReportServer.AthenaDB do
   @doc "The lifetime, in seconds, of the presigned URLs minted by get_download_url/2."
   def download_url_ttl_seconds, do: @download_url_ttl_seconds
 
+  def query_too_large_error, do: "The resulting query is too large for Athena to process.  The max is 256KB."
+
   def query(sql, report_run_id, user = %User{}) do
     with :ok <- check_query_size(sql),
          {:ok, workgroup_name} <- ensure_workgroup(user) do
@@ -173,7 +175,7 @@ defmodule ReportServer.AthenaDB do
   defp check_query_size(sql) do
     case String.length(sql) do
       len when len > 262144 ->
-        {:error, "The resulting query is too large for Athena to process.  The max is 256KB."}
+        {:error, query_too_large_error()}
       _ ->
         :ok
     end
