@@ -17,6 +17,8 @@ export const rdReportServerUrl = defineString("RD_REPORT_SERVER_URL", { default:
 // The runner stack's launcher role, and the audience its trust policy requires of our ID token.
 export const rdLauncherRoleArn = defineString("RD_LAUNCHER_ROLE_ARN", { default: "" })
 export const rdAwsAudience = defineString("RD_AWS_AUDIENCE", { default: "" })
+// The runner stack's broker role, which the storage broker assumes for each researcher's session.
+export const rdBrokerRoleArn = defineString("RD_BROKER_ROLE_ARN", { default: "" })
 // Empty means the function's own first-generation URL, derived from the project at runtime.
 export const rdFunctionUrl = defineString("RD_FUNCTION_URL", { default: "" })
 export const rdQueueCap = defineInt("RD_QUEUE_CAP", { default: 20 })
@@ -29,5 +31,5 @@ export const functionUrl = () =>
 
 /** The names of the params a launch needs that are empty. */
 export const unsetLaunchSettings = () =>
-  [rdMicrovmImageArn, rdExecutionRoleArn, rdDataBucket, rdReportServerUrl, rdLauncherRoleArn, rdAwsAudience]
+  [rdMicrovmImageArn, rdExecutionRoleArn, rdDataBucket, rdReportServerUrl, rdLauncherRoleArn, rdAwsAudience, rdBrokerRoleArn]
     .filter(p => !p.value()).map(p => p.name)

@@ -63,3 +63,16 @@ export function functionCredentials(
     throw new Error("AWS calls are off in the emulator; set RD_EMULATOR_AWS=default-chain to use your own AWS credentials")
   }
 }
+
+/**
+ * The ID token source for the storage broker, whose sessions come only from the function's own
+ * identity. The emulator has none, so there the broker refuses whatever RD_EMULATOR_AWS says.
+ */
+export function brokerIdToken(env: NodeJS.ProcessEnv = process.env, idToken: IdTokenSource = metadataIdToken): IdTokenSource {
+  if (env.FUNCTIONS_EMULATOR !== "true") {
+    return idToken
+  }
+  return async () => {
+    throw new Error("the storage broker makes no AWS call in the emulator, which has no service account")
+  }
+}

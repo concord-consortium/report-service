@@ -32,7 +32,7 @@ cd tests && PATH=$HOME/.nvm/versions/node/v22.17.1/bin:$PATH ../functions/node_m
 - `functions/src/researcher-dashboard/queue.ts`: new, with `toMillis`, the only way any dashboard module compares or measures a stored time. Two Admin SDK reads of one Firestore `Timestamp` are `isEqual` but not `===`, and `FakeDb` hands back the same object on every read, so a raw comparison passes every unit test and fails in production; the emulator tests in steps 3 and 4 are what catch it.
 - `functions/src/researcher-dashboard/run-package.ts`: `queuePackages`, and `WorkDoc` gains `session_token`, `firebase_project` and `updated_at`
 - `functions/src/researcher-dashboard/ensure-vm.ts`: `MAXIMUM_DURATION_SECONDS` moves here from `microvm.ts`, `recordLaunch` writes `launched_at` and `resumed_at: null`, and the private `resume` becomes the exported `wakeSuspended(deps, who, vm: {microvm_id, image_version})`, with `deps` the `db`, `timestamp` and `microvms` slice, which `ensureVm` calls with the `vms/` document it read and the watchdog calls too (R19). Before `ResumeMicrovm` it runs a transaction that merges `resumed_at: timestamp()` into `vms/{platform_user_id}` only while that document's `microvm_id` is this VM. Its header comment says the watchdog wakes a suspended VM with *queued* work
-- `functions/src/researcher-dashboard/microvm.ts`: `suspend` and `terminate`; `REGION` moves to a new pure module, `region.ts`, which `microvm.ts` and step 2's `storage-policy.ts` both import, so the region is defined once; and `run` passes ``egressNetworkConnectors: [`arn:aws:lambda:${REGION}:aws:network-connector:aws-network-connector:INTERNET_EGRESS`]`` (R28a)
+- `functions/src/researcher-dashboard/microvm.ts`: `suspend` and `terminate`; `REGION` moves to a new pure module, `region.ts`, which `microvm.ts` and the broker's modules import, so the region is defined once; and `run` passes ``egressNetworkConnectors: [`arn:aws:lambda:${REGION}:aws:network-connector:aws-network-connector:INTERNET_EGRESS`]`` (R28a)
 - `functions/src/test/researcher-dashboard-fake-db.ts`: a transaction refuses a read after a write, as Firestore does, so a transaction that reads after writing fails here rather than only in production, with a test in `researcher-dashboard-fake-db.test.ts`
 - `functions/src/researcher-dashboard/run-package.test.ts`, `ensure-vm.test.ts`, `microvm.test.ts`
 
@@ -90,7 +90,7 @@ export function prune(tx: Transaction, q: QueueRead) {
 **Summary**: The session policy as a pure function, which refuses a widening id or bucket; the broker, which is the only code handed the broker role and assumes it with `fromWebToken` and a token minted for the call, always with the policy; the broker's emulator refusal; and the `RD_BROKER_ROLE_ARN` param as a launch setting in both `.env` files, which joins the QA stack's other launch settings already on `master`. No route yet. Covers R12, R13, R14a, R15's unit tests, R26, R26a.
 
 **Files affected**:
-- `functions/src/researcher-dashboard/storage-policy.ts`: new, with `PLATFORM_USER_ID` and `BrokerRefusal`, importing `REGION` from `region.ts`
+- `functions/src/researcher-dashboard/storage-policy.ts`: new, with `PLATFORM_USER_ID` and `BrokerRefusal`
 - `functions/src/researcher-dashboard/storage-broker.ts`: new
 - `functions/src/researcher-dashboard/aws-credentials.ts`: `brokerIdToken`
 - `functions/src/researcher-dashboard/config.ts`: `rdBrokerRoleArn` beside the launcher role and the audience, and in `unsetLaunchSettings`
@@ -104,7 +104,6 @@ export function prune(tx: Transaction, q: QueueRead) {
 // storage-policy.ts
 export const PLATFORM_USER_ID = /^[1-9][0-9]*$/
 const BUCKET = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/
-import { REGION } from "./region"
 export class BrokerRefusal extends Error {}
 
 export function sessionPolicy(bucket: string, platformUserId: string): string {
@@ -122,7 +121,7 @@ export function sessionPolicy(bucket: string, platformUserId: string): string {
 }
 
 // storage-broker.ts
-// The broker role's MaxSessionDuration, and final-design.md 11.3's "valid one hour"
+// The broker role's MaxSessionDuration
 const SESSION_SECONDS = 3600
 
 export interface StorageBroker {

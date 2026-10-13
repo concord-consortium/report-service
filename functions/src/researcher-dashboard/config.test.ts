@@ -9,7 +9,18 @@ describe("config", () => {
     expect(script).toMatch(new RegExp(`^SERVICE_ACCOUNT_ID=${SERVICE_ACCOUNT_ID}$`, "m"))
   })
 
-  it("counts the launcher role and its audience as launch settings", () => {
-    expect(unsetLaunchSettings()).toEqual(expect.arrayContaining(["RD_LAUNCHER_ROLE_ARN", "RD_AWS_AUDIENCE"]))
+  it("lists every param in both projects' .env files", () => {
+    const params = [...readFileSync(join(__dirname, "config.ts"), "utf8").matchAll(/define(?:String|Int)\("([A-Z_]+)"/g)].map(m => m[1])
+    expect(params).toContain("RD_BROKER_ROLE_ARN")
+    for (const project of ["report-service-dev", "report-service-pro"]) {
+      const env = readFileSync(join(__dirname, `../../.env.${project}`), "utf8")
+      for (const param of params) {
+        expect(env).toMatch(new RegExp(`^${param}=`, "m"))
+      }
+    }
+  })
+
+  it("counts the launcher role, the broker role and their audience as launch settings", () => {
+    expect(unsetLaunchSettings()).toEqual(expect.arrayContaining(["RD_LAUNCHER_ROLE_ARN", "RD_AWS_AUDIENCE", "RD_BROKER_ROLE_ARN"]))
   })
 })

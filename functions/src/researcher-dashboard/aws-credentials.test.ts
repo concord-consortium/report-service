@@ -1,4 +1,4 @@
-import { functionCredentials, webIdentityCredentials } from "./aws-credentials"
+import { brokerIdToken, functionCredentials, webIdentityCredentials } from "./aws-credentials"
 
 // The real provider needs `node:` builtins this Jest cannot resolve, so it is replaced by a stand-in
 // that answers with the token it was given.
@@ -90,5 +90,20 @@ describe("functionCredentials", () => {
   it("leaves the SDK its default credential chain in the emulator only when asked", () => {
     expect(functionCredentials(() => role, "session", { FUNCTIONS_EMULATOR: "true", RD_EMULATOR_AWS: "default-chain" }))
       .toBeUndefined()
+  })
+})
+
+describe("brokerIdToken", () => {
+  it("is the service account's token source when deployed", () => {
+    const idToken = async () => "deployed-token"
+    expect(brokerIdToken({}, idToken)).toBe(idToken)
+  })
+
+  it("refuses in the emulator, even when the launcher may use the default chain", async () => {
+    const idToken = jest.fn()
+    const source = brokerIdToken({ FUNCTIONS_EMULATOR: "true", RD_EMULATOR_AWS: "default-chain" }, idToken)
+
+    await expect(source("aud")).rejects.toThrow("no AWS call in the emulator")
+    expect(idToken).not.toHaveBeenCalled()
   })
 })
