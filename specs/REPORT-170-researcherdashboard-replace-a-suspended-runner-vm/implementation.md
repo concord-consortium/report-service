@@ -75,8 +75,8 @@ async function claimAndLaunch(deps: EnsureVmDeps, who: Researcher, body: RunPack
   imageVersion: string | undefined, replacing?: string): Promise<VmOutcome> {
   // ...today's claim, launch and record...
   if (replacing) {
-    // Last, so a timeout can cut only this: the old VM is suspended and no longer recorded, so
-    // nothing wakes it, and it ends with its maximum life
+    // Best effort: the old VM is no longer recorded, so nothing wakes it, and it ends at its
+    // maximum life
     try {
       await deps.microvms.terminate(replacing)
     } catch (e) {

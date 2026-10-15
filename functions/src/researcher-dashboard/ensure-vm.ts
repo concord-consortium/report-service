@@ -138,8 +138,8 @@ async function claimAndLaunch(deps: EnsureVmDeps, who: Researcher, body: RunPack
     throw new VmStepError(502, `VM ${launched.microvmId} was launched but could not be recorded: ${reason(e)}`, true)
   }
   if (replacing) {
-    // Last, so a timeout can cut only this: the old VM is suspended and no longer recorded, so
-    // nothing wakes it, and it ends with its maximum life
+    // Best effort: the old VM is no longer recorded, so nothing wakes it, and it ends at its
+    // maximum life
     try {
       await deps.microvms.terminate(replacing)
     } catch (e) {
