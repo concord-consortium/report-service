@@ -117,6 +117,15 @@ describe("ensureVm", () => {
     expect(db.docs.get(VM_PATH)).toMatchObject({ microvm_id: "vm-new" })
   })
 
+  it("answers a GetMicrovmImage failure with 502 naming it, before claiming", async () => {
+    microvms.currentImageVersion.mockRejectedValue(new Error("throttled"))
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: "GetMicrovmImage failed: throttled" })
+    expect(db.docs.get(VM_PATH)).toBeUndefined()
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(microvms.run).not.toHaveBeenCalled()
+  })
+
   it("launches when the API no longer knows the recorded VM", async () => {
     recordVm({ microvm_id: "vm-gone" })
 
@@ -449,7 +458,7 @@ describe("replacing a suspended VM on an old image", () => {
 
     await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502 })
     expect(microvms.terminate).not.toHaveBeenCalled()
-    expect(db.docs.get(VM_PATH)).toMatchObject({ microvm_id: "vm-old", launching_until: null })
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-old", image_version: "6", launching_until: null })
   })
 
   it("leaves a running VM on an old version without asking the image", async () => {
