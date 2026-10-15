@@ -142,6 +142,7 @@ describe("ensureVm", () => {
     expect(db.docs.get(VM_PATH)).toMatchObject({ resumed_at: TIMESTAMP })
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(microvms.run).not.toHaveBeenCalled()
+    expect(microvms.terminate).not.toHaveBeenCalled()
   })
 
   it("resumes nothing when a newer VM was recorded after it read the suspended one", async () => {
