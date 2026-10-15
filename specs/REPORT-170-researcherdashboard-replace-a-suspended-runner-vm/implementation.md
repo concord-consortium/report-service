@@ -246,7 +246,7 @@ The wake, after the existing `queued === 0` check (the loop already checked the 
 
 The loop's header comment gains the case: "...suspended ones with work queued behind the suspend, which are resumed, or terminated when on an older image version, and gone ones...". `index.ts`'s comment above `researcherDashboardWatchdog` likewise: "resumes a suspended VM with work queued behind its suspend, or terminates it when it is on an older image version".
 
-`functions/README.md`, the watchdog paragraph: "...resumes a suspended VM with work queued behind its suspend, or terminates it, launching nothing, when it is on an older image version and no `running` result names it, so the work waits for the researcher's next run request, ..."
+`functions/README.md`, the watchdog paragraph, after the sentence listing what the watchdog does: "A suspended VM on an older image version that no `running` result names is terminated instead of resumed, launching nothing, so its queued work waits for the researcher's next run request."
 
 **Tests** (`watchdog.test.ts`, in `describe("idle and suspended VMs")`, each run in the throwaway build):
 
