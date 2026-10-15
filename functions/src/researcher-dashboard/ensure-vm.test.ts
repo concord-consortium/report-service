@@ -400,7 +400,7 @@ describe("replacing a suspended VM on an old image", () => {
   })
 
   it.each<[string, number, string]>([
-    ["holds", 90 * 1000, "launching"],
+    ["leaves", 90 * 1000, "resumed"],
     ["replaces", 150 * 1000, "launched"]
   ])("%s a VM on an old version resumed %i ms ago", async (_, ago, outcome) => {
     recordVm({ microvm_id: "vm-old", image_version: "6", resumed_at: NOW - ago })
@@ -463,6 +463,37 @@ describe("replacing a suspended VM on an old image", () => {
 
     expect(await ensureVm(deps, who, body())).toBe("launched")
     expect(deps.log.warn).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ replaced: "vm-old", microvmId: "vm-new", error: "throttled" }))
+  })
+
+  it("answers launched without waiting past three seconds for the old VM's terminate", async () => {
+    jest.useFakeTimers()
+    try {
+      recordVm({ microvm_id: "vm-old", image_version: "6" })
+      microvms.terminate.mockReturnValue(new Promise(() => undefined))
+
+      const outcome = ensureVm(deps, who, body())
+      for (let i = 0; i < 20 && microvms.terminate.mock.calls.length === 0; i++) {
+        await new Promise(resolve => setImmediate(resolve))
+      }
+      jest.advanceTimersByTime(3 * 1000)
+
+      expect(await outcome).toBe("launched")
+      expect(deps.log.warn).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ replaced: "vm-old", error: "no answer within 3 seconds" }))
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it("keeps the old VM unterminated when the new one cannot be recorded", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    const transact = db.runTransaction.bind(db)
+    let transactions = 0
+    // the wake is the first transaction, the claim the second and the record the third
+    db.runTransaction = (fn => ++transactions === 3 ? Promise.reject(new Error("unavailable")) : transact(fn)) as typeof db.runTransaction
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: expect.stringMatching(/vm-new was launched but could not be recorded/) })
+    expect(microvms.terminate).not.toHaveBeenCalled()
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-old", image_version: "6", launching_until: NOW + 60 * 1000 })
   })
 
   it("leaves the old VM recorded and clears the claim when the mint is refused", async () => {

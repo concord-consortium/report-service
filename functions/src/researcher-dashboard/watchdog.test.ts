@@ -573,6 +573,14 @@ describe("idle and suspended VMs", () => {
       db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", image_version: "6" })
     })
 
+    it("leaves a suspended VM with nothing queued without asking the image", async () => {
+      db.docs.set(WORK, { packages: [], updated_at: NOW - MIN })
+
+      expect(await runWatchdog(deps)).toEqual([])
+      expect(deps.microvms.currentImageVersion).not.toHaveBeenCalled()
+      expect(deps.microvms.terminate).not.toHaveBeenCalled()
+    })
+
     it("leaves a suspended VM resumed in the last two minutes, which may since have finished its run", async () => {
       db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", image_version: "6", resumed_at: NOW - MIN })
 

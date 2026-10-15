@@ -4,7 +4,8 @@ import { readQueue, runningOn, toMillis } from "./queue"
 import { Db, Researcher, RunPackageBody } from "./run-package"
 
 // PENDING or RUNNING: the VM asks for work at the end of /run and again before it idles.
-// SUSPENDING: the watchdog resumes a SUSPENDED VM that has work queued.
+// SUSPENDING: the watchdog resumes a SUSPENDED VM that has work queued, or terminates it when it is
+// on an older image version.
 export type VmOutcome = "launched" | "launching" | "resumed" | "running" | "suspending"
 
 const LAUNCH_STATES = [undefined, "TERMINATING", "TERMINATED"]
@@ -20,13 +21,15 @@ const RUN_HOOK_PAYLOAD_MAX_BYTES = 16384
 // also bounds how long an old image keeps serving.
 export const MAXIMUM_DURATION_SECONDS = 8 * 60 * 60
 // Per upstream call, each made once; the four a launch makes before it is recorded, and fetching
-// the AWS credentials they use, fit the function's 60-second timeout. A replace's TerminateMicrovm
-// comes after the record, so a timeout can cut only that.
+// the AWS credentials they use, fit the function's 60-second timeout.
 export const UPSTREAM_TIMEOUT_MS = 10 * 1000
+// How long a replace waits for TerminateMicrovm before answering, so the terminate after the record
+// cannot push the answer past the function's timeout.
+const REPLACED_TERMINATE_WAIT_MS = 3 * 1000
 
 export interface VmDoc {
   microvm_id?: string
-  image_version?: string
+  image_version?: string | null
   launching_until?: number | null
   // a server timestamp; the watchdog sweeps the VMs launched within their maximum life
   launched_at?: unknown
@@ -99,8 +102,8 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
     const imageVersion = await activeImageVersion(deps)
     const wake = await wakeSuspended(deps, who, { microvm_id: seen!.microvm_id!, image_version: seen!.image_version }, imageVersion)
     if (wake !== "replace") {
-      // a VM recorded or resumed since the read above, or a launch under way, is the one to take the work
-      return wake === "resumed" ? "resumed" : "launching"
+      // held: a VM recorded since the read above, or a launch under way, is the one to take the work
+      return wake === "held" ? "launching" : "resumed"
     }
     return await claimAndLaunch(deps, who, body, seen, imageVersion, seen!.microvm_id)
   }
@@ -114,7 +117,7 @@ async function claimAndLaunch(deps: EnsureVmDeps, who: Researcher, body: RunPack
   const vmRef = deps.db.doc(vmPath(who.portal, who.platformUserId))
 
   // The transaction re-reads the document and claims only if nobody launched or claimed since
-  // it was read above, so two concurrent requests launch at most one VM.
+  // `seen` was read, so two concurrent requests launch at most one VM.
   const claimed = await deps.db.runTransaction(async tx => {
     const vm = (await tx.get(vmRef)).data() as VmDoc | undefined
     if (vm?.launching_until && vm.launching_until > deps.now()) return false
@@ -145,7 +148,7 @@ async function claimAndLaunch(deps: EnsureVmDeps, who: Researcher, body: RunPack
     // Best effort: the old VM is no longer recorded, so nothing wakes it, and it ends at its
     // maximum life
     try {
-      await deps.microvms.terminate(replacing)
+      await within(deps.microvms.terminate(replacing), REPLACED_TERMINATE_WAIT_MS)
     } catch (e) {
       deps.log.warn("run-package could not terminate the VM it replaced",
         { platformUserId: who.platformUserId, portal: who.portal, replaced: replacing, microvmId: launched.microvmId, error: reason(e) })
@@ -163,7 +166,7 @@ async function activeImageVersion(deps: EnsureVmDeps): Promise<string | undefine
   }
 }
 
-export type Wake = "resumed" | "replace" | "held"
+export type Wake = "resumed" | "recently_resumed" | "replace" | "held"
 
 export type WakeDeps = Pick<EnsureVmDeps, "db" | "now" | "timestamp"> & {
   microvms: Pick<MicrovmApi, "resume">
@@ -179,8 +182,9 @@ export type WakeDeps = Pick<EnsureVmDeps, "db" | "now" | "timestamp"> & {
  * no active version there is nothing to compare. `resumed_at` is written before the resume, so no
  * watchdog pass sees the VM running with only the run's pre-suspend heartbeat, and never for a VM to
  * be replaced. Holds, writing and resuming nothing, once `vms/` records another VM, which is the one to
- * take the work, while a launch claim is live, or instead of replacing a VM resumed in the last two
- * minutes; and holds after the write when `mayCall` says no.
+ * take the work, or while a launch claim is live; and holds after the write when `mayCall` says no.
+ * Answers `recently_resumed`, writing and resuming nothing, instead of replacing a VM resumed in the
+ * last two minutes, which is awake or about to be.
  */
 export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string | null },
   activeVersion: string | undefined): Promise<Wake> {
@@ -192,7 +196,7 @@ export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { micro
       return "held"
     }
     if (stale && !runningOn(await readQueue(deps.db, tx, who), vm.microvm_id)) {
-      return (toMillis(current.resumed_at) || 0) > deps.now() - RESUME_SETTLE_MS ? "held" : "replace"
+      return (toMillis(current.resumed_at) || 0) > deps.now() - RESUME_SETTLE_MS ? "recently_resumed" : "replace"
     }
     tx.set(vmRef, { resumed_at: deps.timestamp() }, { merge: true })
     return "resumed"
@@ -212,7 +216,7 @@ export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { micro
 }
 
 // Only on the launch branch: minting revokes the researcher's previous token, which a live VM
-// would still be holding.
+// would still be holding. A replace mints while the old VM still exists, and so ends its token too.
 async function mintReportServerToken(deps: EnsureVmDeps, assertion: string): Promise<string> {
   let response: Response
   let answer: { token?: string; message?: string }
