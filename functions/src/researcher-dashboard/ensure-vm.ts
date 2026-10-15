@@ -1,6 +1,6 @@
 import { MicrovmApi } from "./microvm"
 import { runnerPath, vmPath } from "./firestore-paths"
-import { readQueue, runningOn } from "./queue"
+import { readQueue, runningOn, toMillis } from "./queue"
 import { Db, Researcher, RunPackageBody } from "./run-package"
 
 // PENDING or RUNNING: the VM asks for work at the end of /run and again before it idles.
@@ -11,6 +11,10 @@ const LAUNCH_STATES = [undefined, "TERMINATING", "TERMINATED"]
 // Longer than RunMicrovm plus the mint round trip, short enough that a launcher that crashed
 // holding it does not block the researcher for long.
 export const LAUNCH_CLAIM_MS = 60 * 1000
+// A VM resumed this recently is held rather than replaced: the caller's SUSPENDED may predate that
+// resume, after which the VM can finish its run and claim more work. Longer than the function's
+// 60-second timeout, which bounds how old a caller's state can be.
+const RESUME_SETTLE_MS = 2 * 60 * 1000
 const RUN_HOOK_PAYLOAD_MAX_BYTES = 16384
 // A VM's maximum life: the platform terminates it this long after launch, suspended or not. It
 // also bounds how long an old image keeps serving.
@@ -95,7 +99,7 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
     const imageVersion = await activeImageVersion(deps)
     const wake = await wakeSuspended(deps, who, { microvm_id: seen!.microvm_id!, image_version: seen!.image_version }, imageVersion)
     if (wake !== "replace") {
-      // a VM recorded since the read above, or a launch under way, is the one to take the work
+      // a VM recorded or resumed since the read above, or a launch under way, is the one to take the work
       return wake === "resumed" ? "resumed" : "launching"
     }
     return await claimAndLaunch(deps, who, body, seen, imageVersion, seen!.microvm_id)
@@ -175,7 +179,8 @@ export type WakeDeps = Pick<EnsureVmDeps, "db" | "now" | "timestamp"> & {
  * no active version there is nothing to compare. `resumed_at` is written before the resume, so no
  * watchdog pass sees the VM running with only the run's pre-suspend heartbeat, and never for a VM to
  * be replaced. Holds, writing and resuming nothing, once `vms/` records another VM, which is the one to
- * take the work, or while a launch claim is live; and holds after the write when `mayCall` says no.
+ * take the work, while a launch claim is live, or instead of replacing a VM resumed in the last two
+ * minutes; and holds after the write when `mayCall` says no.
  */
 export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string | null },
   activeVersion: string | undefined): Promise<Wake> {
@@ -187,7 +192,7 @@ export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { micro
       return "held"
     }
     if (stale && !runningOn(await readQueue(deps.db, tx, who), vm.microvm_id)) {
-      return "replace"
+      return (toMillis(current.resumed_at) || 0) > deps.now() - RESUME_SETTLE_MS ? "held" : "replace"
     }
     tx.set(vmRef, { resumed_at: deps.timestamp() }, { merge: true })
     return "resumed"

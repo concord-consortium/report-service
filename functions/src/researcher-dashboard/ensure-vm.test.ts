@@ -399,6 +399,18 @@ describe("replacing a suspended VM on an old image", () => {
     expect(microvms.resume).not.toHaveBeenCalled()
   })
 
+  it.each<[string, number, string]>([
+    ["holds", 90 * 1000, "launching"],
+    ["replaces", 150 * 1000, "launched"]
+  ])("%s a VM on an old version resumed %i ms ago", async (_, ago, outcome) => {
+    recordVm({ microvm_id: "vm-old", image_version: "6", resumed_at: NOW - ago })
+
+    expect(await ensureVm(deps, who, body())).toBe(outcome)
+    expect(microvms.terminate).toHaveBeenCalledTimes(outcome === "launched" ? 1 : 0)
+    expect(microvms.run).toHaveBeenCalledTimes(outcome === "launched" ? 1 : 0)
+    expect(microvms.resume).not.toHaveBeenCalled()
+  })
+
   it("resumes when the image has no active version", async () => {
     microvms.currentImageVersion.mockResolvedValue(undefined)
     recordVm({ microvm_id: "vm-old", image_version: "6" })

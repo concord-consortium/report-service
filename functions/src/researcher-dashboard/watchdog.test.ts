@@ -573,6 +573,14 @@ describe("idle and suspended VMs", () => {
       db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", image_version: "6" })
     })
 
+    it("leaves a suspended VM resumed in the last two minutes, which may since have finished its run", async () => {
+      db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", image_version: "6", resumed_at: NOW - MIN })
+
+      expect(await runWatchdog(deps)).toEqual([])
+      expect(deps.microvms.terminate).not.toHaveBeenCalled()
+      expect(deps.microvms.resume).not.toHaveBeenCalled()
+    })
+
     it("terminates a suspended VM with work queued, writing nothing, and leaves its runner document to the next pass", async () => {
       db.docs.set(`${ROOT}/runners/42`, { microvm_id: "vm-1", state: "suspended", current_package: null, queue: [{ class_hash: CLASS, package_key: "users__1__q" }] })
       const before = JSON.stringify([...db.docs.entries()])

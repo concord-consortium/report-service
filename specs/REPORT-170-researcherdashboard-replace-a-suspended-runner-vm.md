@@ -18,9 +18,10 @@ Each researcher gets a private machine that runs their packages, and it sleeps w
 - **R2.** `wakeSuspended` makes the decision for both paths. Each caller asks `GetMicrovmImage` for the active version outside any transaction and passes it in, beside the VM's id and recorded `image_version`. Inside the transaction that reads `vms/{platform_user_id}`, it answers:
   - **resumed**: it writes `resumed_at`, then calls `ResumeMicrovm`;
   - **replace**: the VM is stale and R3 does not keep it; nothing is written or resumed, and the caller acts (R7, R9);
-  - **held**: `vms/` records another VM, a launch claim is live (R4), or (the watchdog only) the budget is spent after the `resumed_at` write.
+  - **held**: `vms/` records another VM, a launch claim is live (R4), a stale VM that would be replaced was resumed in the last two minutes (R4a), or (the watchdog only) the budget is spent after the `resumed_at` write.
 - **R3.** **A VM suspended mid-run is resumed even when stale**: when a `running` result in the researcher's queue names the VM (`runningOn`), it is resumed. The queue is read only for a stale VM. RD-3 pass 2's Resume wakes a VM paused partway through a run so it finishes it (RD-4 pass 2 R20); replacing it would make REPORT-143's R17 fail the run. This applies the Jira Done-when's "a VM mid-run on the old image is never terminated by this path" to a suspended VM.
 - **R4.** `wakeSuspended` resumes nothing while `vms/`'s `launching_until` is in the future, so a concurrent wake never resumes the VM a replace is retiring.
+- **R4a.** A stale VM whose `resumed_at` is under two minutes old is held, not replaced. The caller's `SUSPENDED` may predate that resume (the watchdog's can be up to a pass old), and the resumed VM may since have finished the run that kept it from being replaced and claimed more work, which a terminate would kill. Two minutes exceeds the function's 60-second timeout, which bounds how old a caller's state can be. The work waits for the next wake: the watchdog's next pass or the researcher's next request.
 - **R5.** A failed or timed-out `GetMicrovmImage` decides nothing: `ensureVm` answers 502 `GetMicrovmImage failed: <reason>`, and the watchdog logs `watchdog.upstream_failed` with `call: "GetMicrovmImage"` and leaves the VM for its next pass. The work stays queued.
 - **R6.** Only the resume branch writes `resumed_at`; replace writes nothing.
 
@@ -30,7 +31,7 @@ Each researcher gets a private machine that runs their packages, and it sleeps w
   1. It takes the launch claim in the existing transaction, which claims only while no claim is live and `vms/` still records the VM it read, so two requests replacing one VM launch once and terminate once. A request without the claim answers `"launching"`.
   2. It launches (the token mint and `RunMicrovm`, with no second `GetMicrovmImage`) and calls `recordLaunch`, with today's claim and failure handling. If the launch fails, the old VM stays suspended and recorded.
   3. Only once the new VM is recorded does it call `TerminateMicrovm` on the old one. A failure is logged as a warning naming both VMs, through `ensureVm`'s new `log` dependency, and does not fail the request: the old VM is no longer recorded, nothing wakes it, and its sessions are refused by REPORT-143 R3a. It ends at its 8-hour life, or with the README's loop.
-  4. It answers `"launched"`. `VmOutcome` gains no value.
+  4. It answers `"launched"`. `VmOutcome` gains no value; a held wake answers `"launching"`.
 - **R8.** Terminating last keeps a replace's calls before `recordLaunch` the same as a launch's (`GetMicrovm`, `GetMicrovmImage`, the mint and `RunMicrovm`), inside the function's 60 seconds, so a timeout can cut only the terminate. `timeoutSeconds` is unchanged.
 
 ### The watchdog: replace means terminate
@@ -50,7 +51,7 @@ Each researcher gets a private machine that runs their packages, and it sleeps w
 
 ### Tests
 
-- **R15.** Unit tests in `ensure-vm.test.ts` and `watchdog.test.ts` cover: resume on the active version; replace on an old version, with no recorded version, and with `image_version: null`, in the order `GetMicrovmImage`, `RunMicrovm`, `TerminateMicrovm`; resume with no active version; resume when stale but mid-run, and replace when the `running` result names another VM; `"launching"` with a live claim; 502 on a failed `GetMicrovmImage`; `"launched"` and a warning on a failed terminate; no terminate when the launch fails; a running old VM left alone with no `GetMicrovmImage`; two concurrent replaces launching and terminating once; the watchdog terminating a stale VM with no writes and logging `old_image`, then marking the runner terminated on a later pass; the watchdog resuming a stale mid-run VM; one `GetMicrovmImage` per pass, its failure resuming nothing, and no call out of budget.
+- **R15.** Unit tests in `ensure-vm.test.ts` and `watchdog.test.ts` cover: resume on the active version; replace on an old version, with no recorded version, and with `image_version: null`, in the order `GetMicrovmImage`, `RunMicrovm`, `TerminateMicrovm`; resume with no active version; resume when stale but mid-run, and replace when the `running` result names another VM; `"launching"` with a live claim or a resume under two minutes old (and a replace once it is older), and the watchdog leaving such a VM; 502 on a failed `GetMicrovmImage`; `"launched"` and a warning on a failed terminate; no terminate when the launch fails; a running old VM left alone with no `GetMicrovmImage`; two concurrent replaces launching and terminating once; the watchdog terminating a stale VM with no writes and logging `old_image`, then marking the runner terminated on a later pass; the watchdog resuming a stale mid-run VM; one `GetMicrovmImage` per pass, its failure resuming nothing, and no call out of budget.
 
 ### The live check
 
@@ -124,6 +125,12 @@ Each researcher gets a private machine that runs their packages, and it sleeps w
 
 ### Guard the race of a release activating mid-wake?
 **Decision**: No; accepted (Technical Notes). A guard needs a resume timestamp both paths compare, for a seconds-long window per release.
+
+---
+
+### How is a replace kept from killing a VM resumed after the caller read `SUSPENDED`? (Copilot's review of #439)
+**Options considered**: A) carry the `resumed_at` the caller read before its state read and hold when it changed; B) hold a stale VM resumed in the last two minutes.
+**Decision**: B (R4a). A misses a resume whose `resumed_at` write lands before the caller's read but whose `ResumeMicrovm` lands after its state read, and needs the watchdog to track which read came first for a state it caches across the pass; B covers both with one comparison, at the cost of a stale VM's replace waiting up to two minutes after a resume.
 
 ---
 
