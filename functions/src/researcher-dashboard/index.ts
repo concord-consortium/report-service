@@ -67,6 +67,7 @@ function researcherDashboardDeps(): RunPackageDeps {
     fetchImpl: fetch,
     now: Date.now,
     timestamp,
+    log: functions.logger,
     config: {
       imageIdentifier: rdMicrovmImageArn.value(),
       executionRoleArn: rdExecutionRoleArn.value(),

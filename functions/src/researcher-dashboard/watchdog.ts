@@ -266,7 +266,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
           continue
         }
         try {
-          if (await wakeSuspended({ ...deps, mayCall: inBudget }, who, { microvm_id: vm.microvmId, image_version: vm.imageVersion })) {
+          if (await wakeSuspended({ ...deps, mayCall: inBudget }, who, { microvm_id: vm.microvmId, image_version: vm.imageVersion }, undefined) === "resumed") {
             act("watchdog.vm_resumed", { ...data, queued })
           }
         } catch (e) {
