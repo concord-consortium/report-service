@@ -176,7 +176,8 @@ export function makeIdle(deps: VmRouteDeps) {
       return res.status(200).json({ success: true, suspended: false, run_in_progress: true })
     }
 
-    // Work queued from here on lands on a SUSPENDING VM, which the watchdog resumes.
+    // Work queued from here on lands on a SUSPENDING VM, which the watchdog resumes, or terminates
+    // when it is on an older image version.
     try {
       await deps.microvms.suspend(microvmId)
     } catch (e) {

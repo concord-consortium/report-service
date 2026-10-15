@@ -87,7 +87,7 @@ async function claimAndLaunch(deps: EnsureVmDeps, who: Researcher, body: RunPack
   return "launched"
 }
 
-/** The image version a launch pins, and the one a suspended VM must be on to be resumed. */
+/** The image's active version: the one a launch pins, and the one a suspended VM is compared against. */
 async function activeImageVersion(deps: EnsureVmDeps): Promise<string | undefined> {
   try {
     return await deps.microvms.currentImageVersion(deps.config.imageIdentifier)
@@ -116,8 +116,8 @@ export type WakeDeps = Pick<EnsureVmDeps, "db" | "now" | "timestamp"> & {
  * VMs to wake has one place to live. A VM on another version, or none, is replaced unless a
  * `running` result names it, since it was paused partway through a run that a resume finishes; with
  * no active version there is nothing to compare. `resumed_at` is written before the resume, so no
- * watchdog pass sees the VM running with only the run's pre-suspend heartbeat, and only when it
- * resumes. Holds, writing and resuming nothing, once `vms/` records another VM, which is the one to
+ * watchdog pass sees the VM running with only the run's pre-suspend heartbeat, and never for a VM to
+ * be replaced. Holds, writing and resuming nothing, once `vms/` records another VM, which is the one to
  * take the work, or while a launch claim is live; and holds after the write when `mayCall` says no.
  */
 export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string | null },
@@ -183,6 +183,7 @@ Mutations checked in the throwaway build: dropping the `runningOn` exemption fai
 **Files affected**:
 - `watchdog.ts`: `WatchdogDeps` gains `currentImageVersion` and `imageIdentifier`; the `activeVersion` helper; the wake.
 - `index.ts`: `imageIdentifier: rdMicrovmImageArn.value()` in the watchdog's deps, and its comment.
+- `vm-routes.ts`: `/idle`'s comment on work queued behind a suspend gains "or terminates when it is on an older image version".
 - `watchdog.test.ts`: `currentImageVersion` (resolving `"7"`) and `imageIdentifier` in `deps`; the new cases.
 - `watchdog-queries.emulator.test.ts`: its own `microvms` gains `currentImageVersion: jest.fn()` and its `runWatchdog` call `imageIdentifier`.
 - `functions/README.md`: the watchdog paragraph.
