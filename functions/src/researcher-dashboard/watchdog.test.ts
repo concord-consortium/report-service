@@ -42,8 +42,10 @@ beforeEach(() => {
       get: jest.fn(async (id: string) => (id in states ? (states[id] === null ? null : { state: states[id]! }) : null)),
       suspend: jest.fn().mockResolvedValue(undefined),
       terminate: jest.fn().mockResolvedValue(undefined),
-      resume: jest.fn().mockResolvedValue(undefined)
+      resume: jest.fn().mockResolvedValue(undefined),
+      currentImageVersion: jest.fn().mockResolvedValue("7")
     },
+    imageIdentifier: "arn:image",
     now: () => clock,
     timestamp: () => TS,
     log: { info: jest.fn() }
@@ -550,6 +552,112 @@ describe("idle and suspended VMs", () => {
     }) as never)
     expect(await runWatchdog(deps)).toEqual([])
     expect(deps.microvms.resume).not.toHaveBeenCalled()
+  })
+
+  describe("on an older image version", () => {
+    const oldVm = () => [{ ...vm()[0], imageVersion: "6" }]
+    const twoSuspended = () => {
+      states["vm-1"] = "SUSPENDED"
+      states["vm-2"] = "SUSPENDED"
+      ;(deps.queries.vmsLaunchedAfter as jest.Mock).mockResolvedValue([vm()[0], { ...vm()[0], platformUserId: "43", microvmId: "vm-2" }])
+      db.docs.set(WORK, { packages: [queued("users/1/q")], updated_at: NOW - MIN })
+      db.docs.set(`${ROOT}/work/43`, { packages: [{ identity: "users/1/q", version: "1", checksum: "c", catalog_id: 1, class_hash: CLASS }], updated_at: NOW - MIN })
+      db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", image_version: "7" })
+      db.docs.set(`${ROOT}/vms/43`, { microvm_id: "vm-2", image_version: "7" })
+    }
+
+    beforeEach(() => {
+      states["vm-1"] = "SUSPENDED"
+      ;(deps.queries.vmsLaunchedAfter as jest.Mock).mockResolvedValue(oldVm())
+      db.docs.set(WORK, { packages: [queued("users/1/q")], updated_at: NOW - MIN })
+      db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", image_version: "6" })
+    })
+
+    it("terminates a suspended VM with work queued, writing nothing, and leaves its runner document to the next pass", async () => {
+      db.docs.set(`${ROOT}/runners/42`, { microvm_id: "vm-1", state: "suspended", current_package: null, queue: [{ class_hash: CLASS, package_key: "users__1__q" }] })
+      const before = JSON.stringify([...db.docs.entries()])
+
+      expect(await runWatchdog(deps)).toEqual(["watchdog.vm_terminated"])
+      logged("watchdog.vm_terminated", { reason: "old_image" })
+      expect(deps.microvms.terminate).toHaveBeenCalledWith("vm-1")
+      expect(deps.microvms.resume).not.toHaveBeenCalled()
+      expect(JSON.stringify([...db.docs.entries()])).toBe(before)
+
+      states["vm-1"] = "TERMINATED"
+      expect(await runWatchdog(deps)).toEqual(["watchdog.runner_terminated"])
+      expect(db.read(`${ROOT}/runners/42`)).toMatchObject({ state: "terminated", queue: [{ class_hash: CLASS, package_key: "users__1__q" }] })
+    })
+
+    it("resumes a VM that a running result names", async () => {
+      db.docs.set(WORK, { packages: [queued("users/1/q"), queued("users/1/r", "running")], updated_at: NOW - MIN })
+      db.docs.set(`${ROOT}/classes/${CLASS}/researchers/42/results/users__1__r`, { status: "running", microvm_id: "vm-1" })
+
+      expect(await runWatchdog(deps)).toEqual(["watchdog.vm_resumed"])
+      expect(deps.microvms.terminate).not.toHaveBeenCalled()
+    })
+
+    it("logs a TerminateMicrovm that fails", async () => {
+      ;(deps.microvms.terminate as jest.Mock).mockRejectedValue(new Error("throttled"))
+      expect(await runWatchdog(deps)).toEqual(["watchdog.upstream_failed"])
+      logged("watchdog.upstream_failed", { call: "TerminateMicrovm" })
+    })
+
+    it("asks for the image's version once per run", async () => {
+      twoSuspended()
+      expect(await runWatchdog(deps)).toEqual(["watchdog.vm_resumed", "watchdog.vm_resumed"])
+      expect(deps.microvms.resume).toHaveBeenCalledTimes(2)
+      expect(deps.microvms.currentImageVersion).toHaveBeenCalledTimes(1)
+    })
+
+    it("logs a GetMicrovmImage that fails once and wakes nothing", async () => {
+      twoSuspended()
+      ;(deps.microvms.currentImageVersion as jest.Mock).mockRejectedValue(new Error("throttled"))
+      expect(await runWatchdog(deps)).toEqual(["watchdog.upstream_failed"])
+      logged("watchdog.upstream_failed", { call: "GetMicrovmImage" })
+      expect(deps.microvms.currentImageVersion).toHaveBeenCalledTimes(1)
+      expect(deps.microvms.resume).not.toHaveBeenCalled()
+      expect(deps.microvms.terminate).not.toHaveBeenCalled()
+    })
+
+    it("asks nothing and terminates nothing once the queue read runs past the budget", async () => {
+      const transact = db.runTransaction.bind(db)
+      jest.spyOn(db, "runTransaction").mockImplementation((async (fn: never) => {
+        const out = await transact(fn)
+        clock += 31 * 1000
+        return out
+      }) as never)
+      expect(await runWatchdog(deps)).toEqual([])
+      expect(deps.microvms.currentImageVersion).not.toHaveBeenCalled()
+      expect(deps.microvms.terminate).not.toHaveBeenCalled()
+    })
+
+    it.each([["an older", "6"], ["the active", "7"]])("writes and wakes nothing on %s version when GetMicrovmImage runs past the budget", async (_, version) => {
+      ;(deps.queries.vmsLaunchedAfter as jest.Mock).mockResolvedValue([{ ...vm()[0], imageVersion: version }])
+      db.docs.set(`${ROOT}/vms/42`, { microvm_id: "vm-1", image_version: version })
+      ;(deps.microvms.currentImageVersion as jest.Mock).mockImplementation(async () => {
+        clock += 31 * 1000
+        return "7"
+      })
+      expect(await runWatchdog(deps)).toEqual([])
+      expect(db.read(`${ROOT}/vms/42`)).toEqual({ microvm_id: "vm-1", image_version: version })
+      expect(deps.microvms.terminate).not.toHaveBeenCalled()
+      expect(deps.microvms.resume).not.toHaveBeenCalled()
+    })
+
+    it("starts no TerminateMicrovm when the wake's decision runs past the budget", async () => {
+      const transact = db.runTransaction.bind(db)
+      let calls = 0
+      jest.spyOn(db, "runTransaction").mockImplementation((async (fn: never) => {
+        calls += 1
+        if (calls === 2) {
+          clock += 31 * 1000
+        }
+        return transact(fn)
+      }) as never)
+      expect(await runWatchdog(deps)).toEqual([])
+      expect(deps.microvms.currentImageVersion).toHaveBeenCalledTimes(1)
+      expect(deps.microvms.terminate).not.toHaveBeenCalled()
+    })
   })
 
   it("leaves a suspended VM with nothing queued asleep", async () => {

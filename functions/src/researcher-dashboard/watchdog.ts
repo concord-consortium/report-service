@@ -59,7 +59,8 @@ export interface WatchdogQueries {
 export interface WatchdogDeps {
   db: Db
   queries: WatchdogQueries
-  microvms: Pick<MicrovmApi, "get" | "suspend" | "terminate" | "resume">
+  microvms: Pick<MicrovmApi, "get" | "suspend" | "terminate" | "resume" | "currentImageVersion">
+  imageIdentifier: string
   now(): number
   timestamp(): unknown
   log: { info(message: string, data: object): void }
@@ -130,6 +131,20 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
       act("watchdog.upstream_failed", { ...data, call: "GetMicrovm", error: reason(e) })
       return undefined
     }
+  }
+  // The image's active version, asked once per run and only for a VM about to be woken; null once
+  // asking has failed, which leaves every wake to the next run
+  let active: { version?: string } | null | undefined
+  const activeVersion = async (data: object) => {
+    if (active === undefined) {
+      try {
+        active = { version: await deps.microvms.currentImageVersion(deps.imageIdentifier) }
+      } catch (e) {
+        act("watchdog.upstream_failed", { ...data, call: "GetMicrovmImage", error: reason(e) })
+        active = null
+      }
+    }
+    return active
   }
   const stateOf = async (microvmId: string, data: object): Promise<string | null | undefined> => {
     if (!states.has(microvmId)) {
@@ -221,7 +236,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
   }
 
   // The VMs that can still exist: idle ones, suspended ones with work queued behind the suspend,
-  // and gone ones whose runner document still claims a session
+  // which are resumed, or terminated when on an older image version, and gone ones whose runner
+  // document still claims a session
   for (const vm of await deps.queries.vmsLaunchedAfter(started - VM_LIFE_MS)) {
     if (!inBudget()) {
       break
@@ -266,8 +282,22 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<string[]> {
           continue
         }
         try {
-          if (await wakeSuspended({ ...deps, mayCall: inBudget }, who, { microvm_id: vm.microvmId, image_version: vm.imageVersion }, undefined) === "resumed") {
+          const image = await activeVersion(data)
+          if (!image || !inBudget()) {
+            continue
+          }
+          const wake = await wakeSuspended({ ...deps, mayCall: inBudget }, who, { microvm_id: vm.microvmId, image_version: vm.imageVersion }, image.version)
+          if (wake === "resumed") {
             act("watchdog.vm_resumed", { ...data, queued })
+          } else if (wake === "replace" && inBudget()) {
+            // The watchdog cannot launch, so the queued work waits for the next run request; the
+            // runner document is marked terminated once the VM is gone
+            try {
+              await deps.microvms.terminate(vm.microvmId)
+              act("watchdog.vm_terminated", { ...data, reason: "old_image" })
+            } catch (e) {
+              act("watchdog.upstream_failed", { ...data, call: "TerminateMicrovm", error: reason(e) })
+            }
           }
         } catch (e) {
           act("watchdog.upstream_failed", { ...data, call: e instanceof VmStepError ? "ResumeMicrovm" : "Firestore", error: reason(e) })

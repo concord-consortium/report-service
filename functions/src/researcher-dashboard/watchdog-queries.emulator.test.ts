@@ -58,9 +58,10 @@ it("restarts a run's lease from a stored resumed_at Timestamp", async () => {
     get: jest.fn(async () => ({ state: "RUNNING" })),
     suspend: jest.fn(),
     terminate: jest.fn(),
-    resume: jest.fn()
+    resume: jest.fn(),
+    currentImageVersion: jest.fn()
   }
-  const run = () => runWatchdog({ ...deps, queries: makeWatchdogQueries(db), microvms, now: () => NOW, log: { info: jest.fn() } })
+  const run = () => runWatchdog({ ...deps, queries: makeWatchdogQueries(db), microvms, imageIdentifier: "arn:image", now: () => NOW, log: { info: jest.fn() } })
 
   expect(await run()).toEqual([])
   expect(microvms.terminate).not.toHaveBeenCalled()
