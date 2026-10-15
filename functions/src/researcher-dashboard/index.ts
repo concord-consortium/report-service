@@ -67,6 +67,7 @@ function researcherDashboardDeps(): RunPackageDeps {
     fetchImpl: fetch,
     now: Date.now,
     timestamp,
+    log: functions.logger,
     config: {
       imageIdentifier: rdMicrovmImageArn.value(),
       executionRoleArn: rdExecutionRoleArn.value(),
@@ -104,8 +105,9 @@ export const researcherDashboard = functions
   .https.onRequest(researcherDashboardApp(researcherDashboardDeps, deriveProfileDeps, vmRouteDeps))
 
 // Every minute: ends runs whose heartbeat has stopped, fails work no VM took, suspends idle VMs,
-// resumes a suspended VM with work queued behind its suspend, and marks a gone VM's runner document
-// terminated. Runs as the same account, for the launcher role.
+// resumes a suspended VM with work queued behind its suspend, or terminates it when it is on an
+// older image version, and marks a gone VM's runner document terminated. Runs as the same account,
+// for the launcher role.
 export const researcherDashboardWatchdog = functions
   .runWith({ serviceAccount: `${SERVICE_ACCOUNT_ID}@`, timeoutSeconds: 60 })
   .pubsub.schedule("every 1 minutes")
@@ -114,6 +116,7 @@ export const researcherDashboardWatchdog = functions
       db: admin.firestore() as unknown as Db,
       queries: makeWatchdogQueries(admin.firestore()),
       microvms: microvmApi(),
+      imageIdentifier: rdMicrovmImageArn.value(),
       now: Date.now,
       timestamp: () => admin.firestore.FieldValue.serverTimestamp(),
       log: functions.logger

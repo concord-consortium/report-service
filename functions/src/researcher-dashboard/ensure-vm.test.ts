@@ -46,6 +46,7 @@ beforeEach(() => {
     fetchImpl: fetchImpl as unknown as typeof fetch,
     now: () => NOW,
     timestamp: () => TIMESTAMP,
+    log: { warn: jest.fn() },
     config: {
       imageIdentifier: "arn:image",
       executionRoleArn: "arn:role",
@@ -116,6 +117,15 @@ describe("ensureVm", () => {
     expect(db.docs.get(VM_PATH)).toMatchObject({ microvm_id: "vm-new" })
   })
 
+  it("answers a GetMicrovmImage failure with 502 naming it, before claiming", async () => {
+    microvms.currentImageVersion.mockRejectedValue(new Error("throttled"))
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: "GetMicrovmImage failed: throttled" })
+    expect(db.docs.get(VM_PATH)).toBeUndefined()
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(microvms.run).not.toHaveBeenCalled()
+  })
+
   it("launches when the API no longer knows the recorded VM", async () => {
     recordVm({ microvm_id: "vm-gone" })
 
@@ -124,7 +134,7 @@ describe("ensureVm", () => {
   })
 
   it("resumes a suspended VM without minting", async () => {
-    recordVm({ microvm_id: "vm-old" })
+    recordVm({ microvm_id: "vm-old", image_version: "7" })
     microvms.get.mockResolvedValue({ state: "SUSPENDED" })
 
     expect(await ensureVm(deps, who, body())).toBe("resumed")
@@ -132,6 +142,7 @@ describe("ensureVm", () => {
     expect(db.docs.get(VM_PATH)).toMatchObject({ resumed_at: TIMESTAMP })
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(microvms.run).not.toHaveBeenCalled()
+    expect(microvms.terminate).not.toHaveBeenCalled()
   })
 
   it("resumes nothing when a newer VM was recorded after it read the suspended one", async () => {
@@ -296,7 +307,7 @@ describe("ensureVm", () => {
   })
 
   it("answers a ResumeMicrovm failure with 502 naming it", async () => {
-    recordVm({ microvm_id: "vm-old" })
+    recordVm({ microvm_id: "vm-old", image_version: "7" })
     microvms.get.mockResolvedValue({ state: "SUSPENDED" })
     microvms.resume.mockRejectedValue(new Error("ConflictException"))
 
@@ -316,14 +327,14 @@ describe("wakeSuspended", () => {
     let seenAtResume: unknown
     microvms.resume.mockImplementation(async () => { seenAtResume = db.docs.get(VM_PATH)?.resumed_at })
 
-    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" })).toBe(true)
+    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" }, undefined)).toBe("resumed")
     expect(seenAtResume).toBe(TIMESTAMP)
   })
 
   it("writes and resumes nothing when vms/ records another VM", async () => {
     recordVm({ microvm_id: "vm-newer" })
 
-    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" })).toBe(false)
+    expect(await wakeSuspended(deps, who, { microvm_id: "vm-old" }, undefined)).toBe("held")
 
     expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-newer" })
     expect(microvms.resume).not.toHaveBeenCalled()
@@ -332,7 +343,7 @@ describe("wakeSuspended", () => {
   it("resumes nothing when mayCall says no, with resumed_at written", async () => {
     recordVm({ microvm_id: "vm-old" })
 
-    expect(await wakeSuspended({ ...deps, mayCall: () => false }, who, { microvm_id: "vm-old" })).toBe(false)
+    expect(await wakeSuspended({ ...deps, mayCall: () => false }, who, { microvm_id: "vm-old" }, undefined)).toBe("held")
 
     expect(microvms.resume).not.toHaveBeenCalled()
     expect(db.docs.get(VM_PATH)).toMatchObject({ resumed_at: TIMESTAMP })
@@ -342,7 +353,174 @@ describe("wakeSuspended", () => {
     recordVm({ microvm_id: "vm-old" })
     microvms.resume.mockRejectedValue(new Error("ConflictException"))
 
-    await expect(wakeSuspended(deps, who, { microvm_id: "vm-old" })).rejects.toMatchObject({ status: 502 })
+    await expect(wakeSuspended(deps, who, { microvm_id: "vm-old" }, undefined)).rejects.toMatchObject({ status: 502 })
     expect(db.docs.get(VM_PATH)).toMatchObject({ resumed_at: TIMESTAMP })
+  })
+})
+
+describe("replacing a suspended VM on an old image", () => {
+  const WORK_PATH = `researcher_dashboard/${PORTAL}/work/42`
+  const RESULT_PATH = `researcher_dashboard/${PORTAL}/classes/a/researchers/42/results/users__1__a`
+  const runningResult = (microvmId: string) => {
+    db.docs.set(WORK_PATH, { packages: [{ identity: "users/1/a", version: "1", checksum: "c", catalog_id: 1, class_hash: "a" }] })
+    db.docs.set(RESULT_PATH, { status: "running", microvm_id: microvmId })
+  }
+  const calls: string[] = []
+
+  beforeEach(() => {
+    calls.length = 0
+    microvms.get.mockResolvedValue({ state: "SUSPENDED" })
+    microvms.currentImageVersion.mockImplementation(async () => { calls.push("GetMicrovmImage"); return "7" })
+    microvms.run.mockImplementation(async () => { calls.push("RunMicrovm"); return { microvmId: "vm-new", imageVersion: "7" } })
+    microvms.terminate.mockImplementation(async (id: string) => {
+      calls.push(`TerminateMicrovm ${id} with vms/ naming ${db.docs.get(VM_PATH)?.microvm_id}`)
+    })
+  })
+
+  it("launches on the active version, records the new VM, and only then terminates the old one", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+
+    expect(await ensureVm(deps, who, body())).toBe("launched")
+
+    expect(calls).toEqual(["GetMicrovmImage", "RunMicrovm", "TerminateMicrovm vm-old with vms/ naming vm-new"])
+    expect(microvms.run.mock.calls[0][0].imageVersion).toBe("7")
+    expect(microvms.resume).not.toHaveBeenCalled()
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-new", image_version: "7", launching_until: null, launched_at: TIMESTAMP, resumed_at: null })
+  })
+
+  it.each<[string, object]>([
+    ["no recorded version", { microvm_id: "vm-old" }],
+    ["a null version", { microvm_id: "vm-old", image_version: null }]
+  ])("replaces a VM with %s", async (_, vm) => {
+    recordVm(vm)
+
+    expect(await ensureVm(deps, who, body())).toBe("launched")
+    expect(microvms.terminate).toHaveBeenCalledWith("vm-old")
+    expect(microvms.resume).not.toHaveBeenCalled()
+  })
+
+  it.each<[string, number, string]>([
+    ["leaves", 90 * 1000, "resumed"],
+    ["replaces", 150 * 1000, "launched"]
+  ])("%s a VM on an old version resumed %i ms ago", async (_, ago, outcome) => {
+    recordVm({ microvm_id: "vm-old", image_version: "6", resumed_at: NOW - ago })
+
+    expect(await ensureVm(deps, who, body())).toBe(outcome)
+    expect(microvms.terminate).toHaveBeenCalledTimes(outcome === "launched" ? 1 : 0)
+    expect(microvms.run).toHaveBeenCalledTimes(outcome === "launched" ? 1 : 0)
+    expect(microvms.resume).not.toHaveBeenCalled()
+  })
+
+  it("resumes when the image has no active version", async () => {
+    microvms.currentImageVersion.mockResolvedValue(undefined)
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+
+    expect(await ensureVm(deps, who, body())).toBe("resumed")
+    expect(microvms.resume).toHaveBeenCalledWith("vm-old")
+    expect(microvms.terminate).not.toHaveBeenCalled()
+  })
+
+  it("resumes a VM on an old version that a running result names", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    runningResult("vm-old")
+
+    expect(await ensureVm(deps, who, body())).toBe("resumed")
+    expect(microvms.resume).toHaveBeenCalledWith("vm-old")
+    expect(microvms.run).not.toHaveBeenCalled()
+    expect(microvms.terminate).not.toHaveBeenCalled()
+  })
+
+  it("replaces a VM on an old version when the running result names another VM", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    runningResult("vm-dead")
+
+    expect(await ensureVm(deps, who, body())).toBe("launched")
+    expect(microvms.terminate).toHaveBeenCalledWith("vm-old")
+  })
+
+  it.each([["an old", "6"], ["the active", "7"]])("does nothing to a VM on %s version while a launch claim is live", async (_, version) => {
+    recordVm({ microvm_id: "vm-old", image_version: version, launching_until: NOW + 1000 })
+
+    expect(await ensureVm(deps, who, body())).toBe("launching")
+    expect(microvms.run).not.toHaveBeenCalled()
+    expect(microvms.resume).not.toHaveBeenCalled()
+    expect(microvms.terminate).not.toHaveBeenCalled()
+  })
+
+  it("answers a GetMicrovmImage failure with 502 naming it, deciding nothing", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    microvms.currentImageVersion.mockRejectedValue(new Error("throttled"))
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: "GetMicrovmImage failed: throttled" })
+    expect(microvms.resume).not.toHaveBeenCalled()
+    expect(microvms.terminate).not.toHaveBeenCalled()
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-old", image_version: "6" })
+  })
+
+  it("answers launched and logs when the old VM cannot be terminated", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    microvms.terminate.mockRejectedValue(new Error("throttled"))
+
+    expect(await ensureVm(deps, who, body())).toBe("launched")
+    expect(deps.log.warn).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ replaced: "vm-old", microvmId: "vm-new", error: "throttled" }))
+  })
+
+  it("answers launched without waiting past three seconds for the old VM's terminate", async () => {
+    jest.useFakeTimers()
+    try {
+      recordVm({ microvm_id: "vm-old", image_version: "6" })
+      microvms.terminate.mockReturnValue(new Promise(() => undefined))
+
+      const outcome = ensureVm(deps, who, body())
+      for (let i = 0; i < 20 && microvms.terminate.mock.calls.length === 0; i++) {
+        await new Promise(resolve => setImmediate(resolve))
+      }
+      jest.advanceTimersByTime(3 * 1000)
+
+      expect(await outcome).toBe("launched")
+      expect(deps.log.warn).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ replaced: "vm-old", error: "no answer within 3 seconds" }))
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it("keeps the old VM unterminated when the new one cannot be recorded", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    const transact = db.runTransaction.bind(db)
+    let transactions = 0
+    // the wake is the first transaction, the claim the second and the record the third
+    db.runTransaction = (fn => ++transactions === 3 ? Promise.reject(new Error("unavailable")) : transact(fn)) as typeof db.runTransaction
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502, message: expect.stringMatching(/vm-new was launched but could not be recorded/) })
+    expect(microvms.terminate).not.toHaveBeenCalled()
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-old", image_version: "6", launching_until: NOW + 60 * 1000 })
+  })
+
+  it("leaves the old VM recorded and clears the claim when the mint is refused", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    fetchImpl.mockResolvedValue(okResponse({ message: "no" }, 403))
+
+    await expect(ensureVm(deps, who, body())).rejects.toMatchObject({ status: 502 })
+    expect(microvms.terminate).not.toHaveBeenCalled()
+    expect(db.docs.get(VM_PATH)).toEqual({ microvm_id: "vm-old", image_version: "6", launching_until: null })
+  })
+
+  it("leaves a running VM on an old version without asking the image", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+    microvms.get.mockResolvedValue({ state: "RUNNING" })
+
+    expect(await ensureVm(deps, who, body())).toBe("running")
+    expect(microvms.currentImageVersion).not.toHaveBeenCalled()
+    expect(microvms.terminate).not.toHaveBeenCalled()
+  })
+
+  it("launches and terminates once when two requests replace the same VM", async () => {
+    recordVm({ microvm_id: "vm-old", image_version: "6" })
+
+    const outcomes = await Promise.all([ensureVm(deps, who, body()), ensureVm(deps, who, body())])
+
+    expect(outcomes.sort()).toEqual(["launched", "launching"])
+    expect(microvms.run).toHaveBeenCalledTimes(1)
+    expect(microvms.terminate).toHaveBeenCalledTimes(1)
   })
 })

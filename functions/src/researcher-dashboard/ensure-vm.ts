@@ -1,26 +1,35 @@
 import { MicrovmApi } from "./microvm"
 import { runnerPath, vmPath } from "./firestore-paths"
+import { readQueue, runningOn, toMillis } from "./queue"
 import { Db, Researcher, RunPackageBody } from "./run-package"
 
 // PENDING or RUNNING: the VM asks for work at the end of /run and again before it idles.
-// SUSPENDING: the watchdog resumes a SUSPENDED VM that has work queued.
+// SUSPENDING: the watchdog resumes a SUSPENDED VM that has work queued, or terminates it when it is
+// on an older image version.
 export type VmOutcome = "launched" | "launching" | "resumed" | "running" | "suspending"
 
 const LAUNCH_STATES = [undefined, "TERMINATING", "TERMINATED"]
 // Longer than RunMicrovm plus the mint round trip, short enough that a launcher that crashed
 // holding it does not block the researcher for long.
 export const LAUNCH_CLAIM_MS = 60 * 1000
+// A VM resumed this recently is held rather than replaced: the caller's SUSPENDED may predate that
+// resume, after which the VM can finish its run and claim more work. Longer than the function's
+// 60-second timeout, which bounds how old a caller's state can be.
+const RESUME_SETTLE_MS = 2 * 60 * 1000
 const RUN_HOOK_PAYLOAD_MAX_BYTES = 16384
 // A VM's maximum life: the platform terminates it this long after launch, suspended or not. It
 // also bounds how long an old image keeps serving.
 export const MAXIMUM_DURATION_SECONDS = 8 * 60 * 60
-// Per upstream call, each made once; the four a launch makes, and fetching the AWS credentials they
-// use, fit the function's 60-second timeout.
+// Per upstream call, each made once; the four a launch makes before it is recorded, and fetching
+// the AWS credentials they use, fit the function's 60-second timeout.
 export const UPSTREAM_TIMEOUT_MS = 10 * 1000
+// How long a replace waits for TerminateMicrovm before answering, so the terminate after the record
+// cannot push the answer past the function's timeout.
+const REPLACED_TERMINATE_WAIT_MS = 3 * 1000
 
 export interface VmDoc {
   microvm_id?: string
-  image_version?: string
+  image_version?: string | null
   launching_until?: number | null
   // a server timestamp; the watchdog sweeps the VMs launched within their maximum life
   launched_at?: unknown
@@ -34,6 +43,7 @@ export interface EnsureVmDeps {
   fetchImpl: typeof fetch
   now(): number
   timestamp(): unknown
+  log: { warn(message: string, data: object): void }
   config: {
     imageIdentifier: string
     executionRoleArn: string
@@ -69,7 +79,8 @@ export const within = <T>(promise: Promise<T>, ms: number, onTimeout?: () => voi
 
 /**
  * Makes sure the researcher has one VM that will take the queued work: launches one if there is
- * none, resumes a suspended one, and otherwise leaves it. Never waits for a VM to change state.
+ * none, resumes a suspended one, replaces a suspended one on an older image version, and otherwise
+ * leaves it. Never waits for a VM to change state.
  */
 export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPackageBody): Promise<VmOutcome> {
   const vmRef = deps.db.doc(vmPath(who.portal, who.platformUserId))
@@ -88,14 +99,25 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   }
 
   if (state === "SUSPENDED") {
-    // a VM recorded since the read above is the one to take the work, and its launch is under way
-    return await wakeSuspended(deps, who, { microvm_id: seen!.microvm_id!, image_version: seen!.image_version }) ? "resumed" : "launching"
+    const imageVersion = await activeImageVersion(deps)
+    const wake = await wakeSuspended(deps, who, { microvm_id: seen!.microvm_id!, image_version: seen!.image_version }, imageVersion)
+    if (wake !== "replace") {
+      // held: a VM recorded since the read above, or a launch under way, is the one to take the work
+      return wake === "held" ? "launching" : "resumed"
+    }
+    return await claimAndLaunch(deps, who, body, seen, imageVersion, seen!.microvm_id)
   }
   if (state === "SUSPENDING") return "suspending"
   if (!LAUNCH_STATES.includes(state)) return "running"
+  return await claimAndLaunch(deps, who, body, seen, await activeImageVersion(deps))
+}
+
+async function claimAndLaunch(deps: EnsureVmDeps, who: Researcher, body: RunPackageBody, seen: VmDoc | undefined,
+  imageVersion: string | undefined, replacing?: string): Promise<VmOutcome> {
+  const vmRef = deps.db.doc(vmPath(who.portal, who.platformUserId))
 
   // The transaction re-reads the document and claims only if nobody launched or claimed since
-  // it was read above, so two concurrent requests launch at most one VM.
+  // `seen` was read, so two concurrent requests launch at most one VM.
   const claimed = await deps.db.runTransaction(async tx => {
     const vm = (await tx.get(vmRef)).data() as VmDoc | undefined
     if (vm?.launching_until && vm.launching_until > deps.now()) return false
@@ -109,7 +131,7 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   // clearing it: clearing would let the next request launch a second VM or lose its token.
   let launched: Launched
   try {
-    launched = await launch(deps, who, body)
+    launched = await launch(deps, who, body, imageVersion)
   } catch (e) {
     if (!(e instanceof VmStepError && e.keepClaim)) {
       // if this fails too the claim lapses on its own, and the original reason is what to answer
@@ -122,45 +144,79 @@ export async function ensureVm(deps: EnsureVmDeps, who: Researcher, body: RunPac
   } catch (e) {
     throw new VmStepError(502, `VM ${launched.microvmId} was launched but could not be recorded: ${reason(e)}`, true)
   }
+  if (replacing) {
+    // Best effort: the old VM is no longer recorded, so nothing wakes it, and it ends at its
+    // maximum life
+    try {
+      await within(deps.microvms.terminate(replacing), REPLACED_TERMINATE_WAIT_MS)
+    } catch (e) {
+      deps.log.warn("run-package could not terminate the VM it replaced",
+        { platformUserId: who.platformUserId, portal: who.portal, replaced: replacing, microvmId: launched.microvmId, error: reason(e) })
+    }
+  }
   return "launched"
 }
 
-export type WakeDeps = Pick<EnsureVmDeps, "db" | "timestamp"> & {
+/** The image's active version: the one a launch pins, and the one a suspended VM is compared against. */
+async function activeImageVersion(deps: EnsureVmDeps): Promise<string | undefined> {
+  try {
+    return await deps.microvms.currentImageVersion(deps.config.imageIdentifier)
+  } catch (e) {
+    throw new VmStepError(502, `GetMicrovmImage failed: ${reason(e)}`)
+  }
+}
+
+export type Wake = "resumed" | "recently_resumed" | "replace" | "held"
+
+export type WakeDeps = Pick<EnsureVmDeps, "db" | "now" | "timestamp"> & {
   microvms: Pick<MicrovmApi, "resume">
   /** Asked just before ResumeMicrovm; the watchdog passes its budget. */
   mayCall?(): boolean
 }
 
 /**
- * Wakes a suspended VM. Both ensureVm and the watchdog decide here, given the VM as `vms/`
- * records it, so a rule about which suspended VMs to wake has one place to live. `resumed_at` is
- * written before the resume, so no watchdog pass sees the VM running with only the run's
- * pre-suspend heartbeat. Resumes nothing, and answers false, once `vms/` records another VM, which
- * is the one to take the work, or when `mayCall` says no.
+ * Wakes a suspended VM, or says it is to be replaced. Both ensureVm and the watchdog decide here,
+ * given the VM as `vms/` records it and the image's active version, so a rule about which suspended
+ * VMs to wake has one place to live. A VM on another version, or none, is replaced unless a
+ * `running` result names it, since it was paused partway through a run that a resume finishes; with
+ * no active version there is nothing to compare. `resumed_at` is written before the resume, so no
+ * watchdog pass sees the VM running with only the run's pre-suspend heartbeat, and never for a VM to
+ * be replaced. Holds, writing and resuming nothing, once `vms/` records another VM, which is the one to
+ * take the work, or while a launch claim is live; and holds after the write when `mayCall` says no.
+ * Answers `recently_resumed`, writing and resuming nothing, instead of replacing a VM resumed in the
+ * last two minutes, which is awake or about to be.
  */
-export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string }): Promise<boolean> {
+export async function wakeSuspended(deps: WakeDeps, who: Researcher, vm: { microvm_id: string; image_version?: string | null },
+  activeVersion: string | undefined): Promise<Wake> {
   const vmRef = deps.db.doc(vmPath(who.portal, who.platformUserId))
-  const recorded = await deps.db.runTransaction(async tx => {
+  const stale = !!activeVersion && vm.image_version !== activeVersion
+  const decided = await deps.db.runTransaction(async (tx): Promise<Wake> => {
     const current = (await tx.get(vmRef)).data() as VmDoc | undefined
-    if (current?.microvm_id !== vm.microvm_id) {
-      return false
+    if (current?.microvm_id !== vm.microvm_id || (current.launching_until ?? 0) > deps.now()) {
+      return "held"
+    }
+    if (stale && !runningOn(await readQueue(deps.db, tx, who), vm.microvm_id)) {
+      return (toMillis(current.resumed_at) || 0) > deps.now() - RESUME_SETTLE_MS ? "recently_resumed" : "replace"
     }
     tx.set(vmRef, { resumed_at: deps.timestamp() }, { merge: true })
-    return true
+    return "resumed"
   })
-  if (!recorded || (deps.mayCall && !deps.mayCall())) {
-    return false
+  if (decided !== "resumed") {
+    return decided
+  }
+  if (deps.mayCall && !deps.mayCall()) {
+    return "held"
   }
   try {
     await deps.microvms.resume(vm.microvm_id)
   } catch (e) {
     throw new VmStepError(502, `ResumeMicrovm failed: ${reason(e)}`)
   }
-  return true
+  return "resumed"
 }
 
 // Only on the launch branch: minting revokes the researcher's previous token, which a live VM
-// would still be holding.
+// would still be holding. A replace mints while the old VM still exists, and so ends its token too.
 async function mintReportServerToken(deps: EnsureVmDeps, assertion: string): Promise<string> {
   let response: Response
   let answer: { token?: string; message?: string }
@@ -188,14 +244,7 @@ async function mintReportServerToken(deps: EnsureVmDeps, assertion: string): Pro
 
 interface Launched { microvmId: string; imageVersion?: string }
 
-async function launch(deps: EnsureVmDeps, who: Researcher, body: RunPackageBody): Promise<Launched> {
-  let imageVersion: string | undefined
-  try {
-    imageVersion = await deps.microvms.currentImageVersion(deps.config.imageIdentifier)
-  } catch (e) {
-    throw new VmStepError(502, `GetMicrovmImage failed: ${reason(e)}`)
-  }
-
+async function launch(deps: EnsureVmDeps, who: Researcher, body: RunPackageBody, imageVersion: string | undefined): Promise<Launched> {
   const reportServerToken = await mintReportServerToken(deps, body.report_server_assertion)
   const runHookPayload = JSON.stringify({
     session_token: body.session_token,
