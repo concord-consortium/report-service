@@ -58,7 +58,7 @@ describe("activityTarget", () => {
     expect(activityTarget(copy, laterSave)).toEqual(target)
   })
 
-  it("records numeric identifiers as their strings, and a re-save that only changes their type as the same learner", () => {
+  it("records numeric identifiers as their strings, and a save whose platform_user_id differs from before only in type as the same learner", () => {
     const numeric = answer({ platform_user_id: 1234, resource_link_id: 701 })
     expect(activityTarget(undefined, numeric)).toEqual({ path: PATH, resourceLinkId: "701" })
 
