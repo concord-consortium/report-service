@@ -206,7 +206,11 @@ print("ok", len(m))
 
 ### Deploy to QA and production
 
-**Summary**: Roll the template out by stack update: QA twice (first at the default, rehearsing production's update, then down to 512 MB), then production at the default. No commit; this step runs after the PR merges.
+**Summary**: Roll the template out by stack update from this branch's head, before the PR opens: QA twice (first at the default, rehearsing production's update, then down to 512 MB), then production at the default once QA checks out. No commit.
+
+QA checks out when both QA updates match their rows in the table below and QA's next 02:00 run, at 512 MB, ends `SUCCEEDED`. Production is updated only after that.
+
+If review then changes `partitioner/template.yml`, update both stacks again from the merged template, through the same change-set flow, passing each stack's current `TaskSize` with `UsePreviousValue=true`, so that what is deployed matches master.
 
 **Files affected**: none.
 
@@ -297,7 +301,7 @@ Rollback: there is no need to restore the old template, since any size is now on
 ### Operator
 
 #### RESOLVED: Production update applied without a preview
-The deploy step ran `update-stack` directly. The template names its IAM roles, so any change CloudFormation decides needs a replacement on a named resource fails mid-update, and the plan's claim that only the job definition and rule change was reasoned to, not seen. Switched the step to create a change set, check that it lists only those two resources, then execute it.
+The deploy step ran `update-stack` directly. The template names its IAM roles, so any change CloudFormation decides needs a replacement on a named resource fails mid-update, and the plan's claim that only the job definition and rule change was reasoned to, not seen. Switched the step to create a change set, check that it lists only an in-place `Modify` of `BatchJobDefinition`, then execute it.
 
 #### RESOLVED: Rollback pointed at master
 The rollback said to redeploy "the previous template from master", but after the merge master holds the new template. With a 512 MB option in the parameter, rollback no longer needs the old template at all: it is a `TaskSize` change.
