@@ -25,6 +25,11 @@ const content = (answer: AnswerFields) =>
 const sameContent = (before: AnswerFields, after: AnswerFields) => content(before) === content(after)
 // A portal offering id; it becomes a key of the `changed` map, which no rule pins
 const OFFERING_ID = /^[1-9][0-9]*$/
+// Firestore refuses a document id or field name over 1,500 bytes, and a refused write would retry
+// until the retry window closes. 18 digits is what the package catalog's identity grammar allows a
+// portal id, and 253 is a DNS name's limit.
+const MAX_ID_DIGITS = 18
+const MAX_HOST_LENGTH = 253
 
 // Which learner's activity document an answer write updates, or why it updates none.
 export function activityTarget(before: AnswerFields | undefined, after: AnswerFields | undefined):
@@ -48,16 +53,16 @@ export function activityTarget(before: AnswerFields | undefined, after: AnswerFi
   } catch {
     // an unparseable URL leaves portal empty, as a hostless one ("foo:bar") does
   }
-  if (portal === "") {
+  if (portal === "" || portal.length > MAX_HOST_LENGTH) {
     return { skip: "bad_platform_id" }
   }
   if (!CLASS_HASH.test(String(context_id))) {
     return { skip: "bad_class_hash" }
   }
-  if (!PLATFORM_USER_ID.test(String(platform_user_id))) {
+  if (!PLATFORM_USER_ID.test(String(platform_user_id)) || String(platform_user_id).length > MAX_ID_DIGITS) {
     return { skip: "bad_user_id" }
   }
-  if (!OFFERING_ID.test(String(resource_link_id))) {
+  if (!OFFERING_ID.test(String(resource_link_id)) || String(resource_link_id).length > MAX_ID_DIGITS) {
     return { skip: "bad_resource_link_id" }
   }
   return {

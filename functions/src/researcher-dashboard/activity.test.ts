@@ -66,6 +66,14 @@ describe("activityTarget", () => {
     expect(activityTarget(answer({ platform_user_id: 1234 }), after)).toEqual({ path: PATH, resourceLinkId: "701" })
   })
 
+  it("records the longest identifiers it accepts", () => {
+    const longest = answer({ platform_id: `https://${"a".repeat(253)}`, platform_user_id: "1".repeat(18), resource_link_id: "2".repeat(18) })
+    expect(activityTarget(undefined, longest)).toEqual({
+      path: `researcher_dashboard/${"a".repeat(253)}/activity/${HASH}/users/${"1".repeat(18)}`,
+      resourceLinkId: "2".repeat(18)
+    })
+  })
+
   it("skips a delete", () => {
     expect(activityTarget(answer(), undefined)).toEqual({ skip: "deleted" })
   })
@@ -112,7 +120,10 @@ describe("activityTarget", () => {
     ["a context_id with a slash", { context_id: `${"c".repeat(24)}/${"c".repeat(23)}` }, "bad_class_hash"],
     ["a platform_user_id with a slash", { platform_user_id: "12/34" }, "bad_user_id"],
     ["a platform_user_id with a leading zero", { platform_user_id: "0123" }, "bad_user_id"],
-    ["a resource_link_id Firestore reserves", { resource_link_id: "__x__" }, "bad_resource_link_id"]
+    ["a resource_link_id Firestore reserves", { resource_link_id: "__x__" }, "bad_resource_link_id"],
+    ["a platform_id whose host is longer than a DNS name", { platform_id: `https://${"a".repeat(254)}` }, "bad_platform_id"],
+    ["a platform_user_id of 19 digits", { platform_user_id: "1".repeat(19) }, "bad_user_id"],
+    ["a resource_link_id of 19 digits", { resource_link_id: "1".repeat(19) }, "bad_resource_link_id"]
   ])("skips %s", (_, fields, skip) => {
     expect(activityTarget(undefined, answer(fields))).toEqual({ skip })
   })
