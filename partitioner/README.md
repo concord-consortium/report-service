@@ -30,6 +30,10 @@ Run the following command to push this image to your newly created AWS repositor
 docker push public.ecr.aws/w4h7v9o3/concord-consortium/report-service-partitioner:TAG
 ```
 
+### Stack parameters
+
+`TaskSize` sets the job's Fargate vCPU and memory as one choice, so only valid pairs can be picked. It offers every valid pair up to 2 vCPU, the compute environment's `MaxvCpus`, named like `0.25vCPU-512MB` or `1vCPU-8GB`. The default, `0.25vCPU-2GB`, is what production uses; QA uses `0.25vCPU-512MB`, which its log volume fits. Raise production only if jobs fail with `OutOfMemoryError`. A stack created before this parameter existed gets the default on its next update unless `TaskSize` is set.
+
 ### QA
 
 - Using the "AdminConcordQA" account, update the `report-service-partitioner-qa` stack using the `public.ecr.aws/w4h7v9o3/concord-consortium/report-service-partitioner:TAG` as the "ContainerImageUri" parameter.
