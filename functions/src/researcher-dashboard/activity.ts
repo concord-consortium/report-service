@@ -1,0 +1,120 @@
+import admin from "firebase-admin"
+import { activityUserPath, CLASS_HASH, portalSegment } from "./firestore-paths"
+import { PLATFORM_USER_ID } from "./storage-policy"
+
+type AnswerFields = Record<string, unknown>
+
+export type Skip =
+  | "deleted" | "no_class" | "moved" | "unchanged"
+  | "bad_platform_id" | "bad_class_hash" | "bad_user_id" | "bad_resource_link_id"
+
+export interface ActivityTarget { path: string; resourceLinkId: string }
+
+const present = (v: unknown) => (typeof v === "string" && v !== "") || typeof v === "number"
+// The Activity Player sets these afresh on every save, so they differ even when nothing else does
+const PER_SAVE = ["created", "interactive_state_history_id"]
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && Object.getPrototypeOf(v) === Object.prototype
+const hasIsEqual = (v: unknown): v is { isEqual: (other: unknown) => boolean } =>
+  typeof v === "object" && v !== null && typeof (v as { isEqual?: unknown }).isEqual === "function"
+// Firestore does not promise a snapshot's key order, and its values include NaN, Infinity,
+// timestamps, references and bytes, which JSON would flatten or mistake for one another.
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => sameValue(v, b[i]))
+  }
+  if (isPlainObject(a) || isPlainObject(b)) {
+    return isPlainObject(a) && isPlainObject(b) && sameFields(a, b, [])
+  }
+  if (Buffer.isBuffer(a) || Buffer.isBuffer(b)) {
+    return Buffer.isBuffer(a) && Buffer.isBuffer(b) && a.equals(b)
+  }
+  if (hasIsEqual(a)) {
+    return a.isEqual(b)
+  }
+  return Object.is(a, b)
+}
+function sameFields(a: Record<string, unknown>, b: Record<string, unknown>, ignored: string[]) {
+  const keys = (o: Record<string, unknown>) => Object.keys(o).filter(k => !ignored.includes(k))
+  const aKeys = keys(a)
+  return aKeys.length === keys(b).length && aKeys.every(k => k in b && sameValue(a[k], b[k]))
+}
+const sameContent = (before: AnswerFields, after: AnswerFields) => sameFields(before, after, PER_SAVE)
+// A portal offering id, which no rule pins; it becomes a key of the `changed` map
+const OFFERING_ID = /^[1-9][0-9]*$/
+// Firestore refuses a document id or field name over 1,500 bytes, and a document id matching
+// `__.*__`, and a refused write would retry until the retry window closes. 18 digits is what the
+// package catalog's identity grammar allows a portal id, and 253 is a DNS name's limit.
+const MAX_ID_DIGITS = 18
+const MAX_HOST_LENGTH = 253
+const RESERVED_ID = /^__.*__$/
+// A class has 8 to 14 assignments; a learner writing answers by hand could otherwise grow their
+// document toward Firestore's size limit, after which every write to it would fail and retry.
+export const MAX_CHANGED_KEYS = 500
+
+// Which learner's activity document an answer write updates, or why it updates none.
+export function activityTarget(before: AnswerFields | undefined, after: AnswerFields | undefined):
+  ActivityTarget | { skip: Skip } {
+  if (!after) {
+    return { skip: "deleted" }
+  }
+  const { platform_id, platform_user_id, context_id, resource_link_id } = after
+  if (![platform_id, platform_user_id, context_id, resource_link_id].every(present)) {
+    return { skip: "no_class" }
+  }
+  if (before && (before.context_id !== context_id || String(before.platform_user_id) !== String(platform_user_id))) {
+    return { skip: "moved" }
+  }
+  if (before && sameContent(before, after)) {
+    return { skip: "unchanged" }
+  }
+  let portal = ""
+  try {
+    portal = portalSegment(String(platform_id))
+  } catch {
+    // an unparseable URL leaves portal empty, as a hostless one ("foo:bar") does
+  }
+  if (portal === "" || portal.length > MAX_HOST_LENGTH || RESERVED_ID.test(portal)) {
+    return { skip: "bad_platform_id" }
+  }
+  if (!CLASS_HASH.test(String(context_id))) {
+    return { skip: "bad_class_hash" }
+  }
+  if (!PLATFORM_USER_ID.test(String(platform_user_id)) || String(platform_user_id).length > MAX_ID_DIGITS) {
+    return { skip: "bad_user_id" }
+  }
+  if (!OFFERING_ID.test(String(resource_link_id)) || String(resource_link_id).length > MAX_ID_DIGITS) {
+    return { skip: "bad_resource_link_id" }
+  }
+  return {
+    path: activityUserPath(portal, String(context_id), String(platform_user_id)),
+    resourceLinkId: String(resource_link_id)
+  }
+}
+
+// One read and one write, no transaction: the three fields of the activity document contract. A
+// full `changed` map takes no new key, though concurrent writes can each add one past the cap.
+export async function recordActivity(db: admin.firestore.Firestore, target: ActivityTarget) {
+  const ref = db.doc(target.path)
+  const changed = (await ref.get()).get("changed") as Record<string, unknown> | undefined
+  const keys = changed ? Object.keys(changed) : []
+  const room = keys.includes(target.resourceLinkId) || keys.length < MAX_CHANGED_KEYS
+  const now = admin.firestore.FieldValue.serverTimestamp()
+  await ref.set({
+    lastActivityAt: now,
+    writeCount: admin.firestore.FieldValue.increment(1),
+    ...(room ? { changed: { [target.resourceLinkId]: now } } : {})
+  }, { merge: true })
+}
+
+// Records an answer write's activity, or answers why it records none.
+export async function handleAnswerWrite(
+  db: admin.firestore.Firestore, before: AnswerFields | undefined, after: AnswerFields | undefined
+): Promise<Skip | null> {
+  const target = activityTarget(before, after)
+  if ("skip" in target) {
+    return target.skip
+  }
+  await recordActivity(db, target)
+  return null
+}

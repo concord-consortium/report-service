@@ -1,12 +1,11 @@
 import express from "express"
 import { Researcher } from "./run-package"
 import { MAX_URL_LENGTH } from "./derive-profile"
+import { CLASS_HASH } from "./firestore-paths"
 
 export const MAX_BODY_BYTES = 256 * 1024
 const MAX_ASSIGNMENT_URLS = 500
 const MAX_FINGERPRINT_LENGTH = 256
-// rigse's SecureRandom.hex(24); it becomes a Firestore path segment
-const CLASS_HASH = /^[0-9a-f]{48}$/
 
 /** A derivation, as queued: everything the worker needs, with the portal from the assertion. */
 export interface DeriveTask {
