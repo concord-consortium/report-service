@@ -1,4 +1,7 @@
+import admin from "firebase-admin"
 import { activityTarget, Skip } from "./activity"
+
+const { Timestamp } = admin.firestore
 
 const HASH = "c".repeat(48)
 const OTHER_HASH = "d".repeat(48)
@@ -116,6 +119,32 @@ describe("activityTarget", () => {
 
   it("skips a move to a malformed class as a move", () => {
     expect(activityTarget(answer(), answer({ context_id: "not/a/class" }))).toEqual({ skip: "moved" })
+  })
+
+  it.each<[string, unknown, unknown]>([
+    ["NaN to null", NaN, null],
+    ["Infinity to null", Infinity, null],
+    ["-Infinity to Infinity", -Infinity, Infinity],
+    ["a timestamp to another", Timestamp.fromMillis(1000), Timestamp.fromMillis(2000)],
+    ["a timestamp to a map of its fields", Timestamp.fromMillis(1000), { _seconds: 1, _nanoseconds: 0 }],
+    ["bytes to other bytes", Buffer.from("a"), Buffer.from("b")],
+    ["a string to a number", "1", 1]
+  ])("records a re-save that changes a value from %s", (_, from, to) => {
+    expect(activityTarget(answer({ answer: { value: from } }), answer({ answer: { value: to } })))
+      .toEqual({ path: PATH, resourceLinkId: "701" })
+  })
+
+  it.each<[string, unknown, unknown]>([
+    ["NaN", NaN, NaN],
+    ["a timestamp", Timestamp.fromMillis(1000), Timestamp.fromMillis(1000)],
+    ["bytes", Buffer.from("a"), Buffer.from("a")]
+  ])("skips a re-save that keeps an equal %s", (_, from, to) => {
+    const resave = answer({ answer: { value: to }, created: "Thu, 15 Oct 2026 12:05:00 GMT" })
+    expect(activityTarget(answer({ answer: { value: from } }), resave)).toEqual({ skip: "unchanged" })
+  })
+
+  it("records a re-save that adds a field", () => {
+    expect(activityTarget(answer(), answer({ submitted: true }))).toEqual({ path: PATH, resourceLinkId: "701" })
   })
 
   it("records a re-save that changes a nested value", () => {

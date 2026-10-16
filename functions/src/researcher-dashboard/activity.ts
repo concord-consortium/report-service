@@ -15,14 +15,31 @@ const present = (v: unknown) => (typeof v === "string" && v !== "") || typeof v 
 const PER_SAVE = ["created", "interactive_state_history_id"]
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && Object.getPrototypeOf(v) === Object.prototype
-// Firestore does not promise a snapshot's key order, so keys are sorted at every depth
-const sortedKeys = (v: unknown): unknown =>
-  Array.isArray(v) ? v.map(sortedKeys)
-  : isPlainObject(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, sortedKeys(v[k])]))
-  : v
-const content = (answer: AnswerFields) =>
-  JSON.stringify(sortedKeys(Object.fromEntries(Object.entries(answer).filter(([k]) => !PER_SAVE.includes(k)))))
-const sameContent = (before: AnswerFields, after: AnswerFields) => content(before) === content(after)
+const hasIsEqual = (v: unknown): v is { isEqual: (other: unknown) => boolean } =>
+  typeof v === "object" && v !== null && typeof (v as { isEqual?: unknown }).isEqual === "function"
+// Firestore does not promise a snapshot's key order, and its values include NaN, Infinity,
+// timestamps, references and bytes, which JSON would flatten or mistake for one another.
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => sameValue(v, b[i]))
+  }
+  if (isPlainObject(a) || isPlainObject(b)) {
+    return isPlainObject(a) && isPlainObject(b) && sameFields(a, b, [])
+  }
+  if (Buffer.isBuffer(a) || Buffer.isBuffer(b)) {
+    return Buffer.isBuffer(a) && Buffer.isBuffer(b) && a.equals(b)
+  }
+  if (hasIsEqual(a)) {
+    return a.isEqual(b)
+  }
+  return Object.is(a, b)
+}
+function sameFields(a: Record<string, unknown>, b: Record<string, unknown>, ignored: string[]) {
+  const keys = (o: Record<string, unknown>) => Object.keys(o).filter(k => !ignored.includes(k))
+  const aKeys = keys(a)
+  return aKeys.length === keys(b).length && aKeys.every(k => k in b && sameValue(a[k], b[k]))
+}
+const sameContent = (before: AnswerFields, after: AnswerFields) => sameFields(before, after, PER_SAVE)
 // A portal offering id, which no rule pins; it becomes a key of the `changed` map
 const OFFERING_ID = /^[1-9][0-9]*$/
 // Firestore refuses a document id or field name over 1,500 bytes, and a document id matching
