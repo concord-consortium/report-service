@@ -23,13 +23,17 @@ const sortedKeys = (v: unknown): unknown =>
 const content = (answer: AnswerFields) =>
   JSON.stringify(sortedKeys(Object.fromEntries(Object.entries(answer).filter(([k]) => !PER_SAVE.includes(k)))))
 const sameContent = (before: AnswerFields, after: AnswerFields) => content(before) === content(after)
-// A portal offering id; it becomes a key of the `changed` map, which no rule pins
+// A portal offering id, which no rule pins; it becomes a key of the `changed` map
 const OFFERING_ID = /^[1-9][0-9]*$/
-// Firestore refuses a document id or field name over 1,500 bytes, and a refused write would retry
-// until the retry window closes. 18 digits is what the package catalog's identity grammar allows a
-// portal id, and 253 is a DNS name's limit.
+// Firestore refuses a document id or field name over 1,500 bytes, and a document id matching
+// `__.*__`, and a refused write would retry until the retry window closes. 18 digits is what the
+// package catalog's identity grammar allows a portal id, and 253 is a DNS name's limit.
 const MAX_ID_DIGITS = 18
 const MAX_HOST_LENGTH = 253
+const RESERVED_ID = /^__.*__$/
+// A class has 8 to 14 assignments; a learner writing answers by hand could otherwise grow their
+// document toward Firestore's size limit, after which every write to it would fail and retry.
+export const MAX_CHANGED_KEYS = 500
 
 // Which learner's activity document an answer write updates, or why it updates none.
 export function activityTarget(before: AnswerFields | undefined, after: AnswerFields | undefined):
@@ -53,7 +57,7 @@ export function activityTarget(before: AnswerFields | undefined, after: AnswerFi
   } catch {
     // an unparseable URL leaves portal empty, as a hostless one ("foo:bar") does
   }
-  if (portal === "" || portal.length > MAX_HOST_LENGTH) {
+  if (portal === "" || portal.length > MAX_HOST_LENGTH || RESERVED_ID.test(portal)) {
     return { skip: "bad_platform_id" }
   }
   if (!CLASS_HASH.test(String(context_id))) {
@@ -71,13 +75,18 @@ export function activityTarget(before: AnswerFields | undefined, after: AnswerFi
   }
 }
 
-// One write, no read: the three fields of the activity document contract.
-export function recordActivity(db: admin.firestore.Firestore, target: ActivityTarget) {
+// One read and one write, no transaction: the three fields of the activity document contract. A
+// full `changed` map takes no new key, though concurrent writes can each add one past the cap.
+export async function recordActivity(db: admin.firestore.Firestore, target: ActivityTarget) {
+  const ref = db.doc(target.path)
+  const changed = (await ref.get()).get("changed") as Record<string, unknown> | undefined
+  const keys = changed ? Object.keys(changed) : []
+  const room = keys.includes(target.resourceLinkId) || keys.length < MAX_CHANGED_KEYS
   const now = admin.firestore.FieldValue.serverTimestamp()
-  return db.doc(target.path).set({
+  await ref.set({
     lastActivityAt: now,
     writeCount: admin.firestore.FieldValue.increment(1),
-    changed: { [target.resourceLinkId]: now }
+    ...(room ? { changed: { [target.resourceLinkId]: now } } : {})
   }, { merge: true })
 }
 

@@ -91,7 +91,7 @@ describe("activityTarget", () => {
     expect(activityTarget(answer(), answer({ context_id: OTHER_HASH }))).toEqual({ skip: "moved" })
   })
 
-  it("skips a move to another learner", () => {
+  it("skips a write that changes the learner", () => {
     expect(activityTarget(answer(), answer({ platform_user_id: "5678" }))).toEqual({ skip: "moved" })
   })
 
@@ -108,6 +108,16 @@ describe("activityTarget", () => {
     expect(activityTarget(before, reordered)).toEqual({ skip: "unchanged" })
   })
 
+  it("records a re-save that reorders an array", () => {
+    const before = answer({ answer: { choice_ids: ["choice-1", "choice-2"] } })
+    const after = answer({ answer: { choice_ids: ["choice-2", "choice-1"] } })
+    expect(activityTarget(before, after)).toEqual({ path: PATH, resourceLinkId: "701" })
+  })
+
+  it("skips a move to a malformed class as a move", () => {
+    expect(activityTarget(answer(), answer({ context_id: "not/a/class" }))).toEqual({ skip: "moved" })
+  })
+
   it("records a re-save that changes a nested value", () => {
     const before = answer({ answer: { choice_ids: ["choice-1"], text: "because" } })
     const after = answer({ answer: { choice_ids: ["choice-2"], text: "because" } })
@@ -121,6 +131,7 @@ describe("activityTarget", () => {
     ["a platform_user_id with a slash", { platform_user_id: "12/34" }, "bad_user_id"],
     ["a platform_user_id with a leading zero", { platform_user_id: "0123" }, "bad_user_id"],
     ["a resource_link_id Firestore reserves", { resource_link_id: "__x__" }, "bad_resource_link_id"],
+    ["a platform_id whose host Firestore reserves as a document id", { platform_id: "https://__x__" }, "bad_platform_id"],
     ["a platform_id whose host is longer than a DNS name", { platform_id: `https://${"a".repeat(254)}` }, "bad_platform_id"],
     ["a platform_user_id of 19 digits", { platform_user_id: "1".repeat(19) }, "bad_user_id"],
     ["a resource_link_id of 19 digits", { resource_link_id: "1".repeat(19) }, "bad_resource_link_id"]

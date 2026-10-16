@@ -541,6 +541,12 @@
           "queryScope": "COLLECTION_GROUP"
         }
       ]
+    },
+    {
+      "collectionGroup": "users",
+      "fieldPath": "changed",
+      "ttl": false,
+      "indexes": []
     }
   ]
 }

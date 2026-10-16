@@ -1,6 +1,6 @@
 import admin from "firebase-admin"
 import { db } from "../test/emulator-setup"
-import { handleAnswerWrite, recordActivity } from "./activity"
+import { handleAnswerWrite, MAX_CHANGED_KEYS, recordActivity } from "./activity"
 import { activityUserPath } from "./firestore-paths"
 
 const PORTAL = "learn_portal_staging_concord_org"
@@ -21,6 +21,10 @@ const answer = (classHash: string, fields: Record<string, unknown> = {}): Record
   interactive_state_history_id: "history-1",
   report_state: JSON.stringify({ interactiveState: JSON.stringify({ foo: "bar" }) }),
   ...fields
+})
+
+beforeEach(async () => {
+  await db.recursiveDelete(db.collection(`researcher_dashboard/${PORTAL}/activity`))
 })
 
 const read = async (path: string) => (await db.doc(path).get()).data() as {
@@ -65,6 +69,26 @@ it("writes nothing for the writes it skips", async () => {
 
   const docs = await users(classHash).get()
   expect(docs.docs.map(d => d.id)).toEqual(["1234"])
+  expect(docs.docs[0].get("writeCount")).toBe(1)
+})
+
+it("adds no key to a full changed map, and still records the write", async () => {
+  const path = activityUserPath(PORTAL, "5".repeat(48), "1234")
+  const then = admin.firestore.Timestamp.fromMillis(Date.parse("2026-10-01T12:00:00Z"))
+  const full = Object.fromEntries(Array.from({ length: MAX_CHANGED_KEYS }, (_, i) => [String(1000 + i), then]))
+  await db.doc(path).set({ lastActivityAt: then, writeCount: 7, changed: full })
+
+  await recordActivity(db, { path, resourceLinkId: "1" })
+  const afterNew = await read(path)
+  expect(afterNew.writeCount).toBe(8)
+  expect(afterNew.lastActivityAt.valueOf() > then.valueOf()).toBe(true)
+  expect(Object.keys(afterNew.changed)).toHaveLength(MAX_CHANGED_KEYS)
+  expect(afterNew.changed["1"]).toBeUndefined()
+
+  await recordActivity(db, { path, resourceLinkId: "1000" })
+  const afterKnown = await read(path)
+  expect(afterKnown.writeCount).toBe(9)
+  expect(afterKnown.changed["1000"].valueOf() > then.valueOf()).toBe(true)
 })
 
 it("keeps a class of 30 learners' concurrent writes apart, with none failing", async () => {
