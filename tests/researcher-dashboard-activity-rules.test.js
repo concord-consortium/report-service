@@ -21,6 +21,7 @@ const shapes = {
   classRunner: { ...researcher, researcher_dashboard_runner: true, class_hash: CLASS_A },
   emptyClass: { ...researcher, class_hash: CLASS_EMPTY },
   otherClass: { ...researcher, class_hash: CLASS_B },
+  noClass: researcher,
   otherPortal: { ...researcher, platform_id: "https://learn.concord.org/", class_hash: CLASS_A },
   learner: { ...researcher, user_type: "learner", class_hash: CLASS_A },
   teacher: { ...researcher, user_type: "teacher", class_hash: CLASS_A },
@@ -64,7 +65,7 @@ describe("activity/{class_hash}/users/{platform_user_id}", () => {
     expect(snapshot.empty).toBe(true);
   });
 
-  it.each(["otherClass", "otherPortal", "learner", "teacher", "anon"])("is not read or listed by %s", async (shape) => {
+  it.each(["otherClass", "noClass", "otherPortal", "learner", "teacher", "anon"])("is not read or listed by %s", async (shape) => {
     const learner = nextLearner();
     await adminDb().doc(`${users()}/${learner}`).set(activity());
 
