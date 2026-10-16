@@ -123,4 +123,5 @@ export const researcherDashboardWatchdog = functions
     })
   })
 
+export { researcherDashboardActivity } from "./activity-trigger"
 export { deriveProfileWorker } from "./derive-profile-task"
