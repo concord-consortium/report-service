@@ -1,0 +1,105 @@
+import { activityTarget, Skip } from "./activity"
+
+const HASH = "c".repeat(48)
+const OTHER_HASH = "d".repeat(48)
+const PATH = `researcher_dashboard/learn_concord_org/activity/${HASH}/users/1234`
+
+const answer = (fields: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: "answer-1",
+  question_id: "managed_interactive_1",
+  type: "interactive_state",
+  source_key: "activity-player.concord.org",
+  tool_id: "activity-player",
+  resource_url: "https://example.com/701",
+  context_id: HASH,
+  run_key: "",
+  remote_endpoint: "https://learn.concord.org/dataservice/external_activity_data/abc",
+  platform_id: "https://learn.concord.org",
+  platform_user_id: "1234",
+  resource_link_id: "701",
+  created: "Thu, 15 Oct 2026 12:00:00 GMT",
+  interactive_state_history_id: "history-1",
+  report_state: JSON.stringify({ interactiveState: JSON.stringify({ foo: "bar" }) }),
+  ...fields
+})
+
+const without = (fields: Record<string, unknown>, key: string) => {
+  const { [key]: _, ...rest } = fields
+  return rest
+}
+
+describe("activityTarget", () => {
+  it("records a create under the answer's portal, class and learner", () => {
+    expect(activityTarget(undefined, answer())).toEqual({ path: PATH, resourceLinkId: "701" })
+  })
+
+  it("records an update that changes the answer", () => {
+    const after = answer({
+      report_state: JSON.stringify({ interactiveState: JSON.stringify({ foo: "baz" }) }),
+      created: "Thu, 15 Oct 2026 12:05:00 GMT"
+    })
+    expect(activityTarget(answer(), after)).toEqual({ path: PATH, resourceLinkId: "701" })
+  })
+
+  it("records a collaborator's copy, and their later save of it, under the collaborator", () => {
+    const copy = answer({
+      platform_user_id: "5678",
+      collaboration_owner_id: "1234",
+      collaborators_data_url: "https://learn.concord.org/api/v1/collaborations/9/collaborators_data"
+    })
+    const target = { path: `researcher_dashboard/learn_concord_org/activity/${HASH}/users/5678`, resourceLinkId: "701" }
+    expect(activityTarget(undefined, copy)).toEqual(target)
+
+    const laterSave = {
+      ...copy,
+      report_state: JSON.stringify({ interactiveState: JSON.stringify({ foo: "solo" }) }),
+      created: "Thu, 15 Oct 2026 12:10:00 GMT"
+    }
+    expect(activityTarget(copy, laterSave)).toEqual(target)
+  })
+
+  it("records numeric identifiers as their strings, and a re-save that only changes their type as the same learner", () => {
+    const numeric = answer({ platform_user_id: 1234, resource_link_id: 701 })
+    expect(activityTarget(undefined, numeric)).toEqual({ path: PATH, resourceLinkId: "701" })
+
+    const after = answer({ report_state: JSON.stringify({ interactiveState: JSON.stringify({ foo: "baz" }) }) })
+    expect(activityTarget(answer({ platform_user_id: 1234 }), after)).toEqual({ path: PATH, resourceLinkId: "701" })
+  })
+
+  it("skips a delete", () => {
+    expect(activityTarget(answer(), undefined)).toEqual({ skip: "deleted" })
+  })
+
+  it("skips an anonymous answer", () => {
+    const anonymous = answer({ run_key: "run-key-1", platform_id: undefined, platform_user_id: undefined, context_id: undefined })
+    expect(activityTarget(undefined, anonymous)).toEqual({ skip: "no_class" })
+  })
+
+  it.each(["platform_id", "platform_user_id", "context_id", "resource_link_id"])("skips an answer with no %s", key => {
+    expect(activityTarget(undefined, without(answer(), key))).toEqual({ skip: "no_class" })
+  })
+
+  it("skips a move to another class", () => {
+    expect(activityTarget(answer(), answer({ context_id: OTHER_HASH }))).toEqual({ skip: "moved" })
+  })
+
+  it("skips a move to another learner", () => {
+    expect(activityTarget(answer(), answer({ platform_user_id: "5678" }))).toEqual({ skip: "moved" })
+  })
+
+  it("skips a re-save that changes only the per-save fields", () => {
+    const resave = answer({ created: "Thu, 15 Oct 2026 12:05:00 GMT", interactive_state_history_id: "history-2" })
+    expect(activityTarget(answer(), resave)).toEqual({ skip: "unchanged" })
+  })
+
+  it.each<[string, Record<string, unknown>, Skip]>([
+    ["a platform_id that is not a URL", { platform_id: "learn.concord.org" }, "bad_platform_id"],
+    ["a platform_id with no host", { platform_id: "foo:bar" }, "bad_platform_id"],
+    ["a context_id with a slash", { context_id: `${"c".repeat(24)}/${"c".repeat(23)}` }, "bad_class_hash"],
+    ["a platform_user_id with a slash", { platform_user_id: "12/34" }, "bad_user_id"],
+    ["a platform_user_id with a leading zero", { platform_user_id: "0123" }, "bad_user_id"],
+    ["a resource_link_id Firestore reserves", { resource_link_id: "__x__" }, "bad_resource_link_id"]
+  ])("skips %s", (_, fields, skip) => {
+    expect(activityTarget(undefined, answer(fields))).toEqual({ skip })
+  })
+})

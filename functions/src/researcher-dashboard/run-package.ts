@@ -1,6 +1,6 @@
 import express from "express"
 import { PortalKeys, verifyPortalToken } from "./portal-token"
-import { packageKey, resultPath, runnerPath } from "./firestore-paths"
+import { CLASS_HASH, packageKey, resultPath, runnerPath } from "./firestore-paths"
 import { keptScopes, mirror, outstanding, previousOf, readQueue, ResultDoc, withStanding } from "./queue"
 import { VmOutcome, VmStepError } from "./ensure-vm"
 
@@ -72,8 +72,6 @@ export class Refusal extends Error {
 // The catalog's identity grammar, asserted against fixtures/package-contract.json
 export const IDENTITY = /^(users|projects)\/[1-9][0-9]{0,17}\/[a-z0-9][a-z0-9-]{0,62}$/
 const CHECKSUM = /^sha256:[0-9a-f]{64}$/
-// rigse's SecureRandom.hex(24); it becomes a Firestore path segment
-const CLASS_HASH = /^[0-9a-f]{48}$/
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
 const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v !== ""

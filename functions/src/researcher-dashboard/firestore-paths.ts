@@ -5,6 +5,9 @@ export const portalSegment = (iss: string) => new URL(iss).host.replace(/\./g, "
 // `__.*__`, since a package name cannot contain "_".
 export const packageKey = (identity: string) => identity.replace(/\//g, "__")
 
+// rigse's SecureRandom.hex(24); it becomes a Firestore path segment
+export const CLASS_HASH = /^[0-9a-f]{48}$/
+
 export const root = (portal: string) => `researcher_dashboard/${portal}`
 export const workPath = (portal: string, platformUserId: string) => `${root(portal)}/work/${platformUserId}`
 export const runnerPath = (portal: string, platformUserId: string) => `${root(portal)}/runners/${platformUserId}`
@@ -12,6 +15,8 @@ export const vmPath = (portal: string, platformUserId: string) => `${root(portal
 export const classPath = (portal: string, classHash: string) => `${root(portal)}/classes/${classHash}`
 export const resultPath = (portal: string, classHash: string, platformUserId: string, key: string) =>
   `${classPath(portal, classHash)}/researchers/${platformUserId}/results/${key}`
+export const activityUserPath = (portal: string, classHash: string, platformUserId: string) =>
+  `${root(portal)}/activity/${classHash}/users/${platformUserId}`
 
 // What a collection-group query returned, read back from its path; anything outside the
 // dashboard's tree is null and ignored.
