@@ -8,7 +8,7 @@
 
 An Athena report run whose query can never be built (no learners match its filters, an unknown report, a query too large) used to stay unstarted forever and tell no one why. Such a run now fails at once, with its error stored and returned, and the retries for failures that might clear up are bounded in time, so no run can stay unstarted indefinitely.
 
-The case that found it: on 2026-10-09 a researcher's Student Answers run on staging (run 209) could never start, because the class's only assignment was in none of the researcher's projects. report-server logged "No learners were found matching the filters you selected." but stored nothing, and cc-data waited its full 30 minutes and gave up with nothing useful to say. The companion story REPORT-169 makes cc-data stop waiting on a run that is retrying; R8 below is the contract it reads.
+The case that found it: on 2026-10-09 a researcher's Student Answers run on staging (run 209) could never start, because the class's only assignment was in none of the researcher's projects. report-server logged "No learners were found matching the filters you selected." but stored nothing, and cc-data waited its full 30 minutes and gave up with nothing useful to say. The companion story REPORT-169 makes cc-data stop waiting on a run that never starts; R8 below is the contract it reads.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ The case that found it: on 2026-10-09 a researcher's Student Answers run on stag
 
   The 409 body is `{"error": "NOT_READY", "message": "The report is not ready to download.", "athena_query_state", "athena_query_id", "athena_query_error", "athena_query_guidance"}`. A failed-to-start run is told apart from an Athena failure by its null `athena_query_id`.
 
-  **The server's bound:** a run that has not started answers `failed` no later than the first read after it is 10 minutes old if its start keeps failing (R4), or 30 minutes after a start that never finished (R5). R5 counts from the last claim, and a retrying run is reclaimed on its reads until R4's window closes, so an abandoned start can answer `failed` up to about 40 minutes after creation. That is past cc-data's default 30-minute `--poll-timeout`, so a client keeps its own timeout as a backstop. A client can stop early on a non-null `athena_query_error` with a null state. Servers older than this story never set that error on an unstarted run.
+  **The server's bound:** a run that has not started answers `failed` no later than the first read after it is 10 minutes old if its start keeps failing (R4), or 30 minutes after a start that never finished (R5). R5 counts from the last claim, and a retrying run is reclaimed on its reads until R4's window closes, so an abandoned start can answer `failed` up to about 40 minutes after creation. That is past cc-data's default 30-minute `--poll-timeout`, so a client keeps its own timeout as a backstop. REPORT-169's cc-data keeps waiting through a retry (a non-null `athena_query_error` with a null state) until the run answers `failed`, and stops early only after four NOT_READY answers whose state, id and error are all null. Servers older than this story never set that error on an unstarted run.
 - **R9.** `athena_query_guidance` for both no-learners messages tells the researcher what to check: that the filters match students, and that a chosen class's assignment must itself be in one of their projects (its cohorts or material lists), not just the class's teacher. It does not claim the cause is certainly project membership, since a class with no students produces the same message.
 - **R10.** A run that starts normally behaves exactly as before.
 
@@ -66,7 +66,7 @@ The case that found it: on 2026-10-09 a researcher's Student Answers run on stag
 
 ## Out of Scope
 
-- cc-data changes: REPORT-169 (stop waiting on a retrying run, retire the oscillation detector).
+- cc-data changes: REPORT-169 (stop waiting on a run that never starts, retire the oscillation detector).
 - Backing off the API's retries between polls. Each read of a retrying run reruns the learner query; the 10-minute bound limits how long that lasts.
 - Moving the API's retry out of the GET request into a background task, as the run page does: REPORT-177.
 - Classifying start failures where they are made rather than by message text, so bad SQL and portal configuration errors fail at once: REPORT-175.
