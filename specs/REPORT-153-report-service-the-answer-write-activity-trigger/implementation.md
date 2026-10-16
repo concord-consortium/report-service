@@ -234,7 +234,7 @@ The whole diff to `firestore.rules`, against `1c3df21` (its rules are `bfbda61`'
  }
 ```
 
-**Tests** (`@firebase/rules-unit-testing` 1.x, one app per token shape built once, documents seeded with `initializeAdminApp`, distinct class hashes per test, as REPORT-143's suite does):
+**Tests** (`@firebase/rules-unit-testing` 1.x, one app per token shape built once, as REPORT-143's suite does. Documents are seeded with `initializeAdminApp` using plain `Date`s, since the admin app refuses the client SDK's `serverTimestamp()`. Each test uses a distinct learner id, since the tokens' `class_hash` is fixed when the apps are built):
 - The class's researcher token gets a seeded document and lists the collection.
 - A listener on an empty class's collection receives a snapshot with `empty` true, not an error.
 - Refused get and list: a researcher token for another class, a researcher token for another portal, a learner and a teacher token for the class, an anonymous caller.

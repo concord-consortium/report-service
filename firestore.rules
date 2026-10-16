@@ -373,6 +373,9 @@ service cloud.firestore {
       function rdIsResearcher() {
         return rdAuthed() && request.auth.token.user_type == "researcher";
       }
+      function rdResearcherOfClass(classHash) {
+        return rdIsResearcher() && request.auth.token.class_hash == classHash;
+      }
       function rdTokenUserId() {
         return string(request.auth.token.platform_user_id);
       }
@@ -407,14 +410,11 @@ service cloud.firestore {
       }
 
       match /classes/{classHash} {
-        function rdResearcherOfClass() {
-          return rdIsResearcher() && request.auth.token.class_hash == classHash;
-        }
-        allow get: if rdResearcherOfClass() && rdReadable();
+        allow get: if rdResearcherOfClass(classHash) && rdReadable();
 
         match /researchers/{platformUserId} {
           function rdOwnScope() {
-            return rdResearcherOfClass() && rdTokenUserId() == platformUserId;
+            return rdResearcherOfClass(classHash) && rdTokenUserId() == platformUserId;
           }
           allow get: if rdOwnScope() && rdReadable();
           allow create, update: if rdOwnScope() && rdIsRunner() && rdSamePlatform(request.resource.data) && rdReadable();
@@ -439,6 +439,13 @@ service cloud.firestore {
               && rdReadable() && rdServerTime() && rdStartedAt() && rdRunningFields();
           }
         }
+      }
+
+      // Per-learner activity, written only by researcherDashboardActivity with the Admin SDK. The class's
+      // researchers read and list it; the path and token are all the rule needs, since rdAuthed() already
+      // ties {portal} to the token's portal.
+      match /activity/{classHash}/users/{uid} {
+        allow get, list: if rdResearcherOfClass(classHash);
       }
     }
   }
