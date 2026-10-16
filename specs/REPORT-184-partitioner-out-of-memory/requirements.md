@@ -50,7 +50,7 @@ Verified against the live production stack `report-service-partitioner` on 2026-
 - Nothing else in the template changes: the compute environment (`MaxvCpus: 2`, which every option fits), roles, log group, schedule and other parameters are untouched. Sizes above 2 vCPU are left out because a job asking for more than `MaxvCpus` is accepted by the stack and then never starts.
 - The template passes `cfn-lint` with no errors.
 - Updating the existing production stack with the new template, keeping every existing parameter value and leaving `TaskSize` at its default, results in an active job definition revision with `VCPU 0.25` and `MEMORY 2048`, and the EventBridge schedule targets that revision.
-- The QA stack ends on the new template with `TaskSize` set to `0.25vCPU-512MB`, its active job definition at `VCPU 0.25` and `MEMORY 512`, and the schedule targeting that revision.
+- The QA stack ends on the new template with `TaskSize` set to `0.25vCPU-512MB`, its active job definition at `VCPU 0.25` and `MEMORY 512`, and the schedule targeting that revision, and QA's first scheduled 02:00 UTC run on that revision ends `SUCCEEDED` before the PR is opened.
 - After the production update, the next scheduled 02:00 UTC run uses the new revision, ends `SUCCEEDED`, and its day has output files (the oob `find-gaps.sh` reports no missing day for it).
 - `partitioner/README.md` documents the `TaskSize` parameter in its stack update instructions: what it sets, how values are named, its default, the value each stack uses, and that a stack created before this change gets the default on update unless `TaskSize` is set.
 
