@@ -92,6 +92,20 @@ describe("activityTarget", () => {
     expect(activityTarget(answer(), resave)).toEqual({ skip: "unchanged" })
   })
 
+  it("skips a re-save whose keys come back in another order, nested keys included", () => {
+    const before = answer({ answer: { choice_ids: ["choice-1"], text: "because" } })
+    const reordered = Object.fromEntries(Object.entries({
+      ...before, answer: { text: "because", choice_ids: ["choice-1"] }, created: "Thu, 15 Oct 2026 12:05:00 GMT"
+    }).reverse())
+    expect(activityTarget(before, reordered)).toEqual({ skip: "unchanged" })
+  })
+
+  it("records a re-save that changes a nested value", () => {
+    const before = answer({ answer: { choice_ids: ["choice-1"], text: "because" } })
+    const after = answer({ answer: { choice_ids: ["choice-2"], text: "because" } })
+    expect(activityTarget(before, after)).toEqual({ path: PATH, resourceLinkId: "701" })
+  })
+
   it.each<[string, Record<string, unknown>, Skip]>([
     ["a platform_id that is not a URL", { platform_id: "learn.concord.org" }, "bad_platform_id"],
     ["a platform_id with no host", { platform_id: "foo:bar" }, "bad_platform_id"],

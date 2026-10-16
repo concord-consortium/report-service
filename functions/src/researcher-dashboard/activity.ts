@@ -13,8 +13,15 @@ export interface ActivityTarget { path: string; resourceLinkId: string }
 const present = (v: unknown) => (typeof v === "string" && v !== "") || typeof v === "number"
 // The Activity Player sets these afresh on every save, so they differ even when nothing else does
 const PER_SAVE = ["created", "interactive_state_history_id"]
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && Object.getPrototypeOf(v) === Object.prototype
+// Firestore does not promise a snapshot's key order, so keys are sorted at every depth
+const sortedKeys = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(sortedKeys)
+  : isPlainObject(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, sortedKeys(v[k])]))
+  : v
 const content = (answer: AnswerFields) =>
-  JSON.stringify(Object.fromEntries(Object.entries(answer).filter(([k]) => !PER_SAVE.includes(k))))
+  JSON.stringify(sortedKeys(Object.fromEntries(Object.entries(answer).filter(([k]) => !PER_SAVE.includes(k)))))
 const sameContent = (before: AnswerFields, after: AnswerFields) => content(before) === content(after)
 // A portal offering id; it becomes a key of the `changed` map, which no rule pins
 const OFFERING_ID = /^[1-9][0-9]*$/
