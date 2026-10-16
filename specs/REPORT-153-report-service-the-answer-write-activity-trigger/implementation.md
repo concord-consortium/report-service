@@ -272,7 +272,7 @@ What it says: `researcherDashboardActivity` runs on every answer write, with ret
 
 ### Deploy to report-service-dev and check (R12)
 
-Not a commit. After the PR is approved, and once the deployed rules are confirmed equal to `master`'s, so that this deploy ships only the rules diff above (the move of `rdResearcherOfClass` and the activity match): `firebase deploy --only functions:researcherDashboardActivity,firestore:rules --project report-service-dev`, with the functions' firebase-tools. Then a staging student in a staging class with an Activity Player assignment saves an answer, and the document appears under `researcher_dashboard/learn_portal_staging_concord_org/activity/<class_hash>/users/<id>` within seconds, read in the Firebase console. Production is lane 12's ops step.
+Not a commit. After the PR is approved, and once the deployed rules are confirmed equal to `master`'s, so that this deploy ships only the rules diff above (the move of `rdResearcherOfClass` and the activity match): `firebase deploy --only functions:researcherDashboardActivity,firestore:rules --project report-service-dev`, with the functions' firebase-tools. Then a staging student in a staging class with an Activity Player assignment saves an answer, and the document appears under `researcher_dashboard/learn_portal_staging_concord_org/activity/<class_hash>/users/<id>` within seconds, read in the Firebase console. The student then reloads the page without changing anything, and `writeCount` stays the same. Production is lane 12's ops step.
 
 ## Open Questions
 
