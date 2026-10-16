@@ -19,13 +19,13 @@
 Template diff. This exact change was generated as a throwaway copy, passes `cfn-lint` 0.86.4 with no findings and the pair check below, and `aws cloudformation validate-template` reports `TaskSize` with default `0.25vCPU-2GB`:
 
 ```diff
-@@ -27,6 +27,123 @@
+@@ -27,6 +27,123 @@ Parameters:
      Description: "Time of day (UTC, cron format: mm HH * * ? *) to trigger the batch job (e.g., '0 2 * * ? *' for 2:00 AM UTC)"
      Default: '0 2 * * ? *'
  
 +  TaskSize:
 +    Type: String
-+    Description: Fargate vCPU and memory for the partitioner job
++    Description: "Fargate vCPU and memory for the partitioner job. Use 0.25vCPU-512MB for QA and 0.25vCPU-2GB (the default) for production."
 +    AllowedValues:
 +      - 0.25vCPU-512MB
 +      - 0.25vCPU-1GB
@@ -143,7 +143,7 @@ Template diff. This exact change was generated as a throwaway copy, passes `cfn-
  Resources:
  
    BatchExecutionRole:
-@@ -127,9 +244,9 @@
+@@ -127,9 +244,9 @@ Resources:
          JobRoleArn: !GetAtt BatchJobRole.Arn
          ResourceRequirements:
            - Type: VCPU

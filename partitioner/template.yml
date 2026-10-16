@@ -27,6 +27,123 @@ Parameters:
     Description: "Time of day (UTC, cron format: mm HH * * ? *) to trigger the batch job (e.g., '0 2 * * ? *' for 2:00 AM UTC)"
     Default: '0 2 * * ? *'
 
+  TaskSize:
+    Type: String
+    Description: "Fargate vCPU and memory for the partitioner job. Use 0.25vCPU-512MB for QA and 0.25vCPU-2GB (the default) for production."
+    AllowedValues:
+      - 0.25vCPU-512MB
+      - 0.25vCPU-1GB
+      - 0.25vCPU-2GB
+      - 0.5vCPU-1GB
+      - 0.5vCPU-2GB
+      - 0.5vCPU-3GB
+      - 0.5vCPU-4GB
+      - 1vCPU-2GB
+      - 1vCPU-3GB
+      - 1vCPU-4GB
+      - 1vCPU-5GB
+      - 1vCPU-6GB
+      - 1vCPU-7GB
+      - 1vCPU-8GB
+      - 2vCPU-4GB
+      - 2vCPU-5GB
+      - 2vCPU-6GB
+      - 2vCPU-7GB
+      - 2vCPU-8GB
+      - 2vCPU-9GB
+      - 2vCPU-10GB
+      - 2vCPU-11GB
+      - 2vCPU-12GB
+      - 2vCPU-13GB
+      - 2vCPU-14GB
+      - 2vCPU-15GB
+      - 2vCPU-16GB
+    Default: 0.25vCPU-2GB
+
+Mappings:
+  TaskSizes:
+    0.25vCPU-512MB:
+      Vcpu: "0.25"
+      Memory: "512"
+    0.25vCPU-1GB:
+      Vcpu: "0.25"
+      Memory: "1024"
+    0.25vCPU-2GB:
+      Vcpu: "0.25"
+      Memory: "2048"
+    0.5vCPU-1GB:
+      Vcpu: "0.5"
+      Memory: "1024"
+    0.5vCPU-2GB:
+      Vcpu: "0.5"
+      Memory: "2048"
+    0.5vCPU-3GB:
+      Vcpu: "0.5"
+      Memory: "3072"
+    0.5vCPU-4GB:
+      Vcpu: "0.5"
+      Memory: "4096"
+    1vCPU-2GB:
+      Vcpu: "1"
+      Memory: "2048"
+    1vCPU-3GB:
+      Vcpu: "1"
+      Memory: "3072"
+    1vCPU-4GB:
+      Vcpu: "1"
+      Memory: "4096"
+    1vCPU-5GB:
+      Vcpu: "1"
+      Memory: "5120"
+    1vCPU-6GB:
+      Vcpu: "1"
+      Memory: "6144"
+    1vCPU-7GB:
+      Vcpu: "1"
+      Memory: "7168"
+    1vCPU-8GB:
+      Vcpu: "1"
+      Memory: "8192"
+    2vCPU-4GB:
+      Vcpu: "2"
+      Memory: "4096"
+    2vCPU-5GB:
+      Vcpu: "2"
+      Memory: "5120"
+    2vCPU-6GB:
+      Vcpu: "2"
+      Memory: "6144"
+    2vCPU-7GB:
+      Vcpu: "2"
+      Memory: "7168"
+    2vCPU-8GB:
+      Vcpu: "2"
+      Memory: "8192"
+    2vCPU-9GB:
+      Vcpu: "2"
+      Memory: "9216"
+    2vCPU-10GB:
+      Vcpu: "2"
+      Memory: "10240"
+    2vCPU-11GB:
+      Vcpu: "2"
+      Memory: "11264"
+    2vCPU-12GB:
+      Vcpu: "2"
+      Memory: "12288"
+    2vCPU-13GB:
+      Vcpu: "2"
+      Memory: "13312"
+    2vCPU-14GB:
+      Vcpu: "2"
+      Memory: "14336"
+    2vCPU-15GB:
+      Vcpu: "2"
+      Memory: "15360"
+    2vCPU-16GB:
+      Vcpu: "2"
+      Memory: "16384"
+
 Resources:
 
   BatchExecutionRole:
@@ -127,9 +244,9 @@ Resources:
         JobRoleArn: !GetAtt BatchJobRole.Arn
         ResourceRequirements:
           - Type: VCPU
-            Value: "0.25"
+            Value: !FindInMap [TaskSizes, !Ref TaskSize, Vcpu]
           - Type: MEMORY
-            Value: "512"
+            Value: !FindInMap [TaskSizes, !Ref TaskSize, Memory]
         EphemeralStorage:
           SizeInGiB: 30
         LogConfiguration:

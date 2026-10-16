@@ -43,6 +43,7 @@ Verified against the live production stack `report-service-partitioner` on 2026-
 
   Each value is named `<vCPU>vCPU-<memory>`, with memory written `512MB` for 512 MiB and `<n>GB` for n × 1024 MiB: `0.25vCPU-512MB`, `0.25vCPU-1GB`, `0.25vCPU-2GB`, `0.5vCPU-1GB` … `0.5vCPU-4GB`, `1vCPU-2GB` … `1vCPU-8GB`, `2vCPU-4GB` … `2vCPU-16GB`.
 - Its `Default` is `0.25vCPU-2GB`, so a stack that does not set it gets 2 GB; any other size, 512 MB included, is an explicit choice.
+- Its `Description` names the value for each stack: `0.25vCPU-512MB` for QA and `0.25vCPU-2GB` (the default) for production, so the choice is visible in the console's parameter form.
 - A `Mappings` entry maps each `TaskSize` value to its vCPU string (`"0.25"`, `"0.5"`, `"1"` or `"2"`) and its memory in MiB as a string (`"512"`, `"1024"` … `"16384"`), exactly as its name says. No pair outside the table above appears.
 - The job definition's `ResourceRequirements` take both values from that mapping with `!FindInMap` keyed by `!Ref TaskSize`. No literal vCPU or memory value remains in the job definition.
 - The mapping keys and the `AllowedValues` list are the same set, so every selectable value resolves and no mapping entry is unreachable.
