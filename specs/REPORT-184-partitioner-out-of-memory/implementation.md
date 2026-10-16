@@ -206,11 +206,11 @@ print("ok", len(m))
 
 ### Deploy to QA and production
 
-**Summary**: Roll the template out by stack update from this branch's head, before the PR opens: QA twice (first at the default, rehearsing production's update, then down to 512 MB), then production at the default once QA checks out. No commit.
+**Summary**: Roll the template out by stack update in two stages. QA (the staging stack) is updated from this branch's head before the PR opens, twice: first at the default, rehearsing production's update, then down to 512 MB. Production is updated at the default from master after the PR is approved and merged. No commit.
 
-QA checks out when both QA updates match their rows in the table below and QA's next 02:00 run, at 512 MB, ends `SUCCEEDED`. Production is updated only after that.
+QA checks out when both QA updates match their rows in the table below and QA's next 02:00 run, at 512 MB, ends `SUCCEEDED`. The PR opens only after that, and its description carries the QA results.
 
-If review then changes `partitioner/template.yml`, update both stacks again from the merged template, through the same change-set flow, passing each stack's current `TaskSize` with `UsePreviousValue=true`, so that what is deployed matches master.
+If review changes `partitioner/template.yml`, update QA again from the merged template before production, through the same change-set flow, passing its current `TaskSize` with `UsePreviousValue=true`, so that QA runs what master holds and production gets a template QA has run.
 
 **Files affected**: none.
 
