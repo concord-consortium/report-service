@@ -30,7 +30,7 @@ This is the first of several REPORT-184 specs: the smallest change that stops th
 - Nothing else in the template changes. Sizes above 2 vCPU are left out because a job asking for more than `MaxvCpus` is accepted by the stack and then never starts.
 - The template passes `cfn-lint` with no errors.
 - Updating the production stack with the new template, keeping every existing parameter value and leaving `TaskSize` at its default, results in an active job definition revision with `VCPU 0.25` and `MEMORY 2048`, and the EventBridge schedule targets that revision. *(Verified at rollout, after the PR merges.)*
-- The QA stack ends on the new template with `TaskSize` set to `0.25vCPU-512MB`, its active job definition at `VCPU 0.25` and `MEMORY 512`, the schedule targeting that revision, and QA's first scheduled 02:00 UTC run on that revision ends `SUCCEEDED` before the PR is opened. *(Verified at rollout.)*
+- The QA stack ends on the new template with `TaskSize` set to `0.25vCPU-512MB`, its active job definition at `VCPU 0.25` and `MEMORY 512`, and the schedule targeting that revision, before the PR is opened. QA's log volume is far smaller than production's, so its nightly run at 512 MB is not a gate. *(Verified at rollout.)*
 - After the production update, the next scheduled 02:00 UTC run uses the new revision, ends `SUCCEEDED`, and its day has output files (the oob `find-gaps.sh` reports no missing day for it). *(Verified at rollout.)*
 - `partitioner/README.md` documents the `TaskSize` parameter in its stack update instructions: what it sets, how values are named, its default, the value each stack uses, and that a stack created before this change gets the default on update unless `TaskSize` is set.
 
@@ -108,7 +108,7 @@ There must be one active revision, and the rule's target ARN must end in it.
 | `report-service-partitioner-qa` | `task-size-512` | `ParameterKey=TaskSize,ParameterValue=0.25vCPU-512MB` | 7 | `0.25` / `512` |
 | `report-service-partitioner` | `task-size-default` | omitted (takes the default) | 3 | `0.25` / `2048` |
 
-QA checks out when both QA updates match their rows and QA's next 02:00 run at 512 MB ends `SUCCEEDED`; the PR opens only after that. If review changes `partitioner/template.yml`, update QA again from the merged template before production, passing its current `TaskSize` with `UsePreviousValue=true`.
+QA checks out when both QA updates match their rows; the PR opens after that. If review changes `partitioner/template.yml`, update QA again from the merged template before production, passing its current `TaskSize` with `UsePreviousValue=true`.
 
 The morning after the production update, confirm the 02:00 run (`list-jobs` rejects `--job-status` alongside `--filters`, and with a filter returns every status):
 
@@ -170,7 +170,7 @@ These are REPORT-184 work, not excluded from the story; each will be specified s
 - A) Both stacks after the PR merges.
 - B) QA from the branch before the PR, production from master after approval and merge.
 
-**Decision**: B (Doug). QA proves the change, including a nightly run at 512 MB, before review; production only ever gets merged code.
+**Decision**: B (Doug). QA proves the update path, out to the production default and back to 512 MB, before review; production only ever gets merged code.
 
 ---
 
@@ -199,7 +199,7 @@ These are REPORT-184 work, not excluded from the story; each will be specified s
 **Context**: Checking that the job definition shows the new size proves the stack update, not that the nightly job still runs.
 **Options considered**:
 - A) Stop at the job definition and schedule target.
-- B) Also require the first scheduled run after each rollout to succeed and leave no gap.
+- B) Also require the first scheduled run after the production update to succeed and leave no gap.
 
 **Decision**: B. A revision the schedule does not target, or a size the job cannot start with, would pass the definition check alone.
 
