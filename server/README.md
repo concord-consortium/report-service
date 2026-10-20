@@ -484,3 +484,24 @@ nightly copy's files for D (read through `logs_by_app` with
 side, no `id` on one side only and no repeated `id`; the query scanned 88 MB, so the `$path` predicate
 skipped the rest of the month. On staging, 2026-10-06 (15,432 rows) and 2026-10-12 (6,564 rows)
 reconcile the same way.
+
+**`logs_by_app`** reads the nightly copy by `app`, `year` and `month`, with no `secure_key` partition,
+so it reads every secure-key folder under the month. It is a route for an app-scoped cohort with no
+learner bound, over days the nightly copy already holds, and the only way to read the nightly copy
+without a learner list, as the reconciliation above does. `secure_key` on `logs_by_app_and_secure_key`
+is an `injected` projection, and Athena fails a query that does not give it a value. `logs_by_app`'s
+cost was measured in production on 2026-10-20, for CLUE in September 2026 (844 MB in 547 folders: one
+per secure key, plus `none` for rows with no secure key in their `run_remote_endpoint`), and compared
+with the same month read through `logs_by_app_and_secure_key` with 20 learner keys, `none` excluded:
+
+| Table | Query | Rows | Bytes scanned | Planning time | Total time |
+|---|---|---|---|---|---|
+| `logs_by_app` | `count(*)` | 208,307 | 0 | 0.3 s | 1.6 s |
+| `logs_by_app` | `count(DISTINCT session)` | 208,307 | 8.37 MB | 0.5 s | 1.8 s |
+| `logs_by_app_and_secure_key`, 20 keys | `count(*)` | 6,642 | 0 | 0.2 s | 1.1 s |
+| `logs_by_app_and_secure_key`, 20 keys | `count(DISTINCT session)` | 6,642 | 0.27 MB | 0.2 s | 0.9 s |
+
+Listing 547 folders kept planning to 0.5 s or less on `logs_by_app`, against 0.2 s with 20 keys (one run
+of each), so the missing `secure_key` partition costs little in planning for an app-month of this size.
+The column-reading query scanned about 40 bytes per row on both tables, so the bytes it scans follow the
+rows it reads, not the number of folders listed.
