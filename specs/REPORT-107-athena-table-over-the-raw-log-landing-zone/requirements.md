@@ -70,7 +70,7 @@ The README's two hand-made projected tables, `logs_by_app_and_secure_key` and `l
 
 ### `logs_by_app`
 
-- **R12.** `logs_by_app` stays in the README and is documented as a supported route: for an app-scoped cohort with no learner bound, and for reading the nightly copy without a learner list (as R8 does). Its cost is measured on one closed app-month in production (bytes scanned, query time, planning time) against the same app-month through `logs_by_app_and_secure_key` with a bounded secure-key sample, and the README records both.
+- **R12.** `logs_by_app` stays in the README and is documented as a supported route: for an app-scoped cohort with no learner bound, and for reading the nightly copy without a learner list (as R8 does). Its cost is measured on one closed app-month in production (bytes scanned, query time, planning time) against the same app-month through `logs_by_app_and_secure_key` with a bounded secure-key sample, and the README records both. Each is measured as `count(*)` and as `count(DISTINCT session)`, because `count(*)` is answered from Parquet metadata and scans no bytes on either table.
 - **R13.** `athena_config_test.exs` stays green without changes. Its "agreement with the DDL in the README" tests count exactly two `projection.app.values` declarations and two of each `year`/`month` range, which the two kept `app`-partitioned tables still provide. Checked by running the test against a README with `logs_by_hour`'s DDL added: 14 tests, 0 failures, since the new DDL declares only `projection.dt.*`.
 
 ### Report-server's access

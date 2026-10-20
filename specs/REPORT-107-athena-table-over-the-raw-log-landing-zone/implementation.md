@@ -185,7 +185,7 @@ The column list, SerDe and formats are those of `logs_by_app_and_secure_key` in 
    Each side is scanned once: Athena does not materialize a `WITH` query, so a form that names `raw` or `nightly` in several subqueries reads that table once per mention. The expected values are the DuckDB figures already in requirements.md: 15,432 rows on each side, and 0 for each of the three id counts. That day's seven nightly files are all under `Activity_Player`, `CLUE` and `CODAPV3`, which are inside staging's 8-value `app` enum. On another day, a nightly app folder outside the enum would show its ids in `raw_only_ids`, explained by naming the folder.
 4. **Convention 1, observed.** `SELECT count(DISTINCT session) FROM "log_ingester_qa"."logs_by_hour" WHERE dt >= '<yesterday>/00'` succeeds, and its `scanned` is no more than the listed bytes of the hours since then (`aws --profile qa s3 ls --recursive --summarize` over yesterday's and today's day prefixes, a few MB). A scan in the GB means the projection did not prune: staging's whole prefix is about 20 GB. Neither `EXPLAIN` nor `EXPLAIN (TYPE IO)` shows which projected partitions a query reads, so the check is the scan, not the plan. The query reads a column because `count(*)` can be answered from Parquet footers and so would not show the difference. Do not run a query with no `dt` predicate.
 
-5. **Rehearsal.** Run the production step's R9 queries (hour, day, the last closed month, and the column-reading day query) and the `logs_by_app` step's two queries on staging, with staging's database and a staging app and month. Each must succeed. Record whether the reconciliation's `scanned` was near the day's bytes or the month's, which predicts the production reconciliation's cost. These figures go nowhere but the go requests.
+5. **Rehearsal.** Run the production step's R9 queries (hour, day, the last closed month, and the column-reading day query) and the `logs_by_app` step's two queries on staging, with staging's database and a staging app and month. Staging's CLUE September 2026 holds only five secure keys besides `none`, so its secure-key query names those five. Each must succeed. Record whether the reconciliation's `scanned` was near the day's bytes or the month's, which predicts the production reconciliation's cost. These figures go nowhere but the go requests.
 
 If the DDL is refused, stop and bring the error to Doug. The fallback in requirements.md's resolved question is four integer keys, and that changes R3 and convention 3's wording.
 
@@ -223,7 +223,8 @@ On the last closed month and one application (CLUE, which REPORT-36 already read
 
 1. `SELECT count(*) FROM "log_ingester_production"."logs_by_app" WHERE app = 'CLUE' AND year = <Y> AND month = <M>`. Record `scanned`, `planning_ms`, `engine_ms` and `total_ms`. Planning time is the one the documentation warns about, since Athena lists every secure-key directory under the month.
 2. The same count through `logs_by_app_and_secure_key` with `secure_key IN (<20 keys>)`, the keys taken from `aws s3 ls s3://log-ingester-production/logs_by_app_and_secure_key/CLUE/<Y>/<M>/`. This is the bounded sample R12 compares against. Record the same four figures.
-3. These figures go into the README's `logs_by_app` paragraph; they do not decide whether it stays (requirements.md, R12).
+3. Both counts are repeated as `count(DISTINCT session)`. Athena answers `count(*)` from Parquet metadata, so both tables scanned 0 bytes for it (2026-10-20), and only the column-reading form shows what each one reads.
+4. These figures go into the README's `logs_by_app` paragraph; they do not decide whether it stays (requirements.md, R12).
 
 ---
 
