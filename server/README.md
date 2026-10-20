@@ -463,10 +463,11 @@ table with today's logs. A query on it has to know the following.
 7. **`application` is the raw client value** (`Activity Player`), not the sanitized `app` partition
    value (`Activity_Player`) that `AthenaConfig` lists.
 
-**Before the Firehose cutover** (2022-01-01 00:00 UTC in production, 2021-12-20 14:00 UTC on staging),
-each day with data is one file in its `00` hour folder, so hour-level filters on that history are wrong
-and only whole-day ranges are meaningful. Most projected hours before the cutover are empty, so a
-multi-year query pays for listing them.
+**Before the Firehose cutover**, the point where `processed_logs_with_id/` switches from one file per
+day to Firehose's per-hour files (2022-01-01 00:00 UTC in production, 2021-12-20 14:00 UTC on staging),
+each day with data is one file, `YYYY-MM-DD.parquet`, in its `00` hour folder. So hour-level filters on
+that history are wrong and only whole-day ranges are meaningful. Most projected hours before the cutover
+are empty, so a multi-year query pays for listing them.
 
 **Measured cost** in production, on 2026-10-20. Athena answers `count(*)` from Parquet metadata
 and scans no bytes for it, so the column-reading query is the guide to what a real query pays.
