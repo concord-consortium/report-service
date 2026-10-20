@@ -6,7 +6,7 @@
 
 ## Overview
 
-Declare an Athena table, `logs_by_hour`, over the hourly folders where log events land about a minute after they happen. This makes recent log events queryable without waiting for the nightly refile. Document what a query on the table has to know about its data, so that REPORT-150's class-scoped recent-logs route can build on the table. The story changes no report and adds no route; its committed output is `server/README.md`, and the two tables were created by hand from the DDL there.
+Declare an Athena table, `logs_by_hour`, over the hourly folders where log events land about a minute after they happen. This makes recent log events queryable without waiting for the nightly refile. Document what a query on the table has to know about its data, so that REPORT-150's class-scoped recent-logs route can build on the table. The story changes no report and adds no route; its committed output is `server/README.md`, and `logs_by_hour` was created by hand in staging and production from the DDL there.
 
 ## Requirements
 
@@ -35,10 +35,10 @@ All requirements were met. The measured figures are in `server/README.md` ("Quer
 
 - **R11.** A "Querying recent logs" section in the README states these conventions, each with its measured fact:
   1. **Always give `dt` a lower bound.** Without one, a query plans over more than 100,000 projected hours. Athena never projects hours after `NOW`.
-  2. **Window on `timestamp`, not `time`.** `timestamp` is server receipt time in epoch milliseconds, the clock the folders follow; `time` is the client's clock in seconds. Every row has a `timestamp`.
-  3. **Pad the `dt` range by one hour on each side, then filter on `timestamp`.** An event can sit one folder early (up to about two minutes into the next hour), never more than one early and never later.
+  2. **Window on `timestamp`, not `time`.** `timestamp` is server receipt time in epoch milliseconds, the clock the folders follow; `time` is the client's clock in seconds, falling back to receipt time when the client sends none. Every row has a `timestamp`.
+  3. **Pad the `dt` range by one hour on each side, then filter on `timestamp`.** An event can sit one folder early (up to about two minutes into the next hour); in the measured hours none sat more than one early or in a later folder.
   4. **The current hour is partial**, and a folder can receive objects for about two minutes after its hour ends.
-  5. **The nightly copy of day D is exactly the raw folders `D/00` to `D/23`.** It is filed under D's own `year` and `month`, so at a month's end the first minutes of the next month sit in the earlier month. It exists only after the 02:00 UTC partitioner run for D finishes, which writes no completion marker and has no retry. How a caller combines the two tables, and when it treats D as complete, is REPORT-150's to set.
+  5. **The nightly copy of day D is exactly the raw folders `D/00` to `D/23`.** It is filed under D's own `year` and `month`, and by `timestamp` it can hold events from the first two minutes of D+1, and miss some from the first two minutes of D, which sit in D-1's copy. So at a month's end the first minutes of the next month sit in the earlier month. It exists only after the 02:00 UTC partitioner run for D finishes, which writes no completion marker and has no retry. How a caller combines the two tables, and when it treats D as complete, is REPORT-150's to set.
   6. **Scope by row, not by prefix.** There is no `app` or `secure_key` level, so a learner or class filter is a row predicate and a query reads every application's bytes for its hours. The limit is Athena's 262,144-byte query text, not a prefix count.
   7. **`application` is the raw client value** (`Activity Player`), not the sanitized `app` value (`Activity_Player`) that `AthenaConfig` lists.
 
@@ -53,15 +53,16 @@ All requirements were met. The measured figures are in `server/README.md` ("Quer
 
 ## Technical Notes
 
-- **Where the data comes from.** API Gateway stamps each request with its receipt time; a Firehose transform Lambda assigns a random 21-character `id`, writes receipt time to `timestamp` and the client clock to `time`. Firehose buffers 60 s or 64 MB and writes Snappy Parquet under `processed_logs_with_id/YYYY/MM/DD/HH/`, the UTC hour the buffer opened, using `logs_by_time` as its schema (`cloud-formation/log-ingester.json`, `LogIngesterLogsTable`). The partitioner (`partitioner/src/index.js`) copies each day nightly into `logs_by_app_and_secure_key/{app}/{Y}/{M}/{secure_key}/{DD}_{n}.parquet`.
+- **Where the data comes from.** API Gateway stamps each request with its receipt time; a Firehose transform Lambda assigns a random 21-character `id`, writes receipt time to `timestamp` and the client clock to `time` (receipt time in seconds when the client sends none). Firehose buffers 60 s or 64 MB and writes Snappy Parquet under `processed_logs_with_id/YYYY/MM/DD/HH/`, the UTC hour the buffer opened, using `logs_by_time` as its schema (`cloud-formation/log-ingester.json`, `LogIngesterLogsTable`). The partitioner (`partitioner/src/index.js`) copies each day nightly into `logs_by_app_and_secure_key/{app}/{Y}/{M}/{secure_key}/{DD}_{n}.parquet`.
 - **Where the DDL lives.** In `server/README.md`, applied by hand, like the other two hand-made tables. `logs_by_time` is in the log-ingester stack because Firehose needs it; adding `logs_by_hour` there would mean updating the stack that runs ingestion.
 - **The partition column is a string** (`2026/10/13/16`). Range predicates compare lexically, which is time order because every level is zero-padded. Athena generates projected dates in UTC.
-- **Most projected hours are empty.** On staging, 22% of the hours since 2014/03/01 hold an object (622 of 720 in September 2026). Athena recommends traditional partitions above half empty, but registering one every hour is worse; a recent window projects mostly non-empty hours.
+- **Most projected hours are empty.** On staging, 22% of the hours since 2014/03/01 hold an object, against 622 of 720 (86%) in September 2026. Athena recommends traditional partitions above half empty, but registering one every hour is worse; a recent window projects mostly non-empty hours.
 - **Staging layout.** Day files (`YYYY-MM-DD.parquet` in `00/`) up to 2021-12-20 14:00 UTC, Firehose files after; many pre-cutover days have none. Objects through `2022/12/10/03/` carry a 2022-12-11 modification time from the `add-log-id-to-parquet-files` migration; Firehose's own files resume at `2022/12/11/18/` as stream version 12, with the same 12 columns.
 - **Production layout** (read 2026-10-19). Cutover 2022-01-01 00:00 UTC; the last day file ends 23:59:44 and the first Firehose file starts 00:01:29, with no shared `id`. Over 2026-10-14's 14, 15 and 16 hour folders (576,743 rows), 1,984 sat one folder early, none more, and the largest lag behind an object's name time was 60.1 s (staging: 119.8 s).
 - **Reading the nightly copy by day.** `logs_by_app` with `year`/`month` bound and `regexp_like("$path", '/<DD>_[0-9]+\.parquet$')`. A `LIKE '%/<DD>\_%'` pattern also matches a secure-key folder starting `<DD>_`, because `%` crosses `/`. Production's reconciliation scanned 88 MB of an October holding 19.6 GB, so the `$path` predicate skips the other files. `secure_key` on `logs_by_app_and_secure_key` is `injected`, and Athena fails a query that does not bind it, which is why `logs_by_app` is the learner-free reader.
-- **Permissions.** Staging's `report-server` user allows `s3:GetObject`/`ListBucket` on all of `log-ingester-qa`, `glue:GetTable`, and `athena:StartQueryExecution`/`GetQueryExecution`. Production's `report-server-prod` (one attached policy, v7) allows `s3:GetObject`, `ListBucket` and `GetBucketLocation` on all of `log-ingester-production`; `glue:GetTable` and `GetDatabase`; `athena:StartQueryExecution`, `GetQueryExecution`, `GetWorkGroup`, `CreateWorkGroup` and `TagResource`; and read and write on `concord-report-data`. Neither allows `athena:GetQueryResults`, so a synchronous count route either adds it or reads the result CSV from the output location.
-- **For REPORT-150.** `ReportQuery.get_log_cols/0` already lists the 12 columns in this order. Firehose is at least once and `id` is assigned before delivery, so a retried delivery can repeat a record under a new `id`; none was seen on the reconciled days. Staging learner traffic is sparse, so a class-scoped staging check needs a day with that class's learners.
+- **Permissions.** Staging's `report-server` policy (user `report-server-staging`) allows `s3:GetObject`/`ListBucket` on all of `log-ingester-qa`, `glue:GetTable`, and `athena:StartQueryExecution`/`GetQueryExecution`. Production's `report-server-prod` (one attached policy, v7) allows `s3:GetObject`, `ListBucket` and `GetBucketLocation` on all of `log-ingester-production`; `glue:GetTable` and `GetDatabase`; `athena:StartQueryExecution`, `GetQueryExecution`, `GetWorkGroup`, `CreateWorkGroup` and `TagResource`; and read and write on `concord-report-data`. Neither allows `athena:GetQueryResults`, so a synchronous count route either adds it or reads the result CSV from the output location.
+- **For REPORT-150.** `ReportQuery.get_log_cols/0` already lists the 12 columns in this order. Firehose is at least once. A retried S3 delivery repeats a record under the same `id`, which the reconciliation's repeated-id count would catch (none on the reconciled days). A re-invoked transform or a client resend repeats it under a new `id`, which no check here detects. Staging learner traffic is sparse, so a class-scoped staging check needs a day with that class's learners.
+- **Athena SQL gotchas.** Athena does not materialize a `WITH` query, so a side named in several subqueries is scanned once per mention; tag each side, `UNION ALL` and group by `id` instead. `NOT IN` counts 0 whenever the other side holds a null. `EXPLAIN` and `EXPLAIN (TYPE IO)` print a bare `TableScan` and cannot show projection pruning; compare a column-reading query's bytes scanned with the listed bytes of the hours in range.
 - **Drift noticed, not fixed.** Staging's two `app`-partitioned tables project 8 apps against the README's and `AthenaConfig`'s 16. The README's IAM policy blocks omit the Athena, Glue and log-bucket statements the staging policy has.
 
 ## Out of Scope
@@ -86,9 +87,6 @@ All requirements were met. The measured figures are in `server/README.md` ("Quer
 ### Does this story add Elixir helpers for the conventions?
 **Decision**: no. Wiring is out of scope, and a `dt`-range helper with no caller is code nothing exercises; REPORT-150 writes it with its first caller.
 
-### Production's cutover and hour boundaries: re-check or reuse staging's?
-**Decision**: re-check in production before writing the README (a listing and one hour's download, no Athena cost). The README gives production's figures; the one-hour pad held.
-
 ### Keep or remove `logs_by_app`?
 **Options considered**: keep if a closed app-month passes a cost threshold; remove regardless; keep regardless and document its cost.
 **Decision**: keep regardless (Doug, 2026-10-13). It is the only learner-free reader of the nightly copy, and removing its DDL would hide a Glue table without dropping it. The measurement decides only what the README says it costs.
@@ -97,25 +95,9 @@ All requirements were met. The measured figures are in `server/README.md` ("Quer
 **Decision**: `count(*)` for hour, day and month, plus a column-reading query (Doug, 2026-10-13), because Athena answers `count(*)` from Parquet metadata. Measured, `count(*)` scanned 0 bytes on every table, so the `logs_by_app` measurement gained `count(DISTINCT session)` on both tables as well.
 
 ### Does R11 prescribe how REPORT-150 combines the tables?
-**Context**: Convention 5 said to split the two tables on the folder day, never on `timestamp`, contradicting REPORT-182's exact `timestamp < (E + 1) 00:00 UTC` cut (exact when `logs_by_hour` is read from one hour earlier). A convention 8 routed callers among three tables.
-**Decision** (Doug, 2026-10-19): R11 holds only facts about the table's data and cost. Convention 5 keeps the folder-day, month-boundary and no-completion-marker facts; combining the tables and deciding completeness are REPORT-150's. Convention 8 was dropped.
+**Decision** (Doug, 2026-10-19): no. R11 holds only facts about the table's data and cost; combining the tables and deciding completeness are REPORT-150's.
 
 ### A caller cannot tell when the nightly copy of a day is complete
 **Context**: The partitioner uploads with one `aws s3 cp --recursive`, writes no marker, and its Batch job has no retry.
 **Options considered**: prescribe a margin (for example D+2 00:00 UTC); state the gap as a fact; add a completion marker in a follow-up.
 **Decision**: state the fact (Doug, 2026-10-13). REPORT-150 sets the rule.
-
-### Measurements run from the CLI in `primary`, or through report-server's workgroups?
-**Decision**: the CLI in each account's `primary` workgroup with an explicit `report-107/` output prefix, deleted afterward. No report reads the table yet, and scan and timing figures do not depend on the workgroup.
-
-### One README commit or two?
-**Decision**: two: `logs_by_hour` and its conventions, then `logs_by_app`, so the part REPORT-150 needs did not wait on a measurement it does not use.
-
-### The reconciliation's shape
-**Decision**: tag each side, `UNION ALL`, group by `id`, and count raw-only, nightly-only and repeated ids. Athena does not materialize `WITH`, so naming each side in several subqueries read it three times; `NOT IN` counts 0 whenever the other side holds a null `id`. The day filter anchors on the file name (`regexp_like`), not `LIKE`.
-
-### Checking that the projection prunes
-**Decision**: compare a column-reading query's bytes scanned with the listed bytes of the hours in range. `EXPLAIN` and `EXPLAIN (TYPE IO)` print a bare `TableScan` and cannot show pruning. Staging: 73.5 KB scanned against 1.7 MB listed since the lower bound.
-
-### Passing SQL to the CLI
-**Decision**: every statement goes through a quoted heredoc. In double quotes bash expands `${dt}` and `"$path"` to nothing, which turns the DDL's template into the table root for every hour.

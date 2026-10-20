@@ -290,6 +290,7 @@ This production policy has been created under the name `report-server-prod` and 
 
 Here is the DDL for the three hand-made log tables. `logs_by_time`, the Firehose schema table, is defined in the log-ingester CloudFormation stack.  Note that the S3 bucket for production is `log-ingester-production` and for staging it is `log-ingester-qa`.
 The DDL below is for production, to use on staging you'll need to change the bucket in `LOCATION` and in `storage.location.template`.
+To run a block through the AWS CLI, pass it in a quoted heredoc: inside double quotes, bash expands `${dt}`, `${app}`, `${year}` and `${month}` in `storage.location.template` to nothing.
 
 NOTE: when new applications are added, the two `app`-partitioned tables need to be recreated on AWS, and
 the projected values also have to be updated in `ReportServer.Reports.Athena.AthenaConfig`, which is
@@ -436,9 +437,10 @@ table with today's logs. A query on it has to know the following.
    predicates on it compare in time order because every level is zero-padded.
 2. **Window on `timestamp`, not `time`.** `timestamp` is server receipt time in epoch milliseconds, the
    clock the folders follow. `time` is the client's clock in epoch seconds, and is only as right as the
-   student's device. Every row has a `timestamp`: no null or zero value was found in `logs_by_app` over
-   staging's whole history (25.8M rows) or production's April of every year 2014 to 2026 (377.7M rows),
-   and staging's raw 2014, 2020 and 2021 objects (216,539 rows, day files included) agree.
+   student's device (it falls back to receipt time, in seconds, when the client sends none). Every row
+   has a `timestamp`: no null or zero value was found in `logs_by_app` over staging's whole history
+   (25.8M rows) or production's April of every year 2014 to 2026 (377.7M rows), and staging's raw 2014,
+   2020 and 2021 objects (216,539 rows, day files included) agree.
 3. **Pad the `dt` range by one hour on each side, then filter on `timestamp`.** An event can sit in the
    folder of the hour before its own, because a buffer opened at 15:59 holds events up to about two
    minutes into 16:00. In production's 2026-10-14 14, 15 and 16 hour folders, 1,984 of 576,743 events
@@ -450,11 +452,12 @@ table with today's logs. A query on it has to know the following.
 4. **The current hour is partial**, and an hour folder can still receive objects for about two minutes
    after it ends.
 5. **The nightly copy of day D is exactly the raw folders `D/00` to `D/23`** (see Reconciliation below),
-   so it holds the first two minutes of D+1 by `timestamp`. The partitioner files D under D's own `year`
-   and `month`, so on a month's last day the first minutes of the next month sit in the earlier month's
-   partition. D's nightly copy exists only after the partitioner's 02:00 UTC run for D finishes, and
-   nothing marks that: it writes no completion marker and its Batch job has no retry, so a failed run
-   leaves D missing until it is rerun, and a run still uploading leaves D partial.
+   so by `timestamp` it can hold events from the first two minutes of D+1, and miss some from the first
+   two minutes of D, which sit in D-1's copy. The partitioner files D under D's own `year` and `month`,
+   so on a month's last day the first minutes of the next month sit in the earlier month's partition.
+   D's nightly copy exists only after the partitioner's 02:00 UTC run for D finishes, and nothing marks
+   that: it writes no completion marker and its Batch job has no retry, so a failed run leaves D missing
+   until it is rerun, and a run still uploading leaves D partial.
 6. **Scope by row, not by prefix.** There is no `app` or `secure_key` level, so a learner or class
    filter (`run_remote_endpoint`, `username`) is a row predicate: a query reads every application's
    bytes for the hours in range, whatever the number of learners. Unlike `logs_by_app_and_secure_key`,
