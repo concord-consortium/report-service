@@ -288,15 +288,16 @@ This production policy has been created under the name `report-server-prod` and 
 
 # S3 Log Partitioning
 
-Here is the DDL to create the two tables.  Note that the S3 bucket for production is `log-ingester-production` and for staging it is `log-ingester-qa`.
+Here is the DDL for the three hand-made log tables. `logs_by_time`, the Firehose schema table, is defined in the log-ingester CloudFormation stack.  Note that the S3 bucket for production is `log-ingester-production` and for staging it is `log-ingester-qa`.
 The DDL below is for production, to use on staging you'll need to change the bucket in `LOCATION` and in `storage.location.template`.
 
-NOTE: when new applications are added these tables need to be recreated on AWS, and the projected
-values also have to be updated in `ReportServer.Reports.Athena.AthenaConfig`, which is what the
-report form offers and what the log report SQL validates against. The same applies to the year and
-month ranges, which the partition estimate is derived from. `athena_config_test.exs` asserts the
-Elixir values against every declaration in the DDL below, so forgetting either fails the test
-suite rather than silently narrowing a report.
+NOTE: when new applications are added, the two `app`-partitioned tables need to be recreated on AWS, and
+the projected values also have to be updated in `ReportServer.Reports.Athena.AthenaConfig`, which is
+what the report form offers and what the log report SQL validates against. The same applies to the year
+and month ranges, which the partition estimate is derived from. `athena_config_test.exs` asserts the
+Elixir values against every `app`, `year` and `month` declaration in the DDL below, so forgetting any of
+them fails the test suite rather than silently narrowing a report. `logs_by_hour` has no `app` partition
+and needs no change.
 
 ```
 CREATE EXTERNAL TABLE `logs_by_app_and_secure_key`(
@@ -385,4 +386,101 @@ TBLPROPERTIES (
 
   'storage.location.template'='s3://log-ingester-production/logs_by_app_and_secure_key/${app}/${year}/${month}/'
 )
+
+CREATE EXTERNAL TABLE `logs_by_hour`(
+  `id` string,
+  `session` string,
+  `username` string,
+  `application` string,
+  `activity` string,
+  `event` string,
+  `event_value` string,
+  `time` bigint,
+  `parameters` string,
+  `extras` string,
+  `run_remote_endpoint` string,
+  `timestamp` bigint)
+PARTITIONED BY (
+  `dt` string)
+ROW FORMAT SERDE
+  'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+STORED AS INPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+OUTPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+LOCATION
+  's3://log-ingester-production/processed_logs_with_id/'
+TBLPROPERTIES (
+  'projection.enabled'='true',
+  'projection.dt.type'='date',
+  'projection.dt.format'='yyyy/MM/dd/HH',
+  'projection.dt.range'='2014/03/01/00,NOW',
+  'projection.dt.interval'='1',
+  'projection.dt.interval.unit'='HOURS',
+  'storage.location.template'='s3://log-ingester-production/processed_logs_with_id/${dt}/'
+)
 ```
+
+## Querying recent logs
+
+`logs_by_hour` reads the raw log landing zone, `processed_logs_with_id/YYYY/MM/DD/HH/`, which Firehose
+writes about a minute behind live. The folders are UTC hours, and each object goes in the folder of the
+hour its 60-second buffer opened. The nightly partitioner (02:00 UTC) copies each day from here into
+`logs_by_app_and_secure_key/`. `logs_by_time`, the Firehose schema table, reads the same prefix but has
+no partitions, so every query on it reads all of history. That makes `logs_by_hour` the only partitioned
+table with today's logs. A query on it has to know the following.
+
+1. **Always give `dt` a lower bound.** The projection spans every hour since 2014, so a query with no
+   `dt` predicate plans over more than 100,000 partition locations. An upper bound is optional, since
+   Athena never projects hours after `NOW`. `dt` is a string such as `2026/10/14/15`, and range
+   predicates on it compare in time order because every level is zero-padded.
+2. **Window on `timestamp`, not `time`.** `timestamp` is server receipt time in epoch milliseconds, the
+   clock the folders follow. `time` is the client's clock in epoch seconds, and is only as right as the
+   student's device. Every row has a `timestamp`: no null or zero value was found in `logs_by_app` over
+   staging's whole history (25.8M rows) or production's April of every year 2014 to 2026 (377.7M rows),
+   and staging's raw 2014, 2020 and 2021 objects (216,539 rows, day files included) agree.
+3. **Pad the `dt` range by one hour on each side, then filter on `timestamp`.** An event can sit in the
+   folder of the hour before its own, because a buffer opened at 15:59 holds events up to about two
+   minutes into 16:00. In production's 2026-10-14 14, 15 and 16 hour folders, 1,984 of 576,743 events
+   sat one folder early, none sat more than one early or in a later folder, and the largest lag behind
+   an object's name time was 60.1 s (119.8 s on staging, 2026-10-12). To read events with `timestamp` in
+   `[T1, T2)`, scan `dt` from `hour(T1) - 1h` to `hour(T2) + 1h`, both ends inclusive (`dt BETWEEN`).
+   The upper pad covers sub-second rounding and costs at most one extra hour. A window that runs to now
+   needs only the lower bound.
+4. **The current hour is partial**, and an hour folder can still receive objects for about two minutes
+   after it ends.
+5. **The nightly copy of day D is exactly the raw folders `D/00` to `D/23`** (see Reconciliation below),
+   so it holds the first two minutes of D+1 by `timestamp`. The partitioner files D under D's own `year`
+   and `month`, so on a month's last day the first minutes of the next month sit in the earlier month's
+   partition. D's nightly copy exists only after the partitioner's 02:00 UTC run for D finishes, and
+   nothing marks that: it writes no completion marker and its Batch job has no retry, so a failed run
+   leaves D missing until it is rerun, and a run still uploading leaves D partial.
+6. **Scope by row, not by prefix.** There is no `app` or `secure_key` level, so a learner or class
+   filter (`run_remote_endpoint`, `username`) is a row predicate: a query reads every application's
+   bytes for the hours in range, whatever the number of learners. Unlike `logs_by_app_and_secure_key`,
+   which needs one prefix per learner, there is no per-learner ceiling. The remaining limit is Athena's
+   262,144-byte query text.
+7. **`application` is the raw client value** (`Activity Player`), not the sanitized `app` partition
+   value (`Activity_Player`) that `AthenaConfig` lists.
+
+**Before the Firehose cutover** (2022-01-01 00:00 UTC in production, 2021-12-20 14:00 UTC on staging),
+each day with data is one file in its `00` hour folder, so hour-level filters on that history are wrong
+and only whole-day ranges are meaningful. Most projected hours before the cutover are empty, so a
+multi-year query pays for listing them.
+
+**Measured cost** in production, on 2026-10-20. Athena answers `count(*)` from Parquet metadata
+and scans no bytes for it, so the column-reading query is the guide to what a real query pays.
+
+| Query | Range | Data in range | Rows | Bytes scanned | Total time |
+|---|---|---|---|---|---|
+| `count(*)` | hour, 2026-10-14 15:00 | 14.8 MB | 180,763 | 0 | 1.1 s |
+| `count(*)` | day, 2026-10-14 | 170 MB | 1,849,364 | 0 | 2.1 s |
+| `count(*)` | month, September 2026 | 4.84 GB | 31,609,940 | 0 | 4.7 s |
+| `count(DISTINCT run_remote_endpoint)` | day, 2026-10-14 | 170 MB | 1,849,364 | 2.35 MB | 1.4 s |
+
+**Reconciliation.** The table's rows for `dt` from `<D>/00` to `<D>/23` were compared by `id` with the
+nightly copy's files for D (read through `logs_by_app` with
+`regexp_like("$path", '/<DD>_[0-9]+\.parquet$')`). In production, 2026-10-14 has 1,849,364 rows on each
+side, no `id` on one side only and no repeated `id`; the query scanned 88 MB, so the `$path` predicate
+skipped the rest of the month. On staging, 2026-10-06 (15,432 rows) and 2026-10-12 (6,564 rows)
+reconcile the same way.
