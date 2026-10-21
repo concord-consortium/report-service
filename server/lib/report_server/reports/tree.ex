@@ -174,14 +174,14 @@ defmodule ReportServer.Reports.Tree do
           title: "Student Actions",
           subtitle: "Returns the low-level log event stream for the learners, including model-level interactions.",
           include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
-          form_options: [enable_hide_names: true, enable_app_filter: true]
+          form_options: [enable_hide_names: true, enable_app_filter: true, server_time_dates: true, run_start_learners: true]
         }),
         StudentActionsWithMetadataReport.new(%Report{
           slug: "student-actions-with-metadata",
           title: "Student Actions with Metadata",
           subtitle: "Includes everything in the Student Actions report plus information provided by the Portal about the student, teacher, class, school, permission forms, portal ids, etc.",
           include_filters: [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form],
-          form_options: [enable_hide_names: true, enable_app_filter: true]
+          form_options: [enable_hide_names: true, enable_app_filter: true, server_time_dates: true, run_start_learners: true]
         }),
         StudentAnswersReport.new(%Report{
           slug: "student-answers",
@@ -209,7 +209,8 @@ defmodule ReportServer.Reports.Tree do
           slug: "teacher-actions",
           title: "Teacher Actions",
           subtitle: "Includes log events for teacher actions in the activities, teacher edition, and class dashboard.",
-          include_filters: [:cohort, :school, :teacher, :assignment]
+          include_filters: [:cohort, :school, :teacher, :assignment],
+          form_options: [server_time_dates: true]
         }),
         TeacherStatusReport.new(%Report{
           slug: "teacher-status",

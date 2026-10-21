@@ -93,10 +93,16 @@
       <div class="mt-4 flex items-center gap-4">
         <span class="font-bold">Include dates:</span>
         <label for="start_date" class="whitespace-nowrap">Earliest date:</label>
-        <.input type="date" id="start_date" field={@form["start_date"]} />
+        <.input type="date" id="start_date" field={@form["start_date"]}
+          aria-describedby={@form_options.server_time_dates && "date_range_note"} />
         <label for="end_date" class="whitespace-nowrap">Latest date:</label>
-        <.input type="date" id="end_date" field={@form["end_date"]} />
+        <.input type="date" id="end_date" field={@form["end_date"]}
+          aria-describedby={@form_options.server_time_dates && "date_range_note"} />
       </div>
+      <p :if={@form_options.server_time_dates} id="date_range_note" class="mt-1 text-sm text-gray-600">
+        Dates are the days the log server received each event, in UTC. Both dates are included.
+        <span :if={@form_options.run_start_learners}>Students are included only if they launched the activity on one of these dates (UTC), so a student who launched it earlier and kept working is left out.</span>
+      </p>
 
       <div :if={@form_options.enable_hide_names}>
         <div class="flex gap-2 items-center">
