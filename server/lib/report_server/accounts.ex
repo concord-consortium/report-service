@@ -30,52 +30,37 @@ defmodule ReportServer.Accounts do
   end
 
   defp create_user(portal_user_info = %PortalUserInfo{}) do
-    %{
-      id: id,
-      login: login,
-      first_name: first_name,
-      last_name: last_name,
-      email: email,
-      is_admin: is_admin,
-      is_project_admin: is_project_admin,
-      is_project_researcher: is_project_researcher,
-      server: server
-    } = portal_user_info
-
-    %User{
-      portal_server: server,
-      portal_user_id: id,
-      portal_login: login,
-      portal_first_name: first_name,
-      portal_last_name: last_name,
-      portal_email: email,
-      portal_is_admin: is_admin,
-      portal_is_project_admin: is_project_admin,
-      portal_is_project_researcher: is_project_researcher,
-    } |> Repo.insert()
+    User |> struct(new_user_attrs(portal_user_info)) |> Repo.insert()
   end
 
   defp update_user(user = %User{}, portal_user_info = %PortalUserInfo{}) do
-    %{
-      login: login,
-      first_name: first_name,
-      last_name: last_name,
-      email: email,
-      is_admin: is_admin,
-      is_project_admin: is_project_admin,
-      is_project_researcher: is_project_researcher,
-    } = portal_user_info
+    user |> User.changeset(portal_user_attrs(portal_user_info)) |> Repo.update()
+  end
 
-    user |> User.changeset(%{
-      portal_login: login,
-      portal_first_name: first_name,
-      portal_last_name: last_name,
-      portal_email: email,
-      portal_is_admin: is_admin,
-      portal_is_project_admin: is_project_admin,
-      portal_is_project_researcher: is_project_researcher,
-    })
-    |> Repo.update()
+  @doc """
+  Whether a portal user's row would pass `User.changeset/2`, which every update of a stored user
+  runs: false when a required field, such as the email, is blank on the portal.
+  """
+  def storable_portal_user?(portal_user_info = %PortalUserInfo{}) do
+    User.changeset(%User{}, new_user_attrs(portal_user_info)).valid?
+  end
+
+  defp new_user_attrs(portal_user_info = %PortalUserInfo{}) do
+    portal_user_info
+    |> portal_user_attrs()
+    |> Map.merge(%{portal_server: portal_user_info.server, portal_user_id: portal_user_info.id})
+  end
+
+  defp portal_user_attrs(portal_user_info = %PortalUserInfo{}) do
+    %{
+      portal_login: portal_user_info.login,
+      portal_first_name: portal_user_info.first_name,
+      portal_last_name: portal_user_info.last_name,
+      portal_email: portal_user_info.email,
+      portal_is_admin: portal_user_info.is_admin,
+      portal_is_project_admin: portal_user_info.is_project_admin,
+      portal_is_project_researcher: portal_user_info.is_project_researcher
+    }
   end
 
   @doc """
@@ -104,6 +89,9 @@ defmodule ReportServer.Accounts do
   end
 
   def dashboard_token_label, do: @dashboard_token_label
+
+  @doc "The prefix every report-server API token starts with."
+  def api_token_prefix, do: @api_token_prefix
 
   @doc """
   Mints the API token a Researcher Dashboard VM pulls with, as the researcher themselves.

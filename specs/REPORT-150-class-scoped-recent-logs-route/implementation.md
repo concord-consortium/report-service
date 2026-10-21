@@ -333,9 +333,10 @@ Tests (`ReportServer.RecentLogsTest`, `async: false` because setup replaces the 
 - `lib/report_server/portal_dbs.ex`: `get_user_info_by_id/3`, the `get_user_info/2` query keyed by `users.id` (fresh role flags, login, names, email).
 - `lib/report_server_web/api/class_reader_plug.ex` (new): accepts an API token or a `class:researcher-read` access token.
 - `lib/report_server/recent_logs/access.ex` (new): `caller/2` and `learners/2`.
-- `lib/report_server/accounts.ex`: `api_token_prefix/0`, returning `@api_token_prefix`.
+- `lib/report_server/accounts.ex`: `api_token_prefix/0`, returning `@api_token_prefix`; `storable_portal_user?/1`, which runs `User.changeset/2` over the attributes an update writes (shared with `update_user/2`), so `Access.caller/2` refuses a portal user with a blank required field before creating a row that every later update would reject.
+- `test/support/portal_fixture.sql`: user 561, with a blank last name and email.
 - `test/support/portal_token_fixture.ex`: a third key, `:portal_fixture`, whose issuer is `https://portal-test.example.com/`, so an access token can name the fixture portal.
-- `test/report_server_web/api/class_reader_plug_test.exs`, `test/report_server/recent_logs/access_test.exs` (new, `:portal_db`).
+- `test/report_server_web/api/class_reader_plug_test.exs` (new), `test/report_server/recent_logs/access_test.exs` (new, `:portal_db`).
 
 **Estimated diff size**: ~320 lines
 
@@ -379,7 +380,11 @@ defmodule ReportServer.RecentLogs.Access do
 
   @portal_timeout_ms 5_000
 
-  @doc "The `%User{}` asking, or `{:error, :forbidden | :not_authenticated | :portal_unavailable}`."
+  @doc """
+  The `%User{}` asking, or `{:error, :forbidden | :not_authenticated | :portal_unavailable}`. A
+  portal user whose row cannot be stored as a report-server user (a required field blank) is
+  `:not_authenticated` on every call.
+  """
   def caller(%{assigns: %{current_user: user}}, _class_id), do: {:ok, user}
 
   def caller(%{assigns: %{portal_claims: claims}}, class_id) do
@@ -387,9 +392,17 @@ defmodule ReportServer.RecentLogs.Access do
          server = PortalDbs.get_server_for_portal_url(claims["iss"]),
          true <- (is_binary(server) and PortalDbs.has_db_connection?(server)) || {:error, :not_authenticated},
          {:ok, info} <- user_info(server, claims["uid"]),
-         {:ok, user} <- Accounts.find_or_create_user(info) do
+         true <- Accounts.storable_portal_user?(info) || {:error, :not_authenticated},
+         {:ok, user} <- stored_user(info) do
       {:ok, user}
     end
+  end
+
+  # concurrent first requests can both insert; the loser's retry finds the winner's row
+  defp stored_user(info) do
+    Accounts.find_or_create_user(info)
+  rescue
+    Ecto.ConstraintError -> Accounts.find_or_create_user(info)
   end
 
   defp context_names(%{"type" => "class", "id" => id}, id), do: :ok
@@ -428,7 +441,7 @@ end
 
 `LearnerData.fetch/3` with `allow_empty: true` answers `{:ok, []}` for a class with no learners (R4). The `:learner_data` seam is the one `EndpointSet` already reads, so `LearnerDataStub` works for the controller's error-path tests.
 
-Plug tests (`async: false`, `install!/0`): an API token reaches the next plug with `:current_user`; a revoked one is 401; an access token with `class:researcher-read` and the catalog audience assigns `:portal_claims`; one with only `packages:read` is 401; an HS256 token and an assertion (`aud` a string) are 401; no header is 401.
+Plug tests (`async: false`, `install!/0`): an API token reaches the next plug with `:current_user`; a revoked one is 401; one for a user without report access is 401; an access token with `class:researcher-read` and the catalog audience assigns `:portal_claims`; one with only `packages:read` is 401; an HS256 token and an assertion (`aud` a string) are 401; no header is 401.
 
 Access tests (`:portal_db`, `PortalFixture.setup!/0`, fixture classes 2, 601, 603 and users 557 and 560; each expectation below was run against the fixture in stage 7): researcher 557 by API token reads one learner in class 601, `SECUREKEY123` with `user_id` 101 (the other learner's activity 802 is outside project 900), none in class 2 (in scope, no learners), and is `:forbidden` for 603 (no teacher, so no project) and for class 999999, with the same atom; site admin 560 reads two learners in 601 (the second with no secure key, whose endpoint ends in `/`, exactly as `student-actions` maps it) and none in 603; an access-token caller for 557 with `context` class 601 resolves to a user row with `portal_email` `rae@e.org` and `portal_is_project_researcher` true, a second call reuses the row, and a context naming 602 is `:forbidden` before any portal query; a `uid` the portal lacks is `:not_authenticated`.
 
