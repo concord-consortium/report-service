@@ -290,7 +290,7 @@ This production policy has been created under the name `report-server-prod` and 
 
 Here is the DDL for the three hand-made log tables. `logs_by_time`, the Firehose schema table, is defined in the log-ingester CloudFormation stack.  Note that the S3 bucket for production is `log-ingester-production` and for staging it is `log-ingester-qa`.
 The DDL below is for production, to use on staging you'll need to change the bucket in `LOCATION` and in `storage.location.template`.
-To run a block through the AWS CLI, pass it in a quoted heredoc: inside double quotes, bash expands `${dt}`, `${app}`, `${year}` and `${month}` in `storage.location.template` to nothing.
+To run a block through the AWS CLI, pass it in a quoted heredoc (`<<'SQL'`), which keeps `${dt}`, `${app}`, `${year}` and `${month}` in `storage.location.template` literal. In a double-quoted string or an unquoted heredoc, bash expands them to nothing.
 
 NOTE: when new applications are added, the two `app`-partitioned tables need to be recreated on AWS, and
 the projected values also have to be updated in `ReportServer.Reports.Athena.AthenaConfig`, which is
