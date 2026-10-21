@@ -306,7 +306,7 @@ defmodule ReportServer.Reports.Portal.SummaryMetricsBySubjectAreaReportTest do
       query = SummaryMetricsBySubjectAreaReport.get_query(report_filter, test_user())
       sql = normalized_sql(query)
 
-      assert String.contains?(sql, "run.start_time <= '2023-12-31'")
+      assert String.contains?(sql, "run.start_time < '2024-01-01'")
       assert String.contains?(sql, "at.scope = 'subject_areas'")
     end
 
@@ -324,7 +324,7 @@ defmodule ReportServer.Reports.Portal.SummaryMetricsBySubjectAreaReportTest do
       sql = normalized_sql(query)
 
       assert String.contains?(sql, "run.start_time >= '2023-01-01'")
-      assert String.contains?(sql, "run.start_time <= '2023-12-31'")
+      assert String.contains?(sql, "run.start_time < '2024-01-01'")
     end
   end
 
@@ -389,7 +389,7 @@ defmodule ReportServer.Reports.Portal.SummaryMetricsBySubjectAreaReportTest do
       assert String.contains?(sql, "ps.state IN ('CA','NY')")
       assert String.contains?(sql, "at.id IN (5,7)")
       assert String.contains?(sql, "run.start_time >= '2023-01-01'")
-      assert String.contains?(sql, "run.start_time <= '2023-12-31'")
+      assert String.contains?(sql, "run.start_time < '2024-01-01'")
       assert String.contains?(sql, "at.scope = 'subject_areas'")
     end
 

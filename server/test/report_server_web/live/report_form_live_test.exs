@@ -184,6 +184,50 @@ defmodule ReportServerWeb.ReportFormLiveTest do
     end
   end
 
+  describe "the date range note" do
+    test "renders on student-actions, names the learner selection, and ties both date inputs to it",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions")
+
+      choose_first_filter(view)
+
+      assert has_element?(view, "#date_range_note", "received each event")
+      assert has_element?(view, "#date_range_note", "launched the activity within the date range")
+      assert has_element?(view, "#start_date[aria-describedby=date_range_note]")
+      assert has_element?(view, "#end_date[aria-describedby=date_range_note]")
+    end
+
+    test "renders on student-actions-with-metadata with the learner sentence", %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-actions-with-metadata")
+
+      choose_first_filter(view)
+
+      assert has_element?(view, "#date_range_note", "received each event")
+      assert has_element?(view, "#date_range_note", "launched the activity within the date range")
+    end
+
+    test "renders on teacher-actions without the learner sentence, which selects no learners",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "teacher-actions")
+
+      choose_first_filter(view)
+
+      assert has_element?(view, "#date_range_note", "received each event")
+      refute has_element?(view, "#date_range_note", "launched the activity")
+    end
+
+    test "does not render on student-answers, whose dates select learners by run start",
+         %{conn: conn} do
+      {view, _user} = mount_form(conn, "student-answers")
+
+      choose_first_filter(view)
+
+      assert has_element?(view, "#start_date")
+      refute has_element?(view, "#date_range_note")
+      refute has_element?(view, "#start_date[aria-describedby]")
+    end
+  end
+
   describe "the remove open response links checkbox" do
     test "renders unchecked with its label on student answers", %{conn: conn} do
       {view, _user} = mount_form(conn, "student-answers")

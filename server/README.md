@@ -12,14 +12,14 @@ The server provides several categories of reports:
 - **Assignment Usage by Student**: Student-level usage data including questions and answers
 
 ### Student Reports
-- **Student Actions**: Low-level log event stream for learners including model-level interactions
-- **Student Actions with Metadata**: Student actions plus portal metadata (student, teacher, class, school info)
+- **Student Actions**: Low-level log event stream for learners including model-level interactions. The date range selects events by the day the log server received them (UTC), not the student device's clock. It also selects students: only those who launched the activity within the range (UTC) are included, so a student who launched it before the range and kept working is left out.
+- **Student Actions with Metadata**: Student actions plus portal metadata (student, teacher, class, school info). Its date range works as Student Actions' does.
 - **Student Answers**: Complete student answer details for all questions in assignments
 - **Student ID Mapping**: One row per selected learner carrying only identifiers, including the `run_remote_endpoint` that joins a learner to their stored answers, history and attachments. No names.
 - **Student Metadata**: One row per the same learners carrying the human-readable context: name, username, class, school, teachers and permission forms. Anonymized when hide-names is on.
 
 ### Teacher Reports
-- **Teacher Actions**: Log events for teacher actions in activities and dashboards
+- **Teacher Actions**: Log events for teacher actions in activities and dashboards. The date range selects events by the day the log server received them (UTC), not the teacher's device clock.
 - **Teacher Status**: Activities assigned by teachers and student completion status
 
 ### School Reports

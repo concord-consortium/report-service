@@ -289,7 +289,7 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReportTest do
       query = DetailedMetricsBySchoolReport.get_query(report_filter, test_user())
       sql = normalized_sql(query)
 
-      assert String.contains?(sql, "run.start_time <= '2023-12-31'")
+      assert String.contains?(sql, "run.start_time < '2024-01-01'")
     end
 
     test "applies both start_date and end_date filters" do
@@ -306,7 +306,7 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReportTest do
       sql = normalized_sql(query)
 
       assert String.contains?(sql, "run.start_time >= '2023-01-01'")
-      assert String.contains?(sql, "run.start_time <= '2023-12-31'")
+      assert String.contains?(sql, "run.start_time < '2024-01-01'")
     end
   end
 
@@ -370,7 +370,7 @@ defmodule ReportServer.Reports.Portal.DetailedMetricsBySchoolReportTest do
       assert String.contains?(sql, "ps.state IN ('CA','NY')")
       assert String.contains?(sql, "at.id IN (5,7)")
       assert String.contains?(sql, "run.start_time >= '2023-01-01'")
-      assert String.contains?(sql, "run.start_time <= '2023-12-31'")
+      assert String.contains?(sql, "run.start_time < '2024-01-01'")
     end
 
     test "handles NULL handling with multiple filters" do

@@ -118,9 +118,9 @@ defmodule ReportServer.ReportQueryTest do
   describe "get_athena_query/3" do
     @select_and_join "SELECT \"log\".\"id\" AS id, \"log\".\"session\" AS session, \"log\".\"application\" AS application, \"log\".\"activity\" AS activity, \"log\".\"event\" AS event, \"log\".\"event_value\" AS event_value, \"log\".\"time\" AS time, \"log\".\"parameters\" AS parameters, \"log\".\"extras\" AS extras, \"log\".\"run_remote_endpoint\" AS run_remote_endpoint, \"log\".\"timestamp\" AS timestamp FROM \"log_ingester_production\".\"logs_by_app_and_secure_key\" log INNER JOIN \"report-service\".\"learners\" learner ON ( learner.query_id IN ('Q1') AND learner.run_remote_endpoint = log.run_remote_endpoint )"
     @secure_key_clause "(log.secure_key IN ('KEY1','KEY2'))"
-    @date_clauses "(log.time <= 1751327999) AND (log.time >= 1725148800) AND " <>
-                    "((log.year < 2025 OR (log.year = 2025 AND log.month <= 6))) AND " <>
-                    "((log.year > 2024 OR (log.year = 2024 AND log.month >= 9)))"
+    @partition_clauses "((log.year < 2025 OR (log.year = 2025 AND log.month <= 7))) AND " <>
+                         "((log.year > 2024 OR (log.year = 2024 AND log.month >= 8)))"
+    @timestamp_clauses "(log.timestamp >= 1725148800000) AND (log.timestamp < 1751328000000)"
 
     setup do
       previous = Application.get_env(:report_server, :athena)
@@ -147,14 +147,14 @@ defmodule ReportServer.ReportQueryTest do
       filter = %ReportFilter{start_date: "2024-09-01", end_date: "2025-06-30"}
 
       assert athena_sql(filter) ==
-               "#{@select_and_join} WHERE #{@date_clauses} AND #{@secure_key_clause}"
+               "#{@select_and_join} WHERE #{@partition_clauses} AND #{@secure_key_clause} AND #{@timestamp_clauses}"
     end
 
     test "an empty application filter with a date range emits only the date clauses" do
       filter = %ReportFilter{app: "", start_date: "2024-09-01", end_date: "2025-06-30"}
 
       assert athena_sql(filter) ==
-               "#{@select_and_join} WHERE #{@date_clauses} AND #{@secure_key_clause}"
+               "#{@select_and_join} WHERE #{@partition_clauses} AND #{@secure_key_clause} AND #{@timestamp_clauses}"
     end
 
     test "a set application filter adds one predicate beside the secure key clause" do
@@ -182,8 +182,41 @@ defmodule ReportServer.ReportQueryTest do
       filter = %ReportFilter{app: ["CLUE"], start_date: "2024-09-01", end_date: "2025-06-30"}
 
       assert athena_sql(filter) ==
-               "#{@select_and_join} WHERE #{@date_clauses} AND (log.app IN ('CLUE')) AND " <>
-                 "#{@secure_key_clause}"
+               "#{@select_and_join} WHERE #{@partition_clauses} AND (log.app IN ('CLUE')) AND " <>
+                 "#{@secure_key_clause} AND #{@timestamp_clauses}"
+    end
+
+    test "a date range filters on the server's receipt time, never the client clock" do
+      sql = athena_sql(%ReportFilter{start_date: "2024-09-01", end_date: "2025-06-30"})
+
+      assert sql =~ "log.timestamp"
+      refute sql =~ ~r/log\.time\b/
+    end
+
+    test "a start-only range emits its lower bounds alone" do
+      assert athena_sql(%ReportFilter{start_date: "2024-09-01"}) ==
+               "#{@select_and_join} WHERE ((log.year > 2024 OR (log.year = 2024 AND log.month >= 8))) AND " <>
+                 "#{@secure_key_clause} AND (log.timestamp >= 1725148800000)"
+    end
+
+    test "an end-only range emits its upper bounds alone" do
+      assert athena_sql(%ReportFilter{end_date: "2025-06-30"}) ==
+               "#{@select_and_join} WHERE ((log.year < 2025 OR (log.year = 2025 AND log.month <= 7))) AND " <>
+                 "#{@secure_key_clause} AND (log.timestamp < 1751328000000)"
+    end
+
+    test "a range across a year widens into the neighboring years" do
+      assert athena_sql(%ReportFilter{start_date: "2025-01-01", end_date: "2025-12-31"}) ==
+               "#{@select_and_join} WHERE ((log.year < 2026 OR (log.year = 2026 AND log.month <= 1))) AND " <>
+                 "((log.year > 2024 OR (log.year = 2024 AND log.month >= 12))) AND #{@secure_key_clause} AND " <>
+                 "(log.timestamp >= 1735689600000) AND (log.timestamp < 1767225600000)"
+    end
+
+    test "a mid-month range does not widen" do
+      assert athena_sql(%ReportFilter{start_date: "2025-03-15", end_date: "2025-03-20"}) ==
+               "#{@select_and_join} WHERE ((log.year < 2025 OR (log.year = 2025 AND log.month <= 3))) AND " <>
+                 "((log.year > 2025 OR (log.year = 2025 AND log.month >= 3))) AND #{@secure_key_clause} AND " <>
+                 "(log.timestamp >= 1741996800000) AND (log.timestamp < 1742515200000)"
     end
 
     test "the predicate is emitted once, not once per learner or runnable" do

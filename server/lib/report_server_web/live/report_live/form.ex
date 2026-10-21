@@ -500,7 +500,9 @@ defmodule ReportServerWeb.ReportLive.Form do
     %{
       enable_hide_names: HideNames.allowed?(user) && Keyword.get(form_options, :enable_hide_names, false),
       enable_remove_open_response_urls: FilterValidation.offers_remove_open_response_urls?(report),
-      enable_app_filter: AthenaFailure.offers_app_filter?(report)
+      enable_app_filter: AthenaFailure.offers_app_filter?(report),
+      server_time_dates: Keyword.get(form_options, :server_time_dates, false),
+      run_start_learners: Keyword.get(form_options, :run_start_learners, false)
     }
   end
 
