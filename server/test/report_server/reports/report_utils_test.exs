@@ -7,12 +7,20 @@ defmodule ReportServer.Reports.ReportUtilsTest do
   describe "the run date bounds" do
     test "an ISO date is applied to both ends" do
       assert ReportUtils.apply_start_date([], "2026-01-01") == ["run.start_time >= '2026-01-01'"]
-      assert ReportUtils.apply_end_date([], "2026-02-01") == ["run.start_time <= '2026-02-01'"]
+      assert ReportUtils.apply_end_date([], "2026-02-01") == ["run.start_time < '2026-02-02'"]
     end
 
     test "an absent bound is not applied" do
       assert ReportUtils.apply_start_date(["w"], nil) == ["w"]
       assert ReportUtils.apply_start_date(["w"], "") == ["w"]
+      assert ReportUtils.apply_end_date(["w"], nil) == ["w"]
+      assert ReportUtils.apply_end_date(["w"], "") == ["w"]
+    end
+
+    test "the end bound is the next day across a month, a year and a leap day" do
+      assert ReportUtils.apply_end_date([], "2026-01-31") == ["run.start_time < '2026-02-01'"]
+      assert ReportUtils.apply_end_date([], "2025-12-31") == ["run.start_time < '2026-01-01'"]
+      assert ReportUtils.apply_end_date([], "2024-02-28") == ["run.start_time < '2024-02-29'"]
     end
 
     # The bound is interpolated, and a run stored before its filter was validated can carry
