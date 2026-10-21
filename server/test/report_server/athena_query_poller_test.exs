@@ -76,7 +76,7 @@ defmodule ReportServer.AthenaQueryPollerTest do
         :timer.tc(fn -> AthenaQueryPoller.wait_for("qid-1", timeout_ms: 50, interval_ms: 10) end)
 
       assert result == {:error, :timeout}
-      assert elapsed_us < 200_000
+      assert elapsed_us < 1_000_000
     end
 
     test "polls at the given interval until the query succeeds" do

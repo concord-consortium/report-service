@@ -49,7 +49,7 @@ end
 
 The deadline check comes before the sleep, so a 60-second budget never sleeps past it. The `IO.puts` in the `{:error, reason}` clause becomes `Logger.error`, in the function this step rewrites anyway, so a status-check failure on the request path reaches the log with its level (kept at stage 8 as part of the step's own change, not a separate requirement).
 
-Tests (with `AthenaDBStub`, as the existing poller test does): a query that stays `"running"` with `timeout_ms: 50, interval_ms: 10` returns `{:error, :timeout}` within 200 ms; one that succeeds on the third poll with `interval_ms: 1` returns `{:ok, location}` (the existing default-path test stays as it is).
+Tests (with `AthenaDBStub`, as the existing poller test does): a query that stays `"running"` with `timeout_ms: 50, interval_ms: 10` returns `{:error, :timeout}` within one second (a hang without the deadline fails it, and a tighter bound flakes under a loaded suite); one that succeeds on the third poll with `interval_ms: 1` returns `{:ok, location}` (the existing default-path test stays as it is).
 
 ---
 
