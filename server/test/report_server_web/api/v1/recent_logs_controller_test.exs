@@ -322,6 +322,11 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       assert outside["error"] == "FORBIDDEN"
     end
 
+    test "an access token for a class outside the grants is 403", %{conn: conn} do
+      assert %{"error" => "FORBIDDEN"} =
+               conn |> put_req_header("authorization", "Bearer #{access_token(603)}") |> read(603) |> json_response(403)
+    end
+
     test "an access token for another class is 403, and no token is 401", %{conn: conn} do
       assert %{"error" => "FORBIDDEN"} =
                conn |> put_req_header("authorization", "Bearer #{access_token(602)}") |> read(601) |> json_response(403)
@@ -387,10 +392,12 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
   end
 
   describe "failures" do
-    test "a query still running past the timeout is 503", %{conn: conn} do
+    test "a query still running past the timeout is 503, and its limiter slot is given back", %{conn: conn} do
       stub_athena(csv: "", state: "running")
 
       assert %{"error" => "SERVICE_UNAVAILABLE"} = conn |> researcher_conn() |> read(601) |> json_response(503)
+
+      assert :sys.get_state(ReportServer.RecentLogsLimiter).holders == %{}
     end
 
     test "a failed query is 503", %{conn: conn} do

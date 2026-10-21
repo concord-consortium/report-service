@@ -202,6 +202,9 @@ defmodule ReportServer.RecentLogsTest do
       keys = Regex.scan(~r/"([a-z_]+)":/, json) |> Enum.map(fn [_, key] -> key end)
 
       assert keys == RecentLogs.columns()
+
+      assert RecentLogs.columns() ==
+               ~w(id session application activity event event_value time parameters extras run_remote_endpoint timestamp user_id primary_user_id)
     end
 
     test "raises on a CSV missing a column" do
