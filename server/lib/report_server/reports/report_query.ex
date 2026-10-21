@@ -178,43 +178,39 @@ defmodule ReportServer.Reports.ReportQuery do
     end
   end
 
+  # The `year` and `month` partitions are the UTC day of the raw folder an event was written to,
+  # which can differ from its `timestamp` day by minutes at the start of a day and by a fraction of
+  # a second at the end, so the partition bounds are widened by a day on each side.
   defp apply_date_range(where, start_date, end_date) do
-    start_date = normalize_date(start_date)
-    end_date = normalize_date(end_date)
-
-    {start_clauses, start_ts_clause} =
-      case start_date do
-        {:ok, date} ->
-          timestamp = DateTime.new!(date, ~T[00:00:00], "Etc/UTC") |> DateTime.to_unix()
-          {
-            [
-              "(log.year > #{date.year} OR (log.year = #{date.year} AND log.month >= #{date.month}))"
-            ],
-            "log.time >= #{timestamp}"
-          }
-
-        _ -> {[], nil}
+    start_clauses =
+      case partition_date(start_date, :start) do
+        {:ok, month} -> ["(log.year > #{month.year} OR (log.year = #{month.year} AND log.month >= #{month.month}))"]
+        _ -> []
       end
 
-    {end_clauses, end_ts_clause} =
-      case end_date do
-        {:ok, date} ->
-          timestamp = DateTime.new!(date, ~T[23:59:59], "Etc/UTC") |> DateTime.to_unix()
-          {
-            [
-              "(log.year < #{date.year} OR (log.year = #{date.year} AND log.month <= #{date.month}))"
-            ],
-            "log.time <= #{timestamp}"
-          }
-
-        _ -> {[], nil}
+    end_clauses =
+      case partition_date(end_date, :end) do
+        {:ok, month} -> ["(log.year < #{month.year} OR (log.year = #{month.year} AND log.month <= #{month.month}))"]
+        _ -> []
       end
 
-    where ++ start_clauses ++ end_clauses ++ Enum.filter([start_ts_clause, end_ts_clause], & &1)
+    (where ++ start_clauses ++ end_clauses)
+    |> ReportUtils.apply_log_start_date(start_date)
+    |> ReportUtils.apply_log_end_date(end_date)
   end
 
-  # public so PartitionEstimate bounds a range exactly as apply_date_range/3 does
-  def normalize_date(nil), do: nil
-  def normalize_date(""), do: nil
-  def normalize_date(date_str), do: Date.from_iso8601(date_str)
+  @doc """
+  The day whose month bounds a range's partitions: a day before the start, or a day after the end.
+
+  Public so PartitionEstimate counts exactly the months apply_date_range/3 prunes to.
+  """
+  def partition_date(date_str, :start), do: shift_date(normalize_date(date_str), -1)
+  def partition_date(date_str, :end), do: shift_date(normalize_date(date_str), 1)
+
+  defp shift_date({:ok, date}, days), do: {:ok, Date.add(date, days)}
+  defp shift_date(other, _days), do: other
+
+  defp normalize_date(nil), do: nil
+  defp normalize_date(""), do: nil
+  defp normalize_date(date_str), do: Date.from_iso8601(date_str)
 end

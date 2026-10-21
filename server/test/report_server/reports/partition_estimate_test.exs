@@ -20,15 +20,19 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
     end
 
     test "a partial-year range counts the pairs the predicate admits, not years times months" do
-      assert PartitionEstimate.period_months("2024-09-01", "2025-06-30") == 10
+      assert PartitionEstimate.period_months("2024-09-01", "2025-06-30") == 12
     end
 
     test "a multi-year range counts the pairs the predicate admits" do
-      assert PartitionEstimate.period_months("2023-09-01", "2025-06-30") == 22
+      assert PartitionEstimate.period_months("2023-09-01", "2025-06-30") == 24
     end
 
-    test "a single month is one pair" do
-      assert PartitionEstimate.period_months("2024-03-01", "2024-03-31") == 1
+    test "a whole month also admits the months either side" do
+      assert PartitionEstimate.period_months("2024-03-01", "2024-03-31") == 3
+    end
+
+    test "a mid-month range admits only its own months" do
+      assert PartitionEstimate.period_months("2024-03-02", "2024-03-30") == 1
     end
 
     test "a range whose end precedes its start admits nothing" do
@@ -36,11 +40,11 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
     end
 
     test "a start-only range runs to the end of the projection" do
-      assert PartitionEstimate.period_months("2024-09-01", nil) == 316
+      assert PartitionEstimate.period_months("2024-09-01", nil) == 317
     end
 
     test "an end-only range runs from the start of the projection" do
-      assert PartitionEstimate.period_months(nil, "2025-06-30") == 138
+      assert PartitionEstimate.period_months(nil, "2025-06-30") == 139
     end
 
     test "a start before the projection is clamped to it" do
@@ -51,12 +55,20 @@ defmodule ReportServer.Reports.PartitionEstimateTest do
       assert PartitionEstimate.period_months("1990-01-01", "2060-12-31") == 444
     end
 
+    test "a range ending just before the projection admits only its first month" do
+      assert PartitionEstimate.period_months("2000-01-01", "2013-12-31") == 1
+    end
+
+    test "a range starting just after the projection admits only its last month" do
+      assert PartitionEstimate.period_months("2051-01-01", "2060-12-31") == 1
+    end
+
     test "a range entirely before the projection admits nothing" do
-      assert PartitionEstimate.period_months("2000-01-01", "2013-12-31") == 0
+      assert PartitionEstimate.period_months("2000-01-01", "2013-12-30") == 0
     end
 
     test "a range entirely after the projection admits nothing" do
-      assert PartitionEstimate.period_months("2051-01-01", "2060-12-31") == 0
+      assert PartitionEstimate.period_months("2051-01-02", "2060-12-31") == 0
     end
 
     test "an unparseable bound is treated as no bound" do

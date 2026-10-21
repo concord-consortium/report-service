@@ -40,7 +40,7 @@ defmodule ReportServer.Reports.PartitionEstimate do
 
     # a bound outside the projection is clamped to it: the predicate can only admit pairs the
     # projection declares, so counting past them invents partitions Athena would never probe
-    max(min(bound(end_date, last), last) - max(bound(start_date, first), first) + 1, 0)
+    max(min(bound(end_date, :end, last), last) - max(bound(start_date, :start, first), first) + 1, 0)
   end
 
   def projected_partitions(learner_count, app, start_date, end_date) do
@@ -61,8 +61,8 @@ defmodule ReportServer.Reports.PartitionEstimate do
   defp ordinal(year, month), do: year * 12 + month
 
   # an absent or unparseable bound falls back to the projection's edge, so a half-open range runs to it
-  defp bound(date, default) do
-    case ReportQuery.normalize_date(date) do
+  defp bound(date, side, default) do
+    case ReportQuery.partition_date(date, side) do
       {:ok, parsed} -> ordinal(parsed.year, parsed.month)
       _ -> default
     end

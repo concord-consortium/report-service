@@ -70,28 +70,28 @@ defmodule ReportServer.Reports.ReportUtils do
   end
 
   def apply_log_start_date(where, start_date, table_name \\ "log") do
-    apply_log_date(where, start_date, ">=", table_name)
+    apply_log_date(where, start_date, 0, ">=", table_name)
   end
 
   def apply_log_end_date(where, end_date, table_name \\ "log") do
-    apply_log_date(where, end_date, "<=", table_name)
+    apply_log_date(where, end_date, 1, "<", table_name)
   end
 
-  def apply_log_date(where, log_date, cmp, table_name \\ "log")
-  def apply_log_date(where, nil, _cmp, _table_name), do: where
-  def apply_log_date(where, "", _cmp, _table_name), do: where
+  # Log dates are UTC days of server receipt: `timestamp` is epoch milliseconds, and the end day is
+  # included by bounding below the next day's midnight.
+  defp apply_log_date(where, date, shift_days, cmp, table_name) do
+    if String.length(date || "") > 0 do
+      ms =
+        date
+        |> iso_date!()
+        |> Date.from_iso8601!()
+        |> Date.add(shift_days)
+        |> DateTime.new!(~T[00:00:00], "Etc/UTC")
+        |> DateTime.to_unix(:millisecond)
 
-  def apply_log_date(where, log_date, cmp, table_name) do
-    [year, month, day] = String.split(log_date, "-")
-    iso_date = "#{year}-#{month}-#{day}T00:00:00Z"
-
-    case DateTime.from_iso8601(iso_date) do
-      {:ok, datetime, _} ->
-        time = DateTime.to_unix(datetime)
-        ["#{table_name}.time #{cmp} #{time}" | where]
-
-      {:error, _} ->
-        where
+      ["#{table_name}.timestamp #{cmp} #{ms}" | where]
+    else
+      where
     end
   end
 

@@ -25,6 +25,37 @@ defmodule ReportServer.Reports.ReportUtilsTest do
     end
   end
 
+  describe "the log date bounds" do
+    test "a date bounds `timestamp` from its midnight to the next" do
+      assert ReportUtils.apply_log_start_date([], "2025-06-30") == ["log.timestamp >= 1751241600000"]
+      assert ReportUtils.apply_log_end_date([], "2025-06-30") == ["log.timestamp < 1751328000000"]
+    end
+
+    test "the end bound crosses a month, a year and a leap day" do
+      assert ReportUtils.apply_log_end_date([], "2026-01-31") == ["log.timestamp < 1769904000000"]
+      assert ReportUtils.apply_log_end_date([], "2025-12-31") == ["log.timestamp < 1767225600000"]
+      assert ReportUtils.apply_log_end_date([], "2024-02-28") == ["log.timestamp < 1709164800000"]
+    end
+
+    test "the table name is honored" do
+      assert ReportUtils.apply_log_start_date([], "2025-06-30", "l") == ["l.timestamp >= 1751241600000"]
+    end
+
+    test "an absent bound is not applied" do
+      assert ReportUtils.apply_log_start_date(["w"], nil) == ["w"]
+      assert ReportUtils.apply_log_start_date(["w"], "") == ["w"]
+      assert ReportUtils.apply_log_end_date(["w"], nil) == ["w"]
+      assert ReportUtils.apply_log_end_date(["w"], "") == ["w"]
+    end
+
+    test "a value that is not a date is refused" do
+      for payload <- ["2026-01-01' OR '1'='1", "2026-01-01 OR 1=1", "not-a-date", "2026-13-01"] do
+        assert_raise ArgumentError, fn -> ReportUtils.apply_log_start_date([], payload) end
+        assert_raise ArgumentError, fn -> ReportUtils.apply_log_end_date([], payload) end
+      end
+    end
+  end
+
   describe "scope_by_allowed_projects/5" do
     test ":all applies no scoping" do
       assert ReportUtils.scope_by_allowed_projects(:all, ["j"], ["w"], "ea.id", "pt.id") == {["j"], ["w"]}
