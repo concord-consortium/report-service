@@ -272,7 +272,7 @@ Restoring `<=` or dropping the shift fails the first two; returning a bound for 
   | `run_start_learners` added to `teacher-actions` | 1 |
   | `next_day("")` returning a date | 1 |
 
-- **The whole plan with the learner sentence (throwaway, deleted), on `ceaaf23`:** all three steps' code and every named test: `mix compile --warnings-as-errors` is clean and the full suite runs 1321 tests, 0 failures, 7 skipped. The code alone fails 18 tests (the 10 and 8 above).
+- **The whole plan with the learner sentence (throwaway, deleted), on `ceaaf23`:** all three steps' code and every named test: `mix compile --warnings-as-errors` is clean and the full suite runs 1321 tests, 0 failures, 7 skipped. The code alone fails 18 tests (the 10 and 8 above). The implemented branch, with every named test including both fully-outside `period_months` cases, runs 1323.
 - **The form step with the learner sentence (throwaway, deleted), on `ceaaf23`:** compiles clean with `--warnings-as-errors`; `report_form_live_test.exs` passes 38 tests, and the full suite 1309 tests, 0 failures, 7 skipped. The three form-option rows in the table above were measured on this build.
 - **MySQL's comparison** was checked on a real `DATETIME NOT NULL` column on 5.7.42 and 8.0.39: `<= '2025-06-30'` keeps only runs up to `00:00:00` that day, and `< '2025-07-01'` keeps the whole day and nothing of Jul 1.
 - **One unrelated intermittent failure seen once:** `report_form_live_test.exs` "creates the run when the control was left blank" failed on the first run right after a recompile and passed in 20 reruns of the file and in every full-suite run since. It waits on the learner-count task with `assert_redirect/1`'s default timeout; nothing in this plan touches that path.
@@ -316,4 +316,4 @@ It shows it only for a failed run (`custom_components.ex:140-165`). Both now tak
 A school-year range gains two (12 against 10); the requirements' judgment call now gives the cost at Athena's limit.
 
 #### RESOLVED: The run-date mutation count and the whole-plan suite count were not measured on the current plan
-Restoring `<= 'E'` fails 9 tests, not 2; the whole plan with the learner sentence runs 1321 tests, 0 failures. Both are in Verification.
+Restoring `<= 'E'` fails 9 tests, not 2; the whole plan with the learner sentence runs 1323 tests on the implemented branch, 0 failures. Both are in Verification.
