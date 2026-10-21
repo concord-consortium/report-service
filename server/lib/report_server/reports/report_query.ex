@@ -178,9 +178,7 @@ defmodule ReportServer.Reports.ReportQuery do
     end
   end
 
-  # The `year` and `month` partitions are the UTC day of the raw folder an event was written to,
-  # which can differ from its `timestamp` day by minutes at the start of a day and by a fraction of
-  # a second at the end, so the partition bounds are widened by a day on each side.
+  # Partitions are the raw folder's UTC day, which can trail `timestamp` by minutes or lead it by under a second, so widen a day each side.
   defp apply_date_range(where, start_date, end_date) do
     start_clauses =
       case partition_date(start_date, :start) do
