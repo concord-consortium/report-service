@@ -15,7 +15,9 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
   def preflight(conn, _params), do: send_resp(conn, 204, "")
 
   def show(conn, params) do
-    now = System.system_time(:millisecond)
+    # one instant for the window, the bounds check and `query_started_at`, so the envelope
+    # describes a single day even when the portal lookups cross 00:00 UTC
+    now = clock().()
     window = RecentLogs.window(now)
 
     with {:ok, class_id} <- class_id(params["class_id"]),
@@ -27,7 +29,8 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
         window_start: window.window_start,
         nightly_through: Date.to_iso8601(window.nightly_through),
         since: bounds.since,
-        until: bounds.until
+        until: bounds.until,
+        query_started_at: now
       ]
 
       answer(conn, user, learners, bounds, envelope)
@@ -50,8 +53,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
   defp class_id(_), do: {:error, :bad_class}
 
   defp answer(conn, _user, [], bounds, envelope) do
-    now = System.system_time(:millisecond)
-    body = envelope ++ [query_started_at: now, rows: [], count: 0, latest_timestamp: nil, next_cursor: next_cursor(envelope, bounds, now)]
+    body = envelope ++ [rows: [], count: 0, latest_timestamp: nil, next_cursor: next_cursor(envelope, bounds)]
 
     json(conn, Jason.OrderedObject.new(body))
   end
@@ -71,13 +73,12 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
   end
 
   defp query_and_answer(conn, user, learners, bounds, envelope) do
-    query_started_at = System.system_time(:millisecond)
     too_large = AthenaDB.query_too_large_error()
 
     with {:ok, query_id, _state} <- athena_db().query(RecentLogs.sql(learners, bounds), UUID.uuid4(), user),
          {:ok, location} <- wait_for(query_id),
          {:ok, stream} <- aws_file_store().get_file_stream(location) do
-      rows_answer(conn, user, learners, stream, bounds, envelope, query_started_at)
+      rows_answer(conn, user, learners, stream, bounds, envelope)
     else
       {:error, ^too_large} ->
         ErrorHelpers.unprocessable(conn, "This class has too many learners for one recent-logs query.")
@@ -99,7 +100,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
     end
   end
 
-  defp rows_answer(conn, user, learners, stream, bounds, envelope, query_started_at) do
+  defp rows_answer(conn, user, learners, stream, bounds, envelope) do
     endpoints = Enum.map(learners, & &1.run_remote_endpoint)
 
     case audit_log().log_recent_logs_read(user, envelope[:class_id], bounds.since, endpoints) do
@@ -108,13 +109,13 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
         ErrorHelpers.server_error(conn)
 
       {:ok, _entry} ->
-        opening = (envelope ++ [query_started_at: query_started_at]) |> Jason.OrderedObject.new() |> Jason.encode!() |> String.trim_trailing("}")
+        opening = envelope |> Jason.OrderedObject.new() |> Jason.encode!() |> String.trim_trailing("}")
         conn = conn |> put_resp_content_type("application/json") |> send_chunked(200)
         {:ok, conn} = chunk(conn, opening <> ~s(,"rows":[))
 
         {conn, count, latest} = stream_rows(conn, stream)
 
-        closing = [count: count, latest_timestamp: latest, next_cursor: next_cursor(envelope, bounds, query_started_at)]
+        closing = [count: count, latest_timestamp: latest, next_cursor: next_cursor(envelope, bounds)]
         closing_json = closing |> Jason.OrderedObject.new() |> Jason.encode!() |> String.trim_leading("{")
         {:ok, conn} = chunk(conn, "]," <> closing_json)
         conn
@@ -151,13 +152,14 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
     end)
   end
 
-  defp next_cursor(_envelope, %{until: until}, _query_started_at) when until != nil, do: nil
+  defp next_cursor(_envelope, %{until: until}) when until != nil, do: nil
 
-  defp next_cursor(envelope, _bounds, query_started_at),
-    do: RecentLogs.next_cursor(envelope[:class_id], query_started_at, config(:settle_ms))
+  defp next_cursor(envelope, _bounds),
+    do: RecentLogs.next_cursor(envelope[:class_id], envelope[:query_started_at], config(:settle_ms))
 
   defp config(key), do: Application.get_env(:report_server, :recent_logs) |> Keyword.fetch!(key)
 
+  defp clock, do: Application.get_env(:report_server, :recent_logs_clock, fn -> System.system_time(:millisecond) end)
   defp athena_db, do: Application.get_env(:report_server, :athena_db, AthenaDB)
   defp aws_file_store, do: Application.get_env(:report_server, :aws_file_store, ReportServerWeb.Aws)
   defp audit_log, do: Application.get_env(:report_server, :audit_log, ReportServer.AuditLog)

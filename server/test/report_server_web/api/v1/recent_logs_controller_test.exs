@@ -19,7 +19,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
 
   setup do
     restore =
-      for key <- [:athena_db, :aws_file_store, :recent_logs, :athena, :packages, :audit_log, :learner_data],
+      for key <- [:athena_db, :aws_file_store, :recent_logs, :athena, :packages, :audit_log, :learner_data, :recent_logs_clock],
           into: %{},
           do: {key, Application.get_env(:report_server, key)}
 
@@ -233,6 +233,24 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       assert {:ok, %{until: nil}} = RecentLogs.bounds(%{"cursor" => body["next_cursor"]}, 601, RecentLogs.window(body["query_started_at"]))
       assert_received {:sql, sql}
       refute sql =~ "log.timestamp <"
+    end
+
+    test "a request whose lookups cross 00:00 UTC answers the window and cursor of the instant it arrived", %{conn: conn} do
+      before_midnight = DateTime.to_unix(~U[2026-10-21 23:59:59.900Z], :millisecond)
+      after_midnight = DateTime.to_unix(~U[2026-10-22 00:00:05.000Z], :millisecond)
+      {:ok, reads} = Agent.start_link(fn -> 0 end)
+      clock = fn -> if Agent.get_and_update(reads, &{&1, &1 + 1}) == 0, do: before_midnight, else: after_midnight end
+      Application.put_env(:report_server, :recent_logs_clock, clock)
+      stub_athena(csv: rows_csv([]))
+
+      body = conn |> researcher_conn() |> read(601) |> json_response(200)
+
+      window = RecentLogs.window(before_midnight)
+      assert body["query_started_at"] == before_midnight
+      assert body["window_start"] == window.window_start
+      assert body["nightly_through"] == Date.to_iso8601(window.nightly_through)
+      assert {:ok, %{since: since}} = RecentLogs.bounds(%{"cursor" => body["next_cursor"]}, 601, window)
+      assert since == before_midnight - 600_000
     end
 
     test "a class in the grants with no learners answers empty without querying Athena", %{conn: conn} do

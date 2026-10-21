@@ -24,7 +24,7 @@ defmodule ReportServer.RecentLogs do
     %{window_start: DateTime.to_unix(start, :millisecond), nightly_through: Date.add(today, -2)}
   end
 
-  @doc "The opaque cursor for a read submitted at `query_started_at` (ms): its `since` is that minus the settle margin."
+  @doc "The opaque cursor for a read made at `query_started_at` (ms): its `since` is that minus the settle margin."
   def next_cursor(class_id, query_started_at, settle_ms) do
     payload = Jason.encode!(%{"c" => class_id, "s" => query_started_at - settle_ms})
     @cursor_version <> "." <> Base.url_encode64(payload, padding: false)
