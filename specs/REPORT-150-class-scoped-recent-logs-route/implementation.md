@@ -203,7 +203,7 @@ defmodule ReportServer.RecentLogs do
 
   @doc """
   The bounds a request reads, `{:ok, %{since: ms, until: ms | nil}}`, from its `cursor`, `start`
-  and `end` parameters (R6, R9). Nothing reads before `window_start`.
+  and `end` parameters. Nothing reads before `window_start`.
   """
   def bounds(params, class_id, %{window_start: window_start}) do
     case {params["cursor"], params["start"], params["end"]} do
