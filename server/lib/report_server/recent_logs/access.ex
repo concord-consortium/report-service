@@ -6,7 +6,7 @@ defmodule ReportServer.RecentLogs.Access do
   read from the portal on every request.
   """
   alias ReportServer.{Accounts, PortalDbs}
-  alias ReportServer.Reports.ReportFilter
+  alias ReportServer.Reports.{AllowedProjectsLookupError, ReportFilter}
 
   @portal_timeout_ms 5_000
 
@@ -63,6 +63,8 @@ defmodule ReportServer.RecentLogs.Access do
       {:error, :out_of_scope, _missing} -> {:error, :forbidden}
       {:error, _reason} -> {:error, :portal_unavailable}
     end
+  rescue
+    AllowedProjectsLookupError -> {:error, :portal_unavailable}
   end
 
   defp learner_data, do: Application.get_env(:report_server, :learner_data, ReportServer.Reports.Athena.LearnerData)

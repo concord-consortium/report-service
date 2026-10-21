@@ -57,7 +57,6 @@ config :report_server, :portal_download,
   max_concurrent: 2
 
 config :report_server, :recent_logs,
-  max_concurrent: 4,
   timeout_ms: 60_000,
   poll_interval_ms: 500,
   settle_ms: 600_000

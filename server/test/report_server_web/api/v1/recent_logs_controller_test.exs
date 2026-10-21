@@ -80,7 +80,11 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
         get_query_info: fn _id -> {:ok, state, "s3://bucket/out.csv", nil} end
       })
 
-    {:ok, files} = AwsFileStoreStub.start(%{get_file_stream: fn _location -> {:ok, [csv]} end})
+    {:ok, files} =
+      AwsFileStoreStub.start(%{
+        get_file_stream: fn _location -> {:ok, [csv]} end,
+        fetch_file_contents: Keyword.get(opts, :fetch_file_contents, fn _location -> {:ok, csv} end)
+      })
 
     on_exit(fn ->
       for pid <- [athena, files], Process.alive?(pid), do: Agent.stop(pid)
@@ -219,6 +223,19 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       assert sql =~ "log.dt <="
     end
 
+    test "a start with no end still gets a cursor", %{conn: conn} do
+      stub_athena(csv: rows_csv([]))
+      ws = window_start()
+
+      body = conn |> researcher_conn() |> read(601, %{start: ws + 60_000}) |> json_response(200)
+
+      assert body["since"] == ws + 60_000
+      assert body["until"] == nil
+      assert {:ok, %{until: nil}} = RecentLogs.bounds(%{"cursor" => body["next_cursor"]}, 601, RecentLogs.window(body["query_started_at"]))
+      assert_received {:sql, sql}
+      refute sql =~ "log.timestamp <"
+    end
+
     test "a class in the grants with no learners answers empty without querying Athena", %{conn: conn} do
       stub_athena(csv: "", query: fn _sql, _id, _user -> raise "queried Athena" end)
 
@@ -261,6 +278,13 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       refute Map.has_key?(body, "next_cursor")
     end
 
+    test "an S3 failure reading the count is 503", %{conn: conn} do
+      stub_athena(csv: "", fetch_file_contents: fn _location -> {:error, {:s3_error, :boom}} end)
+
+      assert %{"error" => "SERVICE_UNAVAILABLE"} =
+               conn |> researcher_conn() |> read(601, %{count_only: "true"}) |> json_response(503)
+    end
+
     test "takes start and end", %{conn: conn} do
       ws = window_start()
       stub_athena(csv: ~s("count","latest_timestamp"\n"0",\n))
@@ -285,7 +309,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       cursor = RecentLogs.next_cursor(601, System.system_time(:millisecond), 600_000)
       authed = researcher_conn(conn)
 
-      for {class_id, params} <- [{"0", %{}}, {"abc", %{}}, {601, %{count_only: "true", cursor: cursor}}, {601, %{cursor: cursor, start: window_start()}}] do
+      for {class_id, params} <- [{"0", %{}}, {"abc", %{}}, {"601%0A", %{}}, {601, %{count_only: "true", cursor: cursor}}, {601, %{cursor: cursor, start: window_start()}}] do
         assert %{"error" => "BAD_REQUEST"} = authed |> read(class_id, params) |> json_response(400)
       end
     end
@@ -310,7 +334,9 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       authed = researcher_conn(conn)
 
       assert %{"error" => "BAD_REQUEST"} = authed |> read(601, %{cursor: other}) |> json_response(400)
-      assert %{"error" => "EXPIRED_CURSOR"} = authed |> read(601, %{cursor: expired}) |> json_response(410)
+      expired_body = authed |> read(601, %{cursor: expired}) |> json_response(410)
+      assert expired_body["error"] == "EXPIRED_CURSOR"
+      assert expired_body["message"] =~ "Student Actions"
     end
 
     test "a class outside the grants and a class that does not exist are refused alike", %{conn: conn} do
@@ -334,12 +360,18 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       assert %{"error" => "NOT_AUTHENTICATED"} = conn |> read(601) |> json_response(401)
     end
 
-    test "the portal unreachable while reading learners is 503", %{conn: conn} do
+    test "the portal unreachable while reading learners is 503, whether the read errs or raises", %{conn: conn} do
       Application.put_env(:report_server, :learner_data, LearnerDataStub)
-      {:ok, pid} = LearnerDataStub.start(%{fetch: fn _filter, _user, _opts -> {:error, "connection refused"} end})
-      on_exit(fn -> if Process.alive?(pid), do: Agent.stop(pid) end)
+      authed = researcher_conn(conn)
 
-      assert %{"error" => "SERVICE_UNAVAILABLE"} = conn |> researcher_conn() |> read(601) |> json_response(503)
+      for fetch <- [
+            fn _filter, _user, _opts -> {:error, "connection refused"} end,
+            fn _filter, _user, _opts -> raise ReportServer.Reports.AllowedProjectsLookupError, message: "lookup failed" end
+          ] do
+        {:ok, pid} = LearnerDataStub.start(%{fetch: fetch})
+        assert %{"error" => "SERVICE_UNAVAILABLE"} = authed |> read(601) |> json_response(503)
+        Agent.stop(pid)
+      end
     end
   end
 

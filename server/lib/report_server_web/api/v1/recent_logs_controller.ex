@@ -39,7 +39,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
       {:error, :cursor_with_bounds} -> ErrorHelpers.bad_request(conn, "A cursor cannot be combined with start or end.")
       {:error, :bad_bound} -> ErrorHelpers.bad_request(conn, "start and end must be epoch milliseconds at or after #{window.window_start} (00:00 UTC yesterday), with end after start; read earlier days with a Student Actions run.")
       {:error, :bad_cursor} -> ErrorHelpers.bad_request(conn, "The cursor is not valid for this class.")
-      {:error, :expired_cursor} -> ErrorHelpers.render_error(conn, "EXPIRED_CURSOR", "The cursor is older than the recent window; start again without one.")
+      {:error, :expired_cursor} -> ErrorHelpers.render_error(conn, "EXPIRED_CURSOR", "The cursor is older than the recent window (#{window.window_start}); start again without one, and read the days before it with a Student Actions run.")
       {:error, :forbidden} -> ErrorHelpers.render_error(conn, "FORBIDDEN", "You may not read this class's logs.")
       {:error, :not_authenticated} -> ErrorHelpers.not_authenticated(conn)
       {:error, :portal_unavailable} -> ErrorHelpers.service_unavailable(conn, "The portal could not be asked; retry shortly.")
@@ -47,7 +47,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
   end
 
   defp class_id(value) when is_binary(value) do
-    if Regex.match?(~r/^[1-9][0-9]{0,17}$/, value), do: {:ok, String.to_integer(value)}, else: {:error, :bad_class}
+    if Regex.match?(~r/\A[1-9][0-9]{0,17}\z/, value), do: {:ok, String.to_integer(value)}, else: {:error, :bad_class}
   end
 
   defp class_id(_), do: {:error, :bad_class}
@@ -88,12 +88,12 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
 
     with {:ok, query_id, _state} <- athena_db().query(RecentLogs.sql(learners, bounds, mode), UUID.uuid4(), user),
          {:ok, location} <- wait_for(query_id),
-         {:ok, stream} <- aws_file_store().get_file_stream(location) do
+         {:ok, result} <- read_result(location, count_only) do
       head = envelope ++ [query_started_at: query_started_at]
 
       if count_only,
-        do: count_answer(conn, stream, head),
-        else: rows_answer(conn, user, learners, stream, bounds, head, envelope, query_started_at)
+        do: count_answer(conn, [result], head),
+        else: rows_answer(conn, user, learners, result, bounds, head, envelope, query_started_at)
     else
       {:error, ^too_large} ->
         ErrorHelpers.unprocessable(conn, "This class has too many learners for one recent-logs query.")
@@ -114,6 +114,10 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
       {:error, reason} -> {:error, {:athena_query, query_id, reason}}
     end
   end
+
+  # count mode reads whole, so an S3 failure is an error value, not a linked stream task's crash
+  defp read_result(location, true), do: aws_file_store().fetch_file_contents(location)
+  defp read_result(location, false), do: aws_file_store().get_file_stream(location)
 
   defp count_answer(conn, stream, head) do
     [row] = stream |> decode() |> Enum.to_list()

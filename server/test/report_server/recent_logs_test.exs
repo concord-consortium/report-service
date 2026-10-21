@@ -91,7 +91,10 @@ defmodule ReportServer.RecentLogsTest do
             %{"start" => "#{@window_start}", "end" => "#{@window_start}"},
             %{"start" => "abc"},
             %{"start" => "-1"},
-            %{"end" => "10000000000000"}
+            %{"end" => "10000000000000"},
+            %{"start" => "+#{@window_start}"},
+            %{"start" => "0#{@window_start}"},
+            %{"start" => "#{@window_start}\n"}
           ] do
         assert RecentLogs.bounds(params, 601, window()) == {:error, :bad_bound}, inspect(params)
       end

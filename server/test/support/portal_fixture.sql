@@ -124,7 +124,7 @@ INSERT INTO portal_teacher_clazzes VALUES
   (10,2,31),(11,3,31),(12,5,31),(13,9,31),(14,40,31),(15,77,31),(16,4,31);
 INSERT INTO admin_project_materials VALUES (1,900,'ExternalActivity',801),(2,900,'ExternalActivity',803);
 INSERT INTO admin_project_users VALUES (1,900,555,1,0),(2,900,557,0,1);
--- the catalog's role reads: 560 is a site admin, 555 administers project 900, 557 researches it; 561 has a blank last name and email, which no report-server user may have
+-- the catalog's role reads: 560 is a site admin, 555 administers project 900, 557 researches it. 561 has a blank last name and email, so no report-server user can be stored for it
 INSERT INTO users VALUES (555,'padmin','Pat','Admin','pat@e.org',NULL),(557,'rres','Rae','Search','rae@e.org',NULL),(560,'sadmin','Sam','Site','sam@e.org',NULL),(561,'blank','Blank','','',NULL);
 INSERT INTO roles VALUES (1,'admin'),(2,'manager');
 INSERT INTO roles_users VALUES (1,560),(2,555);

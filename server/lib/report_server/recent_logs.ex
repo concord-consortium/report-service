@@ -13,6 +13,7 @@ defmodule ReportServer.RecentLogs do
   @cursor_version "v1"
   # 13 digits (year 2286): DateTime can still render the padded `dt` hour, and Athena's bigint holds it
   @max_ms 9_999_999_999_999
+  @bound_pattern ~r/\A[0-9]{1,#{length(Integer.digits(@max_ms))}}\z/
 
   def columns, do: @columns
 
@@ -52,10 +53,7 @@ defmodule ReportServer.RecentLogs do
   defp bound(nil, default), do: {:ok, default}
 
   defp bound(value, _default) when is_binary(value) do
-    case Integer.parse(value) do
-      {ms, ""} when ms >= 0 and ms <= @max_ms -> {:ok, ms}
-      _ -> {:error, :bad_bound}
-    end
+    if Regex.match?(@bound_pattern, value), do: {:ok, String.to_integer(value)}, else: {:error, :bad_bound}
   end
 
   defp bound(_, _), do: {:error, :bad_bound}

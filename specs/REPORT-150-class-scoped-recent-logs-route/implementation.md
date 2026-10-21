@@ -60,8 +60,8 @@ Tests (with `AthenaDBStub`, as the existing poller test does): a query that stay
 **Files affected**:
 - `lib/report_server/portal_download_limiter.ex`: `start_link/1` takes `:name` (default `__MODULE__`), and a `child_spec/1` whose `id` is the name.
 - `lib/report_server/application.ex`: a child `{ReportServer.PortalDownloadLimiter, name: ReportServer.RecentLogsLimiter, cap: recent_logs_config(:max_concurrent)}`.
-- `config/config.exs`: `config :report_server, :recent_logs, max_concurrent: 4, timeout_ms: 60_000, poll_interval_ms: 500, settle_ms: 600_000`.
-- `config/runtime.exs`: `RECENT_LOGS_MAX_CONCURRENT` overrides `max_concurrent`, beside `PORTAL_DOWNLOAD_MAX_CONCURRENT`.
+- `config/config.exs`: `config :report_server, :recent_logs, timeout_ms: 60_000, poll_interval_ms: 500, settle_ms: 600_000`.
+- `config/runtime.exs`: `max_concurrent` from `RECENT_LOGS_MAX_CONCURRENT`, 4 when unset, beside `PORTAL_DOWNLOAD_MAX_CONCURRENT`; runtime config always applies, so this is the default's only home.
 - `test/report_server/portal_download_limiter_test.exs` (new, or the existing limiter test if one exists): two named instances do not share slots.
 
 **Estimated diff size**: ~50 lines
@@ -185,6 +185,7 @@ defmodule ReportServer.RecentLogs do
   @cursor_version "v1"
   # 13 digits (year 2286): DateTime can still render the padded `dt` hour, and Athena's bigint holds it
   @max_ms 9_999_999_999_999
+  @bound_pattern ~r/\A[0-9]{1,#{length(Integer.digits(@max_ms))}}\z/
 
   def columns, do: @columns
 
@@ -224,10 +225,7 @@ defmodule ReportServer.RecentLogs do
   defp bound(nil, default), do: {:ok, default}
 
   defp bound(value, _default) when is_binary(value) do
-    case Integer.parse(value) do
-      {ms, ""} when ms >= 0 and ms <= @max_ms -> {:ok, ms}
-      _ -> {:error, :bad_bound}
-    end
+    if Regex.match?(@bound_pattern, value), do: {:ok, String.to_integer(value)}, else: {:error, :bad_bound}
   end
 
   defp bound(_, _), do: {:error, :bad_bound}
@@ -375,7 +373,7 @@ defmodule ReportServer.RecentLogs.Access do
   read from the portal on every request.
   """
   alias ReportServer.{Accounts, PortalDbs}
-  alias ReportServer.Reports.ReportFilter
+  alias ReportServer.Reports.{AllowedProjectsLookupError, ReportFilter}
 
   @portal_timeout_ms 5_000
 
@@ -432,6 +430,8 @@ defmodule ReportServer.RecentLogs.Access do
       {:error, :out_of_scope, _missing} -> {:error, :forbidden}
       {:error, _reason} -> {:error, :portal_unavailable}
     end
+  rescue
+    AllowedProjectsLookupError -> {:error, :portal_unavailable}
   end
 
   defp learner_data, do: Application.get_env(:report_server, :learner_data, ReportServer.Reports.Athena.LearnerData)
@@ -512,7 +512,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
       {:error, :cursor_with_bounds} -> ErrorHelpers.bad_request(conn, "A cursor cannot be combined with start or end.")
       {:error, :bad_bound} -> ErrorHelpers.bad_request(conn, "start and end must be epoch milliseconds at or after #{window.window_start} (00:00 UTC yesterday), with end after start; read earlier days with a Student Actions run.")
       {:error, :bad_cursor} -> ErrorHelpers.bad_request(conn, "The cursor is not valid for this class.")
-      {:error, :expired_cursor} -> ErrorHelpers.render_error(conn, "EXPIRED_CURSOR", "The cursor is older than the recent window; start again without one.")
+      {:error, :expired_cursor} -> ErrorHelpers.render_error(conn, "EXPIRED_CURSOR", "The cursor is older than the recent window (#{window.window_start}); start again without one, and read the days before it with a Student Actions run.")
       {:error, :forbidden} -> ErrorHelpers.render_error(conn, "FORBIDDEN", "You may not read this class's logs.")
       {:error, :not_authenticated} -> ErrorHelpers.not_authenticated(conn)
       {:error, :portal_unavailable} -> ErrorHelpers.service_unavailable(conn, "The portal could not be asked; retry shortly.")
@@ -526,11 +526,11 @@ end
 2. `PortalDownloadLimiter.try_acquire(ReportServer.RecentLogsLimiter)`; `:full` is 503 "Too many recent-log reads; retry shortly." Released in an `after`, as `portal_download/4` does.
 3. `query_started_at = System.system_time(:millisecond)`, then `athena_db().query(RecentLogs.sql(learners, bounds, mode), UUID.uuid4(), user)`; a `query_too_large_error()` is 422 `UNPROCESSABLE` (R13, a class over roughly 2,100 learners), any other error 503.
 4. `AthenaQueryPoller.wait_for(id, timeout_ms: cfg(:timeout_ms), interval_ms: cfg(:poll_interval_ms))`; `{:error, :timeout}` and failures are 503 with the query id logged.
-5. `aws_file_store().get_file_stream(location)` (the `:aws_file_store` seam, defaulting to `ReportServerWeb.Aws`); an error is 503.
+5. Rows mode reads the result with `aws_file_store().get_file_stream(location)` (the `:aws_file_store` seam, defaulting to `ReportServerWeb.Aws`); count mode reads its one row whole with `fetch_file_contents/1`, so an S3 failure there is an error value, not a crash in a linked stream task; an error is 503.
 6. Count mode: decode the one row, answer `count`, `latest_timestamp` (`null` when `count` is 0), `query_started_at` and the envelope, with no `rows` and no `next_cursor`.
 7. Rows mode: `audit_log().log_recent_logs_read(user, class_id, bounds.since, Enum.map(learners, & &1.run_remote_endpoint))`; `{:error, _}` is 500 with no rows. Then `send_chunked(conn, 200)` with `content-type: application/json`, one chunk with the envelope's opening (`{"class_id":…,"window_start":…,"nightly_through":…,"since":…,"until":…,"query_started_at":…,"rows":[`), the decoded rows in chunks of 500 (`Jason.encode!/1` each, comma-joined), tracking the count and the largest `timestamp`, and a closing chunk `],"count":N,"latest_timestamp":T,"next_cursor":"…"}` (`next_cursor` `null` when the request had an `end`). A decode raise after the first chunk is logged and re-raised; an S3 read failure arrives instead as an exit from ExAws's linked `Task.async_stream` task, which kills the request process past any `rescue` or `after` (the task's crash report is the log line, and the limiter's monitor frees the slot). Either way Bandit closes the connection without the terminating chunk and the JSON is incomplete (R12).
 
-`class_id/1` accepts only `~r/^[1-9][0-9]{0,17}$/`, the catalog's id grammar. The result CSV is decoded with `validate_row_length: true`, and a row it cannot read raises (before the first chunk that is a 500; after it, R12's truncated body); the count result must be exactly one row. An access token whose issuer report-server has no portal database for is 401, not R3's 503, since no portal could ever answer for it.
+`class_id/1` accepts only `~r/\A[1-9][0-9]{0,17}\z/`, the catalog's id grammar. The result CSV is decoded with `validate_row_length: true`, and a row it cannot read raises (before the first chunk that is a 500; after it, R12's truncated body); the count result must be exactly one row. An access token whose issuer report-server has no portal database for is 401, not R3's 503, since no portal could ever answer for it.
 
 Controller tests (`:portal_db`; `AthenaDBStub` and `AwsFileStoreStub` installed through `:athena_db` and `:aws_file_store`; `:recent_logs` set to the configured list with `timeout_ms: 100, poll_interval_ms: 5` merged in (`Keyword.merge/2`, since `put_env` replaces the whole list and `settle_ms` would go) and restored on exit; `:athena` set to `log_db_name: "log_ingester_qa"` and restored on exit, since the test env has no `:athena` and `ReportQuery.get_log_db_name/0` raises without it):
 - Researcher 557's API token for class 601: 200; `rows` decoded from a stubbed three-row CSV (one with a newline in `parameters`, one with an empty `extras`) with integer `time`/`timestamp`/`user_id`; `count` 3; `latest_timestamp` the largest; `next_cursor` decodes to `query_started_at - 600000`; the SQL the stub received names `logs_by_hour` and the one endpoint the fixture gives 557 (`SECUREKEY123`); one `recent_logs_read` audit row with class 601 and that endpoint. Site admin 560's token for 601: the SQL and the audit row name both endpoints.
