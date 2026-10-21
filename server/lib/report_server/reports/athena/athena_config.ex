@@ -2,8 +2,8 @@ defmodule ReportServer.Reports.Athena.AthenaConfig do
 
   alias ReportServer.Reports.OptionLabel
 
-  # Projected values of the `app` partition on logs_by_app_and_secure_key; must match
-  # 'projection.app.values' in the DDL in server/README.md. Adding one means recreating the tables.
+  # Projected values of the `app` partition; must match every 'projection.app.values' in the DDL in
+  # server/README.md. Adding one means recreating both app-partitioned tables.
   @log_apps ~w(Activity_Player CEASAR CLUE CODAP CODAPV3 CollabSpace Dataflow DEVOPS GeniStarDev
                GRASP HASBot-Dashboard IS LARA-log-poc none portal-report rigse-log)
 
