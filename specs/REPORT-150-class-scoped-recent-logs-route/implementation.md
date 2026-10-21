@@ -8,7 +8,7 @@ Paths are under `server/` unless they start with `specs/`. Each step compiles wi
 
 **Pre-flight: done 2026-10-21 on Doug's go.** Both checks passed, and the plan needs no IAM step and no SQL change.
 - **IAM.** Staging's `report-server` (user `report-server-staging`, v7) and production's `report-server-prod` (v7) each allow `glue:GetTable` on `*`, `athena:StartQueryExecution`, `GetQueryExecution`, `GetWorkGroup` and `CreateWorkGroup` on `*`, read on all of the environment's log bucket, and read and write on all of its report bucket, which holds `workgroup-output/`. Neither allows `athena:GetQueryResults` or `StopQueryExecution`, as the plan assumes. The README's two policy blocks omit these "PortedQueryCreator" statements, which is the drift REPORT-107 noted and this story leaves alone.
-- **Athena syntax.** An `EXPLAIN` of the `:count` SQL on staging (`log_ingester_qa`, workgroup `primary`, engine 3, one made-up learner) succeeded with 0 bytes scanned. The plan reads only `run_remote_endpoint` and `timestamp`, folds the one-row `VALUES` join into a filter, and projects `dt` from `2026/10/19/23` to the current hour. The output prefix was deleted afterward.
+- **Athena syntax.** An `EXPLAIN` of the count SQL (R10, since withdrawn) on staging (`log_ingester_qa`, workgroup `primary`, engine 3, one made-up learner) succeeded with 0 bytes scanned. The plan reads only `run_remote_endpoint` and `timestamp`, folds the one-row `VALUES` join into a filter, and projects `dt` from `2026/10/19/23` to the current hour. The rows SQL has the same `FROM` and `JOIN`, so the check still covers the inline `VALUES` join. The output prefix was deleted afterward.
 
 ## Implementation Plan
 
@@ -262,31 +262,25 @@ defmodule ReportServer.RecentLogs do
 
   @doc """
   The Athena SQL for `learners` (maps with `run_remote_endpoint`, `user_id`, `primary_user_id`)
-  within `bounds`. `:rows` selects the 13 columns ordered by `timestamp` then `id`; `:count`
-  selects only `count` and `latest_timestamp`. The learners are an inline `VALUES` table rather
-  than the uploaded `learners` table, so a read writes nothing to S3.
+  within `bounds`: the 13 columns ordered by `timestamp` then `id`. The learners are an inline
+  `VALUES` table rather than the uploaded `learners` table, so a read writes nothing to S3.
   """
-  def sql(learners, bounds = %{since: since, until: until}, mode) when mode in [:rows, :count] and learners != [] do
+  def sql(learners, bounds = %{since: since, until: until}) when learners != [] do
     log_db = ReportQuery.get_log_db_name()
     until_predicate = if until, do: "\n  AND log.timestamp < #{until}", else: ""
 
-    from = """
+    cols = ReportQuery.get_log_cols(remove_username: true) ++ ReportQuery.get_minimal_learner_cols()
+
+    """
+    SELECT #{Enum.map_join(cols, ", ", fn {col, name} -> "#{col} AS #{name}" end)}
     FROM "#{log_db}"."logs_by_hour" log
     JOIN (VALUES #{Enum.map_join(learners, ", ", &learner_value/1)})
       AS learner (run_remote_endpoint, user_id, primary_user_id)
       ON learner.run_remote_endpoint = log.run_remote_endpoint
     WHERE #{dt_predicate(bounds)}
       AND log.timestamp >= #{since}#{until_predicate}
+    ORDER BY log.timestamp, log.id
     """
-
-    case mode do
-      :rows ->
-        cols = ReportQuery.get_log_cols(remove_username: true) ++ ReportQuery.get_minimal_learner_cols()
-        "SELECT #{Enum.map_join(cols, ", ", fn {col, name} -> "#{col} AS #{name}" end)}\n#{from}ORDER BY log.timestamp, log.id"
-
-      :count ->
-        "SELECT count(*) AS count, max(log.timestamp) AS latest_timestamp\n#{from}"
-    end
   end
 
   defp learner_value(%{run_remote_endpoint: ep, user_id: user_id, primary_user_id: primary}) do
@@ -310,14 +304,14 @@ defmodule ReportServer.RecentLogs do
 end
 ```
 
-Checked again at stage 8 after `start`/`end` were added (throwaway module, deleted): `bounds/3` gave every result its tests list, `dt_predicate/1` padded both ends, and the bounded `:rows` SQL in DuckDB kept a row one millisecond before `end` and dropped one at `end`. First checked by building this module as throwaway code (stage 5): `ReportQuery.get_log_cols/1` and `get_minimal_learner_cols/0` return `{expression, alias}` tuples (the first draft joined them as strings and raised), so the select renders `"log"."id" AS id` and so on, as `ReportQuery.get_sql/2` does, and Athena's CSV header is the bare alias. The generated `:rows` and `:count` SQL, with the database name unquoted, ran in DuckDB over a synthetic `logs_by_hour`: a row filed in the folder before its hour was kept, rows before `since` and rows of another learner were dropped, an endpoint holding `'` matched, and the count was 2 with the right `latest_timestamp`. Also checked: and the `csv` library decodes the S3 stream's arbitrary byte chunks, including a quoted field holding a newline, with an unquoted empty field and `""` both decoding to `""`.
+Checked again at stage 8 after `start`/`end` were added (throwaway module, deleted): `bounds/3` gave every result its tests list, `dt_predicate/1` padded both ends, and the bounded rows SQL in DuckDB kept a row one millisecond before `end` and dropped one at `end`. First checked by building this module as throwaway code (stage 5): `ReportQuery.get_log_cols/1` and `get_minimal_learner_cols/0` return `{expression, alias}` tuples (the first draft joined them as strings and raised), so the select renders `"log"."id" AS id` and so on, as `ReportQuery.get_sql/2` does, and Athena's CSV header is the bare alias. The generated rows SQL and the count SQL (R10, since withdrawn), with the database name unquoted, ran in DuckDB over a synthetic `logs_by_hour`: a row filed in the folder before its hour was kept, rows before `since` and rows of another learner were dropped, an endpoint holding `'` matched, and the count was 2 with the right `latest_timestamp`. Also checked: the `csv` library decodes the S3 stream's arbitrary byte chunks, including a quoted field holding a newline, with an unquoted empty field and `""` both decoding to `""`.
 
 Tests (`ReportServer.RecentLogsTest`, `async: false` because setup replaces the global `:athena` env, as `report_query_test.exs` says of its own; `Application.put_env(:report_server, :athena, log_db_name: "log_ingester_qa")` in setup and restored on exit):
 - `window/1` for `2026-10-21T00:00:30Z`, `2026-10-21T23:59:59Z`, `2026-11-01T00:05:00Z` and `2026-01-01T00:00:00Z`: `window_start` is `1792454400000` for both October 21 times, `nightly_through` is `2026-10-19`, `2026-10-30` and `2025-12-30` respectively.
 - `dt_predicate/1` for `since` = `window_start` on 2026-01-01 and no `until` is `log.dt >= '2025/12/30/23'`; with an `until` of 2026-01-01T05:30Z it adds `log.dt <= '2026/01/01/06'`.
 - `bounds/3`: no parameters give `window_start` and no `until`; `start` and `end` inside the window are taken as given; `start` one millisecond before `window_start`, `end` one millisecond before it with no `start`, `end` equal to `start`, `start=abc`, `start=-1` and `end=10000000000000` are each `:bad_bound`; a cursor with `start` or `end` is `:cursor_with_bounds`; `next_cursor` round-trips for its class with no `until`; another class, a `v2.` prefix, bad base64, a non-integer `s` and an `s` of `10000000000000` are each `:bad_cursor`; a cursor one millisecond before `window_start` is `:expired_cursor`.
-- `sql/3` `:rows` pinned with `normalized_sql/1` (copied from `report_query_test.exs`): the 13 columns in order, `"log_ingester_qa"."logs_by_hour"`, the `VALUES` join with two learners, `log.dt >= '2026/10/19/23'`, `log.timestamp >= 1792454400000`, no `log.timestamp <` and no `log.dt <=`, the `ORDER BY`; and the same with an `until`, adding both upper bounds; refute `"log"."time" >=`, `log.app`, `application` in the `WHERE`, and `"log"."username"`.
-- `sql/3` `:count` pinned the same way; a learner endpoint holding `'` is doubled.
+- `sql/2` pinned with `normalized_sql/1` (copied from `report_query_test.exs`): the 13 columns in order, `"log_ingester_qa"."logs_by_hour"`, the `VALUES` join with two learners, `log.dt >= '2026/10/19/23'`, `log.timestamp >= 1792454400000`, no `log.timestamp <` and no `log.dt <=`, the `ORDER BY`; and the same with an `until`, adding both upper bounds; refute `"log"."time" >=`, `log.app`, `application` in the `WHERE`, and `"log"."username"`.
+- `sql/2` with a learner endpoint holding `'` doubles it.
 - `row/1`: integers parsed, `""` is `nil`, a `parameters` value with a newline survives, `Jason.encode!/1` of the row gives its keys in `columns/0` order, and `columns/0` is the literal Student Actions list, and a CSV with a missing column raises (`Map.fetch!`).
 
 ---
@@ -486,29 +480,33 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
 
   require Logger
 
-  alias ReportServer.{AuditLog, AthenaQueryPoller, PortalDownloadLimiter, RecentLogs}
+  alias ReportServer.{AthenaDB, AthenaQueryPoller, PortalDownloadLimiter, RecentLogs}
   alias ReportServer.RecentLogs.Access
   alias ReportServerWeb.Api.ErrorHelpers
+
+  @rows_per_chunk 500
 
   def preflight(conn, _params), do: send_resp(conn, 204, "")
 
   def show(conn, params) do
     now = System.system_time(:millisecond)
     window = RecentLogs.window(now)
-    count_only = params["count_only"] == "true"
 
     with {:ok, class_id} <- class_id(params["class_id"]),
-         :ok <- no_cursor_with_count(count_only, params["cursor"]),
          {:ok, bounds} <- RecentLogs.bounds(params, class_id, window),
          {:ok, user} <- Access.caller(conn, class_id),
          {:ok, learners} <- Access.learners(user, class_id) do
-      envelope = %{class_id: class_id, window_start: window.window_start,
-                   nightly_through: Date.to_iso8601(window.nightly_through),
-                   since: bounds.since, until: bounds.until}
-      answer(conn, user, learners, bounds, envelope, count_only)
+      envelope = [
+        class_id: class_id,
+        window_start: window.window_start,
+        nightly_through: Date.to_iso8601(window.nightly_through),
+        since: bounds.since,
+        until: bounds.until
+      ]
+
+      answer(conn, user, learners, bounds, envelope)
     else
       {:error, :bad_class} -> ErrorHelpers.bad_request(conn, "class_id must be a positive integer.")
-      {:error, :cursor_with_count} -> ErrorHelpers.bad_request(conn, "count_only takes no cursor.")
       {:error, :cursor_with_bounds} -> ErrorHelpers.bad_request(conn, "A cursor cannot be combined with start or end.")
       {:error, :bad_bound} -> ErrorHelpers.bad_request(conn, "start and end must be epoch milliseconds at or after #{window.window_start} (00:00 UTC yesterday), with end after start; read earlier days with a Student Actions run.")
       {:error, :bad_cursor} -> ErrorHelpers.bad_request(conn, "The cursor is not valid for this class.")
@@ -521,23 +519,21 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
 end
 ```
 
-`answer/6`:
-1. No learners: 200 with `count` 0, `latest_timestamp` `null`, `rows` `[]`, `query_started_at` `now` and (rows mode, no `until`) `next_cursor` from `now`. No Athena query and no audit row.
+`answer/5`:
+1. No learners: 200 with `count` 0, `latest_timestamp` `null`, `rows` `[]`, `query_started_at` `now` and `next_cursor` from `now` (`null` with an `until`). No Athena query and no audit row.
 2. `PortalDownloadLimiter.try_acquire(ReportServer.RecentLogsLimiter)`; `:full` is 503 "Too many recent-log reads; retry shortly." Released in an `after`, as `portal_download/4` does.
-3. `query_started_at = System.system_time(:millisecond)`, then `athena_db().query(RecentLogs.sql(learners, bounds, mode), UUID.uuid4(), user)`; a `query_too_large_error()` is 422 `UNPROCESSABLE` (R13, a class over roughly 2,100 learners), any other error 503.
+3. `query_started_at = System.system_time(:millisecond)`, then `athena_db().query(RecentLogs.sql(learners, bounds), UUID.uuid4(), user)`; a `query_too_large_error()` is 422 `UNPROCESSABLE` (R13, a class over roughly 2,100 learners), any other error 503.
 4. `AthenaQueryPoller.wait_for(id, timeout_ms: cfg(:timeout_ms), interval_ms: cfg(:poll_interval_ms))`; `{:error, :timeout}` and failures are 503 with the query id logged.
-5. Rows mode reads the result with `aws_file_store().get_file_stream(location)` (the `:aws_file_store` seam, defaulting to `ReportServerWeb.Aws`); count mode reads its one row whole with `fetch_file_contents/1`, so an S3 failure there is an error value, not a crash in a linked stream task; an error is 503.
-6. Count mode: decode the one row, answer `count`, `latest_timestamp` (`null` when `count` is 0), `query_started_at` and the envelope, with no `rows` and no `next_cursor`.
-7. Rows mode: `audit_log().log_recent_logs_read(user, class_id, bounds.since, Enum.map(learners, & &1.run_remote_endpoint))`; `{:error, _}` is 500 with no rows. Then `send_chunked(conn, 200)` with `content-type: application/json`, one chunk with the envelope's opening (`{"class_id":…,"window_start":…,"nightly_through":…,"since":…,"until":…,"query_started_at":…,"rows":[`), the decoded rows in chunks of 500 (`Jason.encode!/1` each, comma-joined), tracking the count and the largest `timestamp`, and a closing chunk `],"count":N,"latest_timestamp":T,"next_cursor":"…"}` (`next_cursor` `null` when the request had an `end`). A decode raise after the first chunk is logged and re-raised; an S3 read failure arrives instead as an exit from ExAws's linked `Task.async_stream` task, which kills the request process past any `rescue` or `after` (the task's crash report is the log line, and the limiter's monitor frees the slot). Either way Bandit closes the connection without the terminating chunk and the JSON is incomplete (R12).
+5. Read the result with `aws_file_store().get_file_stream(location)` (the `:aws_file_store` seam, defaulting to `ReportServerWeb.Aws`); an error is 503.
+6. `audit_log().log_recent_logs_read(user, class_id, bounds.since, Enum.map(learners, & &1.run_remote_endpoint))`; `{:error, _}` is 500 with no rows. Then `send_chunked(conn, 200)` with `content-type: application/json`, one chunk with the envelope's opening (`{"class_id":…,"window_start":…,"nightly_through":…,"since":…,"until":…,"query_started_at":…,"rows":[`), the decoded rows in chunks of 500 (`Jason.encode!/1` each, comma-joined), tracking the count and the largest `timestamp`, and a closing chunk `],"count":N,"latest_timestamp":T,"next_cursor":"…"}` (`next_cursor` `null` when the request had an `end`). A decode raise after the first chunk is logged and re-raised; an S3 read failure arrives instead as an exit from ExAws's linked `Task.async_stream` task, which kills the request process past any `rescue` or `after` (the task's crash report is the log line, and the limiter's monitor frees the slot). Either way Bandit closes the connection without the terminating chunk and the JSON is incomplete (R12).
 
-`class_id/1` accepts only `~r/\A[1-9][0-9]{0,17}\z/`, the catalog's id grammar. The result CSV is decoded with `validate_row_length: true`, and a row it cannot read raises (before the first chunk that is a 500; after it, R12's truncated body); the count result must be exactly one row. An access token whose issuer report-server has no portal database for is 401, not R3's 503, since no portal could ever answer for it.
+`class_id/1` accepts only `~r/\A[1-9][0-9]{0,17}\z/`, the catalog's id grammar. The result CSV is decoded with `validate_row_length: true`, and a row it cannot read raises (before the first chunk that is a 500; after it, R12's truncated body). An access token whose issuer report-server has no portal database for is 401, not R3's 503, since no portal could ever answer for it.
 
 Controller tests (`:portal_db`; `AthenaDBStub` and `AwsFileStoreStub` installed through `:athena_db` and `:aws_file_store`; `:recent_logs` set to the configured list with `timeout_ms: 100, poll_interval_ms: 5` merged in (`Keyword.merge/2`, since `put_env` replaces the whole list and `settle_ms` would go) and restored on exit; `:athena` set to `log_db_name: "log_ingester_qa"` and restored on exit, since the test env has no `:athena` and `ReportQuery.get_log_db_name/0` raises without it):
 - Researcher 557's API token for class 601: 200; `rows` decoded from a stubbed three-row CSV (one with a newline in `parameters`, one with an empty `extras`) with integer `time`/`timestamp`/`user_id`; `count` 3; `latest_timestamp` the largest; `next_cursor` decodes to `query_started_at - 600000`; the SQL the stub received names `logs_by_hour` and the one endpoint the fixture gives 557 (`SECUREKEY123`); one `recent_logs_read` audit row with class 601 and that endpoint. Site admin 560's token for 601: the SQL and the audit row name both endpoints.
-- The same with `count_only=true`: a `:count` SQL, `count` and `latest_timestamp` from the stubbed one-row CSV, no `rows`, no `next_cursor`, no audit row.
 - A cursor from the first answer: the stub receives `log.timestamp >= <since>` and no upper bound.
-- `start` and `end` an hour apart inside the window: the stub receives both `timestamp` bounds and both `dt` bounds, and the answer has `until` set and `next_cursor` `null`; `start` before `window_start`, `start=abc`, and `end` equal to `start` are each 400 naming `window_start` and the Student Actions run; a cursor with `start` is 400; `count_only` with `start` and `end` passes both to the `:count` SQL.
-- 400 for `class_id=0`, `abc` and a cursor with `count_only`; 400 for a cursor for class 602; 410 for an expired cursor (built with `next_cursor/3` from a time two days back).
+- `start` and `end` an hour apart inside the window: the stub receives both `timestamp` bounds and both `dt` bounds, and the answer has `until` set and `next_cursor` `null`; `start` before `window_start`, `start=abc`, and `end` equal to `start` are each 400 naming `window_start` and the Student Actions run; a cursor with `start` is 400.
+- 400 for `class_id=0` and `abc`; 400 for a cursor for class 602; 410 for an expired cursor (built with `next_cursor/3` from a time two days back).
 - 403 for class 603 and for a nonexistent class, with the same body; 403 for an access token whose context is class 602 asking for 601; 401 with no token.
 - An access token for 557 (the `:portal_fixture` key, `class:researcher-read`, context 601) from the allowlisted origin: 200 with `access-control-allow-origin` echoed; the same from another origin: 403 before any lookup; the preflight from the allowlisted origin: 204 with `authorization` allowed.
 - Class with no learners (a fixture class with a teacher in project 900 and no learners: class 2): 200, `count` 0, and the Athena stub's `query` raises if called.
@@ -545,6 +541,7 @@ Controller tests (`:portal_db`; `AthenaDBStub` and `AwsFileStoreStub` installed 
 - After the timeout 503, the limiter holds no slot.
 - 503 when the stub's `get_query_info` stays `"running"` past the timeout, when it answers `"failed"`, and when the limiter is full: the test starts as many processes as the configured cap, each taking a slot with `PortalDownloadLimiter.try_acquire(ReportServer.RecentLogsLimiter)` and blocking on a message, makes the request, then releases them; a slot freed by a dead holder is the limiter's own monitor test, already covered.
 - 500 and no rows when the audit write fails: the controller reads its audit module through `Application.get_env(:report_server, :audit_log, ReportServer.AuditLog)`, and the test sets `ReportServer.AuditLogFailingStub`. (No existing controller test forces an insert failure; `audit_log_test.exs` does it with an invalid changeset, and DDL inside the sandbox would commit implicitly on MySQL.)
+- 503 with no audit row when the stub's `get_file_stream` answers an error (an S3 failure reading the result).
 - 422 when the stub's `query` answers `query_too_large_error()`.
 - 503 when the portal cannot be asked (R3): `:learner_data` set to `LearnerDataStub` with `fetch` answering `{:error, "connection refused"}`, for researcher 557 and class 601.
 
@@ -560,7 +557,7 @@ Controller tests (`:portal_db`; `AthenaDBStub` and `AwsFileStoreStub` installed 
 
 **Estimated diff size**: ~70 lines
 
-The subsection covers: the URL and both credentials (with the `class:researcher-read` capability and the `context` match); the 403 that does not reveal existence; the window (`window_start`, `nightly_through`, 24 to 48 hours), the seam with a `student-actions` run ending on `nightly_through` and the application filter a combining caller applies; its assumption that the partitioner's run for that day succeeded, and rerunning it if not; `start` and `end` and their limit to the window; the cursor (opaque, ten-minute overlap, dedup by `id`, 400 and 410); the resume rule (a caller sets `start` from its last `query_started_at` minus ten minutes, or keeps the cursor, never the largest `timestamp` it holds); `count_only`; the 13 columns and their types, `null` for an empty value; streaming and an incomplete body on a mid-stream failure; 400, 401, 403, 410, 422, 500 (audit write failed) and 503; `RECENT_LOGS_MAX_CONCURRENT`; and the `recent_logs_read` audit event.
+The subsection covers: the URL and both credentials (with the `class:researcher-read` capability and the `context` match); the 403 that does not reveal existence; the window (`window_start`, `nightly_through`, 24 to 48 hours), the seam with a `student-actions` run ending on `nightly_through` and the application filter a combining caller applies; its assumption that the partitioner's run for that day succeeded, and rerunning it if not; `start` and `end` and their limit to the window; the cursor (opaque, ten-minute overlap, dedup by `id`, 400 and 410); the resume rule (a caller sets `start` from its last `query_started_at` minus ten minutes, or keeps the cursor, never the largest `timestamp` it holds); the 13 columns and their types, `null` for an empty value; streaming and an incomplete body on a mid-stream failure; 400, 401, 403, 410, 422, 500 (audit write failed) and 503; `RECENT_LOGS_MAX_CONCURRENT`; and the `recent_logs_read` audit event.
 
 Before committing: `grep -rn "only routes with CORS\|catalog's read routes, and only those\|read the catalog with an access token\|on the package catalog's reads" server/` returns only the corrected lines.
 
@@ -589,10 +586,10 @@ Before committing: `grep -rn "only routes with CORS\|catalog's read routes, and 
 ### RESOLVED: Low confidence: Trino's `VALUES` alias syntax on Athena (checked: accepted)
 **Context**: `JOIN (VALUES (...), ...) AS learner (run_remote_endpoint, user_id, primary_user_id) ON ...` is standard Trino and ran in DuckDB (stage 5), but no Athena query has been run with it while speccing (Athena queries wait on Doug's go). If Athena rejects the alias form, the fallback is a `WITH learner (run_remote_endpoint, user_id, primary_user_id) AS (VALUES ...)` clause, which REPORT-107's note says Athena does not materialize but which is referenced once here.
 **Options considered**:
-- A) Run one `EXPLAIN` of the `:count` SQL for a staging class on Doug's go before the controller step.
+- A) Run one `EXPLAIN` of the count SQL (R10, since withdrawn) for a staging class on Doug's go before the controller step.
 - B) Find out at R21's staging check.
 
-**Decision**: A, folded into the pre-flight at the top of this plan: one `EXPLAIN` of the `:count` SQL for a staging class (no bytes scanned), on Doug's go like every Athena call from this work. A rejection switches `sql/3` to the `WITH` form before the controller step, rather than at the staging release.
+**Decision**: A, folded into the pre-flight at the top of this plan: one `EXPLAIN` of the count SQL (R10, since withdrawn) for a staging class (no bytes scanned), on Doug's go like every Athena call from this work. A rejection switches `sql/2` to the `WITH` form before the controller step, rather than at the staging release (see the Athena syntax pre-flight).
 
 ## Self-Review
 

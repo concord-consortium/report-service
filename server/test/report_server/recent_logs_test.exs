@@ -137,9 +137,9 @@ defmodule ReportServer.RecentLogsTest do
     end
   end
 
-  describe "sql/3" do
-    test ":rows reads logs_by_hour for the learners from since, newest rows unbounded" do
-      sql = RecentLogs.sql(learners(), %{since: @window_start, until: nil}, :rows) |> normalized()
+  describe "sql/2" do
+    test "reads logs_by_hour for the learners from since, newest rows unbounded" do
+      sql = RecentLogs.sql(learners(), %{since: @window_start, until: nil}) |> normalized()
 
       assert sql ==
                "#{@select} #{@from} WHERE log.dt >= '2026/10/19/23' AND log.timestamp >= 1792454400000 " <>
@@ -152,29 +152,18 @@ defmodule ReportServer.RecentLogsTest do
       refute sql =~ "log.dt <="
     end
 
-    test ":rows with an until adds both upper bounds" do
+    test "an until adds both upper bounds" do
       until = @window_start + 3_600_000
-      sql = RecentLogs.sql(learners(), %{since: @window_start, until: until}, :rows) |> normalized()
+      sql = RecentLogs.sql(learners(), %{since: @window_start, until: until}) |> normalized()
 
       assert sql ==
                "#{@select} #{@from} WHERE log.dt >= '2026/10/19/23' AND log.dt <= '2026/10/20/02' " <>
                  "AND log.timestamp >= 1792454400000 AND log.timestamp < 1792458000000 ORDER BY log.timestamp, log.id"
     end
 
-    test ":count selects only the count and the latest timestamp" do
-      sql = RecentLogs.sql(learners(), %{since: @window_start, until: nil}, :count) |> normalized()
-
-      assert sql ==
-               "SELECT count(*) AS count, max(log.timestamp) AS latest_timestamp #{@from} " <>
-                 "WHERE log.dt >= '2026/10/19/23' AND log.timestamp >= 1792454400000"
-
-      [where] = Regex.run(~r/WHERE .*/, sql)
-      refute where =~ "application"
-    end
-
     test "doubles a quote in a learner endpoint" do
       learner = %{run_remote_endpoint: "https://p/x/K'1", user_id: 1, primary_user_id: 1}
-      sql = RecentLogs.sql([learner], %{since: @window_start, until: nil}, :count)
+      sql = RecentLogs.sql([learner], %{since: @window_start, until: nil})
 
       assert sql =~ "('https://p/x/K''1', 1, 1)"
     end

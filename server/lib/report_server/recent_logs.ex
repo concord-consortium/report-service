@@ -90,31 +90,25 @@ defmodule ReportServer.RecentLogs do
 
   @doc """
   The Athena SQL for `learners` (maps with `run_remote_endpoint`, `user_id`, `primary_user_id`)
-  within `bounds`. `:rows` selects the 13 columns ordered by `timestamp` then `id`; `:count`
-  selects only `count` and `latest_timestamp`. The learners are an inline `VALUES` table rather
-  than the uploaded `learners` table, so a read writes nothing to S3.
+  within `bounds`: the 13 columns ordered by `timestamp` then `id`. The learners are an inline
+  `VALUES` table rather than the uploaded `learners` table, so a read writes nothing to S3.
   """
-  def sql(learners, bounds = %{since: since, until: until}, mode) when mode in [:rows, :count] and learners != [] do
+  def sql(learners, bounds = %{since: since, until: until}) when learners != [] do
     log_db = ReportQuery.get_log_db_name()
     until_predicate = if until, do: "\n  AND log.timestamp < #{until}", else: ""
 
-    from = """
+    cols = ReportQuery.get_log_cols(remove_username: true) ++ ReportQuery.get_minimal_learner_cols()
+
+    """
+    SELECT #{Enum.map_join(cols, ", ", fn {col, name} -> "#{col} AS #{name}" end)}
     FROM "#{log_db}"."logs_by_hour" log
     JOIN (VALUES #{Enum.map_join(learners, ", ", &learner_value/1)})
       AS learner (run_remote_endpoint, user_id, primary_user_id)
       ON learner.run_remote_endpoint = log.run_remote_endpoint
     WHERE #{dt_predicate(bounds)}
       AND log.timestamp >= #{since}#{until_predicate}
+    ORDER BY log.timestamp, log.id
     """
-
-    case mode do
-      :rows ->
-        cols = ReportQuery.get_log_cols(remove_username: true) ++ ReportQuery.get_minimal_learner_cols()
-        "SELECT #{Enum.map_join(cols, ", ", fn {col, name} -> "#{col} AS #{name}" end)}\n#{from}ORDER BY log.timestamp, log.id"
-
-      :count ->
-        "SELECT count(*) AS count, max(log.timestamp) AS latest_timestamp\n#{from}"
-    end
   end
 
   defp learner_value(%{run_remote_endpoint: ep, user_id: user_id, primary_user_id: primary}) do

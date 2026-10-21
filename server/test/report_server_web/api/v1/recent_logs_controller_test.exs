@@ -82,8 +82,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
 
     {:ok, files} =
       AwsFileStoreStub.start(%{
-        get_file_stream: fn _location -> {:ok, [csv]} end,
-        fetch_file_contents: Keyword.get(opts, :fetch_file_contents, fn _location -> {:ok, csv} end)
+        get_file_stream: Keyword.get(opts, :get_file_stream, fn _location -> {:ok, [csv]} end)
       })
 
     on_exit(fn ->
@@ -249,67 +248,12 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
     end
   end
 
-  describe "count_only" do
-    test "answers the count and freshness from a count query, with no rows, cursor or audit row", %{conn: conn} do
-      ws = window_start()
-      stub_athena(csv: ~s("count","latest_timestamp"\n"3","#{ws + 3_000}"\n))
-
-      body = conn |> researcher_conn() |> read(601, %{count_only: "true"}) |> json_response(200)
-
-      assert body["count"] == 3
-      assert body["latest_timestamp"] == ws + 3_000
-      assert is_integer(body["query_started_at"])
-      refute Map.has_key?(body, "rows")
-      refute Map.has_key?(body, "next_cursor")
-      assert_received {:sql, sql}
-      assert sql =~ "SELECT count(*) AS count"
-      assert audit_rows() == []
-    end
-
-    test "for a class with no learners answers a zero count without querying Athena", %{conn: conn} do
-      stub_athena(csv: "", query: fn _sql, _id, _user -> raise "queried Athena" end)
-
-      body = conn |> researcher_conn() |> read(2, %{count_only: "true"}) |> json_response(200)
-
-      assert body["count"] == 0
-      assert body["latest_timestamp"] == nil
-      assert is_integer(body["query_started_at"])
-      refute Map.has_key?(body, "rows")
-      refute Map.has_key?(body, "next_cursor")
-    end
-
-    test "an S3 failure reading the count is 503", %{conn: conn} do
-      stub_athena(csv: "", fetch_file_contents: fn _location -> {:error, {:s3_error, :boom}} end)
-
-      assert %{"error" => "SERVICE_UNAVAILABLE"} =
-               conn |> researcher_conn() |> read(601, %{count_only: "true"}) |> json_response(503)
-    end
-
-    test "takes start and end", %{conn: conn} do
-      ws = window_start()
-      stub_athena(csv: ~s("count","latest_timestamp"\n"0",\n))
-
-      body = conn |> researcher_conn() |> read(601, %{count_only: "true", start: ws + 60_000, end: ws + 61_000}) |> json_response(200)
-
-      assert body["count"] == 0
-      assert body["latest_timestamp"] == nil
-      assert body["window_start"] == ws
-      assert body["since"] == ws + 60_000
-      assert body["until"] == ws + 61_000
-      assert is_binary(body["nightly_through"])
-      assert_received {:sql, sql}
-      assert sql =~ "SELECT count(*) AS count"
-      assert sql =~ "log.timestamp >= #{ws + 60_000}"
-      assert sql =~ "log.timestamp < #{ws + 61_000}"
-    end
-  end
-
   describe "refusals" do
-    test "a malformed class id, a cursor with count_only, or with start, is 400", %{conn: conn} do
+    test "a malformed class id, or a cursor with start, is 400", %{conn: conn} do
       cursor = RecentLogs.next_cursor(601, System.system_time(:millisecond), 600_000)
       authed = researcher_conn(conn)
 
-      for {class_id, params} <- [{"0", %{}}, {"abc", %{}}, {"601%0A", %{}}, {601, %{count_only: "true", cursor: cursor}}, {601, %{cursor: cursor, start: window_start()}}] do
+      for {class_id, params} <- [{"0", %{}}, {"abc", %{}}, {"601%0A", %{}}, {601, %{cursor: cursor, start: window_start()}}] do
         assert %{"error" => "BAD_REQUEST"} = authed |> read(class_id, params) |> json_response(400)
       end
     end
@@ -436,6 +380,13 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       stub_athena(csv: "", state: "failed")
 
       assert %{"error" => "SERVICE_UNAVAILABLE"} = conn |> researcher_conn() |> read(601) |> json_response(503)
+    end
+
+    test "an S3 failure reading the result is 503", %{conn: conn} do
+      stub_athena(csv: "", get_file_stream: fn _location -> {:error, "Unable to get stream"} end)
+
+      assert %{"error" => "SERVICE_UNAVAILABLE"} = conn |> researcher_conn() |> read(601) |> json_response(503)
+      assert audit_rows() == []
     end
 
     test "a query too large for Athena is 422", %{conn: conn} do

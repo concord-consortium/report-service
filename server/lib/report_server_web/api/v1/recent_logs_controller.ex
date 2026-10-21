@@ -1,6 +1,6 @@
 defmodule ReportServerWeb.Api.V1.RecentLogsController do
   @moduledoc """
-  A class's recent log rows, or their count, read from `logs_by_hour` as the caller.
+  A class's recent log rows, read from `logs_by_hour` as the caller.
   """
   use ReportServerWeb, :controller
 
@@ -17,10 +17,8 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
   def show(conn, params) do
     now = System.system_time(:millisecond)
     window = RecentLogs.window(now)
-    count_only = params["count_only"] == "true"
 
     with {:ok, class_id} <- class_id(params["class_id"]),
-         :ok <- no_cursor_with_count(count_only, params["cursor"]),
          {:ok, bounds} <- RecentLogs.bounds(params, class_id, window),
          {:ok, user} <- Access.caller(conn, class_id),
          {:ok, learners} <- Access.learners(user, class_id) do
@@ -32,10 +30,9 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
         until: bounds.until
       ]
 
-      answer(conn, user, learners, bounds, envelope, count_only)
+      answer(conn, user, learners, bounds, envelope)
     else
       {:error, :bad_class} -> ErrorHelpers.bad_request(conn, "class_id must be a positive integer.")
-      {:error, :cursor_with_count} -> ErrorHelpers.bad_request(conn, "count_only takes no cursor.")
       {:error, :cursor_with_bounds} -> ErrorHelpers.bad_request(conn, "A cursor cannot be combined with start or end.")
       {:error, :bad_bound} -> ErrorHelpers.bad_request(conn, "start and end must be epoch milliseconds at or after #{window.window_start} (00:00 UTC yesterday), with end after start; read earlier days with a Student Actions run.")
       {:error, :bad_cursor} -> ErrorHelpers.bad_request(conn, "The cursor is not valid for this class.")
@@ -52,48 +49,35 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
 
   defp class_id(_), do: {:error, :bad_class}
 
-  defp no_cursor_with_count(true, cursor) when cursor != nil, do: {:error, :cursor_with_count}
-  defp no_cursor_with_count(_, _), do: :ok
-
-  defp answer(conn, _user, [], bounds, envelope, count_only) do
+  defp answer(conn, _user, [], bounds, envelope) do
     now = System.system_time(:millisecond)
-    head = envelope ++ [query_started_at: now]
-
-    body =
-      if count_only,
-        do: head ++ [count: 0, latest_timestamp: nil],
-        else: head ++ [rows: [], count: 0, latest_timestamp: nil, next_cursor: next_cursor(envelope, bounds, now)]
+    body = envelope ++ [query_started_at: now, rows: [], count: 0, latest_timestamp: nil, next_cursor: next_cursor(envelope, bounds, now)]
 
     json(conn, Jason.OrderedObject.new(body))
   end
 
-  defp answer(conn, user, learners, bounds, envelope, count_only) do
+  defp answer(conn, user, learners, bounds, envelope) do
     case PortalDownloadLimiter.try_acquire(ReportServer.RecentLogsLimiter) do
       :full ->
         ErrorHelpers.service_unavailable(conn, "Too many recent-log reads; retry shortly.")
 
       :ok ->
         try do
-          query_and_answer(conn, user, learners, bounds, envelope, count_only)
+          query_and_answer(conn, user, learners, bounds, envelope)
         after
           PortalDownloadLimiter.release(ReportServer.RecentLogsLimiter)
         end
     end
   end
 
-  defp query_and_answer(conn, user, learners, bounds, envelope, count_only) do
-    mode = if count_only, do: :count, else: :rows
+  defp query_and_answer(conn, user, learners, bounds, envelope) do
     query_started_at = System.system_time(:millisecond)
     too_large = AthenaDB.query_too_large_error()
 
-    with {:ok, query_id, _state} <- athena_db().query(RecentLogs.sql(learners, bounds, mode), UUID.uuid4(), user),
+    with {:ok, query_id, _state} <- athena_db().query(RecentLogs.sql(learners, bounds), UUID.uuid4(), user),
          {:ok, location} <- wait_for(query_id),
-         {:ok, result} <- read_result(location, count_only) do
-      head = envelope ++ [query_started_at: query_started_at]
-
-      if count_only,
-        do: count_answer(conn, [result], head),
-        else: rows_answer(conn, user, learners, result, bounds, head, envelope, query_started_at)
+         {:ok, stream} <- aws_file_store().get_file_stream(location) do
+      rows_answer(conn, user, learners, stream, bounds, envelope, query_started_at)
     else
       {:error, ^too_large} ->
         ErrorHelpers.unprocessable(conn, "This class has too many learners for one recent-logs query.")
@@ -115,19 +99,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
     end
   end
 
-  # count mode reads whole, so an S3 failure is an error value, not a linked stream task's crash
-  defp read_result(location, true), do: aws_file_store().fetch_file_contents(location)
-  defp read_result(location, false), do: aws_file_store().get_file_stream(location)
-
-  defp count_answer(conn, stream, head) do
-    [row] = stream |> decode() |> Enum.to_list()
-    count = String.to_integer(row["count"])
-    latest = if row["latest_timestamp"] in [nil, ""], do: nil, else: String.to_integer(row["latest_timestamp"])
-
-    json(conn, Jason.OrderedObject.new(head ++ [count: count, latest_timestamp: latest]))
-  end
-
-  defp rows_answer(conn, user, learners, stream, bounds, head, envelope, query_started_at) do
+  defp rows_answer(conn, user, learners, stream, bounds, envelope, query_started_at) do
     endpoints = Enum.map(learners, & &1.run_remote_endpoint)
 
     case audit_log().log_recent_logs_read(user, envelope[:class_id], bounds.since, endpoints) do
@@ -136,7 +108,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
         ErrorHelpers.server_error(conn)
 
       {:ok, _entry} ->
-        opening = head |> Jason.OrderedObject.new() |> Jason.encode!() |> String.trim_trailing("}")
+        opening = (envelope ++ [query_started_at: query_started_at]) |> Jason.OrderedObject.new() |> Jason.encode!() |> String.trim_trailing("}")
         conn = conn |> put_resp_content_type("application/json") |> send_chunked(200)
         {:ok, conn} = chunk(conn, opening <> ~s(,"rows":[))
 
