@@ -82,8 +82,8 @@ defmodule ReportServer.RecentLogsTest do
     end
 
     test "refuses a start or an end before the window" do
-      assert RecentLogs.bounds(%{"start" => "#{@window_start - 1}"}, 601, window()) == {:error, :out_of_window}
-      assert RecentLogs.bounds(%{"end" => "#{@window_start - 1}"}, 601, window()) == {:error, :out_of_window}
+      assert RecentLogs.bounds(%{"start" => "#{@window_start - 1}"}, 601, window()) == {:error, :bad_bound}
+      assert RecentLogs.bounds(%{"end" => "#{@window_start - 1}"}, 601, window()) == {:error, :bad_bound}
     end
 
     test "refuses malformed bounds and an end not after start" do

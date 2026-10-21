@@ -234,8 +234,7 @@ defmodule ReportServer.RecentLogs do
 
   defp inside_window(since, until, window_start) do
     cond do
-      since < window_start -> {:error, :out_of_window}
-      until != nil and until < window_start -> {:error, :out_of_window}
+      since < window_start -> {:error, :bad_bound}
       until != nil and until <= since -> {:error, :bad_bound}
       true -> :ok
     end
@@ -318,7 +317,7 @@ Checked again at stage 8 after `start`/`end` were added (throwaway module, delet
 Tests (`ReportServer.RecentLogsTest`, `async: false` because setup replaces the global `:athena` env, as `report_query_test.exs` says of its own; `Application.put_env(:report_server, :athena, log_db_name: "log_ingester_qa")` in setup and restored on exit):
 - `window/1` for `2026-10-21T00:00:30Z`, `2026-10-21T23:59:59Z`, `2026-11-01T00:05:00Z` and `2026-01-01T00:00:00Z`: `window_start` is `1792454400000` for both October 21 times, `nightly_through` is `2026-10-19`, `2026-10-30` and `2025-12-30` respectively.
 - `dt_predicate/1` for `since` = `window_start` on 2026-01-01 and no `until` is `log.dt >= '2025/12/30/23'`; with an `until` of 2026-01-01T05:30Z it adds `log.dt <= '2026/01/01/06'`.
-- `bounds/3`: no parameters give `window_start` and no `until`; `start` and `end` inside the window are taken as given; `start` one millisecond before `window_start`, and `end` one millisecond before it with no `start`, are `:out_of_window`; `end` equal to `start`, `start=abc`, `start=-1` and `end=10000000000000` are `:bad_bound`; a cursor with `start` or `end` is `:cursor_with_bounds`; `next_cursor` round-trips for its class with no `until`; another class, a `v2.` prefix, bad base64, a non-integer `s` and an `s` of `10000000000000` are each `:bad_cursor`; a cursor one millisecond before `window_start` is `:expired_cursor`.
+- `bounds/3`: no parameters give `window_start` and no `until`; `start` and `end` inside the window are taken as given; `start` one millisecond before `window_start`, `end` one millisecond before it with no `start`, `end` equal to `start`, `start=abc`, `start=-1` and `end=10000000000000` are each `:bad_bound`; a cursor with `start` or `end` is `:cursor_with_bounds`; `next_cursor` round-trips for its class with no `until`; another class, a `v2.` prefix, bad base64, a non-integer `s` and an `s` of `10000000000000` are each `:bad_cursor`; a cursor one millisecond before `window_start` is `:expired_cursor`.
 - `sql/3` `:rows` pinned with `normalized_sql/1` (copied from `report_query_test.exs`): the 13 columns in order, `"log_ingester_qa"."logs_by_hour"`, the `VALUES` join with two learners, `log.dt >= '2026/10/19/23'`, `log.timestamp >= 1792454400000`, no `log.timestamp <` and no `log.dt <=`, the `ORDER BY`; and the same with an `until`, adding both upper bounds; refute `"log"."time" >=`, `log.app`, `application` in the `WHERE`, and `"log"."username"`.
 - `sql/3` `:count` pinned the same way; a learner endpoint holding `'` is doubled.
 - `row/1`: integers parsed, `""` is `nil`, a `parameters` value with a newline survives, `Jason.encode!/1` of the row gives its keys in `columns/0` order, and a CSV with a missing column raises (`Map.fetch!`).
@@ -511,8 +510,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
       {:error, :bad_class} -> ErrorHelpers.bad_request(conn, "class_id must be a positive integer.")
       {:error, :cursor_with_count} -> ErrorHelpers.bad_request(conn, "count_only takes no cursor.")
       {:error, :cursor_with_bounds} -> ErrorHelpers.bad_request(conn, "A cursor cannot be combined with start or end.")
-      {:error, :bad_bound} -> ErrorHelpers.bad_request(conn, "start and end must be epoch milliseconds, with end after start.")
-      {:error, :out_of_window} -> ErrorHelpers.bad_request(conn, "start and end must be at or after #{window.window_start} (00:00 UTC yesterday); read earlier days with a Student Actions run.")
+      {:error, :bad_bound} -> ErrorHelpers.bad_request(conn, "start and end must be epoch milliseconds at or after #{window.window_start} (00:00 UTC yesterday), with end after start; read earlier days with a Student Actions run.")
       {:error, :bad_cursor} -> ErrorHelpers.bad_request(conn, "The cursor is not valid for this class.")
       {:error, :expired_cursor} -> ErrorHelpers.render_error(conn, "EXPIRED_CURSOR", "The cursor is older than the recent window; start again without one.")
       {:error, :forbidden} -> ErrorHelpers.render_error(conn, "FORBIDDEN", "You may not read this class's logs.")
@@ -538,7 +536,7 @@ Controller tests (`:portal_db`; `AthenaDBStub` and `AwsFileStoreStub` installed 
 - Researcher 557's API token for class 601: 200; `rows` decoded from a stubbed three-row CSV (one with a newline in `parameters`, one with an empty `extras`) with integer `time`/`timestamp`/`user_id`; `count` 3; `latest_timestamp` the largest; `next_cursor` decodes to `query_started_at - 600000`; the SQL the stub received names `logs_by_hour` and the one endpoint the fixture gives 557 (`SECUREKEY123`); one `recent_logs_read` audit row with class 601 and that endpoint. Site admin 560's token for 601: the SQL and the audit row name both endpoints.
 - The same with `count_only=true`: a `:count` SQL, `count` and `latest_timestamp` from the stubbed one-row CSV, no `rows`, no `next_cursor`, no audit row.
 - A cursor from the first answer: the stub receives `log.timestamp >= <since>` and no upper bound.
-- `start` and `end` an hour apart inside the window: the stub receives both `timestamp` bounds and both `dt` bounds, and the answer has `until` set and `next_cursor` `null`; `start` before `window_start` is 400 naming it; a cursor with `start` is 400; `count_only` with `start` and `end` passes both to the `:count` SQL.
+- `start` and `end` an hour apart inside the window: the stub receives both `timestamp` bounds and both `dt` bounds, and the answer has `until` set and `next_cursor` `null`; `start` before `window_start`, `start=abc`, and `end` equal to `start` are each 400 naming `window_start` and the Student Actions run; a cursor with `start` is 400; `count_only` with `start` and `end` passes both to the `:count` SQL.
 - 400 for `class_id=0`, `abc` and a cursor with `count_only`; 400 for a cursor for class 602; 410 for an expired cursor (built with `next_cursor/3` from a time two days back).
 - 403 for class 603 and for a nonexistent class, with the same body; 403 for an access token whose context is class 602 asking for 601; 401 with no token.
 - An access token for 557 (the `:portal_fixture` key, `class:researcher-read`, context 601) from the allowlisted origin: 200 with `access-control-allow-origin` echoed; the same from another origin: 403 before any lookup; the preflight from the allowlisted origin: 204 with `authorization` allowed.
@@ -627,7 +625,7 @@ Roles: Security Engineer, Senior Engineer (Elixir, Phoenix, Ecto on MySQL), QA a
 `bound/2` and the cursor accepted any non-negative integer, and `dt_hour/2` raised `ArgumentError` ("invalid Unix time") for `end=99999999999999999999`, `start=300000000000000` and a forged cursor with that `s` (run in a throwaway test): a 500, not R6's 400. `bound/2` and the cursor now refuse values above 13 digits (`@max_ms`), with tests.
 
 #### RESOLVED: Senior Engineer: `end` before `window_start` answered the wrong 400
-With no `start`, `since` is `window_start`, so such an `end` fell to `until <= since` and answered `:bad_bound` (run in a throwaway test), whose message does not name `window_start` as R6 requires. `inside_window/3` now answers `:out_of_window` for it first, the message names both bounds, and there is a test.
+With no `start`, `since` is `window_start`, so such an `end` fell to `until <= since` and answered `:bad_bound` (run in a throwaway test), whose message does not name `window_start` as R6 requires. Every bound refusal is `:bad_bound`, whose message names `window_start` and the Student Actions run, and there is a test.
 
 #### RESOLVED: Senior Engineer: the plug repeated the `ccd_` literal its prose said it read from `Accounts`
 The snippet matched `"Bearer ccd_" <> _`. It now builds `@api_bearer` from `Accounts.api_token_prefix/0` and matches `@api_bearer <> _` (a module attribute in a binary pattern compiled and matched in a throwaway test).

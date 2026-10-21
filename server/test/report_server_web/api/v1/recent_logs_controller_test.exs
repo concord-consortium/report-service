@@ -290,13 +290,17 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       end
     end
 
-    test "a start before the window is 400 and names the window start", %{conn: conn} do
+    test "a start before the window, a malformed bound, or an end not after start is 400 and names the window start", %{conn: conn} do
       ws = window_start()
+      authed = researcher_conn(conn)
 
-      body = conn |> researcher_conn() |> read(601, %{start: ws - 1}) |> json_response(400)
+      for params <- [%{start: ws - 1}, %{start: "abc"}, %{start: ws + 10, end: ws + 10}] do
+        body = authed |> read(601, params) |> json_response(400)
 
-      assert body["error"] == "BAD_REQUEST"
-      assert body["message"] =~ Integer.to_string(ws)
+        assert body["error"] == "BAD_REQUEST"
+        assert body["message"] =~ Integer.to_string(ws)
+        assert body["message"] =~ "Student Actions"
+      end
     end
 
     test "a cursor for another class is 400, and one older than the window is 410", %{conn: conn} do

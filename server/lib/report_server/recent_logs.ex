@@ -62,8 +62,7 @@ defmodule ReportServer.RecentLogs do
 
   defp inside_window(since, until, window_start) do
     cond do
-      since < window_start -> {:error, :out_of_window}
-      until != nil and until < window_start -> {:error, :out_of_window}
+      since < window_start -> {:error, :bad_bound}
       until != nil and until <= since -> {:error, :bad_bound}
       true -> :ok
     end
