@@ -67,4 +67,36 @@ defmodule ReportServer.AthenaQueryPollerTest do
       refute log =~ "qid-1"
     end
   end
+
+  describe "wait_for/2 options" do
+    test "answers :timeout once the next poll would pass the deadline" do
+      start_athena_stub("running")
+
+      {elapsed_us, result} =
+        :timer.tc(fn -> AthenaQueryPoller.wait_for("qid-1", timeout_ms: 50, interval_ms: 10) end)
+
+      assert result == {:error, :timeout}
+      assert elapsed_us < 200_000
+    end
+
+    test "polls at the given interval until the query succeeds" do
+      Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      {:ok, pid} =
+        ReportServer.AthenaDBStub.start(%{
+          get_query_info: fn _query_id ->
+            case Agent.get_and_update(counter, &{&1 + 1, &1 + 1}) do
+              3 -> {:ok, "succeeded", "s3://bucket/out.csv", nil}
+              _ -> {:ok, "running", nil, nil}
+            end
+          end
+        })
+
+      on_exit(fn -> if Process.alive?(pid), do: Agent.stop(pid) end)
+
+      assert AthenaQueryPoller.wait_for("qid-1", interval_ms: 1, timeout_ms: 1_000) == {:ok, "s3://bucket/out.csv"}
+      assert Agent.get(counter, & &1) == 3
+    end
+  end
 end
