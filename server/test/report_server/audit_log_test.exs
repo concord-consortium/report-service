@@ -291,4 +291,40 @@ defmodule ReportServer.AuditLogTest do
              name |> Atom.to_string() |> String.starts_with?(["update", "delete"])
            end)
   end
+
+  describe "log_recent_logs_read/4" do
+    test "writes a run-less row with the class, the lower bound and the endpoints" do
+      user = user_fixture()
+
+      assert {:ok, entry} = AuditLog.log_recent_logs_read(user, 601, 1_792_454_400_000, ["re-1", "re-2"])
+
+      entry = Repo.get!(DataAccessLogEntry, entry.id)
+      assert entry.event == "recent_logs_read"
+      assert entry.source == "api"
+      assert entry.data_type == "recent_logs"
+      assert entry.user_id == user.id
+      assert entry.report_run_id == nil
+      assert entry.report_filter == %{"class" => [601]}
+      assert entry.cursor == "1792454400000"
+      assert entry.endpoint_set == ["re-1", "re-2"]
+    end
+
+    test "the remote-endpoint filter finds the row" do
+      user = user_fixture()
+      {:ok, entry} = AuditLog.log_recent_logs_read(user, 601, 0, ["re-recent"])
+
+      result = AuditLog.list_entries_paginated(1, %{remote_endpoint: "re-recent"})
+      assert Enum.map(result.items, & &1.id) == [entry.id]
+    end
+
+    test "only the recent-logs event may omit the report run" do
+      user = user_fixture()
+      base = %{source: "api", user_id: user.id}
+
+      assert {:ok, _} = AuditLog.create_entry(Map.merge(base, %{event: "recent_logs_read", data_type: "recent_logs"}))
+
+      assert {:error, changeset} = AuditLog.create_entry(Map.merge(base, %{event: "bulk_read", data_type: "answers_bulk"}))
+      assert "can't be blank" in errors_on(changeset).report_run_id
+    end
+  end
 end
