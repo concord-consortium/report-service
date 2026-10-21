@@ -101,7 +101,7 @@
       </div>
       <p :if={@form_options.server_time_dates} id="date_range_note" class="mt-1 text-sm text-gray-600">
         Dates are the days the log server received each event, in UTC. Both dates are included.
-        <span :if={@form_options.run_start_learners}>Students are included only if they launched the activity on one of these dates (UTC), so a student who launched it earlier and kept working is left out.</span>
+        <span :if={@form_options.run_start_learners}>Students are included only if they launched the activity within the date range (UTC), so a student who launched it before the range and kept working is left out.</span>
       </p>
 
       <div :if={@form_options.enable_hide_names}>

@@ -192,7 +192,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       choose_first_filter(view)
 
       assert has_element?(view, "#date_range_note", "received each event")
-      assert has_element?(view, "#date_range_note", "launched the activity on one of these dates")
+      assert has_element?(view, "#date_range_note", "launched the activity within the date range")
       assert has_element?(view, "#start_date[aria-describedby=date_range_note]")
       assert has_element?(view, "#end_date[aria-describedby=date_range_note]")
     end
@@ -203,7 +203,7 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       choose_first_filter(view)
 
       assert has_element?(view, "#date_range_note", "received each event")
-      assert has_element?(view, "#date_range_note", "launched the activity on one of these dates")
+      assert has_element?(view, "#date_range_note", "launched the activity within the date range")
     end
 
     test "renders on teacher-actions without the learner sentence, which selects no learners",
