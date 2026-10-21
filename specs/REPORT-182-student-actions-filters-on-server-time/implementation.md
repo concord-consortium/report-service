@@ -252,7 +252,7 @@ Restoring `<=` or dropping the shift fails the first two; returning a bound for 
 - **The run:** on the staging report-server with this build, a `student-actions` run for a class with recent logs (for example class 590) and a range of a few days ending yesterday. Take the run's `athena_query_id` from the API's run JSON (cc-data `reports_list`; the run page shows the id only for a failed run), then read its SQL from Athena (`aws athena get-query-execution --query-execution-id <id>` in that account) and check the `timestamp` bounds and widened partition clauses. Download the CSV and check every row's `timestamp` is inside the range; report how many rows have a `time` outside it.
 - **Release note (R7):** the text in the requirements spec, in the GitHub release for the report-server version that carries this.
 - **R8 on staging:** a one-day `student-actions` run for a day on which a test student launched the activity selects that student (before, it selected no one).
-- **R10 on staging:** a one-day `teacher-actions` run for a day with teacher log events returns that day's events, with every row's `timestamp` inside it (before, only events from the day's first second).
+- **R10 on staging:** the SQL Athena ran for a one-day `teacher-actions` run shows `log.timestamp >= <S ms>` and `log.timestamp < <(E + 1 day) ms>` (read by the run's `athena_query_id`, as above). No row check: staging's `logs_by_time` (`s3://log-ingester-qa/processed_logs_with_id/`) holds no objects, and on production the table is unpartitioned, so a run scans its whole filter columns for no evidence the unit tests and R6's row check do not already give (Doug, 2026-10-21).
 
 ## Verification
 
