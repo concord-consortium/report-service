@@ -174,8 +174,9 @@ Three routes page a report run's CLUE documents out of CLUE's own Firebase proje
 | Field | Meaning |
 |---|---|
 | `doc_id`, `entry_id` | the document and the history entry |
-| `idx`, `prev_entry_id`, `server_created` | the stored `index`, `previousEntryId` and `created` (ISO 8601 UTC) |
-| `created` | the entry's own `created` (the client clock), ISO 8601 UTC, `null` if it does not parse |
+| `idx` | the stored `index` when it is a safe integer (from -(2^53 - 1) to 2^53 - 1), else `null` |
+| `prev_entry_id`, `server_created` | the stored `previousEntryId` and `created` (ISO 8601 UTC) |
+| `created` | the entry's own `created` (the client clock), ISO 8601 UTC, `null` if it does not parse or falls outside years 1 to 9999 |
 | `model`, `action_raw`, `undoable`, `state` | the entry's `model`, `action`, `undoable` and `state` |
 | `n_records` | the number of the entry's `records` |
 | `is_revert`, `entry_uid` | the entry's `isRevert` (`false` when absent) and `uid` (`null` when absent) |
