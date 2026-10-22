@@ -72,6 +72,7 @@ report-server gains one route, `GET /api/v1/classes/:class_id/recent-logs`, that
 - Caching answers between requests.
 - Moving `teacher-actions` or the Student Actions reports onto `logs_by_hour`.
 - Scopes other than a class (a cohort; final design 15.1).
+- Limiting a project researcher to students with one of that project's permission forms, and ending an expired researcher's access. The route takes its learners from `LearnerData.fetch/3`, so it shares both gaps with every student-level report, and REPORT-195 fixes them there.
 
 ## Not Yet Implemented
 
@@ -93,6 +94,12 @@ report-server gains one route, `GET /api/v1/classes/:class_id/recent-logs`, that
 ### One route for both credentials, with the class in the path
 **Options considered**: one route accepting either credential, the access token's `context` required to match; two routes, the access-token one taking its class from the token.
 **Decision**: one route. cc-data's API token names no class, and a second route for the same rows would be a second contract to keep in step; the match is one comparison.
+
+---
+
+### A dedicated route, not a "live" kind of report run
+**Options considered**: a report type whose run re-queries on every read, as Portal reports already re-query on every download; a dedicated route.
+**Decision** (Scott Cytacki's review, 2026-10-22): the dedicated route. Only log-event reports fit a cursor read, so a general mechanism would be premature. If a second live log read is wanted (Teacher Actions, or Student Actions with Metadata), that is the time to move both onto the reports API.
 
 ---
 
