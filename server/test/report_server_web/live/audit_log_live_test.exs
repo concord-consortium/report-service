@@ -60,6 +60,18 @@ defmodule ReportServerWeb.AuditLogLiveTest do
     assert newer_pos < older_pos
   end
 
+  test "an entry's item count shows when it has one, including zero", %{conn: conn} do
+    admin = user_fixture(%{portal_is_admin: true})
+    run = setup_run(admin)
+    create_entry(admin, run, %{event: "bulk_read", data_type: "clue_history_bulk", item_count: 0})
+    create_entry(admin, run, %{event: "export_scoped", data_type: "clue_history_bulk"})
+
+    {:ok, _view, html} = live(log_in_conn(conn, admin), ~p"/reports/audit-log")
+
+    assert html =~ ", 0 items"
+    assert length(:binary.matches(html, " items</span>")) == 1
+  end
+
   test "paginates 26 entries with a pager above and below the table", %{conn: conn} do
     admin = user_fixture(%{portal_is_admin: true})
     run = setup_run(admin)

@@ -49,6 +49,7 @@
         <td class="p-2 font-normal border-b align-top">
           <%= entry.data_type %> / <%= entry.event %> (<%= entry.source %>)
           <span :if={entry.job_id}>— job <%= entry.job_id %></span>
+          <span :if={entry.item_count}>, <%= entry.item_count %> items</span>
         </td>
       </tr>
     </tbody>

@@ -183,6 +183,21 @@ defmodule ReportServer.AuditLogTest do
 
       assert Repo.get!(DataAccessLogEntry, entry.id).endpoint_set == endpoint_set
     end
+
+    test "accepts the CLUE data types and round-trips item_count, which defaults to nil" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+
+      base = %{event: "bulk_read", source: "api", user_id: user.id, report_run_id: report_run.id}
+
+      for {data_type, count} <- [{"clue_documents_bulk", 0}, {"clue_history_bulk", 7}, {"clue_content_bulk", 3}] do
+        assert {:ok, entry} = AuditLog.create_entry(Map.merge(base, %{data_type: data_type, item_count: count}))
+        assert %{data_type: ^data_type, item_count: ^count} = Repo.get!(DataAccessLogEntry, entry.id)
+      end
+
+      assert {:ok, entry} = AuditLog.create_entry(Map.put(base, :data_type, "clue_history_bulk"))
+      assert Repo.get!(DataAccessLogEntry, entry.id).item_count == nil
+    end
   end
 
   describe "list_entries_paginated/1" do
