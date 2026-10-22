@@ -532,6 +532,21 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
 
   # ---- the function's answers ----
 
+  test "a resumed page that does not advance is 500 with no page row", %{conn: conn, user: user} do
+    cursor = %{"docId" => "d1"}
+
+    stub(call: fn
+      %{inner_cursor: nil} -> {:ok, page([], 0, cursor, false, [])}
+      _resumed -> {:ok, page([], 0, cursor, false, [])}
+    end)
+
+    run = run_fixture(user)
+    token = json_response(get(conn, clue_path(run, "documents")), 200)["next_page_token"]
+
+    assert json_response(get(conn, clue_path(run, "documents", token)), 500)
+    assert length(entries("bulk_read")) == 1
+  end
+
   describe "audit and the function's answers" do
     test "a page row names only the owners that served items, and counts them", %{conn: conn, user: user} do
       stub(

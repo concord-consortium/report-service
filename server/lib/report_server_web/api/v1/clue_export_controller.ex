@@ -154,7 +154,8 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
       when is_list(items) and is_boolean(exhausted) and is_integer(off) and off >= 0 and
              off < length(slice) and is_list(served) ->
         # an offset the function cannot have reached, or a cursor the next request would refuse, must not become a token
-        if valid_offsets?(served, off, items) and valid_next_cursor?(exhausted, next_inner, operation) do
+        if valid_offsets?(served, off, items) and valid_next_cursor?(exhausted, next_inner, operation) and
+             advances?(exhausted, off, next_inner, inner) do
           {next_index, next_cursor} =
             if exhausted, do: {index + off + 1, nil}, else: {index + off, next_inner}
 
@@ -197,6 +198,9 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
     do: BulkParams.validate_inner_cursor(next_inner, "clue_" <> operation) == :ok
 
   defp valid_next_cursor?(_exhausted, _next_inner, _operation), do: false
+
+  # a page that neither finishes an owner, moves to a later one nor moves its cursor would mint the same token
+  defp advances?(exhausted, off, next_inner, inner), do: exhausted or off > 0 or next_inner != inner
 
   # the items are student work, so only the shape is logged
   defp log_unexpected(body),
