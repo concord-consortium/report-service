@@ -168,9 +168,10 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
         assert [_first_page, %{cursor: ^token}] = entries("bulk_read")
 
         assert json_response(get(conn, clue_path(run, unquote(route), token)), 200) == final
+        assert length(entries("bulk_read")) == 3
       end
 
-      test "a token idle past an hour is 410", %{conn: conn, user: user} do
+      test "an expired token is 410", %{conn: conn, user: user} do
         stub(call: fn _req -> {:ok, page([], 0, unquote(Macro.escape(cursor)), false, [])} end)
         run = run_fixture(user)
 
@@ -371,7 +372,9 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     for {label, group} <- [
           {"an unrequested class", %{"class_hash" => String.duplicate("c", 48), "uid" => "group_701_1", "offering" => 701}},
           {"an unrequested offering", %{"class_hash" => String.duplicate("a", 48), "uid" => "group_999_1", "offering" => 999}},
-          {"another offering's group id", %{"class_hash" => String.duplicate("a", 48), "uid" => "group_7011_1", "offering" => 701}}
+          {"another offering's group id", %{"class_hash" => String.duplicate("a", 48), "uid" => "group_7011_1", "offering" => 701}},
+          {"a group id with nothing after its offering", %{"class_hash" => String.duplicate("a", 48), "uid" => "group_701_", "offering" => 701}},
+          {"a group id with a character no key may hold", %{"class_hash" => String.duplicate("a", 48), "uid" => "group_701_a.b", "offering" => 701}}
         ] do
       test "a group row naming #{label} is 500 and writes no row", %{conn: conn, user: user} do
         stub(owners: fn _req -> {:ok, %{"groups" => [unquote(Macro.escape(group))]}} end)
@@ -470,6 +473,57 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
 
       assert Enum.map(entries("bulk_read"), & &1.endpoint_set) ==
                List.duplicate(["clue:#{@hash}:101"], 3) ++ [["clue:#{@hash}:class_#{@hash}"]]
+    end
+
+    test "an export of more than 250 owners resumes on a later unfinished owner and into the next slice",
+         %{conn: conn, user: user} do
+      learners = for class_id <- 1..130, do: learner(class_id, class_id, 1000 + class_id)
+
+      # owner 3 stops unfinished, the rest of the first slice finishes, and the last 10 owners are a second slice
+      stub(
+        learners: learners,
+        call: fn
+          %{inner_cursor: nil, owners: owners} when length(owners) == 250 ->
+            {:ok, page([%{"doc_id" => "a"}, %{"doc_id" => "b"}], 3, %{"docId" => "d3"}, false, [0, 3])}
+
+          %{inner_cursor: %{"docId" => "d3"}, owners: owners} ->
+            {:ok, page([%{"doc_id" => "c"}], length(owners) - 1, nil, true, [0])}
+
+          %{inner_cursor: nil, owners: owners} ->
+            {:ok, page([%{"doc_id" => "z"}], length(owners) - 1, nil, true, [length(owners) - 1])}
+        end
+      )
+
+      run = run_fixture(user)
+
+      tokens =
+        Stream.unfold(nil, fn
+          :done -> nil
+          token ->
+            body = json_response(get(conn, clue_path(run, "documents", token)), 200)
+            {body["next_page_token"], body["next_page_token"] || :done}
+        end)
+        |> Enum.to_list()
+
+      assert length(tokens) == 3
+
+      [scratch] = Repo.all(ExportScratch)
+      owners = scratch.endpoint_set
+      assert length(owners) == 260
+
+      assert [first, resumed, last] = walk_requests()
+      assert first.owners == Enum.slice(owners, 0, 250)
+      assert resumed.owners == Enum.slice(owners, 3, 250)
+      assert resumed.inner_cursor == %{"docId" => "d3"}
+      assert last.owners == Enum.slice(owners, 253, 7)
+
+      key = &ReportServer.Clue.Scope.key/1
+
+      assert Enum.map(entries("bulk_read"), & &1.endpoint_set) == [
+               [key.(Enum.at(owners, 0)), key.(Enum.at(owners, 3))],
+               [key.(Enum.at(owners, 3))],
+               [key.(Enum.at(owners, 259))]
+             ]
     end
 
     test "an empty mid-export page with a token continues", %{conn: conn, user: user} do

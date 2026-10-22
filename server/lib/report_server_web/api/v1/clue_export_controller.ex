@@ -18,6 +18,9 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
   @owner_limit 250
   @read_limit 5000
 
+  # clueExport's group owner pattern: the group's offering, then a key segment
+  @group_uid ~r{^group_(\d+)_[^/.#$\[\]]+$}
+
   @data_types Map.new(Enum.zip(["documents", "history", "content"], ExportScratch.clue_data_types()))
 
   def documents(conn, params), do: serve(conn, params, @data_types["documents"], "documents")
@@ -116,10 +119,17 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
 
   defp valid_group?(%{"class_hash" => hash, "uid" => uid, "offering" => offering}, offerings)
        when is_binary(uid) and is_integer(offering) do
-    offering in Map.get(offerings, hash, []) and String.starts_with?(uid, "group_#{offering}_")
+    offering in Map.get(offerings, hash, []) and group_uid_offering(uid) == Integer.to_string(offering)
   end
 
   defp valid_group?(_group, _offerings), do: false
+
+  defp group_uid_offering(uid) do
+    case Regex.run(@group_uid, uid) do
+      [_uid, offering] -> offering
+      nil -> nil
+    end
+  end
 
   defp freeze_and_serve(conn, user, report_run, data_type, operation, limit, owners) do
     case BulkExport.freeze(user, report_run, data_type, owners, Enum.map(owners, &Scope.key/1)) do
