@@ -58,13 +58,16 @@ Three new report-server endpoints let a researcher download, for a report run th
   | Field | Source |
   |---|---|
   | `doc_id`, `entry_id` | the parent document id and the history document id |
-  | `idx`, `prev_entry_id`, `server_created` | stored `index`, `previousEntryId`, `created` (ISO 8601 UTC) |
-  | `created` | the entry JSON's `created` (client clock), ISO 8601 UTC, `null` if it does not parse |
+  | `idx` | stored `index` when it is an integer, else `null` |
+  | `prev_entry_id`, `server_created` | stored `previousEntryId` and `created` (ISO 8601 UTC) |
+  | `created` | the entry JSON's `created` (client clock), ISO 8601 UTC, `null` if it does not parse or falls outside years 1 to 9999 |
   | `model`, `action_raw`, `undoable`, `state` | the entry JSON's `model`, `action`, `undoable`, `state` |
   | `n_records` | length of the entry JSON's `records` |
   | `is_revert`, `entry_uid` | the entry JSON's `isRevert` (`false` when absent) and `uid` (`null` when absent) |
   | `parse_ok` | whether the entry JSON parsed; when false every extracted field is `null` |
   | `entry_json` | the stored `entry` string, byte for byte |
+
+  cc-data stores `idx` as BIGINT and `created` as TIMESTAMP (REPORT-110), so these two nulls are part of the contract: one non-integer `index` or one `created` that DuckDB cannot hold as a timestamp would otherwise fail every query on `clue_history`. CLUE's `toHistoryRow` (CLUE-742, collaborative-learning#3052) passes `index` through as stored and converts any finite `created`, so it emits these nulls only once that change lands, which must happen before CLUE-742 merges (Doug, 2026-10-22).
 
 - **R15. `/clue/content`**, one item per document in scope, including documents with no content: `doc_id`, `uid`, `context_id`, `found` (whether an RTDB document node exists), `type`, `version`, `change_count`, `last_history_entry_id`, `self` (the node's raw `self` object, which Scott's `content.parquet` keeps as `self_uid`, `self_doc_key` and `self_class_hash`; `null` when absent), and `content_json` (the stored `content` string byte for byte, `null` when `found` is false or the node has no content).
 
