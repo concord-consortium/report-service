@@ -2,7 +2,7 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
   @moduledoc """
   Derives the ordered, authorized per-learner endpoint set for a report run — the once-derived snapshot the
   bulk-read scratch is built from, and the durable authorization basis the attachment endpoint re-derives.
-  Shared by BulkExportController and AttachmentController.
+  Shared by BulkExportController and AttachmentController; ClueExportController reads the learner rows.
   """
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.{Report, ReportFilter, SourceKey, Tree}

@@ -372,8 +372,10 @@ end
 - `server/lib/report_server_web/api/v1/bulk_params.ex`: three `validate_inner_cursor/2` clauses.
 - `server/lib/report_server_web/api/v1/clue_export_controller.ex` (new).
 - `server/test/report_server_web/api/v1/clue_export_controller_test.exs` (new).
+- `server/test/support/clue_class_hashes_stub.ex` (new): `ReportServer.ClueClassHashesStub`, the class-hash stub the controller tests swap in as `:clue_class_hashes`.
+- `server/lib/report_server_web/api/v1/endpoint_set.ex`: the moduledoc names `ClueExportController` as the reader of `fetch_learners/2`.
 
-**Estimated diff size**: ~480 lines with tests (the controller ~200, the tests ~280)
+**Estimated diff size**: ~850 lines with tests (the controller ~250, the tests ~590)
 
 ```elixir
     get "/reports/:id/clue/documents", ClueExportController, :documents
@@ -389,7 +391,7 @@ end
     with :ok <- check_clue_key(d), do: check_clue_key(e)
   end
 
-  # the characters clueExport refuses in an id: neither CLUE store allows them in a key
+  # the characters clueExport's id pattern refuses: no RTDB key holds them, and a CLUE document id is an RTDB key
   defp check_clue_key(k) when is_binary(k) and k != "" do
     if String.match?(k, ~r{[/.#$\[\]]}),
       do: {:error, "inner_cursor ids must be plain CLUE keys"},
@@ -418,7 +420,7 @@ First page:
 1. `EndpointSet.fetch_learners(user, run)`: `{:error, :not_learner_derivable}` is 422, any other error 500, `{:ok, []}` is the empty terminal page.
 2. `class_hashes().fetch(user.portal_server, distinct class_ids of the learners on CLUE hosts)`: error is 500.
 3. `Scope.student_owners/2`, `Scope.class_owners/1`. With no student owner, the empty terminal page (no `owners` call).
-4. `clue_export().call(portal, %{operation: "owners", portal: portal, classes: chunk})` for each chunk of at most `@owner_limit` entries of `Scope.classes(class_owners)`, in order, concatenating the `groups`; any failed call is 500. Chunking keeps a run over more classes than the function's 1,000-class cap exportable. Each answer must be `%{"groups" => list}` whose every row's `class_hash` is one of the request's, whose `offering` is in that class's offerings, and whose `uid` starts with `"group_#{offering}_"`; anything else is logged and 500.
+4. `clue_export().call(portal, %{operation: "owners", portal: portal, classes: chunk})` for each chunk of at most `@owner_limit` entries of `Scope.classes(class_owners)`, with the class owners in `Scope.order/1`'s order so each call's classes are deterministic, concatenating the `groups`; any failed call is 500. Chunking keeps a run over more classes than the function's 1,000-class cap exportable. Each answer must be `%{"groups" => list}` whose every row's `class_hash` is one of the request's, whose `offering` is in that class's offerings, and whose `uid` starts with `"group_#{offering}_"`; anything else is logged and 500.
 5. `owners = Scope.order(students ++ classes ++ Scope.group_owners(groups, class_owners))`.
 6. Scratch plus intent atomically through `Exports.create_scratch_with_intent/2`, `endpoint_set: owners` on the scratch, `Enum.map(owners, &Scope.key/1)` on the intent row, `item_count: nil`. Then `serve_page` from index 0.
 
@@ -449,7 +451,7 @@ Next page: `Exports.fetch_for_page(sid, user.id, id, data_type)` (404, 410), the
         end
 ```
 
-`served_owner_offsets` must lie within `0..stop_owner_offset`, since the function cannot have served an owner it did not reach; that guard is what makes R16's "the owners served" trustworthy without the items naming an owner. A function error or an unexpected shape is 500 with no audit row and no cursor advance (R12).
+`served_owner_offsets` must lie within `0..stop_owner_offset`, since the function cannot have served an owner it did not reach; that guard is what makes R16's "the owners served" trustworthy without the items naming an owner. The next cursor is checked against the wire contract too: `null` exactly when `owner_exhausted`, and otherwise a cursor that `BulkParams.validate_inner_cursor/2` accepts for the route, so a page can never mint a token that resumes nowhere or that the next request would refuse. A function error or an unexpected shape is 500 with no audit row and no cursor advance (R12), and the log names only the answer's keys and stop offset, never its items, which are student work.
 
 Config seams, as the bulk controller's: `:clue_export_client` (default `ReportServer.ClueExport`) and `:clue_class_hashes` (default `ReportServer.Clue.ClassHashes`), read at call time with `Application.get_env/3`.
 
@@ -535,7 +537,7 @@ Handler order, each refusal `{success: false, error}`:
 
 `validateRequest`:
 - `operation` one of the four; `portal` on the param's list.
-- Walks: `owners` a non-empty array of at most 250 (report-server sends at most `owner_limit` owners); each `class_hash` `/^[0-9a-f]{48}$/`; `kind` one of three; `uid` `/^\d+$/` for a student, `group_<int>_<segment>` for a group, `class_<that class_hash>` for a class; `portal_class_id` a positive integer; `offerings` an array of non-negative integers, at most 1,000; `inner_cursor` `null` or the operation's shape, every id a plain segment (`/^[^/.#$\[\]]+$/`, the characters neither store allows in a key); `limit` 1 to 500, `owner_limit` 1 to 250, `read_limit` 1 to 5,000 (`kMaxLimits`).
+- Walks: `owners` a non-empty array of at most 250 (report-server sends at most `owner_limit` owners); each `class_hash` `/^[0-9a-f]{48}$/`; `kind` one of three; `uid` `/^\d+$/` for a student, `group_<int>_<segment>` for a group, `class_<that class_hash>` for a class; `portal_class_id` a positive integer; `offerings` an array of non-negative integers, at most 1,000; `inner_cursor` `null` or the operation's shape, every id a plain segment (`/^[^/.#$\[\]]+$/`, the characters no RTDB key may hold; a CLUE document id is an RTDB key); `limit` 1 to 500, `owner_limit` 1 to 250, `read_limit` 1 to 5,000 (`kMaxLimits`).
 - `owners`: `classes` a non-empty array of at most 1,000 `{class_hash, offerings}` with the same checks.
 
 The walk (`clue-export-walk.ts`), for owner `o` at offset `k` of the slice, while no limit is hit:
