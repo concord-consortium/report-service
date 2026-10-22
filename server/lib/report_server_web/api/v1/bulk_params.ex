@@ -81,7 +81,7 @@ defmodule ReportServerWeb.Api.V1.BulkParams do
 
   defp check_doc_id(_), do: {:error, "inner_cursor docId must be a non-empty plain document id"}
 
-  # the characters clueExport's id pattern refuses: no RTDB key holds them, and a CLUE document id is an RTDB key
+  # the characters clueExport's id pattern refuses
   defp check_clue_key(k) when is_binary(k) and k != "" do
     if String.match?(k, ~r{[/.#$\[\]]}),
       do: {:error, "inner_cursor ids must be plain CLUE keys"},

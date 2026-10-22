@@ -40,38 +40,12 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
   defp first_page(conn, user, report_run, data_type, collection, limit) do
     case EndpointSet.derive_endpoint_set(user, report_run) do
       {:ok, []} ->
-        # empty export: terminal empty page, no scratch to resume — but still record the intent row for audit
-        # completeness, fail-closed like every other audit write. export_id is minted so the row is correlatable.
-        export_id = Exports.mint_scratch_id()
-        intent_attrs = BulkExport.audit_attrs(user, report_run, "export_scoped", data_type, export_id, nil, [])
-
-        case AuditLog.create_entry(intent_attrs) do
-          {:ok, _entry} -> json(conn, %{items: [], next_page_token: nil, total_endpoints: 0})
-          {:error, _reason} -> ErrorHelpers.server_error(conn)
-        end
+        BulkExport.empty_page(conn, user, report_run, data_type)
 
       {:ok, endpoints} ->
-        scratch_id = Exports.mint_scratch_id()
-
-        scratch_attrs = %{
-          scratch_id: scratch_id,
-          report_run_id: report_run.id,
-          user_id: user.id,
-          data_type: data_type,
-          endpoint_set: endpoints,
-          expires_at: Exports.ttl_expires_at()
-        }
-
-        intent_attrs =
-          BulkExport.audit_attrs(user, report_run, "export_scoped", data_type, scratch_id, nil,
-            Enum.map(endpoints, & &1["remote_endpoint"]))
-
-        case Exports.create_scratch_with_intent(scratch_attrs, intent_attrs) do
-          {:ok, %{scratch: scratch}} ->
-            serve_page(conn, user, report_run, scratch, collection, data_type, 0, nil, limit, nil)
-
-          {:error, _step, _changeset, _} ->
-            ErrorHelpers.server_error(conn)
+        case BulkExport.freeze(user, report_run, data_type, endpoints, Enum.map(endpoints, & &1["remote_endpoint"])) do
+          {:ok, scratch} -> serve_page(conn, user, report_run, scratch, collection, data_type, 0, nil, limit, nil)
+          :error -> ErrorHelpers.server_error(conn)
         end
 
       {:error, :not_learner_derivable} ->
@@ -84,27 +58,9 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
 
   # ---- page N: two-step scratch lookup (404 vs 410), bounds-check index + inner cursor, serve ----
   defp next_page(conn, user, report_run, id, data_type, collection, limit, scratch_id, idx, inner) do
-    case Exports.fetch_for_page(scratch_id, user.id, id, data_type) do
-      :not_found ->
-        ErrorHelpers.not_found(conn)
-
-      :expired ->
-        ErrorHelpers.render_error(conn, "EXPIRED_CURSOR",
-          "The export cursor has expired; restart the export from a null page_token.")
-
-      {:ok, scratch} ->
-        cond do
-          idx < 0 or idx >= length(scratch.endpoint_set) ->
-            ErrorHelpers.bad_request(conn, "page_token endpoint index out of range")
-
-          BulkParams.validate_inner_cursor(inner, collection) != :ok ->
-            ErrorHelpers.bad_request(conn, "inner_cursor is malformed for this route")
-
-          true ->
-            raw_token = BulkExport.raw_page_token(conn)
-            serve_page(conn, user, report_run, scratch, collection, data_type, idx, inner, limit, raw_token)
-        end
-    end
+    BulkExport.with_page_scratch(conn, user, id, data_type, collection, scratch_id, idx, inner, fn scratch, raw_token ->
+      serve_page(conn, user, report_run, scratch, collection, data_type, idx, inner, limit, raw_token)
+    end)
   end
 
   # ---- shared: slice from index, call Node, reassemble cursor, write the fail-closed access row, return envelope ----

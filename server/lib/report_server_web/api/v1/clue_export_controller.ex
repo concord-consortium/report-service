@@ -8,8 +8,9 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
 
   require Logger
 
-  alias ReportServer.{AuditLog, Clue, Exports}
+  alias ReportServer.{AuditLog, Clue}
   alias ReportServer.Clue.Scope
+  alias ReportServer.Exports.ExportScratch
   alias ReportServer.Reports
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{BulkExport, BulkParams, EndpointSet, Params}
@@ -17,9 +18,11 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
   @owner_limit 250
   @read_limit 5000
 
-  def documents(conn, params), do: serve(conn, params, "clue_documents_bulk", "documents")
-  def history(conn, params), do: serve(conn, params, "clue_history_bulk", "history")
-  def content(conn, params), do: serve(conn, params, "clue_content_bulk", "content")
+  @data_types Map.new(Enum.zip(["documents", "history", "content"], ExportScratch.clue_data_types()))
+
+  def documents(conn, params), do: serve(conn, params, @data_types["documents"], "documents")
+  def history(conn, params), do: serve(conn, params, @data_types["history"], "history")
+  def content(conn, params), do: serve(conn, params, @data_types["content"], "content")
 
   defp serve(conn, %{"id" => id_param} = params, data_type, operation) do
     user = conn.assigns.current_user
@@ -53,7 +56,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
     with {:ok, learners} <- EndpointSet.fetch_learners(user, report_run),
          {:ok, owners} <- derive_owners(user, learners) do
       if owners == [] do
-        empty_page(conn, user, report_run, data_type)
+        BulkExport.empty_page(conn, user, report_run, data_type)
       else
         freeze_and_serve(conn, user, report_run, data_type, operation, limit, owners)
       end
@@ -118,62 +121,17 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
 
   defp valid_group?(_group, _offerings), do: false
 
-  defp empty_page(conn, user, report_run, data_type) do
-    export_id = Exports.mint_scratch_id()
-    intent_attrs = BulkExport.audit_attrs(user, report_run, "export_scoped", data_type, export_id, nil, [])
-
-    case AuditLog.create_entry(intent_attrs) do
-      {:ok, _entry} -> json(conn, %{items: [], next_page_token: nil, total_endpoints: 0})
-      {:error, _reason} -> ErrorHelpers.server_error(conn)
-    end
-  end
-
   defp freeze_and_serve(conn, user, report_run, data_type, operation, limit, owners) do
-    scratch_id = Exports.mint_scratch_id()
-
-    scratch_attrs = %{
-      scratch_id: scratch_id,
-      report_run_id: report_run.id,
-      user_id: user.id,
-      data_type: data_type,
-      endpoint_set: owners,
-      expires_at: Exports.ttl_expires_at()
-    }
-
-    intent_attrs =
-      BulkExport.audit_attrs(user, report_run, "export_scoped", data_type, scratch_id, nil, Enum.map(owners, &Scope.key/1))
-
-    case Exports.create_scratch_with_intent(scratch_attrs, intent_attrs) do
-      {:ok, %{scratch: scratch}} ->
-        serve_page(conn, user, report_run, scratch, operation, data_type, 0, nil, limit, nil)
-
-      {:error, _step, _changeset, _} ->
-        ErrorHelpers.server_error(conn)
+    case BulkExport.freeze(user, report_run, data_type, owners, Enum.map(owners, &Scope.key/1)) do
+      {:ok, scratch} -> serve_page(conn, user, report_run, scratch, operation, data_type, 0, nil, limit, nil)
+      :error -> ErrorHelpers.server_error(conn)
     end
   end
 
   defp next_page(conn, user, report_run, id, data_type, operation, limit, scratch_id, idx, inner) do
-    case Exports.fetch_for_page(scratch_id, user.id, id, data_type) do
-      :not_found ->
-        ErrorHelpers.not_found(conn)
-
-      :expired ->
-        ErrorHelpers.render_error(conn, "EXPIRED_CURSOR",
-          "The export cursor has expired; restart the export from a null page_token.")
-
-      {:ok, scratch} ->
-        cond do
-          idx < 0 or idx >= length(scratch.endpoint_set) ->
-            ErrorHelpers.bad_request(conn, "page_token endpoint index out of range")
-
-          BulkParams.validate_inner_cursor(inner, "clue_" <> operation) != :ok ->
-            ErrorHelpers.bad_request(conn, "inner_cursor is malformed for this route")
-
-          true ->
-            raw_token = BulkExport.raw_page_token(conn)
-            serve_page(conn, user, report_run, scratch, operation, data_type, idx, inner, limit, raw_token)
-        end
-    end
+    BulkExport.with_page_scratch(conn, user, id, data_type, "clue_" <> operation, scratch_id, idx, inner, fn scratch, raw_token ->
+      serve_page(conn, user, report_run, scratch, operation, data_type, idx, inner, limit, raw_token)
+    end)
   end
 
   defp serve_page(conn, user, report_run, scratch, operation, data_type, index, inner, limit, raw_token) do
@@ -196,7 +154,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
       when is_list(items) and is_boolean(exhausted) and is_integer(off) and off >= 0 and
              off < length(slice) and is_list(served) ->
         # an offset the function cannot have reached, or a cursor the next request would refuse, must not become a token
-        if valid_offsets?(served, off) and valid_next_cursor?(exhausted, next_inner, operation) do
+        if valid_offsets?(served, off, items) and valid_next_cursor?(exhausted, next_inner, operation) do
           {next_index, next_cursor} =
             if exhausted, do: {index + off + 1, nil}, else: {index + off, next_inner}
 
@@ -230,7 +188,9 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
     end
   end
 
-  defp valid_offsets?(served, off), do: Enum.all?(served, &(is_integer(&1) and &1 >= 0 and &1 <= off))
+  # a page with items names at least one owner, so its audit row is never ownerless
+  defp valid_offsets?(served, off, items),
+    do: (items == [] or served != []) and Enum.all?(served, &(is_integer(&1) and &1 >= 0 and &1 <= off))
 
   defp valid_next_cursor?(true, nil, _operation), do: true
   defp valid_next_cursor?(false, next_inner, operation) when is_map(next_inner),

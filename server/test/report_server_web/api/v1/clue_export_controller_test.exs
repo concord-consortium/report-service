@@ -202,6 +202,16 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     end
   end
 
+  test "a limit lowers the page cap the function is sent, and a malformed one is 400", %{conn: conn, user: user} do
+    stub()
+    run = run_fixture(user)
+
+    assert json_response(get(conn, clue_path(run, "history") <> "?limit=7"), 200)
+    assert [%{limit: 7}] = walk_requests()
+
+    assert json_response(get(conn, clue_path(run, "history") <> "?limit=abc"), 400)["error"] == "BAD_REQUEST"
+  end
+
   test "a /clue/history token is 404 on /clue/documents", %{conn: conn, user: user} do
     stub(call: fn _req -> {:ok, page([], 0, %{"docId" => "d1", "index" => 0, "entryId" => "e0"}, false, [])} end)
     run = run_fixture(user)
@@ -428,18 +438,18 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
   describe "paging" do
     test "a history export resumes inside a document and ends with every entry once, in order",
          %{conn: conn, user: user} do
-      entries = for i <- 0..6, do: %{"doc_id" => "d1", "entry_id" => "e#{i}", "idx" => i}
+      student_entries = for i <- 0..6, do: %{"doc_id" => "d1", "entry_id" => "e#{i}", "idx" => i}
       class_entries = [%{"doc_id" => "c1", "entry_id" => "x0", "idx" => 0}]
 
       stub(call: fn
         %{inner_cursor: nil, owners: [@student | _]} ->
-          {:ok, page(Enum.slice(entries, 0, 3), 0, %{"docId" => "d1", "index" => 2, "entryId" => "e2"}, false, [0])}
+          {:ok, page(Enum.slice(student_entries, 0, 3), 0, %{"docId" => "d1", "index" => 2, "entryId" => "e2"}, false, [0])}
 
         %{inner_cursor: %{"entryId" => "e2"}} ->
-          {:ok, page(Enum.slice(entries, 3, 3), 0, %{"docId" => "d1", "index" => 5, "entryId" => "e5"}, false, [0])}
+          {:ok, page(Enum.slice(student_entries, 3, 3), 0, %{"docId" => "d1", "index" => 5, "entryId" => "e5"}, false, [0])}
 
         %{inner_cursor: %{"entryId" => "e5"}} ->
-          {:ok, page(Enum.slice(entries, 6, 1), 0, nil, true, [0])}
+          {:ok, page(Enum.slice(student_entries, 6, 1), 0, nil, true, [0])}
 
         %{inner_cursor: nil, owners: [@class]} ->
           {:ok, page(class_entries, 0, nil, true, [0])}
@@ -456,7 +466,10 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
         end)
         |> Enum.concat()
 
-      assert items == entries ++ class_entries
+      assert items == student_entries ++ class_entries
+
+      assert Enum.map(entries("bulk_read"), & &1.endpoint_set) ==
+               List.duplicate(["clue:#{@hash}:101"], 3) ++ [["clue:#{@hash}:class_#{@hash}"]]
     end
 
     test "an empty mid-export page with a token continues", %{conn: conn, user: user} do
@@ -474,7 +487,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     end
   end
 
-  # ---- cursors and the function's answers ----
+  # ---- cursors ----
 
   describe "cursors" do
     for {route, cursor} <- [
@@ -517,6 +530,8 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     assert json_response(get(conn, clue_path(run, "documents", bad)), 400)["error"] == "BAD_REQUEST"
   end
 
+  # ---- the function's answers ----
+
   describe "audit and the function's answers" do
     test "a page row names only the owners that served items, and counts them", %{conn: conn, user: user} do
       stub(
@@ -543,6 +558,8 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
                                                     "owner_exhausted" => false, "served_owner_offsets" => []}},
           {"a cursor that would not resume", %{"items" => [], "stop_owner_offset" => 0, "inner_cursor" => %{"docId" => "a/b"},
                                                "owner_exhausted" => false, "served_owner_offsets" => []}},
+          {"items with no served owner", %{"items" => [%{"doc_id" => "d1"}], "stop_owner_offset" => 0, "inner_cursor" => nil,
+                                           "owner_exhausted" => true, "served_owner_offsets" => []}},
           {"a missing field", %{"items" => []}}
         ] do
       test "#{label} is 500 with no page row", %{conn: conn, user: user} do

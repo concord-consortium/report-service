@@ -10,7 +10,7 @@ defmodule ReportServer.ClueExport do
   @doc "The function URL for a portal, or nil when CLUE export is not configured for it."
   def url_for(portal_server), do: Map.get(config()[:urls] || %{}, portal_server)
 
-  @doc "{:ok, body_without_success} | {:error, reason}. Any non-200 is an error."
+  @doc "{:ok, body_without_success} | {:error, reason}. Anything but a 200 with `success: true` is an error."
   def call(portal_server, req) do
     case url_for(portal_server) do
       nil ->
@@ -23,7 +23,7 @@ defmodule ReportServer.ClueExport do
         |> case do
           {:ok, %{status: 200, body: %{"success" => true} = body}} -> {:ok, Map.delete(body, "success")}
           {:ok, %{body: %{"error" => error}}} -> {:error, error}
-          {:ok, %{status: status}} -> {:error, "unexpected clueExport status #{status}"}
+          {:ok, %{status: status}} -> {:error, "clueExport answered status #{status} without success"}
           {:error, error} -> {:error, error}
         end
     end

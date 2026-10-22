@@ -51,16 +51,19 @@ defmodule ReportServer.ClueExportTest do
     assert {:error, "read failed"} = ClueExport.call(@portal, %{})
 
     Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 502, "bad gateway") end)
-    assert {:error, "unexpected clueExport status 502"} = ClueExport.call(@portal, %{})
+    assert {:error, "clueExport answered status 502 without success"} = ClueExport.call(@portal, %{})
   end
 
   test "a 200 without success is not a page" do
     answer(200, %{items: []})
-    assert {:error, "unexpected clueExport status 200"} = ClueExport.call(@portal, %{})
+    assert {:error, "clueExport answered status 200 without success"} = ClueExport.call(@portal, %{})
   end
 
-  test "a transport failure is an error and the POST is not retried" do
+  test "a transport failure is an error and the POST is not retried, even under a retrying default" do
     Application.put_env(:report_server, :clue_export_req_options,
+      retry: :transient,
+      max_retries: 2,
+      retry_delay: fn _attempt -> 0 end,
       adapter: fn request ->
         send(self(), :attempt)
         {request, %Mint.TransportError{reason: :econnrefused}}

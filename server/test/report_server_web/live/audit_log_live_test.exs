@@ -68,7 +68,7 @@ defmodule ReportServerWeb.AuditLogLiveTest do
 
     {:ok, _view, html} = live(log_in_conn(conn, admin), ~p"/reports/audit-log")
 
-    assert html =~ ", 0 items"
+    assert html =~ "(api)<span>, 0 items</span>"
     assert length(:binary.matches(html, " items</span>")) == 1
   end
 

@@ -110,7 +110,7 @@ end
 - `server/lib/report_server/exports/export_scratch.ex`: `validate_inclusion(:data_type, ...)` gains `clue_documents_bulk`, `clue_history_bulk`, `clue_content_bulk`; the `endpoint_set` comment names both element shapes.
 - `server/lib/report_server/audit_log/data_access_log_entry.ex`: the same three in the `data_type` allow-list; `field :item_count, :integer`; `:item_count` in `cast/3`.
 - `server/priv/repo/migrations/20261022120100_add_item_count_to_data_access_log.exs` (new).
-- `server/lib/report_server_web/live/audit_log_live/index.html.heex`: the Access cell gains `<span :if={entry.item_count}>, <%= entry.item_count %> items</span>` beside the job id (`:51`), so the rollout's audit-page check can read the count; `0` renders, `nil` (intent rows and existing kinds) does not.
+- `server/lib/report_server_web/live/audit_log_live/index.html.heex`: the Access cell gains `<span :if={entry.item_count}>, <%= entry.item_count %> items</span>` directly after the source, with no whitespace before it so the comma follows `(api)`, and before the job id (`:51`), so the rollout's audit-page check can read the count; `0` renders, `nil` (intent rows and existing kinds) does not.
 - `server/test/report_server/audit_log_test.exs` (beside the refusal test at `:126` and the `endpoint_set` round trip at `:167`) and `server/test/report_server/exports_test.exs`: each new `data_type` is accepted, an unknown one is still refused, `item_count` round-trips and defaults to `nil`.
 - `server/test/report_server_web/live/audit_log_live_test.exs`: a row with `item_count: 0` shows "0 items" and a row with `nil` shows no count.
 
@@ -145,11 +145,11 @@ REPORT-150's PR #444 edits the same `DataAccessLogEntry` lists and adds a `data_
 
 ### Share the bulk export's learner gates and page helpers
 
-**Summary**: a behavior-preserving refactor so the CLUE controller reuses rather than copies the gates, the no-store headers and the audit attributes. The existing bulk controller tests are the guard; no test changes.
+**Summary**: a behavior-preserving refactor so the CLUE controller reuses rather than copies the gates, the no-store headers, the audit attributes and the empty, freeze and page-token steps. The existing bulk controller tests are the guard; no test changes.
 
 **Files affected**:
 - `server/lib/report_server_web/api/v1/endpoint_set.ex`: split `derive_endpoint_set/2` into `fetch_learners/2` (the derivable check, the allowed-project short-circuits and `LearnerData.fetch`, answering `{:ok, learners}` flattened from the groups, `{:ok, []}`, `{:error, :not_learner_derivable}` or `{:error, reason}`) and the existing mapping. `derive_endpoint_set/2` becomes `with {:ok, learners} <- fetch_learners(user, run), do: {:ok, to_endpoints(learners)}` with `to_endpoints/1` taking the flat list.
-- `server/lib/report_server_web/api/v1/bulk_export.ex` (new): `put_no_store/1`, `audit_attrs/8` (the current seven arguments plus `item_count`, defaulting to `nil`), `raw_page_token/1`.
+- `server/lib/report_server_web/api/v1/bulk_export.ex` (new): `put_no_store/1`, `audit_attrs/8` (the current seven arguments plus `item_count`, defaulting to `nil`), and the three page steps both controllers share: `empty_page/4` (the intent row and the terminal empty envelope), `freeze/5` (the scratch row and its intent row, both or neither) and `with_page_scratch/9` (the 404 and 410 lookup and the index and cursor checks, then the route's own serve function, handed the raw page token the access row records).
 - `server/lib/report_server_web/api/v1/bulk_export_controller.ex`: call those; delete its private copies.
 
 **Estimated diff size**: ~90 lines
@@ -334,7 +334,7 @@ defmodule ReportServer.ClueExport do
   @doc "The function URL for a portal, or nil when CLUE export is not configured for it."
   def url_for(portal_server), do: Map.get(config()[:urls] || %{}, portal_server)
 
-  @doc "{:ok, body_without_success} | {:error, reason}. Any non-200 is an error."
+  @doc "{:ok, body_without_success} | {:error, reason}. Anything but a 200 with `success: true` is an error."
   def call(portal_server, req) do
     case url_for(portal_server) do
       nil ->
@@ -347,7 +347,7 @@ defmodule ReportServer.ClueExport do
         |> case do
           {:ok, %{status: 200, body: %{"success" => true} = body}} -> {:ok, Map.delete(body, "success")}
           {:ok, %{body: %{"error" => error}}} -> {:error, error}
-          {:ok, %{status: status}} -> {:error, "unexpected clueExport status #{status}"}
+          {:ok, %{status: status}} -> {:error, "clueExport answered status #{status} without success"}
           {:error, error} -> {:error, error}
         end
     end
@@ -632,7 +632,7 @@ Empty defaults let the template deploy before the function exists: report-server
 - A) `ClueExportController`, with the gates and helpers extracted into `EndpointSet.fetch_learners/2` and `BulkExport`.
 - B) One controller with a per-route strategy module.
 
-**Decision**: A. B threads a strategy through every branch of a controller whose tests already pin it; A changes the bulk controller only by moving three helpers out, which its existing tests guard.
+**Decision**: A. B threads a strategy through every branch of a controller whose tests already pin it; A changes the bulk controller only by moving its shared helpers and page steps into `BulkExport`, which its existing tests guard.
 
 ### RESOLVED: Judgment call: the function applies the offering rule, report-server supplies it
 **Context**: R7's offering test needs the document metadata, which only the function reads.
