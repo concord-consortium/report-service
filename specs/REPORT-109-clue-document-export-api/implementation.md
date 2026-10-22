@@ -166,8 +166,8 @@ REPORT-150's PR #444 edits the same `DataAccessLogEntry` lists and adds a `data_
 - `server/lib/report_server/clue.ex`: `writes_clue_documents?/1`.
 - `server/lib/report_server/clue/scope.ex` (new): `ReportServer.Clue.Scope`.
 - `server/lib/report_server/clue/class_hashes.ex` (new): the portal lookup, swappable as `:clue_class_hashes`.
-- `server/test/support/portal_fixture.sql`: `portal_clazzes` gains `class_hash VARCHAR(48) NULL`; its `INSERT` names its three columns; an `UPDATE` sets class 601's hash (`'aaaa…'`, 48 lowercase hex), leaving 602 `NULL`.
-- `server/test/report_server/clue_test.exs` (extend), `server/test/report_server/clue/scope_test.exs` (new), `server/test/report_server/clue/class_hashes_portal_test.exs` (new, `:portal_db`).
+- `server/test/support/portal_fixture.sql`: `portal_clazzes` gains `class_hash VARCHAR(48) NULL`; its `INSERT` names its three columns; an `UPDATE` sets class 601's hash (`'aaaa…'`, 48 lowercase hex), leaving 602 `NULL`, and another sets 603's to `''`.
+- `server/test/report_server/clue/scope_test.exs` (new, also holding the `writes_clue_documents?/1` tests, since `clue_test.exs` is the CLUE Student Answers report's suite), `server/test/report_server/clue/class_hashes_portal_test.exs` (new, `:portal_db`), `server/test/report_server/clue/class_hashes_test.exs` (new, the empty-list case, which makes no query).
 
 **Estimated diff size**: ~330 lines with tests
 
@@ -276,7 +276,7 @@ end
 Tests:
 - `writes_clue_documents?/1`: `https://collaborative-learning.concord.org/branch/master/?unit=x` and `HTTPS://Collaborative-Learning.Concord.Org/` and `https://dataflow-app.concord.org/` pass; `https://collaborative-learning.concord.org.example.com/`, `ftp://collaborative-learning.concord.org/`, `https://activity.concord.org/?x=collaborative-learning.concord.org`, `nil` and `""` fail. The query-string case is the one `is_clue_url?/1` would pass, so it pins the difference.
 - `Scope`: two learners of one student in offerings 701 and 703 make one owner with `[701, 703]`; a learner whose class has no hash is dropped; a class whose only learner is on a LARA URL yields no student owner and so no class owner; `class_owners/1` unions the offerings of every student in the class; `group_owners/2` gives a group the one offering in its answer row; `order/1` sorts by hash then uid. Each fixture uses distinct values per learner, so "keeps the last" and "folds" give different answers.
-- `ClassHashes` on the portal fixture: `fetch(server, [601, 602])` is `{:ok, %{601 => "aaaa…"}}`.
+- `ClassHashes` on the portal fixture: `fetch(server, [601, 602, 603])` is `{:ok, %{601 => "aaaa…"}}`.
 
 ---
 
