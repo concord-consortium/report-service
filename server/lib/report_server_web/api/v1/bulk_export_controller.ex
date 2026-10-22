@@ -5,7 +5,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
 
   alias ReportServer.{AuditLog, Exports}
   alias ReportServerWeb.Api.ErrorHelpers
-  alias ReportServerWeb.Api.V1.{BulkParams, EndpointSet, Params}
+  alias ReportServerWeb.Api.V1.{BulkExport, BulkParams, EndpointSet, Params}
   alias ReportServer.Reports
 
   @endpoint_limit 250
@@ -21,7 +21,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
          {:ok, report_run} <- Reports.get_api_report_run(user, id),
          {:ok, limit} <- BulkParams.parse_limit(params),
          {:ok, token} <- BulkParams.parse_page_token(params) do
-      conn = put_no_store(conn)
+      conn = BulkExport.put_no_store(conn)
 
       case token do
         nil ->
@@ -43,7 +43,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
         # empty export: terminal empty page, no scratch to resume — but still record the intent row for audit
         # completeness, fail-closed like every other audit write. export_id is minted so the row is correlatable.
         export_id = Exports.mint_scratch_id()
-        intent_attrs = audit_attrs(user, report_run, "export_scoped", data_type, export_id, nil, [])
+        intent_attrs = BulkExport.audit_attrs(user, report_run, "export_scoped", data_type, export_id, nil, [])
 
         case AuditLog.create_entry(intent_attrs) do
           {:ok, _entry} -> json(conn, %{items: [], next_page_token: nil, total_endpoints: 0})
@@ -63,7 +63,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
         }
 
         intent_attrs =
-          audit_attrs(user, report_run, "export_scoped", data_type, scratch_id, nil,
+          BulkExport.audit_attrs(user, report_run, "export_scoped", data_type, scratch_id, nil,
             Enum.map(endpoints, & &1["remote_endpoint"]))
 
         case Exports.create_scratch_with_intent(scratch_attrs, intent_attrs) do
@@ -101,7 +101,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
             ErrorHelpers.bad_request(conn, "inner_cursor is malformed for this route")
 
           true ->
-            raw_token = raw_page_token(conn)
+            raw_token = BulkExport.raw_page_token(conn)
             serve_page(conn, user, report_run, scratch, collection, data_type, idx, inner, limit, raw_token)
         end
     end
@@ -143,7 +143,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
         served = items |> Enum.map(& &1["remote_endpoint"]) |> Enum.uniq()
 
         access_attrs =
-          audit_attrs(user, report_run, "bulk_read", data_type, scratch.scratch_id, raw_token, served)
+          BulkExport.audit_attrs(user, report_run, "bulk_read", data_type, scratch.scratch_id, raw_token, served)
 
         case AuditLog.create_entry(access_attrs) do
           {:ok, _entry} -> json(conn, %{items: items, next_page_token: next_token, total_endpoints: length(endpoints)})
@@ -161,29 +161,6 @@ defmodule ReportServerWeb.Api.V1.BulkExportController do
         ErrorHelpers.server_error(conn)
     end
   end
-
-  defp audit_attrs(user, report_run, event, data_type, export_id, cursor, endpoint_set) do
-    %{
-      event: event,
-      source: "api",
-      data_type: data_type,
-      user_id: user.id,
-      report_run_id: report_run.id,
-      report_slug: report_run.report_slug,
-      report_filter: AuditLog.dump_filter(report_run.report_filter),
-      cursor: cursor,
-      export_id: export_id,
-      endpoint_set: endpoint_set
-    }
-  end
-
-  defp put_no_store(conn) do
-    conn
-    |> put_resp_header("cache-control", "no-store")
-    |> put_resp_header("pragma", "no-cache")
-  end
-
-  defp raw_page_token(conn), do: conn.query_params["page_token"]
 
   defp report_service,
     do: Application.get_env(:report_server, :report_service_client, ReportServer.ReportService)

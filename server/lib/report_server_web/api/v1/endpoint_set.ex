@@ -11,6 +11,14 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
   Returns {:ok, [%{"remote_endpoint" => ..., "source" => ...}, ...]} | {:ok, []} | {:error, reason}.
   """
   def derive_endpoint_set(user, report_run) do
+    with {:ok, learners} <- fetch_learners(user, report_run), do: {:ok, to_endpoints(learners)}
+  end
+
+  @doc """
+  The run's learner rows, derived from its stored filter and narrowed by the caller's allowed projects.
+  Returns {:ok, learners} (possibly []) | {:error, :not_learner_derivable} | {:error, reason}.
+  """
+  def fetch_learners(user, report_run) do
     with :ok <- ensure_bulk_derivable(Tree.find_report(report_run.report_slug)) do
       case allowed_project_ids_source().get_allowed_project_ids(user) do
         # defensive/unreachable (all role flags false -> AuthPlug 401s before here)
@@ -30,7 +38,7 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
           filter = report_run.report_filter || %ReportFilter{}
 
           case learner_data().fetch(filter, user, allow_empty: true) do
-            {:ok, learner_groups} -> {:ok, to_endpoints(learner_groups)}
+            {:ok, learner_groups} -> {:ok, Enum.flat_map(learner_groups, fn group -> Map.get(group, :learners, []) end)}
             {:error, _msg} = err -> err
           end
       end
@@ -41,11 +49,8 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
   defp ensure_bulk_derivable(%Report{derives_learner_data: false}), do: {:error, :not_learner_derivable}
   defp ensure_bulk_derivable(_report), do: :ok
 
-  # LearnerData.fetch returns groups (grouped by runnable_url); each group's learners carry
-  # run_remote_endpoint + runnable_url. Ordered, stable snapshot; source per learner.
-  defp to_endpoints(learner_groups) do
-    learner_groups
-    |> Enum.flat_map(fn group -> Map.get(group, :learners, []) end)
+  defp to_endpoints(learners) do
+    learners
     |> Enum.map(fn l ->
       %{"remote_endpoint" => l.run_remote_endpoint, "source" => derive_source(l.runnable_url)}
     end)
