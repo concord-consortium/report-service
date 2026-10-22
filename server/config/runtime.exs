@@ -106,7 +106,11 @@ clue_export_urls =
     json ->
       case Jason.decode(json) do
         {:ok, urls} when is_map(urls) ->
-          unless Enum.all?(urls, fn {portal, url} -> portal != "" and is_binary(url) and String.starts_with?(url, "https://") end) do
+          https_url? = fn url ->
+            is_binary(url) and match?(%URI{scheme: "https", host: host} when is_binary(host) and host != "", URI.parse(url))
+          end
+
+          unless Enum.all?(urls, fn {portal, url} -> portal != "" and https_url?.(url) end) do
             raise "CLUE_EXPORT_URLS must map each portal server to an https function URL"
           end
 

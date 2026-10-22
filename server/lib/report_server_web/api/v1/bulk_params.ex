@@ -10,6 +10,9 @@ defmodule ReportServerWeb.Api.V1.BulkParams do
   @ts_min_seconds -62_135_596_800
   @ts_max_seconds 253_402_300_799
 
+  # the largest index clueExport accepts in a history cursor, JavaScript's Number.MAX_SAFE_INTEGER
+  @max_clue_index 9_007_199_254_740_991
+
   def parse_limit(params) do
     case Map.fetch(params, "limit") do
       :error ->
@@ -65,7 +68,7 @@ defmodule ReportServerWeb.Api.V1.BulkParams do
   def validate_inner_cursor(%{"docId" => d}, c) when c in ["clue_documents", "clue_content"], do: check_clue_key(d)
 
   def validate_inner_cursor(%{"docId" => d, "index" => i, "entryId" => e}, "clue_history")
-      when is_integer(i) and i >= 0 do
+      when is_integer(i) and i >= 0 and i <= @max_clue_index do
     with :ok <- check_clue_key(d), do: check_clue_key(e)
   end
 

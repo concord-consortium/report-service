@@ -493,6 +493,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     for {route, cursor} <- [
           {"history", %{"docId" => "d1", "index" => 0}},
           {"history", %{"docId" => "d1", "index" => -1, "entryId" => "e0"}},
+          {"history", %{"docId" => "d1", "index" => 9_007_199_254_740_992, "entryId" => "e0"}},
           {"history", %{"docId" => "a/b", "index" => 0, "entryId" => "e0"}},
           {"history", %{"docId" => "d1", "index" => 0, "entryId" => "e.0"}},
           {"history", %{"docId" => "d1", "index" => 0, "entryId" => "e]0"}},
