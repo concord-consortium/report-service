@@ -1,13 +1,14 @@
 defmodule ReportServerWeb.PortalTokenFixture do
   @moduledoc """
-  Two rigse signing keys standing in for a staging and a production portal, generated once per
-  test run, and helpers that sign test tokens with them. `install!/0` configures report-server
-  to trust both, each for its own issuer.
+  Rigse signing keys standing in for a staging portal, a production portal and the portal
+  fixture database's portal, generated once per test run, and helpers that sign test tokens with
+  them. `install!/0` configures report-server to trust each for its own issuer.
   """
 
   @keys %{
     staging: %{kid: "staging-test", iss: "https://learn.portal.staging.concord.org/"},
-    production: %{kid: "production-test", iss: "https://learn.concord.org/"}
+    production: %{kid: "production-test", iss: "https://learn.concord.org/"},
+    portal_fixture: %{kid: "portal-fixture-test", iss: "https://#{ReportServer.PortalFixture.server()}/"}
   }
 
   def install! do

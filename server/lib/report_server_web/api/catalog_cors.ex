@@ -1,10 +1,10 @@
 defmodule ReportServerWeb.Api.CatalogCors do
   @moduledoc """
-  CORS for the catalog's read routes, and only those. The anonymous answer lists official
-  packages and may go to any origin. An answer that depends on a bearer lists a researcher's
-  private packages, so it goes only to an origin in `:packages, :cors_origins`, or any page
-  could read that list with the researcher's token. A request with no `Origin` is not from a
-  browser and passes untouched.
+  CORS for the routes the Researcher Dashboard reads from the browser: the catalog's reads and a
+  class's recent logs. The catalog's anonymous answer lists official packages and may go to any
+  origin. An answer that depends on a bearer (a researcher's private packages, or a class's log
+  rows) goes only to an origin in `:packages, :cors_origins`, or any page could read it with the
+  researcher's token. A request with no `Origin` is not from a browser and passes untouched.
   """
   import Plug.Conn
 
@@ -37,7 +37,7 @@ defmodule ReportServerWeb.Api.CatalogCors do
             |> put_resp_header("access-control-allow-methods", "GET, POST")
 
           true ->
-            ErrorHelpers.render_error(conn, "FORBIDDEN", "This origin may not read the catalog with a bearer.")
+            ErrorHelpers.render_error(conn, "FORBIDDEN", "This origin may not read with a bearer.")
         end
     end
   end

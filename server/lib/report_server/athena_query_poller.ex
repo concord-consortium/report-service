@@ -6,8 +6,20 @@ defmodule ReportServer.AthenaQueryPoller do
 
   @poll_interval 5_000  # 5 seconds
 
-  def wait_for(query_id) do
-    task = Task.async(fn -> poll_query_status(query_id) end)
+  @doc """
+  Polls until the query finishes. `:timeout_ms` bounds the wait, answering `{:error, :timeout}`
+  instead of sleeping past it; `:interval_ms` sets the polling interval.
+  """
+  def wait_for(query_id, opts \\ []) do
+    interval = Keyword.get(opts, :interval_ms, @poll_interval)
+
+    deadline =
+      case Keyword.get(opts, :timeout_ms, :infinity) do
+        :infinity -> :infinity
+        ms -> System.monotonic_time(:millisecond) + ms
+      end
+
+    task = Task.async(fn -> poll_query_status(query_id, interval, deadline) end)
     Task.await(task, :infinity)
   end
 
@@ -16,7 +28,7 @@ defmodule ReportServer.AthenaQueryPoller do
   ## intercepts the query but not the poll loop, which then calls out to AWS.
   defp athena_db(), do: Application.get_env(:report_server, :athena_db, AthenaDB)
 
-  defp poll_query_status(query_id) do
+  defp poll_query_status(query_id, interval, deadline) do
     case athena_db().get_query_info(query_id) do
       {:ok, "succeeded", output_location, _reason} ->
         {:ok, output_location}
@@ -28,10 +40,14 @@ defmodule ReportServer.AthenaQueryPoller do
         {:error, "Query cancelled"}
       {:ok, _status, _output_location, _reason} ->
         ## Queued or Running
-        :timer.sleep(@poll_interval)  # Wait before polling again
-        poll_query_status(query_id)
+        if deadline != :infinity and System.monotonic_time(:millisecond) + interval > deadline do
+          {:error, :timeout}
+        else
+          :timer.sleep(interval)
+          poll_query_status(query_id, interval, deadline)
+        end
       {:error, reason} ->
-        IO.puts("Error fetching query status: #{inspect(reason)}")
+        Logger.error("Error fetching query status: #{inspect(reason)}")
         {:error, reason}
     end
   end

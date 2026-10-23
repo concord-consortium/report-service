@@ -1,7 +1,19 @@
 defmodule ReportServer.PortalDownloadLimiter do
+  @moduledoc """
+  A counting semaphore, started once per capped path under its own name: Portal CSV downloads
+  under this module's name, and recent-log reads as `ReportServer.RecentLogsLimiter`.
+  """
   use GenServer
 
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def child_spec(opts) do
+    name = Keyword.get(opts, :name, __MODULE__)
+    %{id: name, start: {__MODULE__, :start_link, [opts]}}
+  end
+
+  def start_link(opts) do
+    {name, opts} = Keyword.pop(opts, :name, __MODULE__)
+    GenServer.start_link(__MODULE__, opts, name: name)
+  end
 
   @doc "Returns :ok if a slot was acquired (auto-released when the caller dies), or :full."
   def try_acquire(server \\ __MODULE__), do: GenServer.call(server, :try_acquire)
