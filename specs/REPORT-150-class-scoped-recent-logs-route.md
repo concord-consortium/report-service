@@ -23,7 +23,7 @@ report-server gains one route, `GET /api/v1/classes/:class_id/recent-logs`, that
 **The window, the cursor and the seam with the nightly copy**
 
 - **R8.** `window_start` is 00:00 UTC of the day before the query's UTC date (a 24 to 48 hour window). The day before it is `nightly_through`, the last day left to the nightly copy; with REPORT-182, a `student-actions` run ending on it meets the route's rows at `timestamp = window_start` with no gap. A combining caller whose run named applications filters the route's rows by the raw `application` value.
-- **R9.** A response to a request with no `end` carries `next_cursor`: opaque, version 1 holding the class id and `since = query_started_at - 10 minutes`, never derived from the rows. A cursor read has no `until`. Responses overlap by design and the caller dedups by `id`. A cursor for another class, an unknown version or an undecodable one is 400; one whose `since` is before the current `window_start` is 410 `EXPIRED_CURSOR`.
+- **R9.** A response to a request with no `end` carries `next_cursor`: opaque, version 1 holding the class id and `since = query_started_at - 10 minutes`, never derived from the rows. A cursor read has no `until`. Responses overlap by design and the caller dedups by `id`. A cursor for another class, a malformed version prefix or an undecodable payload is 400. One whose `since` is before the current `window_start` is 410 `EXPIRED_CURSOR`, and so is one in a well-formed version (`v` and digits) other than `v1`, since that is a cursor the server issued in a format it no longer reads. Any later cursor version must keep that rule for the versions it retires, so a format change or a rollback costs a caller one re-read of the window, never a stored cursor that fails every pull.
 - **R10.** *(Withdrawn 2026-10-21: no count-only form, since its one consumer, RD-12's live log count, was dropped.)*
 
 **The response**
@@ -158,6 +158,12 @@ report-server gains one route, `GET /api/v1/classes/:class_id/recent-logs`, that
 ### Decide the credential by the `ccd_` prefix
 **Options considered**: try the API token, then the access token, for every bearer; branch on the prefix.
 **Decision**: the prefix, read from `Accounts.api_token_prefix/0`. Every API token starts with it and no JWT can (a JWT starts `eyJ`), so a bad token is checked once.
+
+---
+
+### A cursor in a retired format is 410, not 400
+**Context**: cc-data stores a cursor per dataset and class, and drops it only on a 410 (REPORT-152). If a format change answered 400 to the old version, every dataset holding one would fail every pull until someone refreshed it by hand, which a package on the runner VM never does.
+**Decision** (Doug, 2026-10-23): a well-formed version other than `v1` is 410 `EXPIRED_CURSOR`, with its own message, so cc-data's existing 410 handling covers a format change or a rollback; a malformed prefix, an undecodable payload or another class stays 400, so a real fault still surfaces.
 
 ---
 

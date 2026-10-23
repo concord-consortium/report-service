@@ -40,6 +40,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsController do
       {:error, :bad_bound} -> ErrorHelpers.bad_request(conn, "start and end must be epoch milliseconds at or after #{window.window_start} (00:00 UTC yesterday), with end after start; read earlier days with a Student Actions run.")
       {:error, :bad_cursor} -> ErrorHelpers.bad_request(conn, "The cursor is not valid for this class.")
       {:error, :expired_cursor} -> ErrorHelpers.render_error(conn, "EXPIRED_CURSOR", "The cursor is older than the recent window (#{window.window_start}); start again without one, and read the days before it with a Student Actions run.")
+      {:error, :retired_cursor} -> ErrorHelpers.render_error(conn, "EXPIRED_CURSOR", "The cursor is in a format this server no longer reads; start again without one.")
       {:error, :forbidden} -> ErrorHelpers.render_error(conn, "FORBIDDEN", "You may not read this class's logs.")
       {:error, :not_authenticated} -> ErrorHelpers.not_authenticated(conn)
       {:error, :portal_unavailable} -> ErrorHelpers.service_unavailable(conn, "The portal could not be asked; retry shortly.")

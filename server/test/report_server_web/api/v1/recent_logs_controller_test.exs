@@ -301,6 +301,13 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
       assert expired_body["message"] =~ "Student Actions"
     end
 
+    test "a cursor in a format the server no longer reads is 410, so the caller re-reads the window", %{conn: conn} do
+      body = conn |> researcher_conn() |> read(601, %{cursor: "v2.anything"}) |> json_response(410)
+
+      assert body["error"] == "EXPIRED_CURSOR"
+      assert body["message"] =~ "no longer reads"
+    end
+
     test "a class outside the grants and a class that does not exist are refused alike", %{conn: conn} do
       authed = researcher_conn(conn)
       outside = authed |> read(603) |> json_response(403)

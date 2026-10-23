@@ -11,6 +11,7 @@ defmodule ReportServer.RecentLogs do
   @columns ~w(id session application activity event event_value time parameters extras run_remote_endpoint timestamp user_id primary_user_id)
   @integer_columns ~w(time timestamp user_id primary_user_id)
   @cursor_version "v1"
+  @version_pattern ~r/\Av[1-9][0-9]{0,5}\z/
   # 13 digits (year 2286): DateTime can still render the padded `dt` hour, and Athena's bigint holds it
   @max_ms 9_999_999_999_999
   @bound_pattern ~r/\A[0-9]{1,#{length(Integer.digits(@max_ms))}}\z/
@@ -66,17 +67,27 @@ defmodule ReportServer.RecentLogs do
     end
   end
 
+  # A cursor in another well-formed version is one this server issued in a format it no longer
+  # reads (after a format change or a rollback), so it is retired, a 410 the caller recovers from by
+  # reading the window again; anything else it cannot read is a 400.
   defp cursor_bounds(cursor, class_id, window_start) when is_binary(cursor) do
-    with [@cursor_version, encoded] <- String.split(cursor, ".", parts: 2),
-         {:ok, json} <- Base.url_decode64(encoded, padding: false),
+    case String.split(cursor, ".", parts: 2) do
+      [@cursor_version, encoded] -> current_cursor_bounds(encoded, class_id, window_start)
+      [version, _] -> if Regex.match?(@version_pattern, version), do: {:error, :retired_cursor}, else: {:error, :bad_cursor}
+      _ -> {:error, :bad_cursor}
+    end
+  end
+
+  defp cursor_bounds(_, _, _), do: {:error, :bad_cursor}
+
+  defp current_cursor_bounds(encoded, class_id, window_start) do
+    with {:ok, json} <- Base.url_decode64(encoded, padding: false),
          {:ok, %{"c" => ^class_id, "s" => since}} when is_integer(since) and since <= @max_ms <- Jason.decode(json) do
       if since < window_start, do: {:error, :expired_cursor}, else: {:ok, %{since: since, until: nil}}
     else
       _ -> {:error, :bad_cursor}
     end
   end
-
-  defp cursor_bounds(_, _, _), do: {:error, :bad_cursor}
 
   @doc "The `dt` range for `since`..`until`: an hour of padding on each side (conventions 1 and 3)."
   def dt_predicate(%{since: since, until: until}) do

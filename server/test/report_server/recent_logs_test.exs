@@ -117,17 +117,32 @@ defmodule ReportServer.RecentLogsTest do
                {:ok, %{since: @window_start + 100_000, until: nil}}
     end
 
-    test "refuses a cursor for another class, version or shape" do
+    test "refuses a cursor for another class, with a malformed version prefix, or with a bad payload" do
       encode = fn payload -> "v1." <> Base.url_encode64(Jason.encode!(payload), padding: false) end
 
       for cursor <- [
             RecentLogs.next_cursor(602, @window_start + 700_000, 600_000),
-            "v2." <> Base.url_encode64(Jason.encode!(%{"c" => 601, "s" => @window_start}), padding: false),
             "v1.%%%",
+            "v1",
+            "x.abc",
+            "v.abc",
+            "V2.abc",
+            "v02.abc",
             encode.(%{"c" => 601, "s" => "#{@window_start}"}),
             encode.(%{"c" => 601, "s" => 10_000_000_000_000})
           ] do
         assert RecentLogs.bounds(%{"cursor" => cursor}, 601, window()) == {:error, :bad_cursor}, cursor
+      end
+    end
+
+    test "a cursor in another well-formed version is retired, whatever its payload" do
+      for cursor <- [
+            "v2." <> Base.url_encode64(Jason.encode!(%{"c" => 601, "s" => @window_start}), padding: false),
+            "v2.%%%",
+            "v10.",
+            "v9.abc"
+          ] do
+        assert RecentLogs.bounds(%{"cursor" => cursor}, 601, window()) == {:error, :retired_cursor}, cursor
       end
     end
 
