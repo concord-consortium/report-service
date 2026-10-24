@@ -14,7 +14,6 @@ defmodule ReportServer.Packages.PackageVersion do
     field :title, :string
     field :description, :string
     field :urls, :map
-    field :clue_prepull, :boolean, default: false
     field :expected_duration_seconds, :integer
 
     belongs_to :package, Package
@@ -22,7 +21,7 @@ defmodule ReportServer.Packages.PackageVersion do
   end
 
   @fields [:package_id, :version, :checksum, :s3_key, :published_at, :published_by, :title,
-           :description, :urls, :clue_prepull, :expected_duration_seconds]
+           :description, :urls, :expected_duration_seconds]
   @required @fields -- [:description]
 
   @doc false

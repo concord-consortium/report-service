@@ -21,7 +21,6 @@ defmodule ReportServer.Packages.Manifest do
           title: String.t(),
           description: String.t() | nil,
           urls: %{String.t() => [String.t()]},
-          clue_prepull: boolean(),
           expected_duration_seconds: pos_integer()
         }
 
@@ -37,7 +36,6 @@ defmodule ReportServer.Packages.Manifest do
          {:ok, title} <- title(manifest["title"]),
          {:ok, description} <- description(manifest["description"]),
          {:ok, urls} <- urls(manifest["urls"]),
-         {:ok, clue_prepull} <- clue_prepull(manifest["clue_prepull"]),
          :ok <- entrypoint(manifest["entrypoint"], entries),
          {:ok, duration} <- duration(manifest["expected_duration_seconds"]) do
       {:ok,
@@ -47,7 +45,6 @@ defmodule ReportServer.Packages.Manifest do
          title: title,
          description: description,
          urls: urls,
-         clue_prepull: clue_prepull,
          expected_duration_seconds: duration
        }}
     end
@@ -96,10 +93,6 @@ defmodule ReportServer.Packages.Manifest do
       {:error, message} -> invalid(message)
     end
   end
-
-  defp clue_prepull(nil), do: {:ok, false}
-  defp clue_prepull(value) when is_boolean(value), do: {:ok, value}
-  defp clue_prepull(_), do: invalid("clue_prepull must be a boolean")
 
   defp entrypoint(entrypoint, entries) when is_binary(entrypoint) do
     cond do

@@ -12,7 +12,6 @@ defmodule ReportServer.PackagesFixtures do
         "version" => "1.0.0",
         "description" => "Counts things.",
         "urls" => %{"any" => ["*question-interactives/*"]},
-        "clue_prepull" => false,
         "entrypoint" => "run.py",
         "expected_duration_seconds" => 60
       },

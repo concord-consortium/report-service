@@ -29,7 +29,7 @@ CREATE TABLE admin_cohort_items (id INT PRIMARY KEY, admin_cohort_id INT, item_t
 DROP TABLE IF EXISTS admin_projects;
 CREATE TABLE admin_projects (id INT PRIMARY KEY, name VARCHAR(255));
 DROP TABLE IF EXISTS portal_clazzes;
-CREATE TABLE portal_clazzes (id INT PRIMARY KEY, name VARCHAR(255), class_word VARCHAR(255));
+CREATE TABLE portal_clazzes (id INT PRIMARY KEY, name VARCHAR(255), class_word VARCHAR(255), class_hash VARCHAR(48) NULL);
 DROP TABLE IF EXISTS portal_students;
 CREATE TABLE portal_students (id INT PRIMARY KEY, user_id INT);
 DROP TABLE IF EXISTS portal_permission_forms;
@@ -116,10 +116,13 @@ INSERT INTO taggings VALUES (1,1,'subject_areas','ExternalActivity',801);
 -- for each. Two rather than one, so a page of size one ends on a NULL cursor with another NULL
 -- still to visit, which is the only shape that catches an ordering that is not null safe.
 -- Class 603 has no teacher, so no project reaches it.
-INSERT INTO portal_clazzes VALUES
+INSERT INTO portal_clazzes (id, name, class_word) VALUES
   (2,'Adams','a'),(3,'No Word',NULL),(4,'No Word Two',NULL),(5,'Lincoln High','sec'),
   (9,'Lincoln High','sec'),(40,'Lincoln High','sec'),(77,'Zed','z'),
   (601,'Class 601','c'),(602,'Class 602','c'),(603,'Class 603','c');
+-- Class hashes: 601 set, and 602 NULL and 603 empty, the two shapes ClassHashes.fetch leaves out.
+UPDATE portal_clazzes SET class_hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' WHERE id = 601;
+UPDATE portal_clazzes SET class_hash = '' WHERE id = 603;
 INSERT INTO portal_teacher_clazzes VALUES
   (10,2,31),(11,3,31),(12,5,31),(13,9,31),(14,40,31),(15,77,31),(16,4,31);
 INSERT INTO admin_project_materials VALUES (1,900,'ExternalActivity',801),(2,900,'ExternalActivity',803);

@@ -6,11 +6,15 @@ defmodule ReportServer.Exports.ExportScratch do
   alias ReportServer.Accounts.User
   alias ReportServer.Reports.ReportRun
 
+  @bulk_data_types ["answers_bulk", "history_bulk"]
+  @clue_data_types ["clue_documents_bulk", "clue_history_bulk", "clue_content_bulk"]
+
   schema "export_scratch" do
     field :scratch_id, :string
     field :data_type, :string
 
     # array of per-learner objects: %{"remote_endpoint" => ..., "source" => ..., "lti_tuple" => %{...} | nil}
+    # for the bulk data types, or CLUE scope owners: %{"class_hash", "uid", "portal_class_id", "offerings"}
     field :endpoint_set, ReportServer.Types.EctoJsonArray
     field :expires_at, :utc_datetime
 
@@ -19,6 +23,8 @@ defmodule ReportServer.Exports.ExportScratch do
 
     timestamps(type: :utc_datetime)
   end
+
+  def clue_data_types, do: @clue_data_types
 
   @doc false
   def changeset(scratch, attrs) do
@@ -32,7 +38,7 @@ defmodule ReportServer.Exports.ExportScratch do
       :user_id,
       :report_run_id
     ])
-    |> validate_inclusion(:data_type, ["answers_bulk", "history_bulk"])
+    |> validate_inclusion(:data_type, @bulk_data_types ++ @clue_data_types)
     |> unique_constraint(:scratch_id)
   end
 end

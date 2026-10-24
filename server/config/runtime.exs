@@ -98,6 +98,37 @@ if package_buckets != %{} do
     ]
 end
 
+clue_export_urls =
+  case System.get_env("CLUE_EXPORT_URLS") do
+    blank when blank in [nil, ""] ->
+      %{}
+
+    json ->
+      case Jason.decode(json) do
+        {:ok, urls} when is_map(urls) ->
+          https_url? = fn url ->
+            is_binary(url) and match?(%URI{scheme: "https", host: host} when is_binary(host) and host != "", URI.parse(url))
+          end
+
+          unless Enum.all?(urls, fn {portal, url} -> portal != "" and https_url?.(url) end) do
+            raise "CLUE_EXPORT_URLS must map each portal server to an https function URL"
+          end
+
+          urls
+
+        _ ->
+          raise "CLUE_EXPORT_URLS must be a JSON object of portal server to function URL"
+      end
+  end
+
+clue_export_token = System.get_env("CLUE_EXPORT_TOKEN")
+
+if clue_export_urls != %{} and clue_export_token in [nil, ""] do
+  raise "CLUE_EXPORT_URLS is set, so CLUE_EXPORT_TOKEN is required"
+end
+
+config :report_server, :clue_export, urls: clue_export_urls, token: clue_export_token
+
 config :report_server, :packages,
   cors_origins: (System.get_env("PACKAGES_CORS_ORIGINS") || "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1),
   unreviewed_runs: System.get_env("PACKAGES_UNREVIEWED_RUNS") == "true"

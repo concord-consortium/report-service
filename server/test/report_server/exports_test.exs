@@ -40,6 +40,27 @@ defmodule ReportServer.ExportsTest do
     scratch
   end
 
+  describe "ExportScratch.changeset/2" do
+    test "accepts the bulk and CLUE data types and refuses any other" do
+      user = user_fixture()
+      report_run = report_run_fixture(user)
+
+      owner = %{"class_hash" => String.duplicate("a", 48), "uid" => "101",
+                "portal_class_id" => 601, "offerings" => [701]}
+
+      for data_type <- ["answers_bulk", "history_bulk" | ExportScratch.clue_data_types()] do
+        attrs = scratch_attrs(user, report_run, %{data_type: data_type, endpoint_set: [owner]})
+        assert %{valid?: true} = ExportScratch.changeset(%ExportScratch{}, attrs)
+      end
+
+      assert ExportScratch.clue_data_types() == ["clue_documents_bulk", "clue_history_bulk", "clue_content_bulk"]
+
+      attrs = scratch_attrs(user, report_run, %{data_type: "clue_bulk"})
+      assert %{valid?: false} = changeset = ExportScratch.changeset(%ExportScratch{}, attrs)
+      assert "is invalid" in errors_on(changeset).data_type
+    end
+  end
+
   describe "mint_scratch_id/0" do
     test "returns a 43-char url-safe base64 id, unique across calls" do
       id = Exports.mint_scratch_id()
