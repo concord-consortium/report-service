@@ -42,8 +42,8 @@ defmodule ReportServer.Clue.ScopeTest do
       owners = learners |> Scope.student_owners(%{601 => @hash_a}) |> Scope.order()
 
       assert owners == [
-               %{"class_hash" => @hash_a, "uid" => "101", "kind" => "student", "portal_class_id" => 601, "offerings" => [701, 703]},
-               %{"class_hash" => @hash_a, "uid" => "102", "kind" => "student", "portal_class_id" => 601, "offerings" => [702]}
+               %{"class_hash" => @hash_a, "uid" => "101", "portal_class_id" => 601, "offerings" => [701, 703]},
+               %{"class_hash" => @hash_a, "uid" => "102", "portal_class_id" => 601, "offerings" => [702]}
              ]
     end
 
@@ -82,8 +82,8 @@ defmodule ReportServer.Clue.ScopeTest do
       class_owners = students |> Scope.class_owners() |> Scope.order()
 
       assert class_owners == [
-               %{"class_hash" => @hash_a, "uid" => "class_" <> @hash_a, "kind" => "class", "portal_class_id" => 601, "offerings" => [701, 703]},
-               %{"class_hash" => @hash_b, "uid" => "class_" <> @hash_b, "kind" => "class", "portal_class_id" => 602, "offerings" => [801]}
+               %{"class_hash" => @hash_a, "uid" => "class_" <> @hash_a, "portal_class_id" => 601, "offerings" => [701, 703]},
+               %{"class_hash" => @hash_b, "uid" => "class_" <> @hash_b, "portal_class_id" => 602, "offerings" => [801]}
              ]
 
       assert Scope.classes(class_owners) == [
@@ -122,8 +122,8 @@ defmodule ReportServer.Clue.ScopeTest do
       ]
 
       assert Scope.group_owners(groups, class_owners) == [
-               %{"class_hash" => @hash_a, "uid" => "group_703_2", "kind" => "group", "portal_class_id" => 601, "offerings" => [703]},
-               %{"class_hash" => @hash_b, "uid" => "group_801_1", "kind" => "group", "portal_class_id" => 602, "offerings" => [801]}
+               %{"class_hash" => @hash_a, "uid" => "group_703_2", "portal_class_id" => 601, "offerings" => [703]},
+               %{"class_hash" => @hash_b, "uid" => "group_801_1", "portal_class_id" => 602, "offerings" => [801]}
              ]
     end
   end

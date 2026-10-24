@@ -14,7 +14,7 @@ defmodule ReportServer.Exports.ExportScratch do
     field :data_type, :string
 
     # array of per-learner objects: %{"remote_endpoint" => ..., "source" => ..., "lti_tuple" => %{...} | nil}
-    # for the bulk data types, or CLUE scope owners: %{"class_hash", "uid", "kind", "portal_class_id", "offerings"}
+    # for the bulk data types, or CLUE scope owners: %{"class_hash", "uid", "portal_class_id", "offerings"}
     field :endpoint_set, ReportServer.Types.EctoJsonArray
     field :expires_at, :utc_datetime
 

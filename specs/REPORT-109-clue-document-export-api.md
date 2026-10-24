@@ -19,12 +19,12 @@ Three new report-server endpoints let a researcher download, for a report run th
 
 ### Scope
 
-- **R5.** On the first page, the export derives the run's learners as D1 says, then reads `id, class_hash` from `portal_clazzes` for the learners' distinct `class_id`s, in the caller's portal database. A learner whose class has no class hash is left out. The scope owners are frozen in the scratch row, ordered by `class_hash` then owner id, each with its `portal_class_id`, its kind and its offering set:
+- **R5.** On the first page, the export derives the run's learners as D1 says, then reads `id, class_hash` from `portal_clazzes` for the learners' distinct `class_id`s, in the caller's portal database. A learner whose class has no class hash is left out. The scope owners are frozen in the scratch row, ordered by `class_hash` then owner id, each with its `portal_class_id` and its offering set. An owner's type is its uid's form, which the function reads as CLUE does (a numeric uid is a user, `group_<offeringId>_<groupId>` a group, `class_<classHash>` the class owner, anything else a 400), so the request carries no type:
   - **Student owners:** the distinct `(class_hash, user_id)` pairs, each with the set of the run's `offering_id`s for that learner.
   - **Group owners:** every `group_<offeringId>_<groupId>` owner under RTDB `classes/{class_hash}/users` whose `offeringId` is one of the run's offerings in that class, listed by the function's `owners` operation (R17) before the scratch row is written.
   - **The class owner:** `class_<class_hash>` for each class with at least one student owner (R6), frozen without an existence check; an absent owner walks empty.
 - **R6.** The CLUE route does not use `EndpointSet`'s source rule, because CLUE documents are keyed by owner and class, not by `run_remote_endpoint`. Instead a learner becomes a student owner only when its `runnable_url` host is one of the applications that write CLUE documents, `collaborative-learning.concord.org` (any path, branch builds included) and `dataflow-app.concord.org` (the standalone Dataflow 3.0 app), checked by a new `ReportServer.Clue.writes_clue_documents?/1`: an `http` or `https` URL whose host, compared case-insensitively, is on the list (so a lookalike such as `collaborative-learning.concord.org.example.com` fails). All 32 of the portal's Dataflow curriculum assignments in Scott's cohort pass (5,509 student runs); the `dataflow-app.concord.org` host comes from the inventory, since no portal URL for it was at hand, and R24's superset check is what confirms it. `is_clue_url?/1` is left as is, since widening it would send Dataflow 3.0 activities into the CLUE answer report's text-tile query (`resource_data.ex:78`). So a run with no CLUE assignment exports nothing rather than its students' offering-less CLUE work. In Scott's corpus, 74 of the 90 owners of offering-less documents have no offering-scoped document and hold 865 of the 890; they are Dataflow 3.0 students (`clue-data-inventory.md:405-414`), which is why that host is on the list.
-- **R7.** An owner's candidate documents are those it holds in its class: Firestore metadata with `context_id == class_hash` and `uid == owner`, or RTDB metadata under `classes/{class_hash}/users/{owner}/documentMetadata`. The candidate set is the union of the two stores. A candidate is in scope when it has no offering, or when its offering is in the owner's offering set: for a student owner the run's offerings for that learner, for a group owner its own offering, for the class owner the run's offerings in that class. A document's offering is RTDB `offeringId` (stamped from the launching user's offering when a problem, planning or publication document is created, collaborative-learning `5b2a13bfa` `src/lib/db.ts:809` and `:845`), then Firestore `offeringId`, then for a group document the offering in its owner id (RTDB group metadata carries none on staging), taking the first that is present. CLUE types `offeringId` as a string that is `""` for a launch outside a portal (`shared/shared.ts:182`), so `""`, `null` and a missing field all count as absent and fall through; a document with no present offering has no offering. A present value that is not an integer puts the document out of every scope, without trying the next source. On staging the two agree on all 24 documents of class `7be899cf…` (probed); the union costs nothing, since the documents route reads both stores anyway, and guards against a document present in only one store, which nothing has ruled out on production. Teacher documents are not in scope (no teacher is a scope owner).
+- **R7.** An owner's candidate documents are those it holds in its class: Firestore metadata with `context_id == class_hash` and `uid == owner`, or RTDB metadata under `classes/{class_hash}/users/{owner}/documentMetadata`. The candidate set is the union of the two stores. A candidate is in scope when it has no offering, or when its offering is in the owner's offering set: for a student owner the run's offerings for that learner, for a group owner its own offering, for the class owner the run's offerings in that class. A document's offering is RTDB `offeringId` (stamped from the launching user's offering when a problem, planning or publication document is created, collaborative-learning `5b2a13bfa` `src/lib/db.ts:809` and `:845`), then Firestore `offeringId`, taking the first that is present. The owner id is never taken apart for an offering, per CLUE's document-axes rule, so a group document whose metadata carries no offering in either store (RTDB group metadata carries none on staging) has no offering and is kept; its group owner's documents all belong to that group's one offering anyway. CLUE types `offeringId` as a string that is `""` for a launch outside a portal (`shared/shared.ts:182`), so `""`, `null` and a missing field all count as absent and fall through; a document with no present offering has no offering. A present value that is not an integer puts the document out of every scope, without trying the next source. On staging the two agree on all 24 documents of class `7be899cf…` (probed); the union costs nothing, since the documents route reads both stores anyway, and guards against a document present in only one store, which nothing has ruled out on production. Teacher documents are not in scope (no teacher is a scope owner).
 - **R8.** An empty scope (no learners, or no learner with a class hash) answers a terminal page `{items: [], next_page_token: null, total_endpoints: 0}` and still writes its intent row, as the bulk endpoints do.
 
 ### Paging
@@ -45,9 +45,9 @@ Three new report-server endpoints let a researcher download, for a report run th
   |---|---|
   | `doc_id` | Firestore document id, which equals the RTDB key |
   | `uid`, `context_id`, `portal_class_id` | the scope owner (`portal_class_id` from R5) |
-  | `owner_kind` | `student`, `group` or `class` (R5) |
+  | `owner_type` | `user`, `group` or `class`, read from the owner's uid (R5) |
   | `type`, `visibility`, `title`, `unit`, `investigation`, `problem`, `group_id`, `network` | Firestore metadata, falling back to RTDB metadata where only RTDB has the field |
-  | `offering_id` | the document's offering as R7 determines it (RTDB, then Firestore, then a group's owner id), as an integer, else `null` |
+  | `offering_id` | the document's offering as R7 determines it (RTDB, then Firestore), as an integer, else `null` |
   | `tools` | Firestore `tools` as a list, `null` when the field is absent (absent is not empty) |
   | `created_at` | metadata `createdAt` (epoch ms) |
   | `metadata_sources` | which stores held metadata: `["firestore"]`, `["rtdb"]` or both |
@@ -250,7 +250,7 @@ Three new report-server endpoints let a researcher download, for a report run th
 - B) Add synthetic owners: each `group_<offeringId>_*` in an in-scope class whose offering is one of the run's offerings, and `class_<classHash>` for each in-scope class. Rows are marked with an `owner_kind`.
 - C) B for groups only.
 
-**Decision**: B (Doug, 2026-10-15). In R5, R7 and R13's `owner_kind`.
+**Decision**: B (Doug, 2026-10-15). In R5, R7 and R13's `owner_type`.
 
 ---
 
@@ -312,6 +312,16 @@ R23 asked for "function tests against the emulator" of the bearer and request-sh
 ---
 
 ### Implementation decisions
+
+### The owner's type, and a group document's offering, after CLUE-742's review
+**Context**: Scott Cytacki's review of CLUE-742 (collaborative-learning#3052, approved at `752fc4561`) aligned the function with CLUE's document-axes docs, where `kind` already names a document's preset and a uid is never taken apart.
+**Options considered**:
+- A) Keep report-server's owner `kind` (`student` / `group` / `class`), the rows' `owner_kind`, and a group document's offering from its owner id.
+- B) Read the owner's type off the uid, name the rows' field `owner_type` with values `user` / `group` / `class`, and take a group document's offering from metadata only.
+
+**Decision**: B (Doug, 2026-10-24). Owners sent to the function carry no type (one still sent is ignored), `owner_type`'s `user` also covers teachers for REPORT-194, and a group document with no `offeringId` in either store is kept with `offering_id: null`. In R5, R7 and R13.
+
+---
 
 ### R24's superset criterion under offering scoping
 **Context**: requirements R24 leaves to this spec whether to require a run that selects every offering Scott's corpus covers, or to restate the criterion.

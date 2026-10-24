@@ -161,9 +161,9 @@ Three routes page a report run's CLUE documents out of CLUE's own Firebase proje
 |---|---|
 | `doc_id` | the document id (Firestore's, which equals the RTDB key) |
 | `uid`, `context_id`, `portal_class_id` | the owner, the class hash and the portal class id |
-| `owner_kind` | `student`, `group` or `class` |
+| `owner_type` | `user`, `group` or `class`, read from the owner's uid |
 | `type`, `visibility`, `title`, `unit`, `investigation`, `problem`, `group_id`, `network` | Firestore metadata, falling back to RTDB metadata |
-| `offering_id` | RTDB `offeringId`, then Firestore's, then a group's owner id, as an integer; an empty `offeringId` counts as none; else `null` |
+| `offering_id` | RTDB `offeringId`, then Firestore's, as an integer; an empty `offeringId` counts as none; else `null`, as for a group document whose metadata carries no offering |
 | `tools` | Firestore `tools`, `null` when absent |
 | `created_at` | metadata `createdAt` (epoch ms) |
 | `metadata_sources` | which stores held metadata: `["firestore"]`, `["rtdb"]` or both |

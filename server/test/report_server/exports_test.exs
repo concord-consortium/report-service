@@ -45,7 +45,7 @@ defmodule ReportServer.ExportsTest do
       user = user_fixture()
       report_run = report_run_fixture(user)
 
-      owner = %{"class_hash" => String.duplicate("a", 48), "uid" => "101", "kind" => "student",
+      owner = %{"class_hash" => String.duplicate("a", 48), "uid" => "101",
                 "portal_class_id" => 601, "offerings" => [701]}
 
       for data_type <- ["answers_bulk", "history_bulk" | ExportScratch.clue_data_types()] do

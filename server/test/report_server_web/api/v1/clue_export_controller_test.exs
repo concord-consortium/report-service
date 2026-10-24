@@ -16,8 +16,8 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
   @hash String.duplicate("a", 48)
   @hash_b String.duplicate("b", 48)
   @clue_url "https://collaborative-learning.concord.org/?unit=x"
-  @student %{"class_hash" => @hash, "uid" => "101", "kind" => "student", "portal_class_id" => 601, "offerings" => [701]}
-  @class %{"class_hash" => @hash, "uid" => "class_" <> @hash, "kind" => "class", "portal_class_id" => 601, "offerings" => [701]}
+  @student %{"class_hash" => @hash, "uid" => "101", "portal_class_id" => 601, "offerings" => [701]}
+  @class %{"class_hash" => @hash, "uid" => "class_" <> @hash, "portal_class_id" => 601, "offerings" => [701]}
 
   setup do
     on_exit(fn ->
@@ -321,7 +321,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
       [scratch] = Repo.all(ExportScratch)
       assert length(scratch.endpoint_set) == 251 * 2 + 1
 
-      assert %{"kind" => "group", "portal_class_id" => 251, "offerings" => [1251]} =
+      assert %{"portal_class_id" => 251, "offerings" => [1251]} =
                Enum.find(scratch.endpoint_set, &(&1["uid"] == "group_1251_1"))
     end
 
@@ -365,7 +365,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
       assert scratch.endpoint_set == [
                %{@student | "offerings" => [701, 703]},
                %{@class | "offerings" => [701, 703]},
-               %{"class_hash" => @hash, "uid" => "group_703_2", "kind" => "group", "portal_class_id" => 601, "offerings" => [703]}
+               %{"class_hash" => @hash, "uid" => "group_703_2", "portal_class_id" => 601, "offerings" => [703]}
              ]
     end
 
