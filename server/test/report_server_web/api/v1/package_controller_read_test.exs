@@ -5,7 +5,6 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
   import ReportServerWeb.PortalTokenFixture
 
   alias ReportServer.{AccountsFixtures, PackagesMemoryStore, PackagesPortalStub, Repo}
-  alias ReportServer.Packages.Package
 
   @server "learn.portal.staging.concord.org"
   @db_env "LEARN_PORTAL_STAGING_CONCORD_ORG_DB"
@@ -91,7 +90,6 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
                  "checksum" => "sha256:" <> _,
                  "title" => "Counts",
                  "urls" => %{"all" => [], "any" => ["*question-interactives/*"], "none" => []},
-                 "clue_prepull" => false,
                  "expected_duration_seconds" => 60,
                  "published_at" => _
                }
@@ -225,7 +223,6 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
                "version" => "1.0.0",
                "checksum" => checksum,
                "expected_duration_seconds" => 60,
-               "clue_prepull" => false,
                "archived" => false,
                "runnable" => true,
                "reason" => nil
@@ -259,13 +256,20 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
       assert %{"runnable" => true, "reason" => nil} = json_response(resolve(build_conn(), p.identity, "1.0.0"), 200)
     end
 
-    test "a non-current version resolves with its own clue_prepull", %{conn: conn, other: other} = context do
-      %{official: %{package: p}} = catalog(context)
-      publish_fixture(other, %{"name" => "official", "version" => "2.0.0", "clue_prepull" => true})
-      assert Repo.get!(Package, p.id).current_version == "1.0.0"
+    test "a version whose manifest carries clue_prepull lists and resolves without it", %{conn: conn, other: other} = context do
+      catalog(context)
 
-      assert %{"version" => "2.0.0", "clue_prepull" => true} = json_response(resolve(conn, p.identity, "2.0.0"), 200)
-      assert %{"version" => "1.0.0", "clue_prepull" => false} = json_response(resolve(build_conn(), p.identity, "1.0.0"), 200)
+      %{package: p} =
+        publish_fixture(other, %{"name" => "carrier", "clue_prepull" => true})
+        |> put_state(official: true, visibility: "public")
+
+      resolved = json_response(resolve(conn, p.identity, "1.0.0"), 200)
+      assert resolved["version"] == "1.0.0"
+      refute Map.has_key?(resolved, "clue_prepull")
+
+      packages = build_conn() |> get("/api/v1/packages?portal=#{@server}") |> json_response(200) |> Map.fetch!("packages")
+      assert carrier = Enum.find(packages, &(&1["name"] == "carrier"))
+      refute Map.has_key?(carrier["current_version"], "clue_prepull")
     end
 
     test "needs a launch token, an identity and a version", %{conn: conn} do

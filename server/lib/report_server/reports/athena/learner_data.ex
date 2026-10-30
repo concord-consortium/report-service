@@ -173,6 +173,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     |> Enum.reject(&is_nil/1)
   end
 
+  defp split_id_list(nil), do: []
+
   defp split_id_list(id_list) do
     id_list
       |> String.split(",")

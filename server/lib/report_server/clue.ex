@@ -29,6 +29,21 @@ defmodule ReportServer.Clue do
     String.contains?(url, "collaborative-learning.concord.org")
   end
 
+  @clue_document_hosts ["collaborative-learning.concord.org", "dataflow-app.concord.org"]
+
+  ## An exact host match, unlike is_clue_url?/1's substring match, so a URL naming CLUE only in its query fails.
+  def writes_clue_documents?(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) ->
+        String.downcase(host) in @clue_document_hosts
+
+      _ ->
+        false
+    end
+  end
+
+  def writes_clue_documents?(_), do: false
+
   ## Querying is only meaningful once some learner can be matched to a log row.
   ## With none, the endpoint and secure-key lists interpolate as an empty `IN ()`,
   ## which Athena rejects as a syntax error rather than returning no rows, and the

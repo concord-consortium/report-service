@@ -4,6 +4,7 @@ defmodule ReportServer.AuditLog.DataAccessLogEntry do
   import Ecto.Changeset
 
   alias ReportServer.Accounts.User
+  alias ReportServer.Exports.ExportScratch
   alias ReportServer.Reports.ReportRun
 
   schema "data_access_log" do
@@ -15,9 +16,11 @@ defmodule ReportServer.AuditLog.DataAccessLogEntry do
     field :job_id, :integer
     field :cursor, :string
 
-    # custom type (top-level JSON array of remote_endpoint strings); pathless JSON_CONTAINS filter unchanged
+    # top-level JSON array of remote_endpoint strings, or clue:<class_hash>:<uid> owner keys for the CLUE
+    # data types; the audit page filters it with a pathless JSON_CONTAINS
     field :endpoint_set, ReportServer.Types.EctoJsonArray
     field :export_id, :string
+    field :item_count, :integer
 
     belongs_to :user, User, foreign_key: :user_id
     belongs_to :report_run, ReportRun, foreign_key: :report_run_id
@@ -39,7 +42,8 @@ defmodule ReportServer.AuditLog.DataAccessLogEntry do
       :job_id,
       :cursor,
       :endpoint_set,
-      :export_id
+      :export_id,
+      :item_count
     ])
     |> validate_required([:event, :source, :data_type, :user_id])
     |> validate_run_unless_runless_event()
@@ -60,6 +64,7 @@ defmodule ReportServer.AuditLog.DataAccessLogEntry do
       "export_scoped",
       "attachment",
       "recent_logs"
+      | ExportScratch.clue_data_types()
     ])
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:report_run_id)

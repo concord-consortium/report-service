@@ -96,6 +96,8 @@ export PACKAGES_AWS_ACCESS_KEY_ID=   # required whenever PACKAGE_BUCKETS names a
 export PACKAGES_AWS_SECRET_ACCESS_KEY=
 export PACKAGES_CORS_ORIGINS=        # comma-separated origins that may read the catalog or a class's recent logs with an access token
 export PACKAGES_UNREVIEWED_RUNS=     # "true" lets a non-official package run; leave unset (see below)
+export CLUE_EXPORT_URLS='{}'         # portal server to CLUE's clueExport function URL (see "CLUE document export")
+export CLUE_EXPORT_TOKEN=            # the bearer clueExport checks; required whenever CLUE_EXPORT_URLS names a portal
 # export RECENT_LOGS_MAX_CONCURRENT=4  # recent-log reads one server runs at once; leave unset for 4 (an empty value fails to start)
 
 # Optional: disable the stats server for development
@@ -155,6 +157,60 @@ bin/report_server eval 'ReportServer.Release.revoke_package_publisher("learn.con
 **Errors.** 400 for a malformed class id or cursor, a `start` or `end` that is malformed or before `window_start` or an `end` not after `start`, or a cursor combined with `start` or `end`; 401 without a valid credential; 403 for a class outside the caller's grants, an access token whose context does not name this class, or a browser request with a bearer from an origin not in `PACKAGES_CORS_ORIGINS`; 410 for an expired cursor; 422 for a class whose learners make the query longer than Athena's 262,144-byte limit (about 2,100 learners, each student once per assignment); 500 when the audit row cannot be written; 503 when the portal cannot be asked, Athena fails or does not finish within 60 seconds, or `RECENT_LOGS_MAX_CONCURRENT` reads are already running.
 
 **Audit.** Before the first row of an answer is sent, report-server writes a `data_access_log` row (`recent_logs_read`, data type `recent_logs`) with the caller, the class, the read's lower bound and the learners' endpoints, so the audit page's Student filter (a remote endpoint) finds the read; if that write fails the answer is 500 with no rows. The migration that lets this row have no report run cannot be rolled back once such a row exists, so a rollback reverts the image only.
+
+### CLUE document export
+
+Three routes page a report run's CLUE documents out of CLUE's own Firebase project, with the same API token, ownership rule and page envelope as `/answers` and `/history`:
+
+- `GET /api/v1/reports/:id/clue/documents`: one row per document, its metadata.
+- `GET /api/v1/reports/:id/clue/history`: one row per history entry of each document.
+- `GET /api/v1/reports/:id/clue/content`: one row per document, its current content.
+
+`/clue/history` is CLUE **document** history, the edit entries CLUE keeps for each document. It is not `/history`, which is LARA interactive-state history from report-service's own Firestore.
+
+**Scope.** The run's learners are derived as `/answers` derives them, and only learners on an application that writes CLUE documents count: `collaborative-learning.concord.org` (branch builds included) or the Dataflow 3.0 app at `dataflow-app.concord.org`. Each student with such a learner in a class that has a class hash is one student owner in that class. A student owner's document is in scope when its offering is one of the run's offerings for that student, or when it has no offering, as personal documents, learning logs and their publications do; an offering that is present but not an integer puts the document out of scope. Each class with a student owner also has a class owner, narrowed the same way by the class's run offerings, and one owner per group of the run's offerings. Teacher documents are not exported.
+
+**Paging.** The owners are frozen on the first page, so a later change to the run's learners does not move an export already under way. The envelope is `{items, next_page_token, total_endpoints}`, where `total_endpoints` counts the scope owners above. Pass `limit` (at most 500) and the previous `page_token`, and stop when `next_page_token` is `null`; an empty page with a token is normal. A token expires after an hour idle (410 `EXPIRED_CURSOR`), and a token from one CLUE route is 404 on another. Paging is at-least-once: a retried page may repeat items, so de-duplicate on `doc_id`, or on `(doc_id, entry_id)` for history. No item is ever split across pages.
+
+`/clue/documents` rows:
+
+| Field | Meaning |
+|---|---|
+| `doc_id` | the document id (Firestore's, which equals the RTDB key) |
+| `uid`, `context_id`, `portal_class_id` | the owner, the class hash and the portal class id |
+| `owner_type` | `user`, `group` or `class`, read from the owner's uid |
+| `type`, `visibility`, `title`, `unit`, `investigation`, `problem`, `group_id`, `network` | Firestore metadata, falling back to RTDB metadata |
+| `offering_id` | RTDB `offeringId`, then Firestore's, as an integer; an empty `offeringId` counts as none; else `null`, as for a group document whose metadata carries no offering |
+| `tools` | Firestore `tools`, `null` when absent |
+| `created_at` | metadata `createdAt` (epoch ms) |
+| `metadata_sources` | which stores held metadata: `["firestore"]`, `["rtdb"]` or both |
+| `firestore_metadata`, `rtdb_metadata` | the raw metadata, `null` when that store has none |
+
+`/clue/history` rows:
+
+| Field | Meaning |
+|---|---|
+| `doc_id`, `entry_id` | the document and the history entry |
+| `idx` | the stored `index` when it is a safe integer (from -(2^53 - 1) to 2^53 - 1), else `null` |
+| `prev_entry_id`, `server_created` | the stored `previousEntryId` and `created` (ISO 8601 UTC) |
+| `created` | the entry's own `created` (the client clock), ISO 8601 UTC, `null` if it does not parse or falls outside years 1 to 9999 |
+| `model`, `action_raw`, `undoable`, `state` | the entry's `model`, `action`, `undoable` and `state` |
+| `n_records` | the number of the entry's `records` |
+| `is_revert`, `entry_uid` | the entry's `isRevert` (`false` when absent) and `uid` (`null` when absent) |
+| `parse_ok` | whether the entry parsed; when false every extracted field is `null` |
+| `entry_json` | the stored entry string, byte for byte |
+
+`/clue/content` rows:
+
+| Field | Meaning |
+|---|---|
+| `doc_id`, `uid`, `context_id` | the document, its owner and its class hash |
+| `found` | whether an RTDB document node exists |
+| `type`, `version`, `change_count`, `last_history_entry_id` | from the document node |
+| `self` | the node's raw `self` object, `null` when absent |
+| `content_json` | the stored content string, byte for byte, `null` when `found` is false or the node has no content |
+
+The reads are done by CLUE's `clueExport` function in that portal's CLUE project, which report-server calls with `CLUE_EXPORT_TOKEN`. `CLUE_EXPORT_URLS` is a JSON object of portal server to an `https://` function URL, for example `{"learn.portal.staging.concord.org": "https://clueexport-<hash>-uc.a.run.app"}`; report-server refuses to boot on any other shape, or when it names a portal and `CLUE_EXPORT_TOKEN` is unset. A portal with no entry in `CLUE_EXPORT_URLS` answers 503 `SERVICE_UNAVAILABLE` on these routes, before any scratch or audit row is written. Each export writes the bulk endpoints' audit rows, naming owners as `clue:<class_hash>:<uid>`, and each page row records its `item_count`.
 
 ## Development
 

@@ -18,8 +18,8 @@ defmodule ReportServer.Packages.ManifestTest do
     "expected_duration_seconds" => 120
   }
 
-  # read by the runner from the archive and never stored in the catalog
-  @unprojected ["entrypoint"]
+  # never stored in the catalog: the runner reads entrypoint from the archive, and clue_prepull is ignored
+  @unprojected ["entrypoint", "clue_prepull"]
 
   defp valid(overrides \\ %{}), do: Map.merge(@fixture_manifest, overrides)
   defp project(manifest), do: Manifest.project(manifest, ["manifest.json", "run.py"])
@@ -41,10 +41,15 @@ defmodule ReportServer.Packages.ManifestTest do
     assert {:ok, %{expected_duration_seconds: 7_200}} = project(valid(%{"expected_duration_seconds" => 7_200}))
   end
 
-  test "defaults urls to three empty groups, clue_prepull to false and description to nil" do
-    manifest = valid() |> Map.drop(["urls", "clue_prepull", "description"])
-    assert {:ok, %{urls: %{"all" => [], "any" => [], "none" => []}, clue_prepull: false, description: nil}} = project(manifest)
+  test "defaults urls to three empty groups and description to nil" do
+    manifest = valid() |> Map.drop(["urls", "description"])
+    assert {:ok, %{urls: %{"all" => [], "any" => [], "none" => []}, description: nil}} = project(manifest)
     assert {:ok, %{urls: %{"all" => ["*a*"], "any" => [], "none" => []}}} = project(valid(%{"urls" => %{"all" => ["*a*"]}}))
+  end
+
+  test "ignores clue_prepull, whatever its value" do
+    assert {:ok, projection} = project(valid(%{"clue_prepull" => "yes"}))
+    refute Map.has_key?(projection, :clue_prepull)
   end
 
   test "accepts a prerelease version and a 20-pattern, 256-character limit" do
@@ -86,7 +91,6 @@ defmodule ReportServer.Packages.ManifestTest do
       {"urls", ["*"], "urls"},
       {"urls", %{"anyy" => ["*"]}, "unknown keys anyy"},
       {"urls", %{"any" => "*"}, "urls.any"},
-      {"clue_prepull", "yes", "clue_prepull"},
       {"entrypoint", "missing.py", "entrypoint"},
       {"entrypoint", "../run.py", "entrypoint"},
       {"entrypoint", "/run.py", "entrypoint"},

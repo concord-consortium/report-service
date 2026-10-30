@@ -10,6 +10,9 @@ defmodule ReportServerWeb.Api.V1.BulkParams do
   @ts_min_seconds -62_135_596_800
   @ts_max_seconds 253_402_300_799
 
+  # the largest index clueExport accepts in a history cursor, JavaScript's Number.MAX_SAFE_INTEGER
+  @max_clue_index 9_007_199_254_740_991
+
   def parse_limit(params) do
     case Map.fetch(params, "limit") do
       :error ->
@@ -62,6 +65,13 @@ defmodule ReportServerWeb.Api.V1.BulkParams do
              is_integer(n) and n >= 0 and n <= 999_999_999,
       do: check_doc_id(d)
 
+  def validate_inner_cursor(%{"docId" => d}, c) when c in ["clue_documents", "clue_content"], do: check_clue_key(d)
+
+  def validate_inner_cursor(%{"docId" => d, "index" => i, "entryId" => e}, "clue_history")
+      when is_integer(i) and i >= 0 and i <= @max_clue_index do
+    with :ok <- check_clue_key(d), do: check_clue_key(e)
+  end
+
   def validate_inner_cursor(_, _), do: {:error, "inner_cursor is malformed for this route"}
 
   # A Firestore cursor docId must be a PLAIN document id: a non-empty binary with no "/". Otherwise Node's
@@ -73,6 +83,15 @@ defmodule ReportServerWeb.Api.V1.BulkParams do
   end
 
   defp check_doc_id(_), do: {:error, "inner_cursor docId must be a non-empty plain document id"}
+
+  # the characters clueExport's id pattern refuses
+  defp check_clue_key(k) when is_binary(k) and k != "" do
+    if String.match?(k, ~r{[/.#$\[\]]}),
+      do: {:error, "inner_cursor ids must be plain CLUE keys"},
+      else: :ok
+  end
+
+  defp check_clue_key(_), do: {:error, "inner_cursor ids must be non-empty plain CLUE keys"}
 
   # {:ok, "attachment"|"inline"} | {:error, :bad_request, msg}. Absent key / JSON null -> "attachment".
   def parse_disposition(nil), do: {:ok, "attachment"}
