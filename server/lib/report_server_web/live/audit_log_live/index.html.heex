@@ -43,8 +43,12 @@
         </td>
         <td class="p-2 font-normal border-b align-top"><%= entry.user.portal_first_name %> <%= entry.user.portal_last_name %> (<%= entry.user.portal_email %>)</td>
         <td class="p-2 font-normal border-b align-top">
-          <.link class="underline" href={"/reports/runs/#{entry.report_run_id}"}><%= entry.report_run_id %></.link>
-          <span class="text-zinc-600"><%= entry.report_slug %></span>
+          <%= if entry.report_run_id do %>
+            <.link class="underline" href={"/reports/runs/#{entry.report_run_id}"}><%= entry.report_run_id %></.link>
+            <span class="text-zinc-600"><%= entry.report_slug %></span>
+          <% else %>
+            <span class="text-zinc-600">class <%= Enum.join(entry.report_filter["class"] || [], ", ") %></span>
+          <% end %>
         </td>
         <td class="p-2 font-normal border-b align-top">
           <%= entry.data_type %> / <%= entry.event %> (<%= entry.source %>)<span :if={entry.item_count}>, <%= entry.item_count %> items</span>

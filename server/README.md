@@ -94,41 +94,17 @@ export PORTAL_PUBLIC_KEYS='[]'        # rigse's RS256 public keys (see below); o
 export PACKAGE_BUCKETS='{}'          # the package catalog's runner bucket per portal (see below); optional for development
 export PACKAGES_AWS_ACCESS_KEY_ID=   # required whenever PACKAGE_BUCKETS names a portal
 export PACKAGES_AWS_SECRET_ACCESS_KEY=
-export PACKAGES_CORS_ORIGINS=        # comma-separated origins that may read the catalog with an access token
+export PACKAGES_CORS_ORIGINS=        # comma-separated origins that may read the catalog or a class's recent logs with an access token
 export PACKAGES_UNREVIEWED_RUNS=     # "true" lets a non-official package run; leave unset (see below)
 export CLUE_EXPORT_URLS='{}'         # portal server to CLUE's clueExport function URL (see "CLUE document export")
 export CLUE_EXPORT_TOKEN=            # the bearer clueExport checks; required whenever CLUE_EXPORT_URLS names a portal
+# export RECENT_LOGS_MAX_CONCURRENT=4  # recent-log reads one server runs at once; leave unset for 4 (an empty value fails to start)
 
 # Optional: disable the stats server for development
 export DISABLE_STATS_SERVER=true
 ```
 
-`PORTAL_PUBLIC_KEYS` is a JSON array of `{"kid", "iss", "pem"}`, one entry per rigse signing key, each what `rake portal_signing_key:public` prints on that portal, with the portal's site URL as `iss`. It authenticates rigse's signed assertions on `POST /api/v1/dashboard-tokens`, which mints a Researcher Dashboard VM's token, and researchers' access tokens on the package catalog's reads. One report-server serves several portals, so it lists one entry per portal, and a key is trusted only for its own `iss`: the staging key can never sign for production. An entry it cannot trust (a missing field, an unreadable PEM, a `kid` listed twice) is logged and ignored. Unset, every assertion is refused: no VM token can be minted, and the catalog answers only its anonymous list.
-
-### The package catalog
-
-The Researcher Dashboard's package catalog lives in report-server: `POST /api/v1/packages` publishes a package zip with the publisher's cc-data token, `POST /api/v1/packages/<origin>/<name>/<state>` changes its visibility, official flag, archived flag or current version with an audit row per change, and `GET /api/v1/packages` and `GET /api/v1/packages/resolve` are the dashboard app's list and rigse's run-path resolve. The list answers anonymously with a portal's official packages (named with `?portal=`), or with a researcher's access token (verified with `PORTAL_PUBLIC_KEYS`) with every package that researcher may see; the resolve always needs the access token. `POST /api/v1/packages/list` answers the same list with each package marked `applies: true|false` against the `scope_urls` it is sent (required, possibly empty, bounded as for applies), since a class's URLs cannot travel in a GET; the GET carries no `applies`. These three reads are the only routes with CORS. A JSON POST is preflighted, so a preflight that does not ask for `authorization` is answered to every origin, as the anonymous read is, while one that does is answered only for `PACKAGES_CORS_ORIGINS`.
-
-`POST /api/v1/packages/validate` takes what publish takes and runs every check publish runs, in publish's order and with its codes, but writes nothing: it answers what a publish of that zip would record. Two conditions that decide only whether the zip can be published now are reported rather than refused: `already_published` (publish would answer `ALREADY_EXISTS`) and `publishing_unavailable` (the portal has no bucket in `PACKAGE_BUCKETS`). `cc-data package build` and `package run` call it, and read a 404 as a server without the route, so it never answers 404.
-
-`POST /api/v1/packages/applies` holds the URL glob matcher that cc-data, the dashboard app and the runner are designed to ask rather than each keeping a copy (`ReportServer.Packages.Patterns`; its cases are `fixtures/url-patterns.json`). It takes `{urls: {all, any, none}, assignment_urls, scope_urls}` with a cc-data or Researcher Dashboard token and answers whether the patterns apply, in the runner's words. Scope URLs are matched as given (at most 1,000, each at most 2,048 characters). Assignment URLs are followed to their interactive URLs by report-service's `derive_urls`, through `REPORT_SERVICE_URL` and `REPORT_SERVICE_TOKEN`, with a 270-second wait; a deriver that refuses the URLs is a 400 and any other failure a 503, so this route never answers 404 either.
-
-Publish holds a package to the runner's own rules, so nothing it accepts is refused on a VM: `expected_duration_seconds` is at most 7,200 (the runner's `PACKAGE_MAX_DURATION_SECONDS` default, recorded in `fixtures/package-contract.json`), and an archive holding a symbolic-link entry is refused, since `unzip` would restore it as a link.
-
-- `PACKAGE_BUCKETS` is a JSON object of portal server to that environment's runner bucket, for example `{"learn.portal.staging.concord.org": "researcher-dashboard-runner-staging"}`. Package identities are portal ids, which overlap between portals, so report-server refuses to boot if two portals share a bucket. A portal it does not name cannot publish.
-- `PACKAGES_AWS_ACCESS_KEY_ID` and `PACKAGES_AWS_SECRET_ACCESS_KEY` are the runner stack's dedicated IAM user, which may only `s3:PutObject` under `packages/`. They are required whenever `PACKAGE_BUCKETS` names a portal, and the server's own credentials are never used for it.
-- `PACKAGES_CORS_ORIGINS` lists the dashboard app's origins. A browser read with an access token from any other origin is refused, while the anonymous read is answered to every origin.
-- The access token's `aud` list must name this deployment by its own URL, which is `PHX_HOST` (`ReportServerWeb.Endpoint.url/0`). Each portal it serves holds the same URL as its `REPORT_SERVER_URL` and writes it into the tokens it signs, so a portal pointed at a hostname this server does not answer to has its catalog reads refused.
-- `PACKAGES_UNREVIEWED_RUNS=true` lets the resolve answer a non-official, non-archived package as runnable. It stays unset until the per-researcher storage broker is live and S3 has been taken off the runner's shared execution role, since until then a stranger's package would run with every researcher's data in reach.
-
-The publisher role, which alone may set `official`, is held by every portal site admin and by any user an operator grants it, for example the cc-data-studies release pipeline's service user once it has logged in to report-server:
-
-```shell
-bin/report_server eval 'ReportServer.Release.grant_package_publisher("learn.concord.org", 123)'
-bin/report_server eval 'ReportServer.Release.revoke_package_publisher("learn.concord.org", 123)'
-```
-
-**Deploy order.** Run the catalog's migrations and set these variables before anyone publishes with `cc-data package publish`. Publishing in an environment also waits on its runner stack's `packages/*` user.
+`PORTAL_PUBLIC_KEYS` is a JSON array of `{"kid", "iss", "pem"}`, one entry per rigse signing key, each what `rake portal_signing_key:public` prints on that portal, with the portal's site URL as `iss`. It authenticates rigse's signed assertions on `POST /api/v1/dashboard-tokens`, which mints a Researcher Dashboard VM's token, and researchers' access tokens on the package catalog's reads and on a class's recent logs. One report-server serves several portals, so it lists one entry per portal, and a key is trusted only for its own `iss`: the staging key can never sign for production. An entry it cannot trust (a missing field, an unreadable PEM, a `kid` listed twice) is logged and ignored. Unset, every assertion is refused: no VM token can be minted, the catalog answers only its anonymous list, and a class's recent logs accept only a report-server API token.
 
 Note that if you cannot directly connect to the database (eg, it is in an AWS cluster), you may need to
 establish an ssh port-forwarding tunnel to it, something like:
@@ -140,6 +116,47 @@ ssh -L 127.0.0.1:4001:<actual-database-host>:<port> <user>@<gatewayserver>
 In which case you'd use `127.0.0.1:4001` as the `<host>:<port>`
 in the LEARN_PORTAL_STAGING_CONCORD_ORG_DB environment variable
 instead of the real address.
+
+### The package catalog
+
+The Researcher Dashboard's package catalog lives in report-server: `POST /api/v1/packages` publishes a package zip with the publisher's cc-data token, `POST /api/v1/packages/<origin>/<name>/<state>` changes its visibility, official flag, archived flag or current version with an audit row per change, and `GET /api/v1/packages` and `GET /api/v1/packages/resolve` are the dashboard app's list and rigse's run-path resolve. The list answers anonymously with a portal's official packages (named with `?portal=`), or with a researcher's access token (verified with `PORTAL_PUBLIC_KEYS`) with every package that researcher may see; the resolve always needs the access token. `POST /api/v1/packages/list` answers the same list with each package marked `applies: true|false` against the `scope_urls` it is sent (required, possibly empty, bounded as for applies), since a class's URLs cannot travel in a GET; the GET carries no `applies`. These three reads and a class's recent logs (below) are the only routes with CORS. A JSON POST is preflighted, so a preflight that does not ask for `authorization` is answered to every origin, as the anonymous read is, while one that does is answered only for `PACKAGES_CORS_ORIGINS`.
+
+`POST /api/v1/packages/validate` takes what publish takes and runs every check publish runs, in publish's order and with its codes, but writes nothing: it answers what a publish of that zip would record. Two conditions that decide only whether the zip can be published now are reported rather than refused: `already_published` (publish would answer `ALREADY_EXISTS`) and `publishing_unavailable` (the portal has no bucket in `PACKAGE_BUCKETS`). `cc-data package build` and `package run` call it, and read a 404 as a server without the route, so it never answers 404.
+
+`POST /api/v1/packages/applies` holds the URL glob matcher that cc-data, the dashboard app and the runner are designed to ask rather than each keeping a copy (`ReportServer.Packages.Patterns`; its cases are `fixtures/url-patterns.json`). It takes `{urls: {all, any, none}, assignment_urls, scope_urls}` with a cc-data or Researcher Dashboard token and answers whether the patterns apply, in the runner's words. Scope URLs are matched as given (at most 1,000, each at most 2,048 characters). Assignment URLs are followed to their interactive URLs by report-service's `derive_urls`, through `REPORT_SERVICE_URL` and `REPORT_SERVICE_TOKEN`, with a 270-second wait; a deriver that refuses the URLs is a 400 and any other failure a 503, so this route never answers 404 either.
+
+Publish holds a package to the runner's own rules, so nothing it accepts is refused on a VM: `expected_duration_seconds` is at most 7,200 (the runner's `PACKAGE_MAX_DURATION_SECONDS` default, recorded in `fixtures/package-contract.json`), and an archive holding a symbolic-link entry is refused, since `unzip` would restore it as a link.
+
+- `PACKAGE_BUCKETS` is a JSON object of portal server to that environment's runner bucket, for example `{"learn.portal.staging.concord.org": "researcher-dashboard-runner-staging"}`. Package identities are portal ids, which overlap between portals, so report-server refuses to boot if two portals share a bucket. A portal it does not name cannot publish.
+- `PACKAGES_AWS_ACCESS_KEY_ID` and `PACKAGES_AWS_SECRET_ACCESS_KEY` are the runner stack's dedicated IAM user, which may only `s3:PutObject` under `packages/`. They are required whenever `PACKAGE_BUCKETS` names a portal, and the server's own credentials are never used for it.
+- `PACKAGES_CORS_ORIGINS` lists the dashboard app's origins. A browser read with an access token from any other origin is refused, while the anonymous read is answered to every origin.
+- The access token's `aud` list must name this deployment by its own URL, which is `PHX_HOST` (`ReportServerWeb.Endpoint.url/0`). Each portal it serves holds the same URL as its `REPORT_SERVER_URL` and writes it into the tokens it signs, so a portal pointed at a hostname this server does not answer to has its catalog reads and a class's recent-logs reads with an access token refused.
+- `PACKAGES_UNREVIEWED_RUNS=true` lets the resolve answer a non-official, non-archived package as runnable. It stays unset until the per-researcher storage broker is live and S3 has been taken off the runner's shared execution role, since until then a stranger's package would run with every researcher's data in reach.
+
+The publisher role, which alone may set `official`, is held by every portal site admin and by any user an operator grants it, for example the cc-data-studies release pipeline's service user once it has logged in to report-server:
+
+```shell
+bin/report_server eval 'ReportServer.Release.grant_package_publisher("learn.concord.org", 123)'
+bin/report_server eval 'ReportServer.Release.revoke_package_publisher("learn.concord.org", 123)'
+```
+
+**Deploy order.** Run the catalog's migrations and set these variables before anyone publishes with `cc-data package publish`. Publishing in an environment also waits on its runner stack's `packages/*` user.
+
+### Recent logs for a class
+
+`GET /api/v1/classes/<class_id>/recent-logs` answers a class's log events from `logs_by_hour` (see "Querying recent logs"), about two minutes behind live, so a package and the Researcher Dashboard page see what students did today rather than the nightly copy's yesterday. It takes either a report-server API token (cc-data, a dashboard VM), checked as every other API route checks it, or a researcher's access token carrying `class:researcher-read` whose `context` names this class (the dashboard page, from an origin in `PACKAGES_CORS_ORIGINS`). On every call the class must be one the caller's project grants reach, with the caller's role flags read fresh from the portal for an access token; otherwise the answer is 403, the same whether or not the class exists. The class's learners are the ones a Student Actions run filtered to that class alone selects for the caller.
+
+**The window.** The route reads from 00:00 UTC of the day before the query's date (`window_start`) to now, 24 to 48 hours, and never earlier. The day before that, `nightly_through`, is the last one it leaves to the nightly copy, so a caller that wants a class's whole history takes a Student Actions run ending on `nightly_through` and this route's rows from `window_start`, which meet with no gap; or a whole-history run whose query ran after the partitioner's 02:00 UTC run on `window_start`'s date finished, removing the overlap with this route's rows by `id`. The route returns every application's rows, so a caller whose run named applications filters these rows by `application`, the raw client value (`Activity Player`, not `Activity_Player`). This rests on the partitioner's run for `nightly_through` having succeeded; a failed run leaves that day out of every log report until the partitioner is rerun for it.
+
+**Narrowing it.** Optional `start` and `end`, epoch milliseconds of at most 13 digits, read `start <= timestamp < end`; both must be at or after `window_start` and `end` after `start`, or the answer is 400 naming `window_start` (earlier days come from a Student Actions run). Without them the read runs from `window_start` to now.
+
+**The cursor.** Every answer to a read with no `end` carries a `next_cursor` (one with an `end` carries `null`), an opaque string whose `since` is `query_started_at` minus ten minutes, never the newest `timestamp` it returned: a row can land after one with a later `timestamp`. Passing it back as `cursor` reads from there, so answers overlap by design and the caller deduplicates by `id`. A cursor cannot be combined with `start` or `end`, and one for another class or that does not decode is 400; one older than `window_start`, or in a well-formed version other than the one the server reads (`v2.…` while it reads `v1`, after a format change or a rollback), is 410 `EXPIRED_CURSOR`, and the caller starts again without it. A server that introduces a new cursor version must answer 410, never 400, to the versions it stops reading, so a stored cursor only ever costs its holder one re-read of the window. A caller resuming a pull without the cursor sets `start` from its last `query_started_at` minus ten minutes, never from the largest `timestamp` it holds.
+
+**The answer.** JSON with `class_id`, `window_start`, `nightly_through` (an ISO date), `since`, `until` (`null` with no `end`), `query_started_at` (when report-server received the request, the one instant that also fixes `window_start` and the bounds check, so it is never later than the Athena query), `rows`, `count`, `latest_timestamp` (`null` when there are no rows) and `next_cursor` (`null` with an `end`); `window_start`, `since`, `until`, `query_started_at` and `latest_timestamp` are epoch milliseconds. Each row has the 13 Student Actions columns in their order, `id`, `session`, `application`, `activity`, `event`, `event_value`, `time`, `parameters`, `extras`, `run_remote_endpoint`, `timestamp`, `user_id` and `primary_user_id`, with the four numeric columns as integers and an empty value as `null`; rows are ordered by `timestamp`, then `id`. The rows stream as they are read from Athena's result, so `count`, `latest_timestamp` and `next_cursor` follow them, and a failure partway through ends the body early, leaving invalid JSON the caller retries.
+
+**Errors.** 400 for a malformed class id or cursor, a `start` or `end` that is malformed or before `window_start` or an `end` not after `start`, or a cursor combined with `start` or `end`; 401 without a valid credential; 403 for a class outside the caller's grants, an access token whose context does not name this class, or a browser request with a bearer from an origin not in `PACKAGES_CORS_ORIGINS`; 410 for an expired cursor; 422 for a class whose learners make the query longer than Athena's 262,144-byte limit (about 2,100 learners, each student once per assignment); 500 when the audit row cannot be written; 503 when the portal cannot be asked, Athena fails or does not finish within 60 seconds, or `RECENT_LOGS_MAX_CONCURRENT` reads are already running.
+
+**Audit.** Before the first row of an answer is sent, report-server writes a `data_access_log` row (`recent_logs_read`, data type `recent_logs`) with the caller, the class, the read's lower bound and the learners' endpoints, so the audit page's Student filter (a remote endpoint) finds the read; if that write fails the answer is 500 with no rows. The migration that lets this row have no report run cannot be rolled back once such a row exists, so a rollback reverts the image only.
 
 ### CLUE document export
 
@@ -485,7 +502,8 @@ writes about a minute behind live. The folders are UTC hours, and each object go
 hour its 60-second buffer opened. The nightly partitioner (02:00 UTC) copies each day from here into
 `logs_by_app_and_secure_key/`. `logs_by_time`, the Firehose schema table, reads the same prefix but has
 no partitions, so every query on it reads all of history. That makes `logs_by_hour` the only partitioned
-table with today's logs. A query on it has to know the following.
+table with today's logs. `GET /api/v1/classes/<class_id>/recent-logs` is the route that reads it
+(see "Recent logs for a class"), following these conventions. A query on it has to know the following.
 
 1. **Always give `dt` a lower bound.** The projection spans every hour since 2014, so a query with no
    `dt` predicate plans over more than 100,000 partition locations. An upper bound is optional, since

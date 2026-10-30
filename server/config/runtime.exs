@@ -143,6 +143,9 @@ config :report_server, :portal_download,
   timeout_ms: String.to_integer(System.get_env("PORTAL_DOWNLOAD_TIMEOUT_MS") || "120000"),
   max_concurrent: String.to_integer(System.get_env("PORTAL_DOWNLOAD_MAX_CONCURRENT") || "2")
 
+config :report_server, :recent_logs,
+  max_concurrent: String.to_integer(System.get_env("RECENT_LOGS_MAX_CONCURRENT") || "4")
+
 # Disabled in :test so the supervised sweeper does no Repo work under the :manual SQL sandbox.
 config :report_server, :exports_sweep,
   disable: System.get_env("DISABLE_EXPORTS_SWEEP") == "true" || config_env() == :test

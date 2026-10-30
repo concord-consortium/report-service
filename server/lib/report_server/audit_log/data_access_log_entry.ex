@@ -45,13 +45,15 @@ defmodule ReportServer.AuditLog.DataAccessLogEntry do
       :export_id,
       :item_count
     ])
-    |> validate_required([:event, :source, :data_type, :user_id, :report_run_id])
+    |> validate_required([:event, :source, :data_type, :user_id])
+    |> validate_run_unless_runless_event()
     |> validate_inclusion(:event, [
       "download_url_issued",
       "export_scoped",
       "bulk_read",
       "attachment_urls_issued",
-      "run_csv_streamed"
+      "run_csv_streamed",
+      "recent_logs_read"
     ])
     |> validate_inclusion(:source, ["web", "api"])
     |> validate_inclusion(:data_type, [
@@ -60,10 +62,19 @@ defmodule ReportServer.AuditLog.DataAccessLogEntry do
       "answers_bulk",
       "history_bulk",
       "export_scoped",
-      "attachment"
+      "attachment",
+      "recent_logs"
       | ExportScratch.clue_data_types()
     ])
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:report_run_id)
+  end
+
+  @runless_events ["recent_logs_read"]
+
+  defp validate_run_unless_runless_event(changeset) do
+    if get_field(changeset, :event) in @runless_events,
+      do: changeset,
+      else: validate_required(changeset, [:report_run_id])
   end
 end

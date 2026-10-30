@@ -85,6 +85,23 @@ defmodule ReportServer.AuditLog do
     })
   end
 
+  @doc """
+  One fail-closed row per recent-logs answer that carries rows, written before the first row is
+  sent. The class goes in `report_filter`, the read's lower bound in `cursor`, and the learners'
+  endpoints in `endpoint_set`, so the remote-endpoint filter finds the read.
+  """
+  def log_recent_logs_read(_user = %{id: user_id}, class_id, since_ms, endpoints) do
+    create_entry(%{
+      event: "recent_logs_read",
+      source: "api",
+      data_type: "recent_logs",
+      user_id: user_id,
+      report_filter: %{"class" => [class_id]},
+      cursor: Integer.to_string(since_ms),
+      endpoint_set: endpoints
+    })
+  end
+
   def create_entry(attrs) do
     %DataAccessLogEntry{}
     |> DataAccessLogEntry.changeset(attrs)

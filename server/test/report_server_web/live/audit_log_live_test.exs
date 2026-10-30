@@ -85,6 +85,17 @@ defmodule ReportServerWeb.AuditLogLiveTest do
     assert html2 =~ ~s(aria-current="page")
   end
 
+  test "shows a recent-logs read by its class, with no run link", %{conn: conn} do
+    admin = user_fixture(%{portal_is_admin: true})
+    {:ok, _} = AuditLog.log_recent_logs_read(admin, 601, 0, ["re-1"])
+
+    {:ok, _view, html} = live(log_in_conn(conn, admin), ~p"/reports/audit-log")
+
+    assert html =~ "class 601"
+    assert html =~ "recent_logs / recent_logs_read"
+    refute html =~ ~s(href="/reports/runs/")
+  end
+
   test "shows an empty state when nothing has been recorded", %{conn: conn} do
     admin = user_fixture(%{portal_is_admin: true})
     {:ok, _view, html} = live(log_in_conn(conn, admin), ~p"/reports/audit-log")
