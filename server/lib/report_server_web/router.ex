@@ -41,6 +41,15 @@ defmodule ReportServerWeb.Router do
     plug ReportServerWeb.Api.PortalTokenPlug, capability: "packages:read", optional: true
   end
 
+  pipeline :api_class_read do
+    plug :force_json
+    plug ReportServerWeb.Api.CatalogCors
+  end
+
+  pipeline :api_class_reader do
+    plug ReportServerWeb.Api.ClassReaderPlug
+  end
+
   pipeline :api_token_only do
     plug :force_json
     plug ReportServerWeb.Api.AuthPlug, token_only: true
@@ -68,7 +77,8 @@ defmodule ReportServerWeb.Router do
     end
   end
 
-  # the catalog's reads, anonymous or with a launch token, and the only routes with CORS
+  # the catalog's reads, anonymous or with a launch token; with the recent-logs route below, the
+  # only routes with CORS
   scope "/api/v1", ReportServerWeb.Api.V1 do
     pipe_through :api_catalog
 
@@ -78,6 +88,20 @@ defmodule ReportServerWeb.Router do
     options "/packages", PackageController, :preflight
     options "/packages/resolve", PackageController, :preflight
     options "/packages/list", PackageController, :preflight
+  end
+
+  # a class's recent logs, for cc-data's API token or the dashboard's access token; CORS runs
+  # first, so a refused origin never reaches a token check
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through :api_class_read
+
+    options "/classes/:class_id/recent-logs", RecentLogsController, :preflight
+  end
+
+  scope "/api/v1", ReportServerWeb.Api.V1 do
+    pipe_through [:api_class_read, :api_class_reader]
+
+    get "/classes/:class_id/recent-logs", RecentLogsController, :show
   end
 
   scope "/api/v1", ReportServerWeb.Api.V1 do

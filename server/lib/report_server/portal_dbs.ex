@@ -28,6 +28,8 @@ defmodule ReportServer.PortalDbs do
   ) AS is_project_researcher
   """
 
+  @user_info_cols "u.id, u.login, u.first_name, u.last_name, u.email, #{@role_flags}"
+
   defmodule PortalUserInfo do
     defstruct id: nil, login: nil, first_name: nil, last_name: nil, email: nil, is_admin: false, is_project_admin: false, is_project_researcher: false, server: nil
   end
@@ -173,11 +175,24 @@ defmodule ReportServer.PortalDbs do
     end
   end
 
+  @doc """
+  A portal user's identity and role flags by portal user id, read fresh. `{:error, :not_found}`
+  when the portal has no such user.
+  """
+  def get_user_info_by_id(server, portal_user_id, options \\ []) do
+    sql = "SELECT #{@user_info_cols} FROM users u WHERE u.id = ?;"
+
+    case query(server, sql, [portal_user_id], options) do
+      {:ok, %{rows: []}} -> {:error, :not_found}
+      {:ok, result} -> {:ok, to_portal_user_info(result, server)}
+      error -> error
+    end
+  end
+
   def get_user_info(server, access_token) do
     sql = """
       SELECT
-        u.id, u.login, u.first_name, u.last_name, u.email,
-        #{@role_flags}
+        #{@user_info_cols}
       FROM
         access_grants ag
       JOIN
@@ -187,17 +202,19 @@ defmodule ReportServer.PortalDbs do
     """
 
     case query(server, sql, [access_token]) do
-      {:ok, result} ->
-        user_info = result
-          |> map_columns_on_rows()
-          |> hd()
-          |> Map.put(:server, server)
-          |> cast_user_info()
-
-        {:ok, struct(PortalUserInfo, user_info)}
-
+      {:ok, result} -> {:ok, to_portal_user_info(result, server)}
       error -> error
     end
+  end
+
+  defp to_portal_user_info(result, server) do
+    user_info = result
+      |> map_columns_on_rows()
+      |> hd()
+      |> Map.put(:server, server)
+      |> cast_user_info()
+
+    struct(PortalUserInfo, user_info)
   end
 
   @doc """

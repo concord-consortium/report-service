@@ -71,4 +71,17 @@ defmodule ReportServer.PortalDownloadLimiterTest do
     assert %{holders: after_holders} = :sys.get_state(server)
     assert map_size(after_holders) == 0
   end
+
+  test "two named instances keep separate slots" do
+    first = :"limiter_#{System.unique_integer([:positive])}"
+    second = :"limiter_#{System.unique_integer([:positive])}"
+    start_supervised!({Limiter, name: first, cap: 1})
+    start_supervised!({Limiter, name: second, cap: 1})
+
+    {h1, :ok} = acquire_from_new_process(first)
+    assert {h2, :full} = acquire_from_new_process(first)
+    assert {h3, :ok} = acquire_from_new_process(second)
+
+    for h <- [h1, h2, h3], do: send(h, :stop)
+  end
 end
