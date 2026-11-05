@@ -132,7 +132,7 @@ The deploy will fail with clear instructions if any required secrets are missing
 * set the current project to production: `firebase use report-service-pro`
 * deploy the functions: `npm run deploy` (this generates the build info)
 * if `../firestore.rules` changed, also deploy the rules (see [Deploying rules](#deploying-rules))
-* if the release adds a new query shape, deploy its index too: `firebase deploy --only firestore:indexes` (see [Indexes](#indexes))
+* if the release adds a composite index, deploy it too: `firebase deploy --only firestore:indexes` (see [Indexes](#indexes))
 * Return to the safety of development: `firebase use report-service-dev`
 
 Deploying will also run the firebase linter, and may also ask you to update or add new indexes to the database,
@@ -150,11 +150,19 @@ Composite indexes are tracked in `../firestore.indexes.json` and deployed with
 combining an equality filter with an `orderBy` on a different field needs a composite index, and those
 have to be declared.
 
+A query with only `==` filters never fails for want of a composite index: Firestore merges the
+single-field indexes instead. On a large collection that merge can scan far more entries than it
+returns, and slow enough to hit the query deadline. Such a query never uses a composite index with
+a field it does not pin with `==`, and only one whose fields are exactly its equality fields serves
+it alone. To see which indexes a slow query uses and how many entries it scans, run it
+with `explain({ analyze: true })` from `@google-cloud/firestore` 7.5.0 or later.
+
 That file is the source of truth for a deploy: it CREATES indexes it lists that the project is missing,
 and it proposes DELETING indexes the project has that the file does not list. Read the plan before
 confirming, especially against production.
 
-A release that adds a new query shape needs its index added to the file. If one is missing the query fails
+A release that adds a query shape needing a composite index has to add it to the file.
+If one is missing the query fails
 at runtime with `failed-precondition`, and the error carries a console link that creates the index, but
 only in the project you were running against, which is how the two projects drift apart. Clicking the link
 is a fine way to unblock yourself; adding the same index to the file is what stops it recurring in the
