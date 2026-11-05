@@ -147,7 +147,7 @@ for k in sorted(set(lo) | set(fo)):
     if lo.get(k) != fo.get(k): print("OVERRIDE DIFFERS", k)
 ```
 
-The READY check reads the Firestore Admin API with ADC, which worked on 2026-11-04 while gcloud's user login had expired. The endpoint lists every collection group's indexes despite the `answers` in its path, so the filter keeps only the two new ones, by their exact field lists, and prints `MISSING` for either that does not exist:
+The READY check reads the Firestore Admin API with ADC, which worked on 2026-11-04 while gcloud's user login had expired. The endpoint lists every collection group's indexes despite the `answers` in its path, so the filter keeps only the two new ones, by their exact field lists and ascending order, and prints `MISSING` for either that does not exist:
 
 ```bash
 curl -sS --fail -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" \
@@ -159,7 +159,8 @@ want = ["platform_id,resource_link_id,context_id", "platform_id,resource_link_id
 found = {}
 for i in json.load(sys.stdin)["indexes"]:
     f = ",".join(x["fieldPath"] for x in i["fields"] if x["fieldPath"] != "__name__")
-    if "/collectionGroups/answers/" in i["name"] and i["queryScope"] == "COLLECTION" and f in want:
+    asc = all(x.get("order") == "ASCENDING" for x in i["fields"])
+    if "/collectionGroups/answers/" in i["name"] and i["queryScope"] == "COLLECTION" and asc and f in want:
         found[f] = i["state"]
 for f in want:
     print(found.get(f, "MISSING"), f)'
@@ -282,3 +283,6 @@ It dropped `__name__`, but a deploy compares the whole field list (`indexMatches
 
 #### RESOLVED: The READY check could mislead, and its wait had no limit
 A live-only index starting with the same fields would add a line, a missing index printed nothing, and a stuck build could be polled forever. The filter now matches the exact field lists, prints `MISSING`, and `curl` fails on an HTTP error; production stops at 24 hours for Doug to decide.
+
+#### RESOLVED: The READY filter ignored sort direction
+A live-only variant of the same fields in another direction could overwrite the target's state and report `READY` early. The filter now requires every field, `__name__` included, to be ascending.
