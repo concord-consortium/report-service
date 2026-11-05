@@ -147,17 +147,25 @@ for k in sorted(set(lo) | set(fo)):
     if lo.get(k) != fo.get(k): print("OVERRIDE DIFFERS", k)
 ```
 
-The READY check reads the Firestore Admin API with ADC, which worked on 2026-11-04 while gcloud's user login had expired. The endpoint lists every collection group's indexes despite the `answers` in its path, so the filter keeps only the two new ones, by their exact field lists and ascending order, and prints `MISSING` for either that does not exist:
+The READY check reads the Firestore Admin API with ADC, which worked on 2026-11-04 while gcloud's user login had expired. The endpoint lists every collection group's indexes despite the `answers` in its path, so the filter keeps only the two new ones, by their exact field lists and ascending order, and prints `MISSING` for either that does not exist. It follows `nextPageToken`, and an HTTP error exits nonzero:
 
 ```bash
-curl -sS --fail -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" \
-  -H "x-goog-user-project: <project>" \
-  "https://firestore.googleapis.com/v1/projects/<project>/databases/(default)/collectionGroups/answers/indexes" \
-  | python3 -c '
-import json, sys
+TOKEN=$(gcloud auth application-default print-access-token) PROJECT=<project> python3 -c '
+import json, os, urllib.parse, urllib.request
+project = os.environ["PROJECT"]
+url = f"https://firestore.googleapis.com/v1/projects/{project}/databases/(default)/collectionGroups/answers/indexes"
+headers = {"Authorization": "Bearer " + os.environ["TOKEN"], "x-goog-user-project": project}
+indexes, page_token = [], ""
+while True:
+    query = "?pageToken=" + urllib.parse.quote(page_token) if page_token else ""
+    page = json.load(urllib.request.urlopen(urllib.request.Request(url + query, headers=headers)))
+    indexes += page.get("indexes", [])
+    page_token = page.get("nextPageToken")
+    if not page_token:
+        break
 want = ["platform_id,resource_link_id,context_id", "platform_id,resource_link_id,context_id,platform_user_id"]
 found = {}
-for i in json.load(sys.stdin)["indexes"]:
+for i in indexes:
     f = ",".join(x["fieldPath"] for x in i["fields"] if x["fieldPath"] != "__name__")
     asc = all(x.get("order") == "ASCENDING" for x in i["fields"])
     if "/collectionGroups/answers/" in i["name"] and i["queryScope"] == "COLLECTION" and asc and f in want:
@@ -282,7 +290,10 @@ It dropped `__name__`, but a deploy compares the whole field list (`indexMatches
 `Api::V1::Offering` still returns each student's `username`, `user_id`, `endpoint_url` and progress. Production step 4 now fetches in the browser console and prints only `clazz_id` and `clazz_hash`.
 
 #### RESOLVED: The READY check could mislead, and its wait had no limit
-A live-only index starting with the same fields would add a line, a missing index printed nothing, and a stuck build could be polled forever. The filter now matches the exact field lists, prints `MISSING`, and `curl` fails on an HTTP error; production stops at 24 hours for Doug to decide.
+A live-only index starting with the same fields would add a line, a missing index printed nothing, and a stuck build could be polled forever. The filter now matches the exact field lists, prints `MISSING`, and an HTTP error exits nonzero; production stops at 24 hours for Doug to decide.
 
 #### RESOLVED: The READY filter ignored sort direction
 A live-only variant of the same fields in another direction could overwrite the target's state and report `READY` early. The filter now requires every field, `__name__` included, to be ascending.
+
+#### RESOLVED: The READY check read only the first page of indexes
+The list endpoint can paginate, and an index on a later page would print `MISSING`. The check now follows `nextPageToken` before filtering.
