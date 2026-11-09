@@ -27,6 +27,46 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "context_id",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "answers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "platform_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "resource_link_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "context_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "platform_user_id",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "answers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "platform_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "resource_link_id",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "platform_user_id",
           "order": "ASCENDING"
         },
