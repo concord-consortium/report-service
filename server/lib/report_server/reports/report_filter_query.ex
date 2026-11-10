@@ -607,7 +607,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
           :integer -> list_to_in(filter_value)
         end
         where = "#{config.where} #{in_clause}"
-        where = with_named_form_check(where, filter_name, allowed)
+        where = with_named_form_check(where, filter_name, primary_filter, allowed)
         secondary_filter_query(query, join, where)
       else
         query
@@ -617,15 +617,19 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     apply_secondary_filters(query, primary_filter, report_filter, allowed, rest)
   end
 
-  # every permission_form cascade joins pspf
-  defp with_named_form_check(where, :permission_form, allowed) do
-    case AllowedProjects.named_form_sql(allowed, "pspf.portal_permission_form_id", {:student, "pspf.portal_student_id"}) do
+  # Every permission_form cascade joins pspf, and every one but the student dimension's reaches the
+  # student through psc, the class the option is matched by, so the admin-class exception is that
+  # class's, as in the learner query. A student option is the student's, in any of their classes.
+  defp with_named_form_check(where, :permission_form, primary_filter, allowed) do
+    by = if primary_filter == :student, do: {:student, "pspf.portal_student_id"}, else: {:class, "psc.clazz_id"}
+
+    case AllowedProjects.named_form_sql(allowed, "pspf.portal_permission_form_id", by) do
       nil -> where
       check -> "#{where} AND #{check}"
     end
   end
 
-  defp with_named_form_check(where, _filter_name, _allowed), do: where
+  defp with_named_form_check(where, _filter_name, _primary_filter, _allowed), do: where
 
   defp get_filter_query(:cohort, report_filter = %ReportFilter{}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.

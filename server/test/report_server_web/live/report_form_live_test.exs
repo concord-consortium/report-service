@@ -184,6 +184,25 @@ defmodule ReportServerWeb.ReportFormLiveTest do
     end
   end
 
+  describe "a researcher's option lists" do
+    @describetag :portal_db
+
+    test "lose a project whose researcher row expires while the form is open", %{conn: conn} do
+      server = ReportServer.PortalFixture.server()
+      researcher = user_fixture(%{portal_server: server, portal_user_id: 566, portal_is_project_researcher: true})
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+
+      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = CURDATE() WHERE id = 8")
+      on_exit(fn ->
+        {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY) WHERE id = 8")
+      end)
+
+      html = render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1_type"], "filter_form" => %{"filter1_type" => "class"}})
+
+      assert html =~ "No options available"
+    end
+  end
+
   describe "the date range note" do
     test "renders on student-actions, names the learner selection, and ties both date inputs to it",
          %{conn: conn} do

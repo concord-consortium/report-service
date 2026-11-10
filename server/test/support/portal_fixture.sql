@@ -193,3 +193,16 @@ INSERT INTO portal_student_permission_forms VALUES (13,78,11);
 -- student 76, reached only through 902, also holds 900's form, so a named admin-project form is
 -- one of the caller's projects for a user with both roles
 INSERT INTO portal_student_permission_forms VALUES (15,76,11);
+-- 571 administers 903 and researches 902; student 79 is in 903's class 605 and 902's class 604 and
+-- holds 902's form and 901's, so a foreign form's admin-class exception must be the matched class's
+INSERT INTO admin_projects VALUES (903,'Proj D');
+INSERT INTO admin_cohorts VALUES (4,'Cohort Four',903);
+INSERT INTO admin_cohort_items VALUES (6,4,'Portal::Teacher',37);
+INSERT INTO users VALUES (137,'fay','Fay','Teach','fay@e.org',NULL),(109,'stu.nine','Stu','Nine','stu.nine@e.org',NULL);
+INSERT INTO portal_teachers VALUES (37,137);
+INSERT INTO portal_clazzes (id, name, class_word) VALUES (605,'Class 605','e');
+INSERT INTO portal_teacher_clazzes VALUES (18,605,37);
+INSERT INTO portal_students VALUES (79,109);
+INSERT INTO portal_student_clazzes VALUES (8,605,79),(9,604,79);
+INSERT INTO portal_student_permission_forms VALUES (16,79,15),(17,79,12);
+INSERT INTO admin_project_users VALUES (17,903,571,1,0,NULL),(18,902,571,0,1,NULL);

@@ -70,7 +70,6 @@ defmodule ReportServerWeb.ReportLive.Form do
     |> assign(:partition_warning, nil)
     |> assign(:placeholder_text, [""])
     |> assign(:dev, @dev)
-    |> assign(:allowed_project_ids, PortalDbs.get_allowed_project_ids(user))
 
     {:noreply, socket}
   end
@@ -86,7 +85,9 @@ defmodule ReportServerWeb.ReportLive.Form do
 
   ## Called when the text in one of the search boxes changes
   @impl true
-  def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form, user: user, allowed_project_ids: allowed_project_ids}}) do
+  def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form, user: user}}) do
+    # read per query, so a researcher whose access expires while the form is open loses it at once
+    allowed_project_ids = PortalDbs.get_allowed_project_ids(user)
     filter_index = get_filter_index(field)
     report_filter = ReportFilter.from_form(form, filter_index)
       |> HideNames.enforce(user)
@@ -400,7 +401,8 @@ defmodule ReportServerWeb.ReportLive.Form do
   # Query for the set of options for one of the filters in the form and send an update to the LiveSelect component.
   # The values and placeholder text are also updated and socket values are assigned.
   # Returns the new socket structure.
-  defp update_options(socket = %{assigns: %{user: user, allowed_project_ids: allowed_project_ids}}, filter_index, form, field, live_select_id) do
+  defp update_options(socket = %{assigns: %{user: user}}, filter_index, form, field, live_select_id) do
+    allowed_project_ids = PortalDbs.get_allowed_project_ids(user)
     report_filter = ReportFilter.from_form(form, filter_index)
       |> HideNames.enforce(user)
 

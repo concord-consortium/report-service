@@ -106,11 +106,11 @@ defmodule ReportServer.Reports.DimensionScopeTest do
     end
 
     test "a user with both roles adds the researcher project's consenting students only" do
-      assert ids(:student, allowed([@project], [902])) == [71, 72, 73, 74, 76]
+      assert ids(:student, allowed([@project], [902])) == [71, 72, 73, 74, 76, 79]
     end
 
     test "the form must belong to the project that reaches the student" do
-      assert ids(:student, allowed([], [@project, 902])) == [71, 76]
+      assert ids(:student, allowed([], [@project, 902])) == [71, 76, 79]
     end
 
     test "class and the other scoped dimensions give a researcher what they give an admin" do

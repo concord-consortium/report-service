@@ -25,7 +25,7 @@ Project admins with no researcher role see exactly what they saw before. A user 
 - **R11. A researcher's CLUE export holds only student documents.** For a caller with a researcher project, `/clue/documents`, `/clue/history` and `/clue/content` keep the class owner and group owners only for classes reached through one of their admin projects; every other class contributes its student owners only. A group or class document can hold the work of students without consent, which the export cannot tell apart.
 - **R12. Names follow the portal's per-class rule.** A caller allowed names who also holds a researcher project sees a learner's name and username only when the learner's class teacher is in a cohort of one of their admin projects, as rigse's `User#has_full_access_to_student_data?` / `is_project_admin_for_clazz?` decide. Every other row carries the values `hide_names: true` produces, in Student Metadata, the Athena learner upload, the student filter options and their search, and the stored student labels.
 - **R13. Staging check.** After the deploy to staging: a researcher-only account sees only permission-form students in a Student Answers run and in the student filter options; an expired researcher account gets no project data; a project admin's results are unchanged. The results go in the PR. *(Not yet done: needs the staging deploy.)*
-- **R14. A named permission form follows the same rule.** For a caller with a researcher project, a `permission_form` filter value matches a learner or a student only when the form's project is one of the caller's projects, or the class is reached through one of their admin projects. Another project's form id then tells a researcher nothing about which of their consented students hold it. The filter itself refuses no value it accepted before; label resolution (`ReportFilter.get_filter_values/2`) answers `:out_of_scope` for another project's form, under R5.
+- **R14. A named permission form follows the same rule.** For a caller with a researcher project, a `permission_form` filter value matches a learner or a student only when the form's project is one of the caller's projects, or the class is reached through one of their admin projects: the learner's class in the learner query, the class through which an option reaches the student in the option cascades, and any of the student's classes for the student dimension itself. Another project's form id then tells a researcher nothing about which of their consented students hold it. The filter itself refuses no value it accepted before; label resolution (`ReportFilter.get_filter_values/2`) answers `:out_of_scope` for another project's form, under R5.
 - **R15. A researcher's CLUE work links point only at work they may see.** The `clue_link_to_work` post-processing step writes a link for a researcher-project owner only when the row's `documentUid` is the learner's own user or the class is reached through one of the owner's admin projects. Owners who are site admins or hold admin projects only are unchanged; any other owner, including one with no live project, gets no links, so the step fails closed. Logged `parameters` are left as recorded.
 
 ## Technical Notes
@@ -231,6 +231,18 @@ Project admins with no researcher role see exactly what they saw before. A user 
 ### Correlated admin-class checks doubled a large Student Metadata run
 **Context**: A production check found a mixed-role run took 246 s against a 300 s timeout: the check ran once per row in three columns. Uncorrelated `IN` subqueries were no faster (256 s).
 **Decision**: `LearnerBaseQuery` joins a derived table of the admin projects' classes once and the checks read it (134 s, identical output). Queries not built on `LearnerBaseQuery` keep the correlated form.
+
+---
+
+### Which class the named-form exception checks in option cascades
+**Context**: A PR review found that, for a student in both an admin-project class and a researcher-only class, class options narrowed by a foreign form offered the researcher-only class, because the exception checked any of the student's classes; the report for that class and form was then empty.
+**Decision**: Each cascade checks the class it matched the student through (`psc.clazz_id`), as the learner query checks the row's class; the student dimension keeps any of the student's classes, as its labels do. A fixture student enrolled in both kinds of class pins it.
+
+---
+
+### The report form's cached project grants
+**Context**: The report form looked the caller's projects up once when it mounted, so a researcher whose row expired while the form was open kept their option lists until a reload.
+**Decision**: The form looks the projects up on each option query, so expiry takes effect at once there as it does for runs.
 
 ---
 

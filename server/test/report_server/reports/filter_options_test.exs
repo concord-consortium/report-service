@@ -166,7 +166,7 @@ defmodule ReportServer.Reports.FilterOptionsTest do
       researcher = form_user(563, portal_is_project_researcher: true)
 
       assert ids(:student, by_form(12), researcher) == []
-      assert ids(:student, by_form(15), researcher) == ["76"]
+      assert ids(:student, by_form(15), researcher) == ["76", "79"]
       assert ids(:class, by_form(12), researcher) == []
     end
 
@@ -176,6 +176,13 @@ defmodule ReportServer.Reports.FilterOptionsTest do
       assert ids(:student, by_form(12), mixed) == ["71"]
       assert ids(:class, by_form(12), mixed) == ["601"]
       assert "76" in ids(:student, by_form(11), mixed)
+    end
+
+    test "a foreign form's admin-class exception is the matched class's, not another of the student's" do
+      dual = form_user(571, portal_is_project_admin: true, portal_is_project_researcher: true)
+
+      assert ids(:class, by_form(12), dual) == ["605"]
+      assert "79" in ids(:student, by_form(12), dual)
     end
 
     test "a project admin's narrowing is unchanged" do
