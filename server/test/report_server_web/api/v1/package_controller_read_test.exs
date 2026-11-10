@@ -5,6 +5,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
   import ReportServerWeb.PortalTokenFixture
 
   alias ReportServer.{AccountsFixtures, PackagesMemoryStore, PackagesPortalStub, Repo}
+  alias ReportServer.Reports.AllowedProjects
 
   @server "learn.portal.staging.concord.org"
   @db_env "LEARN_PORTAL_STAGING_CONCORD_ORG_DB"
@@ -100,7 +101,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
   describe "the list with a launch token" do
     test "adds public, own, project-granted and project-maintained packages", %{conn: conn} = context do
       catalog(context)
-      PackagesPortalStub.set(%{allowed_project_ids: [20], project_names: {:ok, %{20 => "Team Twenty"}}})
+      PackagesPortalStub.set(%{allowed_project_ids: %AllowedProjects{admin: [20], researcher: []}, project_names: {:ok, %{20 => "Team Twenty"}}})
 
       conn = conn |> with_bearer(access_token()) |> get("/api/v1/packages")
       assert names(conn) == ["granted", "mine", "official", "public", "team"]
@@ -139,7 +140,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerReadTest do
 
     test "a project-name lookup that fails leaves the name null", %{conn: conn} = context do
       catalog(context)
-      PackagesPortalStub.set(%{allowed_project_ids: [20], project_names: {:error, "timeout"}})
+      PackagesPortalStub.set(%{allowed_project_ids: %AllowedProjects{admin: [20], researcher: []}, project_names: {:error, "timeout"}})
       packages = conn |> with_bearer(access_token()) |> get("/api/v1/packages") |> json_response(200) |> Map.fetch!("packages")
       assert %{"project" => %{"id" => 20, "name" => nil}} = Enum.find(packages, &(&1["name"] == "granted"))
     end

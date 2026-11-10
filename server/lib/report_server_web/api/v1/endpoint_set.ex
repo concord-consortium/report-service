@@ -21,12 +21,8 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
   def fetch_learners(user, report_run) do
     with :ok <- ensure_bulk_derivable(Tree.find_report(report_run.report_slug)) do
       case allowed_project_ids_source().get_allowed_project_ids(user) do
-        # defensive/unreachable (all role flags false -> AuthPlug 401s before here)
+        # no live project role, such as a researcher whose stored flag is set but whose rows have all expired
         :none ->
-          {:ok, []}
-
-        # empty-permission short-circuit BEFORE any SQL (list_to_in([]) -> "()", so "... IN ()" -> 500)
-        [] ->
           {:ok, []}
 
         # portal permission query FAILED: return it so the caller maps it to a controlled SERVER_ERROR.

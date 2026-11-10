@@ -1,6 +1,6 @@
 defmodule ReportServer.ReportFilterQueryTest do
   use ExUnit.Case, async: true
-  alias ReportServer.Reports.{ReportFilter, ReportFilterQuery, ReportUtils}
+  alias ReportServer.Reports.{AllowedProjects, ReportFilter, ReportFilterQuery, ReportUtils}
 
   @taxonomies [:country, :state, :subject_area]
 
@@ -39,7 +39,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         %ReportFilter{
           filters: [:cohort]
         },
-        [1, 2, 3],
+        admin([1, 2, 3]),
         "",
         "portal.example.com")
       assert query ==
@@ -121,7 +121,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         %ReportFilter{
           filters: [:school]
         },
-        [1, 2],
+        admin([1, 2]),
         "",
         "portal.example.com")
 
@@ -213,7 +213,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         %ReportFilter{
           filters: [:teacher]
         },
-        [10, 20],
+        admin([10, 20]),
         "",
         "portal.example.com")
 
@@ -287,7 +287,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         %ReportFilter{
           filters: [:assignment]
         },
-        [1, 2],
+        admin([1, 2]),
         "",
         "portal.example.com")
 
@@ -466,7 +466,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         %ReportFilter{
           filters: [:class]
         },
-        [5, 6],
+        admin([5, 6]),
         "",
         "portal.example.com")
 
@@ -571,7 +571,7 @@ defmodule ReportServer.ReportFilterQueryTest do
         %ReportFilter{
           filters: [:student]
         },
-        [7, 8],
+        admin([7, 8]),
         "",
         "portal.example.com")
 
@@ -1225,7 +1225,7 @@ defmodule ReportServer.ReportFilterQueryTest do
 
   describe "every dimension" do
     # A scoped user, not :all, so the statements record which dimensions apply project scoping.
-    @scoped_project_ids [7, 8]
+    @scoped_allowed %AllowedProjects{admin: [7, 8], researcher: []}
 
     @expected_sql %{
       cohort:
@@ -1302,7 +1302,7 @@ defmodule ReportServer.ReportFilterQueryTest do
       assert Enum.sort(Map.keys(@expected_sql)) == Enum.sort(ReportFilter.dimensions())
 
       for dimension <- ReportFilter.dimensions() do
-        assert options_sql(dimension, @scoped_project_ids) == @expected_sql[dimension],
+        assert options_sql(dimension, @scoped_allowed) == @expected_sql[dimension],
                "generated SQL changed for #{dimension}"
       end
     end
@@ -1310,7 +1310,7 @@ defmodule ReportServer.ReportFilterQueryTest do
     test "only the seven person- and assignment-bearing dimensions apply project scoping" do
       scoped =
         Enum.filter(ReportFilter.dimensions(), fn dimension ->
-          String.contains?(options_sql(dimension, @scoped_project_ids), "project_id IN (7,8)")
+          String.contains?(options_sql(dimension, @scoped_allowed), "project_id IN (7,8)")
         end)
 
       assert scoped == [:cohort, :school, :teacher, :assignment, :class, :student, :permission_form]
@@ -1319,7 +1319,7 @@ defmodule ReportServer.ReportFilterQueryTest do
     test "no allowed projects restricts every scoped dimension to nothing, without an empty IN list" do
       for dimension <- ReportFilter.dimensions() -- @taxonomies do
         {query, _params} =
-          ReportFilterQuery.get_query_and_params(%ReportFilter{filters: [dimension]}, [], "", "portal.example.com")
+          ReportFilterQuery.get_query_and_params(%ReportFilter{filters: [dimension]}, :none, "", "portal.example.com")
 
         sql = ReportFilterQuery.get_options_sql(query)
 
@@ -1334,19 +1334,12 @@ defmodule ReportServer.ReportFilterQueryTest do
     test "no allowed projects leaves the global taxonomies discoverable" do
       for dimension <- @taxonomies do
         {query, _params} =
-          ReportFilterQuery.get_query_and_params(%ReportFilter{filters: [dimension]}, [], "", "portal.example.com")
+          ReportFilterQuery.get_query_and_params(%ReportFilter{filters: [dimension]}, :none, "", "portal.example.com")
 
         sql = ReportFilterQuery.get_options_sql(query)
 
         refute sql =~ "1 = 0", "#{dimension} is a global vocabulary and must not be scoped away"
       end
-    end
-
-    test "an empty allowed-projects list behaves as :none does" do
-      filter = %ReportFilter{filters: [:cohort]}
-
-      assert ReportFilterQuery.get_query_and_params(filter, [], "", "portal.example.com") ==
-               ReportFilterQuery.get_query_and_params(filter, :none, "", "portal.example.com")
     end
   end
 
@@ -1384,4 +1377,6 @@ defmodule ReportServer.ReportFilterQueryTest do
              )
     end
   end
+
+  defp admin(ids), do: %AllowedProjects{admin: ids, researcher: []}
 end

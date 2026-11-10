@@ -152,3 +152,36 @@ VALUES
    'School W','Class 602',51,NULL,'Dist W, Dist Y','NH, MA','ann@e.org, cid@e.org, gone@e.org','','31, 33, 34'),
   (904,74,102,703,602,NULL,NULL,'Stu Four','stu.four',
    'School W','Class 602',51,NULL,NULL,NULL,NULL,NULL,NULL);
+-- Project 902 reaches class 604 through teacher 36. Student 76 holds 902's form, 77 only 901's,
+-- and 78 none.
+INSERT INTO admin_projects VALUES (902,'Proj C');
+INSERT INTO admin_cohorts VALUES (3,'Cohort Three',902);
+INSERT INTO admin_cohort_items VALUES (4,3,'Portal::Teacher',36),(5,3,'ExternalActivity',801);
+INSERT INTO users VALUES (136,'dee','Dee','Teach','dee@e.org',NULL),
+  (106,'stu.six','Stu','Six','stu.six@e.org',NULL),(107,'stu.seven','Stu','Seven','stu.seven@e.org',NULL),
+  (108,'stu.eight','Stu','Eight','stu.eight@e.org',NULL);
+INSERT INTO portal_teachers VALUES (36,136);
+INSERT INTO portal_clazzes (id, name, class_word) VALUES (604,'Class 604','d');
+INSERT INTO portal_teacher_clazzes VALUES (17,604,36);
+INSERT INTO portal_students VALUES (76,106),(77,107),(78,108);
+INSERT INTO portal_student_clazzes VALUES (5,604,76),(6,604,77),(7,604,78);
+INSERT INTO portal_offerings VALUES (704,'ExternalActivity',801,604);
+INSERT INTO portal_learners VALUES
+  (905,76,704,'SECUREKEY905','2026-04-05 09:00:00'),
+  (906,77,704,'SECUREKEY906','2026-04-06 09:00:00'),
+  (907,78,704,'SECUREKEY907','2026-04-07 09:00:00');
+INSERT INTO portal_permission_forms VALUES (15,'Form C',902);
+INSERT INTO portal_student_permission_forms VALUES (4,76,15),(5,77,12);
+INSERT INTO report_learners
+  (learner_id,student_id,user_id,offering_id,class_id,last_run,teachers_name,student_name,username,
+   school_name,class_name,school_id,permission_forms,teachers_district,teachers_state,teachers_email,
+   permission_forms_id,teachers_id)
+VALUES
+  (905,76,106,704,604,NULL,'Dee Teach','Stu Six','stu.six',NULL,'Class 604',NULL,'Proj C: Form C',NULL,NULL,'dee@e.org','15','36'),
+  (906,77,107,704,604,NULL,'Dee Teach','Stu Seven','stu.seven',NULL,'Class 604',NULL,'Proj B: Form 2',NULL,NULL,'dee@e.org','12','36'),
+  (907,78,108,704,604,NULL,'Dee Teach','Stu Eight','stu.eight',NULL,'Class 604',NULL,NULL,NULL,NULL,'dee@e.org',NULL,'36');
+-- 562 administers 900 and researches 902; 563 researches 902; 567 holds both roles on 900; 568's
+-- researcher row has a NULL is_admin; 570 is a site admin who also researches 900.
+INSERT INTO admin_project_users VALUES (3,900,562,1,0,NULL),(4,902,562,0,1,NULL),(5,902,563,0,1,NULL),
+  (9,900,567,1,1,NULL),(13,901,568,NULL,1,NULL),(16,900,570,0,1,NULL);
+INSERT INTO roles_users VALUES (1,570);

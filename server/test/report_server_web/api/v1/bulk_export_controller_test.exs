@@ -9,6 +9,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
   alias ReportServer.{LearnerDataStub, ReportServiceStub, Repo}
   alias ReportServer.Reports
   alias ReportServerWeb.Api.V1.BulkParams
+  alias ReportServer.Reports.AllowedProjects
 
   setup :register_and_put_bearer_token
 
@@ -45,7 +46,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
   end
 
   defp stub(opts) do
-    allowed = Keyword.get(opts, :allowed, [1, 2])
+    allowed = Keyword.get(opts, :allowed, %AllowedProjects{admin: [1, 2], researcher: []})
     fetch = Keyword.get(opts, :fetch, fn _f, _u, _o -> {:ok, [learner_group("re-1", "https://example.com/a")]} end)
     bulk_read = Keyword.get(opts, :bulk_read, fn _req -> {:ok, @page} end)
 
@@ -118,7 +119,7 @@ defmodule ReportServerWeb.Api.V1.BulkExportControllerTest do
     end
 
     test "empty permission set -> terminal empty page, no LearnerData.fetch, one intent row", %{conn: conn, user: user} do
-      stub(allowed: [], fetch: fn _f, _u, _o -> raise "should not be called" end)
+      stub(allowed: :none, fetch: fn _f, _u, _o -> raise "should not be called" end)
       run = run_fixture(user)
 
       body = json_response(get(conn, ~p"/api/v1/reports/#{run.id}/answers"), 200)

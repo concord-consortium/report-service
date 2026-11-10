@@ -16,11 +16,11 @@ defmodule ReportServer.PortalFixtureTest do
            "config/test.exs sets a different variable than #{PortalFixture.server()} resolves to"
   end
 
-  test "the fixture seeds four learners across two classes" do
+  test "the fixture seeds seven learners across three classes" do
     learners = rows("SELECT learner_id, class_id FROM report_learners ORDER BY learner_id")
 
-    assert Enum.map(learners, & &1.learner_id) == [901, 902, 903, 904]
-    assert Enum.map(learners, & &1.class_id) == [601, 601, 602, 602]
+    assert Enum.map(learners, & &1.learner_id) == [901, 902, 903, 904, 905, 906, 907]
+    assert Enum.map(learners, & &1.class_id) == [601, 601, 602, 602, 604, 604, 604]
   end
 
   test "learner 901's joins fan out, which is what makes a row count differ from a learner count" do

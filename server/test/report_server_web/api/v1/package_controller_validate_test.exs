@@ -5,6 +5,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerValidateTest do
 
   alias ReportServer.{PackagesMemoryStore, PackagesPortalStub, Repo}
   alias ReportServer.Packages.{Package, PackageEvent, PackageVersion}
+  alias ReportServer.Reports.AllowedProjects
 
   setup :register_and_put_bearer_token
 
@@ -63,10 +64,10 @@ defmodule ReportServerWeb.Api.V1.PackageControllerValidateTest do
   end
 
   test "a new package under a project the caller holds no grant on is 403", %{conn: conn} do
-    PackagesPortalStub.set(%{allowed_project_ids: [21]})
+    PackagesPortalStub.set(%{allowed_project_ids: admin([21])})
     assert %{"error" => "FORBIDDEN"} = json_response(validate(conn, package_zip(), "?origin=projects/20"), 403)
 
-    PackagesPortalStub.set(%{allowed_project_ids: [20]})
+    PackagesPortalStub.set(%{allowed_project_ids: admin([20])})
     assert %{"identity" => "projects/20/counts"} = json_response(validate(again(conn), package_zip(), "?origin=projects/20"), 200)
   end
 
@@ -87,7 +88,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerValidateTest do
 
     assert %{"error" => "UNPROCESSABLE"} = json_response(validate(again(conn), package_zip(%{"expected_duration_seconds" => 7_201})), 422)
 
-    PackagesPortalStub.set(%{allowed_project_ids: [21]})
+    PackagesPortalStub.set(%{allowed_project_ids: admin([21])})
     assert %{"error" => "FORBIDDEN"} = json_response(validate(again(conn), package_zip(), "?origin=projects/20"), 403)
   end
 
@@ -101,4 +102,6 @@ defmodule ReportServerWeb.Api.V1.PackageControllerValidateTest do
   test "needs a token" do
     assert %{"error" => "NOT_AUTHENTICATED"} = json_response(validate(build_conn(), package_zip()), 401)
   end
+
+  defp admin(ids), do: %AllowedProjects{admin: ids, researcher: []}
 end

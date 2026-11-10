@@ -9,6 +9,7 @@ defmodule ReportServer.Packages do
 
   alias ReportServer.{PortalDbs, Repo}
   alias ReportServer.Accounts.User
+  alias ReportServer.Reports.AllowedProjects
   alias ReportServer.Packages.{Archive, Identity, Manifest, Package, PackageEvent, PackageVersion, Store}
 
   # a portal read on a request path fails fast rather than inheriting PortalDbs' five minutes
@@ -403,7 +404,8 @@ defmodule ReportServer.Packages do
 
   defp portal_allowed_project_ids(user) do
     case portal().get_allowed_project_ids(user, timeout: @portal_timeout_ms) do
-      ids when is_list(ids) or ids in [:all, :none] -> {:ok, ids}
+      %AllowedProjects{} = allowed -> {:ok, AllowedProjects.ids(allowed)}
+      ids when ids in [:all, :none] -> {:ok, ids}
       _error -> {:error, :portal_unavailable, "the portal could not be asked for your project grants"}
     end
   end

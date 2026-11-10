@@ -10,6 +10,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
   alias ReportServer.{ClueClassHashesStub, ClueExportStub, LearnerDataStub, Repo}
   alias ReportServer.Reports
   alias ReportServerWeb.Api.V1.BulkParams
+  alias ReportServer.Reports.AllowedProjects
 
   setup :register_and_put_bearer_token
 
@@ -46,7 +47,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
 
   defp stub(opts \\ []) do
     test_pid = self()
-    allowed = Keyword.get(opts, :allowed, [1, 2])
+    allowed = Keyword.get(opts, :allowed, %AllowedProjects{admin: [1, 2], researcher: []})
     learners = Keyword.get(opts, :learners, [learner(101, 601, 701)])
     fetch = Keyword.get(opts, :fetch, fn _f, _u, _o -> {:ok, groups_of(learners)} end)
     hashes = Keyword.get(opts, :hashes, fn _portal, ids -> {:ok, Map.new(ids, &{&1, hash_for(&1)})} end)
@@ -257,7 +258,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     end
 
     test "grants that exclude every learner give an empty terminal page and an intent row", %{conn: conn, user: user} do
-      stub(allowed: [], fetch: fn _f, _u, _o -> raise "should not be called" end)
+      stub(allowed: :none, fetch: fn _f, _u, _o -> raise "should not be called" end)
       refuse_calls()
       run = run_fixture(user)
 

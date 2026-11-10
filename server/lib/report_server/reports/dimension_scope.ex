@@ -15,7 +15,7 @@ defmodule ReportServer.Reports.DimensionScope do
 
   import ReportServer.Reports.ReportUtils, only: [list_to_in: 1]
 
-  alias ReportServer.Reports.AllowedProjectsLookupError
+  alias ReportServer.Reports.{AllowedProjects, AllowedProjectsLookupError}
 
   @bases %{
     cohort: %{
@@ -188,8 +188,8 @@ defmodule ReportServer.Reports.DimensionScope do
   The joins and predicates that restrict `dimension` to what `allowed` covers, or `:none` when the
   dimension is a global vocabulary that is deliberately unscoped.
 
-  `:all` (a portal super-admin) scopes nothing. An empty list or `:none` is a caller who can see no
-  project-scoped data, which is not the same as "no restriction": it restricts to nothing.
+  `:all` (a portal super-admin) scopes nothing. `:none` is a caller who can see no project-scoped
+  data, which is not the same as "no restriction": it restricts to nothing.
   """
   def scope(dimension, allowed) do
     case Map.fetch!(@scopes, dimension) do
@@ -206,10 +206,10 @@ defmodule ReportServer.Reports.DimensionScope do
     raise AllowedProjectsLookupError, message: "allowed-projects lookup failed: #{inspect(reason)}"
   end
 
-  defp restrict(_config, allowed) when allowed in [[], :none], do: {[], ["1 = 0"]}
+  defp restrict(_config, :none), do: {[], ["1 = 0"]}
 
-  defp restrict(config, allowed) when is_list(allowed) do
-    {config.join, [project_predicate(config.where, allowed)]}
+  defp restrict(config, %AllowedProjects{} = allowed) do
+    {config.join, [project_predicate(config.where, AllowedProjects.ids(allowed))]}
   end
 
   defp project_predicate([column], allowed), do: "#{column} #{list_to_in(allowed)}"

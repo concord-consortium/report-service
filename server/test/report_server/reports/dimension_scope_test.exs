@@ -4,11 +4,13 @@ defmodule ReportServer.Reports.DimensionScopeTest do
   @moduletag :portal_db
 
   alias ReportServer.{PortalDbs, PortalFixture}
-  alias ReportServer.Reports.{AllowedProjectsLookupError, DimensionScope, ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{AllowedProjects, AllowedProjectsLookupError, DimensionScope, ReportFilter, ReportFilterQuery}
 
   @server PortalFixture.server()
   @project 900
   @other_project 901
+  @admin %AllowedProjects{admin: [@project], researcher: []}
+  @other_admin %AllowedProjects{admin: [@other_project], researcher: []}
 
   @scoped [:cohort, :school, :teacher, :assignment, :permission_form, :class, :student]
   @taxonomies [:country, :state, :subject_area]
@@ -59,7 +61,7 @@ defmodule ReportServer.Reports.DimensionScopeTest do
   describe "scope/2 on the seven scoped dimensions" do
     test "admits an entity the caller's projects reach and excludes one they do not" do
       for dimension <- @scoped do
-        scoped = ids(dimension, [@project])
+        scoped = ids(dimension, @admin)
 
         assert @inside[dimension] in scoped, "#{dimension} lost an entity inside the project"
         refute @outside[dimension] in scoped, "#{dimension} kept an entity outside the project"
@@ -68,15 +70,14 @@ defmodule ReportServer.Reports.DimensionScopeTest do
 
     test "another project's scope excludes what this one admits" do
       for dimension <- @scoped do
-        refute @inside[dimension] in ids(dimension, [@other_project]),
+        refute @inside[dimension] in ids(dimension, @other_admin),
                "#{dimension} is not scoped by project at all"
       end
     end
 
-    test "an empty list restricts to nothing rather than to everything" do
+    test ":none restricts to nothing rather than to everything" do
       for dimension <- @scoped do
-        assert ids(dimension, []) == [], "#{dimension} answered an unscoped caller with rows"
-        assert ids(dimension, :none) == []
+        assert ids(dimension, :none) == [], "#{dimension} answered an unscoped caller with rows"
       end
     end
 
@@ -97,15 +98,15 @@ defmodule ReportServer.Reports.DimensionScopeTest do
   describe "scope/2 on the taxonomies" do
     test "is :none whatever the caller may see" do
       for dimension <- @taxonomies do
-        assert DimensionScope.scope(dimension, [@project]) == :none
-        assert DimensionScope.scope(dimension, []) == :none
+        assert DimensionScope.scope(dimension, @admin) == :none
+        assert DimensionScope.scope(dimension, :none) == :none
       end
     end
 
     test "the same options come back for every caller" do
       for dimension <- @taxonomies do
-        assert ids(dimension, [@project]) == ids(dimension, [])
-        assert ids(dimension, [@project]) != []
+        assert ids(dimension, @admin) == ids(dimension, :none)
+        assert ids(dimension, @admin) != []
       end
     end
   end
@@ -118,7 +119,7 @@ defmodule ReportServer.Reports.DimensionScopeTest do
       )
 
     assert [[0]] = result.rows
-    assert 803 in ids(:assignment, [@project])
+    assert 803 in ids(:assignment, @admin)
   end
 
   test "option discovery selects the id expression this module defines" do

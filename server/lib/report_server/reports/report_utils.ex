@@ -1,4 +1,5 @@
 defmodule ReportServer.Reports.ReportUtils do
+  alias ReportServer.Reports.AllowedProjects
 
   def list_to_in(nil), do: "()"
   def list_to_in(list) do
@@ -138,9 +139,8 @@ defmodule ReportServer.Reports.ReportUtils do
   # :all (super-admin) applies no scoping.
   def scope_by_allowed_projects(:all, join, where, _assignment_id_ref, _teacher_id_ref), do: {join, where}
 
-  # A non-empty list scopes the report to those projects.
-  def scope_by_allowed_projects(allowed_project_ids, join, where, assignment_id_ref, teacher_id_ref)
-      when is_list(allowed_project_ids) and allowed_project_ids != [] do
+  def scope_by_allowed_projects(%AllowedProjects{} = allowed, join, where, assignment_id_ref, teacher_id_ref) do
+    allowed_project_ids = AllowedProjects.ids(allowed)
     ## Suffix all table aliases with "_a" ("allowed") to avoid conflicts with the main query table aliases
     {
       [
@@ -166,11 +166,8 @@ defmodule ReportServer.Reports.ReportUtils do
     raise ReportServer.Reports.AllowedProjectsLookupError, message: "allowed-projects lookup failed: #{inspect(reason)}"
   end
 
-  # Genuinely no allowed projects (empty list or :none): the user can see no project-scoped data,
-  # so constrain the report to zero rows. Scoping with an empty list would render `project_id IN ()`,
-  # a MySQL syntax error.
-  def scope_by_allowed_projects(no_allowed_projects, join, where, _assignment_id_ref, _teacher_id_ref)
-      when no_allowed_projects in [[], :none] do
+  # No allowed projects: the user can see no project-scoped data, so constrain the report to zero rows.
+  def scope_by_allowed_projects(:none, join, where, _assignment_id_ref, _teacher_id_ref) do
     {join, ["1 = 0" | where]}
   end
 
