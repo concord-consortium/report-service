@@ -61,6 +61,24 @@ teacher with no school at all still occupies its position, as an empty entry.
 has one splitting rule. Values containing commas are not a concern because the portal replaces a
 comma inside a value with a space before joining.
 
+### Who sees which students
+
+A site admin sees every student. A project admin sees the students in their projects' cohort
+classes, on assignments in those projects' cohorts or materials. A project researcher sees only
+those of them who hold one of that same project's permission forms, and this applies to every
+report with a row per student (the Student Reports and Assignment Usage by Student), the exports and
+the filter options alike. A researcher whose access has expired on the
+portal sees nothing.
+
+For any caller other than a site admin who holds a researcher project, full permission-form names,
+CLUE group and class documents, and student names show only in classes reached through one of their
+admin projects, as the portal decides names. Elsewhere the form names are narrowed to their
+projects' forms, the CLUE export holds student documents only, and names are hidden as
+`hide_names` hides them.
+
+The teacher-level reports (Teacher Status, Summary Metrics by Assignment and Detailed Metrics by
+Assignment) count students without the permission-form narrowing.
+
 ## Development Setup
 
 First install the `asdf` version manager: <https://asdf-vm.com/guide/getting-started.html>
