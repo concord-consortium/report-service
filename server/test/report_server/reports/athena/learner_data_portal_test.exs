@@ -34,6 +34,14 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
       assert learners(user(563, portal_is_project_researcher: true))[905].permission_forms == ["Proj C: Form C"]
     end
 
+    test "a researcher's list is empty when none of the stored forms is theirs" do
+      server = PortalFixture.server()
+      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE report_learners SET permission_forms_id = '12' WHERE learner_id = 905")
+      on_exit(fn -> ReportServer.PortalDbs.query(server, "UPDATE report_learners SET permission_forms_id = '12,15' WHERE learner_id = 905") end)
+
+      assert learners(user(563, portal_is_project_researcher: true))[905].permission_forms == []
+    end
+
     test "a user with both roles keeps every form in an admin-project class only" do
       by_learner = learners(mixed())
 
