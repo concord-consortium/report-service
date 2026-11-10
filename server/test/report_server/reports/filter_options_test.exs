@@ -142,6 +142,17 @@ defmodule ReportServer.Reports.FilterOptionsTest do
       assert labels(:student, %ReportFilter{}, researcher(), limit: 100, like_text: "Stu One") == []
     end
 
+    test "a user with both roles sees a name only for a student of an admin-project class" do
+      mixed = %User{portal_server: @server, portal_user_id: 562, portal_is_project_admin: true, portal_is_project_researcher: true}
+      shown = %ReportFilter{hide_names: false}
+      student_labels = labels(:student, shown, mixed)
+
+      assert "106" in student_labels
+      assert "Stu One <101>" in student_labels
+      assert labels(:student, shown, mixed, limit: 100, like_text: "Stu Six") == []
+      assert labels(:student, shown, mixed, limit: 100, like_text: "106") == ["106"]
+    end
+
     test "an admin sees the names a researcher cannot" do
       assert "Stu One <101>" in labels(:student, %ReportFilter{}, project_admin())
     end

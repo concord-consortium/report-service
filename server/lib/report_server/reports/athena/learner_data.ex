@@ -11,6 +11,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   alias ReportServer.Accounts.User
   alias ReportServer.{PortalDbs, AthenaDB}
   alias ReportServer.Reports.{AllowedProjects, LearnerBaseQuery, ReportFilter, ReportQuery}
+  alias ReportServer.Reports.Athena.AthenaConfig
 
   def no_learners_error, do: "No learners were found matching the filters you selected."
 
@@ -25,7 +26,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
 
   def fetch(report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
     allowed = Keyword.get_lazy(opts, :allowed, fn -> PortalDbs.get_allowed_project_ids(user) end)
-    opts = Keyword.put(opts, :allowed, allowed)
+    opts = opts |> Keyword.put(:allowed, allowed) |> Keyword.put(:hide_names, report_filter.hide_names)
 
     with {:ok, portal_query} <- build_query(report_filter, user, allowed: allowed),
          {:ok, sql} <- ReportQuery.get_sql(portal_query),
@@ -127,7 +128,9 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     with {:ok, rows} <- maybe_ensure_not_empty(rows, Keyword.get(opts, :allow_empty, false)),
          {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
          {:ok, permission_form_map } <- get_permission_form_map(permission_form_ids, user) do
-      form_projects = AllowedProjects.form_project_ids(Keyword.get(opts, :allowed))
+      allowed = Keyword.get(opts, :allowed)
+      form_projects = AllowedProjects.form_project_ids(allowed)
+      hide_outside_admin_classes = Keyword.get(opts, :hide_names) != true and AllowedProjects.researcher?(allowed)
 
       result = rows
         |> Enum.map(fn row ->
@@ -156,6 +159,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
             created_at: row.created_at
           }
           |> put_in_admin_class(row)
+          |> maybe_hide_name(hide_outside_admin_classes and Map.get(row, :in_admin_class) != 1)
         end)
         |> group_learners_by_runnable_url()
 
@@ -165,6 +169,16 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       error -> error
     end
   end
+
+  # the values hide_names: true gives, so this digest matches the MySQL and Presto ones
+  defp maybe_hide_name(learner, false), do: learner
+
+  defp maybe_hide_name(learner = %{student_id: student_id, username: username}, true) do
+    %{learner | student_name: Integer.to_string(student_id), username: hash_username(username)}
+  end
+
+  defp hash_username(nil), do: nil
+  defp hash_username(username), do: Base.encode16(:crypto.hash(:sha, AthenaConfig.get_hide_username_hash_salt() <> username))
 
   defp put_in_admin_class(learner, %{in_admin_class: in_admin_class}), do: Map.put(learner, :in_admin_class, in_admin_class)
   defp put_in_admin_class(learner, _row), do: learner

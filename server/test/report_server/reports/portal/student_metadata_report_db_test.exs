@@ -159,6 +159,42 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportDbTest do
     end
   end
 
+  describe "names for a caller with a researcher project" do
+    @all_classes [601, 602, 604]
+
+    defp rows_for(user, hide_names) do
+      {_result, rows} = run(%{filter(@all_classes) | hide_names: hide_names}, user)
+      by_learner(rows)
+    end
+
+    test "a user with both roles sees names only in an admin-project class" do
+      mixed = user(562, portal_is_project_admin: true, portal_is_project_researcher: true)
+      shown = rows_for(mixed, false)
+      hidden = rows_for(mixed, true)
+
+      assert {shown[901].student_name, shown[901].username} == {"Stu One", "stu.one"}
+      assert shown[905].student_name == "76"
+      assert shown[905].username == hidden[905].username
+      assert shown[905].username == Base.encode16(:crypto.hash(:sha, @salt <> "stu.six"))
+    end
+
+    test "an admin-only or site-admin caller's SQL has no per-class test" do
+      for user <- [user(555, portal_is_project_admin: true), admin()] do
+        {:ok, query} = StudentMetadataReport.get_query(%{filter(@all_classes) | hide_names: false}, user)
+        {:ok, sql} = ReportQuery.get_sql(query)
+        refute sql =~ "ptc_n"
+      end
+    end
+
+    test "a stale admin flag over no admin rows hides every name" do
+      stale = user(557, portal_is_project_admin: true)
+      row = rows_for(stale, false)[901]
+
+      assert row.student_name == "71"
+      assert row.username == Base.encode16(:crypto.hash(:sha, @salt <> "stu.one"))
+    end
+  end
+
   test "last_run renders as an ISO-8601 string, and an absent one as an empty cell" do
     {_result, rows} = run()
     by = by_learner(rows)

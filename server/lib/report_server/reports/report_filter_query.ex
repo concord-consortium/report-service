@@ -745,16 +745,9 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     if has_empty_dependent_filters?(report_filter, :student) do
       nil
     else
-      value = if hide_names do
-        "CAST(u.id AS CHAR) AS fullname"
-      else
-        "CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') AS fullname"
-      end
-      where = if hide_names do
-        maybe_add_like(like_text, ["CAST(u.id AS CHAR) LIKE ?"])
-      else
-        maybe_add_like(like_text, ["CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') LIKE ?"])
-      end
+      label = ReportFilter.student_label_expr(hide_names, allowed_project_ids)
+      value = "#{label} AS fullname"
+      where = maybe_add_like(like_text, ["#{label} LIKE ?"])
 
       query = build_base_query(%{
         id: DimensionScope.id_expr(:student),

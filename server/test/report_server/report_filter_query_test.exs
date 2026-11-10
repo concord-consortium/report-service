@@ -524,10 +524,10 @@ defmodule ReportServer.ReportFilterQueryTest do
       assert query ==
         %ReportFilterQuery{
           id: "ps.id",
-          value: "CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') AS fullname",
+          value: "CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.id), '>') AS fullname",
           from: "portal_students ps JOIN users u ON u.id = ps.user_id",
           join: [],
-          where: ["CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') LIKE ?"],
+          where: ["CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.id), '>') LIKE ?"],
           order_by: "fullname",
           num_params: 1
         }
@@ -1265,7 +1265,7 @@ defmodule ReportServer.ReportFilterQueryTest do
           "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id) " <>
           "WHERE (ac.project_id IN (7,8)) ORDER BY fullname",
       student:
-        "SELECT DISTINCT ps.id, CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') AS fullname " <>
+        "SELECT DISTINCT ps.id, CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.id), '>') AS fullname " <>
           "FROM portal_students ps JOIN users u ON u.id = ps.user_id " <>
           "JOIN portal_student_clazzes psc ON psc.student_id = ps.id " <>
           "JOIN portal_teacher_clazzes ptc ON (ptc.clazz_id = psc.clazz_id) " <>

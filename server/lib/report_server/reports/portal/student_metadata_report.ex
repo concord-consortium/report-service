@@ -18,6 +18,8 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
   end
 
   defp cols(portal_server, hide_names, allowed) do
+    admin_class = AllowedProjects.admin_class_sql(allowed, :class)
+
     [
       {"#{@group_concat_hint} rl.learner_id", "learner_id"},
       {"rl.user_id", "user_id"},
@@ -26,8 +28,8 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
       {"rl.class_id", "class_id"},
       {"rl.school_id", "school_id"},
       {LearnerBaseQuery.run_remote_endpoint_sql(portal_server), "run_remote_endpoint"},
-      {LearnerHideNames.student_name_sql(hide_names), "student_name"},
-      {LearnerHideNames.username_sql(hide_names), "username"},
+      {LearnerHideNames.student_name_sql(hide_names, admin_class), "student_name"},
+      {LearnerHideNames.username_sql(hide_names, admin_class), "username"},
       {"rl.class_name", "class"},
       {"rl.school_name", "school"},
       {csv_list("rl.teachers_id"), "teacher_user_ids"},

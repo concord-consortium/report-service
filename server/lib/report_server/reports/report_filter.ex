@@ -3,7 +3,7 @@ defmodule ReportServer.Reports.ReportFilter do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{AllowedProjectsLookupError, DimensionScope, FilterOptions, ReportFilter}
+  alias ReportServer.Reports.{AllowedProjects, AllowedProjectsLookupError, DimensionScope, FilterOptions, ReportFilter}
 
   defstruct filters: [], cohort: nil, school: nil, teacher: nil, assignment: nil, class: nil, student: nil,
     permission_form: nil, country: nil, state: nil, subject_area: nil, start_date: nil, end_date: nil,
@@ -133,7 +133,7 @@ defmodule ReportServer.Reports.ReportFilter do
       |> Enum.map_join(" AND ", &"(#{&1})")
 
     "SELECT DISTINCT '#{dimension}' AS table_name, #{id_expr} AS id, " <>
-      "#{label_expr(dimension, report_filter)} AS name " <>
+      "#{label_expr(dimension, report_filter, allowed)} AS name " <>
       "FROM #{DimensionScope.from(dimension)} #{join} WHERE #{where}"
   end
 
@@ -151,22 +151,35 @@ defmodule ReportServer.Reports.ReportFilter do
     end
   end
 
-  defp label_expr(:cohort, _report_filter), do: "TRIM(admin_cohorts.name)"
-  defp label_expr(:school, _report_filter), do: "TRIM(portal_schools.name)"
-  defp label_expr(:assignment, _report_filter), do: "TRIM(external_activities.name)"
-  defp label_expr(:country, _report_filter), do: "TRIM(portal_countries.name)"
-  defp label_expr(:subject_area, _report_filter), do: "TRIM(admin_tags.tag)"
-  defp label_expr(:class, _report_filter), do: "CONCAT(TRIM(pc.name), ' (', TRIM(pc.class_word), ')')"
-  defp label_expr(:permission_form, _report_filter), do: "CONCAT(TRIM(ap.name), ': ', TRIM(ppf.name))"
-  defp label_expr(:state, _report_filter), do: DimensionScope.id_expr(:state)
+  defp label_expr(:cohort, _report_filter, _allowed), do: "TRIM(admin_cohorts.name)"
+  defp label_expr(:school, _report_filter, _allowed), do: "TRIM(portal_schools.name)"
+  defp label_expr(:assignment, _report_filter, _allowed), do: "TRIM(external_activities.name)"
+  defp label_expr(:country, _report_filter, _allowed), do: "TRIM(portal_countries.name)"
+  defp label_expr(:subject_area, _report_filter, _allowed), do: "TRIM(admin_tags.tag)"
+  defp label_expr(:class, _report_filter, _allowed), do: "CONCAT(TRIM(pc.name), ' (', TRIM(pc.class_word), ')')"
+  defp label_expr(:permission_form, _report_filter, _allowed), do: "CONCAT(TRIM(ap.name), ': ', TRIM(ppf.name))"
+  defp label_expr(:state, _report_filter, _allowed), do: DimensionScope.id_expr(:state)
 
-  defp label_expr(:teacher, _report_filter),
+  defp label_expr(:teacher, _report_filter, _allowed),
     do: "CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.email), '>')"
 
-  defp label_expr(:student, %ReportFilter{hide_names: true}), do: "CAST(u.id AS CHAR)"
+  defp label_expr(:student, %ReportFilter{hide_names: hide_names}, allowed), do: student_label_expr(hide_names, allowed)
 
-  defp label_expr(:student, _report_filter),
-    do: "CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.id), '>')"
+  @doc """
+  The student label, without an alias, for the stored run labels and the option list and its search
+  alike: the user id when names are hidden, the name otherwise, and for a caller with a researcher
+  project the name only for a student in one of their admin projects' classes.
+  """
+  def student_label_expr(true, _allowed), do: "CAST(u.id AS CHAR)"
+
+  def student_label_expr(_hide_names, allowed) do
+    name = "CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name), ' <', TRIM(u.id), '>')"
+
+    case AllowedProjects.admin_class_sql(allowed, {:student, "ps.id"}) do
+      nil -> name
+      admin_class -> "CASE WHEN #{admin_class} THEN #{name} ELSE CAST(u.id AS CHAR) END"
+    end
+  end
 
   # MySQL widens the union's id column to a string as soon as one branch selects one, so the key
   # type is fixed here rather than left to which dimensions the filter happens to name.

@@ -76,4 +76,39 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
       refute Map.has_key?(learner, "in_admin_class")
     end
   end
+
+  describe "names for a user with both roles" do
+    @salt "pinned.salt"
+
+    setup do
+      athena = Application.get_env(:report_server, :athena, [])
+      Application.put_env(:report_server, :athena, Keyword.put(athena, :hide_username_hash_salt, @salt))
+      on_exit(fn -> Application.put_env(:report_server, :athena, athena) end)
+    end
+
+    defp mixed_learners(hide_names) do
+      {:ok, groups} = LearnerData.fetch(%{@filter | hide_names: hide_names}, mixed(), allow_empty: true)
+      groups |> Enum.flat_map(& &1.learners) |> Map.new(&{&1.learner_id, &1})
+    end
+
+    test "a learner outside an admin-project class carries the values hide_names gives" do
+      by_learner = mixed_learners(false)
+
+      assert {by_learner[901].student_name, by_learner[901].username} == {"Stu One", "stu.one"}
+      assert by_learner[905].student_name == "76"
+      assert by_learner[905].username == Base.encode16(:crypto.hash(:sha, @salt <> "stu.six"))
+    end
+
+    test "with hide_names on the username is left for Athena to hash" do
+      assert mixed_learners(true)[905].username == "stu.six"
+    end
+
+    test "a NULL username stays nil" do
+      server = PortalFixture.server()
+      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE report_learners SET username = NULL WHERE learner_id = 905")
+      on_exit(fn -> ReportServer.PortalDbs.query(server, "UPDATE report_learners SET username = 'stu.six' WHERE learner_id = 905") end)
+
+      assert mixed_learners(false)[905].username == nil
+    end
+  end
 end

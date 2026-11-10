@@ -3,6 +3,10 @@ defmodule ReportServer.Reports.HideNames do
   Who may see learner names, and the enforcement that overrides a request that asks to.
 
   Lives outside the LiveView so every path that builds a report filter can apply it.
+
+  A caller allowed names who also holds a researcher project sees them only for learners in classes
+  reached through one of their admin projects, as the portal decides per class; that rule is applied
+  where each query is built, from `AllowedProjects.admin_class_sql/2`.
   """
 
   alias ReportServer.Accounts.User
