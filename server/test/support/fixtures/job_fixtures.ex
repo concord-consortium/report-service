@@ -6,8 +6,8 @@ defmodule ReportServer.JobFixtures do
   @doc """
   Generate a job.
   """
-  def job_fixture(input \\ "", steps \\ [], learners \\ %{}) do
-    job = %Job{id: 1, query_id: "test", steps: steps, status: :started, started_at: :os.system_time(:millisecond), portal_url: "portal.example.com", ref: nil, result: nil}
+  def job_fixture(input \\ "", steps \\ [], learners \\ %{}, allowed \\ :all) do
+    job = %Job{id: 1, query_id: "test", steps: steps, status: :started, started_at: :os.system_time(:millisecond), portal_url: "portal.example.com", allowed: allowed, ref: nil, result: nil}
     query_result = %{id: "test_result"}
 
     {:ok, output_io} = StringIO.open("")

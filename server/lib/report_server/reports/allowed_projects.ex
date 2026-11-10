@@ -48,9 +48,10 @@ defmodule ReportServer.Reports.AllowedProjects do
 
   @doc """
   The condition that a row's class is reached through one of the caller's admin projects, the
-  portal's `User#is_project_admin_for_clazz?`: the class (`:class`, over `rl.class_id`) has a teacher
-  in a cohort of an admin project, or, for `{:student, ref}`, one of the classes of the student `ref`
-  names does. `nil` for a caller with no researcher project, whose every row is treated alike.
+  portal's `User#is_project_admin_for_clazz?`: the class (`{:class, ref}`, or `:class` over
+  `rl.class_id`) has a teacher in a cohort of an admin project, or, for `{:student, ref}`, one of the
+  classes of the student `ref` names does. `nil` for a caller with no researcher project, whose
+  every row is treated alike.
   """
   def admin_class_sql(allowed, by) do
     if researcher?(allowed), do: admin_class_exists(allowed.admin, by), else: nil
@@ -58,10 +59,12 @@ defmodule ReportServer.Reports.AllowedProjects do
 
   defp admin_class_exists([], _by), do: "FALSE"
 
-  defp admin_class_exists(admin_ids, :class),
+  defp admin_class_exists(admin_ids, :class), do: admin_class_exists(admin_ids, {:class, "rl.class_id"})
+
+  defp admin_class_exists(admin_ids, {:class, class_ref}),
     do:
       "EXISTS (SELECT 1 FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
-        "WHERE ptc_n.clazz_id = rl.class_id AND #{in_clause("ac_n.project_id", admin_ids)})"
+        "WHERE ptc_n.clazz_id = #{class_ref} AND #{in_clause("ac_n.project_id", admin_ids)})"
 
   defp admin_class_exists(admin_ids, {:student, student_ref}),
     do:

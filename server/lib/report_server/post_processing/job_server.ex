@@ -43,8 +43,8 @@ defmodule ReportServer.PostProcessing.JobServer do
     GenServer.cast(get_server_pid(query_id), :request_job_status)
   end
 
-  def add_job(query_id, query_result, steps, portal_url) do
-    GenServer.cast(get_server_pid(query_id), {:add_job, query_result, steps, portal_url})
+  def add_job(query_id, query_result, steps, portal_url, allowed) do
+    GenServer.cast(get_server_pid(query_id), {:add_job, query_result, steps, portal_url, allowed})
   end
 
   def query_topic(query_id), do: "job_server_#{query_id}"
@@ -72,8 +72,8 @@ defmodule ReportServer.PostProcessing.JobServer do
     {:noreply, state}
   end
 
-  def handle_cast({:add_job, query_result, steps, portal_url}, state = %{jobs: jobs}) do
-    job = %Job{id: length(jobs) + 1, query_id: query_result.id, steps: steps, status: :started, started_at: :os.system_time(:millisecond), portal_url: portal_url, ref: nil, result: nil}
+  def handle_cast({:add_job, query_result, steps, portal_url, allowed}, state = %{jobs: jobs}) do
+    job = %Job{id: length(jobs) + 1, query_id: query_result.id, steps: steps, status: :started, started_at: :os.system_time(:millisecond), portal_url: portal_url, allowed: allowed, ref: nil, result: nil}
     step_labels = Enum.map(steps, &(&1.label)) |> Enum.join(", ")
     Logger.info("Adding job ##{job.id} for query #{query_result.id} (#{step_labels})")
 

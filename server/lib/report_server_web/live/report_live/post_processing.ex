@@ -4,7 +4,7 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
   require Logger
 
   alias Phoenix.PubSub
-  alias ReportServer.AuditLog
+  alias ReportServer.{AuditLog, PortalDbs}
   alias ReportServer.PostProcessing.{JobServer, JobSupervisor}
   alias ReportServer.PostProcessing.Steps.{HasAudio, TranscribeAudio}
   alias ReportServer.Reports.{Report, ReportFilter, ReportRun}
@@ -159,13 +159,20 @@ defmodule ReportServerWeb.ReportLive.PostProcessingComponent do
       end)
       |> JobServer.sort_steps()
 
-    JobServer.add_job(query_id, %{id: query_id, output_location: report_run.athena_result_url}, steps, portal_server)
+    case PortalDbs.get_allowed_project_ids(report_run.user) do
+      {:error, _reason} ->
+        send(self(), {:put_flash, :error, "Unable to check the run owner's project access, so the job was not started. Please try again."})
+        {:noreply, socket}
 
-    {:noreply, socket
-      |> assign(:form_version, form_version + 1)
-      |> assign(:form_disabled, true)
-      |> assign(:form, to_form(default_form_params))
-    }
+      allowed ->
+        JobServer.add_job(query_id, %{id: query_id, output_location: report_run.athena_result_url}, steps, portal_server, allowed)
+
+        {:noreply, socket
+          |> assign(:form_version, form_version + 1)
+          |> assign(:form_disabled, true)
+          |> assign(:form, to_form(default_form_params))
+        }
+    end
   end
 
   @impl true

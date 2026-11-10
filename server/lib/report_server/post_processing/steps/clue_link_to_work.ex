@@ -2,6 +2,7 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
   alias ReportServer.PostProcessing.JobParams
   alias ReportServer.PostProcessing.Step
   alias ReportServer.PostProcessing.Steps.Helpers
+  alias ReportServer.Reports.AllowedProjects
   alias ReportServer.Reports.Clue.HistoryLink
 
   @id "clue_link_to_work"
@@ -29,8 +30,12 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
     if learner do
       case Jason.decode(parameters) do
         {:ok, json = %{"documentKey" => document_key, "documentUid" => document_uid}} ->
-          link_to_work = generate_link_to_work(job_params, learner, document_key, document_uid, json["documentHistoryId"])
-          {input, Map.put(output, @link_to_work_col, link_to_work)}
+          if link_allowed?(job_params, learner, document_uid) do
+            link_to_work = generate_link_to_work(job_params, learner, document_key, document_uid, json["documentHistoryId"])
+            {input, Map.put(output, @link_to_work_col, link_to_work)}
+          else
+            row
+          end
 
         _ -> row
       end
@@ -40,6 +45,16 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
   end
 
   def process_row(_job_params, row, _data_row?), do: row
+
+  # A log row can name a classmate's document: a researcher links only the learner's own work or an
+  # admin-project class's, and :none links nothing.
+  defp link_allowed?(%JobParams{allowed: :all}, _learner, _document_uid), do: true
+  defp link_allowed?(%JobParams{allowed: %AllowedProjects{researcher: []}}, _learner, _document_uid), do: true
+
+  defp link_allowed?(%JobParams{allowed: allowed}, learner, document_uid) do
+    AllowedProjects.researcher?(allowed) and
+      (document_uid == Integer.to_string(learner.user_id) or learner[:in_admin_class] == 1)
+  end
 
   defp generate_link_to_work(%JobParams{portal_url: portal_url}, _learner = %{offering_id: offering_id, class_id: class_id}, document_key, document_uid, maybe_document_history_id) do
     HistoryLink.format_link_to_work(%HistoryLink{portal_url: portal_url, offering_id: offering_id, class_id: class_id,
