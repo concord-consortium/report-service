@@ -178,6 +178,15 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportDbTest do
       assert shown[905].username == Base.encode16(:crypto.hash(:sha, @salt <> "stu.six"))
     end
 
+    test "the per-row columns read one admin-class join rather than each running the check" do
+      mixed = user(562, portal_is_project_admin: true, portal_is_project_researcher: true)
+      {:ok, query} = StudentMetadataReport.get_query(%{filter(@all_classes) | hide_names: false}, mixed)
+      {:ok, sql} = ReportQuery.get_sql(query)
+
+      assert length(String.split(sql, "adm_n ON")) == 2
+      refute sql =~ "WHERE ptc_n.clazz_id = rl.class_id"
+    end
+
     test "an admin-only or site-admin caller's SQL has no per-class test" do
       for user <- [user(555, portal_is_project_admin: true), admin()] do
         {:ok, query} = StudentMetadataReport.get_query(%{filter(@all_classes) | hide_names: false}, user)

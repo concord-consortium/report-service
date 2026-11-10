@@ -28,7 +28,8 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
 
   Every table the select list can read contributes its primary key. `rl.id` alone is accepted only
   while MySQL can see the joins: the project scoping's `1 = 0` clause lets the optimizer discard
-  them, and `ONLY_FULL_GROUP_BY` then rejects their columns.
+  them, and `ONLY_FULL_GROUP_BY` then rejects their columns. `adm_n`, the admin-class join, needs
+  no key: its one column equals `rl.class_id` where it is not NULL.
   """
   def group_by, do: "rl.id, u.id, ea.id, pl.id"
 
@@ -48,15 +49,16 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   internal teacher ids, so it can fail before any SQL is produced.
   """
   def build(report_filter = %ReportFilter{}, user = %User{}, cols, opts \\ []) do
+    allowed = Keyword.get_lazy(opts, :allowed, fn -> PortalDbs.get_allowed_project_ids(user) end)
+
     query = %ReportQuery{
       cols: cols,
       from: @from,
-      join: [@join],
+      join: [@join ++ List.wrap(AllowedProjects.admin_class_join(allowed))],
       group_by: Keyword.get(opts, :group_by, ""),
       order_by: Keyword.get(opts, :order_by, [])
     }
 
-    allowed = Keyword.get_lazy(opts, :allowed, fn -> PortalDbs.get_allowed_project_ids(user) end)
     {join, where} = apply_filters(report_filter, user, allowed)
     ReportQuery.update_query(query, join: join, where: where)
   end

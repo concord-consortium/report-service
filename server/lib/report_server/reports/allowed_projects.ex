@@ -48,18 +48,33 @@ defmodule ReportServer.Reports.AllowedProjects do
 
   @doc """
   The condition that a row's class is reached through one of the caller's admin projects, the
-  portal's `User#is_project_admin_for_clazz?`: the class (`{:class, ref}`, or `:class` over
-  `rl.class_id`) has a teacher in a cohort of an admin project, or, for `{:student, ref}`, one of the
-  classes of the student `ref` names does. `nil` for a caller with no researcher project, whose
-  every row is treated alike.
+  portal's `User#is_project_admin_for_clazz?`: the class has a teacher in a cohort of an admin
+  project, or, for `{:student, ref}`, one of the classes of the student `ref` names does. `:class`
+  is `rl.class_id` read through the join `admin_class_join/1` adds, and `{:class, ref}` is any other
+  class column. `nil` for a caller with no researcher project, whose every row is treated alike.
   """
   def admin_class_sql(allowed, by) do
     if researcher?(allowed), do: admin_class_exists(allowed.admin, by), else: nil
   end
 
+  @doc """
+  The join `admin_class_sql(allowed, :class)` reads: the admin projects' classes, found once per
+  query, where a correlated check would run once per row for every column that reads it. `nil` when
+  `admin_class_sql(allowed, :class)` does not read it: a caller with no researcher project or no
+  admin project.
+  """
+  def admin_class_join(allowed = %__MODULE__{admin: [_ | _]}) do
+    if researcher?(allowed) do
+      "LEFT JOIN (SELECT DISTINCT ptc_n.clazz_id FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
+        "WHERE #{in_clause("ac_n.project_id", allowed.admin)}) adm_n ON (adm_n.clazz_id = rl.class_id)"
+    end
+  end
+
+  def admin_class_join(_allowed), do: nil
+
   defp admin_class_exists([], _by), do: "FALSE"
 
-  defp admin_class_exists(admin_ids, :class), do: admin_class_exists(admin_ids, {:class, "rl.class_id"})
+  defp admin_class_exists(_admin_ids, :class), do: "adm_n.clazz_id IS NOT NULL"
 
   defp admin_class_exists(admin_ids, {:class, class_ref}),
     do:

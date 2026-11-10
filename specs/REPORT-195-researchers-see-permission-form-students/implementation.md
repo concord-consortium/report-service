@@ -250,12 +250,12 @@ Tests:
 **Summary**: R10. For a caller with a researcher project, a learner whose class is not reached through one of their admin projects gets the Student Metadata `permission_forms` column and the Athena `permission_forms` list cut to the caller's projects' forms; learners of admin-project classes, and every caller without a researcher project, are unchanged. The allowed-projects result is looked up once per run and passed to both the scoping and the column. The admin-class check defined here is the one the CLUE and name steps reuse.
 
 **Files affected**:
-- `lib/report_server/reports/allowed_projects.ex`: `researcher?/1`, `admin_class_sql/2`, `form_project_ids/1`, `form_names_sql/1`
-- `lib/report_server/reports/learner_base_query.ex`: an `allowed:` option on `build/4`
+- `lib/report_server/reports/allowed_projects.ex`: `researcher?/1`, `admin_class_sql/2`, `admin_class_join/1`, `form_project_ids/1`, `form_names_sql/1`
+- `lib/report_server/reports/learner_base_query.ex`: an `allowed:` option on `build/4`, which also adds `AllowedProjects.admin_class_join/1` to the joins
 - `lib/report_server/reports/portal/student_metadata_report.ex`: the `permission_forms` column
 - `lib/report_server/reports/athena/learner_data.ex`: `fetch/3` looks up once, `build_query/3` takes it; `get_permission_form_map/2` carries each form's project, and the row mapping filters by it
 - `test/support/portal_fixture.sql`: student 76 also holds form 12, listed first
-- `test/report_server/reports/allowed_projects_db_test.exs` (new), `test/report_server/reports/portal/student_metadata_report_db_test.exs`, `test/report_server/reports/athena/learner_data_portal_test.exs`
+- `test/report_server/reports/allowed_projects_db_test.exs` (new), `test/report_server/reports/portal/student_metadata_report_db_test.exs`, `test/report_server/reports/athena/learner_data_portal_test.exs`; the first two also assert that the join is added only when read and appears once
 
 **Estimated diff size**: ~200 lines, about 70 of them code
 
@@ -276,9 +276,16 @@ end
 
 defp admin_class_exists([], _by), do: "FALSE"
 
-defp admin_class_exists(admin_ids, :class),
-  do: "EXISTS (SELECT 1 FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
-        "WHERE ptc_n.clazz_id = rl.class_id AND #{in_clause("ac_n.project_id", admin_ids)})"
+defp admin_class_exists(_admin_ids, :class), do: "adm_n.clazz_id IS NOT NULL"
+
+def admin_class_join(allowed = %__MODULE__{admin: [_ | _]}) do
+  if researcher?(allowed) do
+    "LEFT JOIN (SELECT DISTINCT ptc_n.clazz_id FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
+      "WHERE #{in_clause("ac_n.project_id", allowed.admin)}) adm_n ON (adm_n.clazz_id = rl.class_id)"
+  end
+end
+
+def admin_class_join(_allowed), do: nil
 
 @doc "The projects whose forms a narrowed row may name: `:all` for a caller with no researcher project."
 def form_project_ids(allowed), do: if(researcher?(allowed), do: ids(allowed), else: :all)
@@ -315,7 +322,7 @@ end
 defp comma_count(col), do: "CHAR_LENGTH(#{col}) - CHAR_LENGTH(REPLACE(#{col}, ',', ''))"
 ```
 
-`@admin_cohort_joins` is `JOIN admin_cohort_items aci_n ON (aci_n.item_type = 'Portal::Teacher' AND aci_n.item_id = ptc_n.teacher_id) JOIN admin_cohorts ac_n ON (ac_n.id = aci_n.admin_cohort_id)`. A researcher-only caller has `admin: []`, so the check is `FALSE` and the column is the narrowed expression alone, with no `CASE`. The `_n` and `ppf_v` aliases are unused elsewhere in `lib/report_server/reports/`.
+`@admin_cohort_joins` is `JOIN admin_cohort_items aci_n ON (aci_n.item_type = 'Portal::Teacher' AND aci_n.item_id = ptc_n.teacher_id) JOIN admin_cohorts ac_n ON (ac_n.id = aci_n.admin_cohort_id)`. A researcher-only caller has `admin: []`, so the check is `FALSE` and the column is the narrowed expression alone, with no `CASE`, and no join is added. `LearnerBaseQuery.build/4` adds `admin_class_join(allowed)` to its joins when it is not nil, so every `:class` check in one query (the form names, the two name columns, LearnerData's `in_admin_class` and the named-form filter) reads one derived table of the admin projects' classes. A correlated `EXISTS` per check ran once per row for each column: on production, for a user who administers one project and researches another (9,927 learners), Student Metadata took 246 s with three correlated checks, 256 s with uncorrelated `IN` subqueries, and 133 s with the join, against 125 s with no checks, with identical output. The `LEFT JOIN` is accepted under `LearnerBaseQuery.group_by/0`, since `adm_n.clazz_id` equals `rl.class_id` where it is not NULL. The `_n` and `ppf_v` aliases are unused elsewhere in `lib/report_server/reports/`.
 
 Checked on the fixture: learner 901 (`Proj A: Form 1,Proj B: Form 2`, ids `11,12`) gives `Proj A: Form 1` for project 900 and `Proj B: Form 2` for 901; learners with no forms give NULL; a three-id, two-name pair gives NULL. The subquery reads only the learner's own short lists and the small forms table, by primary key.
 
@@ -454,7 +461,7 @@ Tests:
 - `lib/report_server/post_processing/job.ex`: an `allowed` field (default `:none`), copied into the `%JobParams{}` `process_rows/5` builds; `get_learners/3` selects `in_admin_class` when `AllowedProjects.admin_class_sql(allowed, {:class, "po.clazz_id"})` is not nil
 - `lib/report_server/post_processing/job_params.ex`: an `allowed` field (default `:none`)
 - `lib/report_server/post_processing/steps/clue_link_to_work.ex`: the guard in `process_row/3`
-- `lib/report_server/reports/allowed_projects.ex`: a `{:class, ref}` clause of `admin_class_sql/2`, with `:class` meaning `{:class, "rl.class_id"}`
+- `lib/report_server/reports/allowed_projects.ex`: a `{:class, ref}` clause of `admin_class_sql/2`, a correlated `EXISTS` over any class column, for queries that are not built on `LearnerBaseQuery`
 - `lib/report_server_web/live/report_live/post_processing.ex`: passes `PortalDbs.get_allowed_project_ids(report_run.user)`, the owner whose scope the run's rows already follow
 - `lib/report_server_web/live/old_report_live/query.ex`: passes `:none`; it holds no `%User{}` (only portal session credentials), and no route reaches it since `/old-reports` redirects; with `:none` its CLUE links stay empty
 - `test/report_server/post_processing/job_test.exs`, new `test/report_server/post_processing/job_learners_db_test.exs`

@@ -18,6 +18,16 @@ defmodule ReportServer.Reports.AllowedProjectsDbTest do
     end
   end
 
+  test "the admin-class join is added only for a caller with both a researcher and an admin project" do
+    for allowed <- [:all, :none, @admin_only, @researcher_only] do
+      assert AllowedProjects.admin_class_join(allowed) == nil
+    end
+
+    join = AllowedProjects.admin_class_join(%AllowedProjects{admin: [900], researcher: [902]})
+    assert join =~ ~r/^LEFT JOIN \(SELECT DISTINCT ptc_n.clazz_id .* ac_n.project_id IN \(900\)\) adm_n ON \(adm_n.clazz_id = rl.class_id\)$/
+    assert AllowedProjects.admin_class_sql(%AllowedProjects{admin: [900], researcher: [902]}, :class) == "adm_n.clazz_id IS NOT NULL"
+  end
+
   test "a researcher-only caller has no admin-project class" do
     assert AllowedProjects.researcher?(@researcher_only)
     assert AllowedProjects.admin_class_sql(@researcher_only, :class) == "FALSE"
