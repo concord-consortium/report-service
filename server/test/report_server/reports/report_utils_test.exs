@@ -64,7 +64,7 @@ defmodule ReportServer.Reports.ReportUtilsTest do
     end
   end
 
-  describe "scope_by_allowed_projects/5" do
+  describe "scope_by_allowed_projects/6" do
     test ":all applies no scoping" do
       assert ReportUtils.scope_by_allowed_projects(:all, ["j"], ["w"], "ea.id", "pt.id") == {["j"], ["w"]}
     end
@@ -76,6 +76,38 @@ defmodule ReportServer.Reports.ReportUtilsTest do
       assert where_sql =~ "IN (1,2)"
       refute where_sql =~ "IN ()"
       assert length(join) == 5
+    end
+
+    test "an admin-only caller's SQL is the same with a student ref as without" do
+      allowed = %AllowedProjects{admin: [1, 2], researcher: []}
+
+      assert ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id") ==
+               ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id")
+    end
+
+    test "a researcher project requires the student's consent to that project" do
+      allowed = %AllowedProjects{admin: [], researcher: [3]}
+      {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
+
+      assert teacher ==
+               "(ac_teacher_a.project_id IN (3) AND " <>
+                 AllowedProjects.consent_exists("rl.student_id", "ac_teacher_a.project_id") <> ")"
+    end
+
+    test "a caller with both roles gets an admin branch and a consent branch" do
+      allowed = %AllowedProjects{admin: [1], researcher: [3]}
+      {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
+
+      assert teacher =~ ~r/^\(ac_teacher_a\.project_id IN \(1\)\) OR \(ac_teacher_a\.project_id IN \(3\) AND EXISTS /
+      refute teacher =~ "IN ()"
+    end
+
+    test "with no student ref a researcher project takes the admin rule" do
+      allowed = %AllowedProjects{admin: [], researcher: [3]}
+      {_join, where} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id")
+
+      refute Enum.join(where, " ") =~ "EXISTS"
+      assert hd(where) == "ac_teacher_a.project_id IN (3)"
     end
 
     test ":none (no roles) constrains to zero rows and adds no scoping joins" do

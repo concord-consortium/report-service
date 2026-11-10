@@ -136,11 +136,16 @@ defmodule ReportServer.Reports.ReportUtils do
     |> scope_by_allowed_projects(join, where, assignment_id_ref, teacher_id_ref)
   end
 
-  # :all (super-admin) applies no scoping.
-  def scope_by_allowed_projects(:all, join, where, _assignment_id_ref, _teacher_id_ref), do: {join, where}
+  def scope_by_allowed_projects(allowed, join, where, assignment_id_ref, teacher_id_ref, student_id_ref \\ nil)
 
-  def scope_by_allowed_projects(%AllowedProjects{} = allowed, join, where, assignment_id_ref, teacher_id_ref) do
+  # :all (super-admin) applies no scoping.
+  def scope_by_allowed_projects(:all, join, where, _assignment_id_ref, _teacher_id_ref, _student_id_ref), do: {join, where}
+
+  # A researcher project admits a learner only when `student_id_ref`'s student holds one of that
+  # project's permission forms; with no student ref every project takes the admin rule.
+  def scope_by_allowed_projects(%AllowedProjects{} = allowed, join, where, assignment_id_ref, teacher_id_ref, student_id_ref) do
     allowed_project_ids = AllowedProjects.ids(allowed)
+    consent = student_id_ref && AllowedProjects.consent_exists(student_id_ref, "ac_teacher_a.project_id")
     ## Suffix all table aliases with "_a" ("allowed") to avoid conflicts with the main query table aliases
     {
       [
@@ -152,7 +157,7 @@ defmodule ReportServer.Reports.ReportUtils do
         | join
       ],
       [
-        "ac_teacher_a.project_id IN #{list_to_in(allowed_project_ids)}",
+        AllowedProjects.predicate(allowed, "ac_teacher_a.project_id", consent),
         "(ac_assignment_a.project_id IN #{list_to_in(allowed_project_ids)}) or (apm_a.project_id IN #{list_to_in(allowed_project_ids)})"
         | where
       ]
@@ -162,12 +167,12 @@ defmodule ReportServer.Reports.ReportUtils do
   # A failed portal permission lookup is NOT "no projects": swallowing it into a zero-row report
   # would return an authoritative-looking empty result for a transient DB error (and regress
   # REPORT-76's controlled SERVER_ERROR on the bulk path). Raise so callers surface it visibly.
-  def scope_by_allowed_projects({:error, reason}, _join, _where, _assignment_id_ref, _teacher_id_ref) do
+  def scope_by_allowed_projects({:error, reason}, _join, _where, _assignment_id_ref, _teacher_id_ref, _student_id_ref) do
     raise ReportServer.Reports.AllowedProjectsLookupError, message: "allowed-projects lookup failed: #{inspect(reason)}"
   end
 
   # No allowed projects: the user can see no project-scoped data, so constrain the report to zero rows.
-  def scope_by_allowed_projects(:none, join, where, _assignment_id_ref, _teacher_id_ref) do
+  def scope_by_allowed_projects(:none, join, where, _assignment_id_ref, _teacher_id_ref, _student_id_ref) do
     {join, ["1 = 0" | where]}
   end
 

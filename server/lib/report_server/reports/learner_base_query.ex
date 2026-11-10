@@ -9,6 +9,7 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   import ReportServer.Reports.ReportUtils
 
   alias ReportServer.Accounts.User
+  alias ReportServer.PortalDbs
   alias ReportServer.Reports.{ReportFilter, ReportQuery}
 
   @from "report_learners rl"
@@ -64,7 +65,9 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
     join = []
     where = []
 
-    {join, where} = apply_allowed_project_ids_filter(user, join, where, "po.runnable_id", "ptc.teacher_id")
+    {join, where} =
+      PortalDbs.get_allowed_project_ids(user)
+      |> scope_by_allowed_projects(join, where, "po.runnable_id", "ptc.teacher_id", "rl.student_id")
 
     {join, where} = if have_filter?(cohort) do
       {

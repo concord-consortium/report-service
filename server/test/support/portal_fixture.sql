@@ -185,3 +185,7 @@ VALUES
 INSERT INTO admin_project_users VALUES (3,900,562,1,0,NULL),(4,902,562,0,1,NULL),(5,902,563,0,1,NULL),
   (9,900,567,1,1,NULL),(13,901,568,NULL,1,NULL),(16,900,570,0,1,NULL);
 INSERT INTO roles_users VALUES (1,570);
+-- 569 researches 900 and 902; student 78 is in 902's class 604 and holds only 900's form, so the
+-- form must belong to the project that reaches the class, not to any of the caller's projects.
+INSERT INTO admin_project_users VALUES (14,900,569,0,1,NULL),(15,902,569,0,1,NULL);
+INSERT INTO portal_student_permission_forms VALUES (13,78,11);
