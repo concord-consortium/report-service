@@ -184,7 +184,6 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   defp put_in_admin_class(learner, %{in_admin_class: in_admin_class}), do: Map.put(learner, :in_admin_class, in_admin_class)
   defp put_in_admin_class(learner, _row), do: learner
 
-  # a row outside the caller's admin-project classes names only the forms of form_projects
   defp row_permission_forms(form_map, row, form_projects) do
     keep = if form_projects == :all or Map.get(row, :in_admin_class) == 1, do: :all, else: form_projects
 

@@ -8,6 +8,8 @@ defmodule ReportServer.Reports.AllowedProjects do
   only those of them holding one of that project's permission forms, as rigse's
   `Report::LearnerPolicy` does. Scopes that reach no students use `ids/1`.
   """
+  alias ReportServer.Reports.ReportUtils
+
   @enforce_keys [:admin, :researcher]
   defstruct [:admin, :researcher]
 
@@ -136,5 +138,5 @@ defmodule ReportServer.Reports.AllowedProjects do
   end
 
   # every caller passes a non-empty list, so no `IN ()` is rendered
-  defp in_clause(column, ids), do: "#{column} IN (#{Enum.map_join(ids, ",", &Integer.to_string/1)})"
+  defp in_clause(column, ids), do: "#{column} IN #{ReportUtils.list_to_in(ids)}"
 end
