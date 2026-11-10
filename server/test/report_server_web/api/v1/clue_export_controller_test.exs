@@ -370,6 +370,63 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
              ]
     end
 
+    test "a researcher's export holds student owners only and asks for no groups", %{conn: conn, user: user} do
+      stub(
+        allowed: %AllowedProjects{admin: [], researcher: [3]},
+        learners: [learner(101, 601, 701) |> Map.put(:in_admin_class, 0)],
+        owners: fn _req -> raise "the owners call should not be made" end
+      )
+
+      run = run_fixture(user)
+      assert json_response(get(conn, clue_path(run, "documents")), 200)
+
+      assert [%{owners: [@student]}] = walk_requests()
+      assert owners_requests() == []
+    end
+
+    test "an admin's export over the same learners keeps class and group owners", %{conn: conn, user: user} do
+      stub(
+        learners: [learner(101, 601, 701)],
+        owners: fn _req -> {:ok, %{"groups" => [%{"class_hash" => @hash, "uid" => "group_701_1", "offering" => 701}]}} end
+      )
+
+      run = run_fixture(user)
+      assert json_response(get(conn, clue_path(run, "documents")), 200)
+
+      [scratch] = Repo.all(ExportScratch)
+      assert Enum.map(scratch.endpoint_set, & &1["uid"]) == ["101", "class_" <> @hash, "group_701_1"]
+    end
+
+    test "a user with both roles keeps class and group owners for admin-project classes only", %{conn: conn, user: user} do
+      allowed = %AllowedProjects{admin: [1], researcher: [3]}
+
+      learners = [
+        learner(101, 601, 701) |> Map.put(:in_admin_class, 1),
+        learner(102, 602, 702) |> Map.put(:in_admin_class, 0)
+      ]
+
+      stub(
+        allowed: allowed,
+        fetch: fn _f, _u, opts ->
+          assert Keyword.get(opts, :allowed) == allowed
+          {:ok, groups_of(learners)}
+        end,
+        owners: fn _req -> {:ok, %{"groups" => [%{"class_hash" => @hash, "uid" => "group_701_1", "offering" => 701}]}} end
+      )
+
+      run = run_fixture(user)
+      assert json_response(get(conn, clue_path(run, "documents")), 200)
+
+      [scratch] = Repo.all(ExportScratch)
+      uids = Enum.map(scratch.endpoint_set, &{&1["class_hash"], &1["uid"]})
+
+      assert {@hash, "class_" <> @hash} in uids
+      assert {@hash, "group_701_1"} in uids
+      assert {@hash_b, "102"} in uids
+      refute {@hash_b, "class_" <> @hash_b} in uids
+      assert [%{classes: [%{"class_hash" => @hash}]}] = owners_requests()
+    end
+
     for {label, group} <- [
           {"an unrequested class", %{"class_hash" => String.duplicate("c", 48), "uid" => "group_701_1", "offering" => 701}},
           {"an unrequested offering", %{"class_hash" => String.duplicate("a", 48), "uid" => "group_999_1", "offering" => 999}},

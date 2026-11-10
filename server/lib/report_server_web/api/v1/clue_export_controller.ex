@@ -12,6 +12,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
   alias ReportServer.Clue.Scope
   alias ReportServer.Exports.ExportScratch
   alias ReportServer.Reports
+  alias ReportServer.Reports.AllowedProjects
   alias ReportServerWeb.Api.ErrorHelpers
   alias ReportServerWeb.Api.V1.{BulkExport, BulkParams, EndpointSet, Params}
 
@@ -56,8 +57,10 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
   end
 
   defp first_page(conn, user, report_run, data_type, operation, limit) do
-    with {:ok, learners} <- EndpointSet.fetch_learners(user, report_run),
-         {:ok, owners} <- derive_owners(user, learners) do
+    allowed = EndpointSet.allowed_project_ids_source().get_allowed_project_ids(user)
+
+    with {:ok, learners} <- EndpointSet.fetch_learners(user, report_run, allowed),
+         {:ok, owners} <- derive_owners(user, learners, allowed) do
       if owners == [] do
         BulkExport.empty_page(conn, user, report_run, data_type)
       else
@@ -72,7 +75,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
     end
   end
 
-  defp derive_owners(user, learners) do
+  defp derive_owners(user, learners, allowed) do
     clue_learners = Enum.filter(learners, &Clue.writes_clue_documents?(&1.runnable_url))
     class_ids = clue_learners |> Enum.map(& &1.class_id) |> Enum.uniq()
 
@@ -82,12 +85,22 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
           {:ok, []}
 
         students ->
-          class_owners = students |> Scope.class_owners() |> Scope.order()
+          class_owners = students |> Scope.class_owners() |> keep_admin_classes(clue_learners, allowed) |> Scope.order()
 
           with {:ok, groups} <- fetch_groups(user.portal_server, class_owners) do
             {:ok, Scope.order(students ++ class_owners ++ Scope.group_owners(groups, class_owners))}
           end
       end
+    end
+  end
+
+  # a group or class document can hold work of students outside a researcher's consent
+  defp keep_admin_classes(class_owners, learners, allowed) do
+    if AllowedProjects.researcher?(allowed) do
+      admin_classes = for learner <- learners, Map.get(learner, :in_admin_class) == 1, into: MapSet.new(), do: learner.class_id
+      Enum.filter(class_owners, &MapSet.member?(admin_classes, &1["portal_class_id"]))
+    else
+      class_owners
     end
   end
 

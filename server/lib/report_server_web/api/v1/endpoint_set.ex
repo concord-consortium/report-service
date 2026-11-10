@@ -15,12 +15,16 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
   end
 
   @doc """
-  The run's learner rows, derived from its stored filter and narrowed by the caller's allowed projects.
+  The run's learner rows, derived from its stored filter and narrowed by the caller's allowed projects,
+  which are looked up when not given.
   Returns {:ok, learners} (possibly []) | {:error, :not_learner_derivable} | {:error, reason}.
   """
-  def fetch_learners(user, report_run) do
+  def fetch_learners(user, report_run),
+    do: fetch_learners(user, report_run, allowed_project_ids_source().get_allowed_project_ids(user))
+
+  def fetch_learners(user, report_run, allowed) do
     with :ok <- ensure_bulk_derivable(Tree.find_report(report_run.report_slug)) do
-      case allowed_project_ids_source().get_allowed_project_ids(user) do
+      case allowed do
         # no live project role, such as a researcher whose stored flag is set but whose rows have all expired
         :none ->
           {:ok, []}
@@ -29,11 +33,11 @@ defmodule ReportServerWeb.Api.V1.EndpointSet do
         {:error, _reason} = err ->
           err
 
-        _allowed ->
+        allowed ->
           # nil is a live state; fetch(nil, ...) would FunctionClauseError
           filter = report_run.report_filter || %ReportFilter{}
 
-          case learner_data().fetch(filter, user, allow_empty: true) do
+          case learner_data().fetch(filter, user, allow_empty: true, allowed: allowed) do
             {:ok, learner_groups} -> {:ok, Enum.flat_map(learner_groups, fn group -> Map.get(group, :learners, []) end)}
             {:error, _msg} = err -> err
           end
