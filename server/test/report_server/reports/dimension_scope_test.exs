@@ -95,6 +95,34 @@ defmodule ReportServer.Reports.DimensionScopeTest do
     end
   end
 
+  describe "scope/2 for a researcher" do
+    defp allowed(admin, researcher), do: %AllowedProjects{admin: admin, researcher: researcher}
+
+    test "student and permission_form admit only what a consenting student reaches" do
+      assert ids(:student, allowed([], [@project])) == [71]
+      assert ids(:permission_form, allowed([], [@project])) == [11]
+      assert ids(:student, @admin) == [71, 72, 73, 74]
+      assert ids(:permission_form, @admin) == [11, 12, 13]
+    end
+
+    test "a user with both roles adds the researcher project's consenting students only" do
+      assert ids(:student, allowed([@project], [902])) == [71, 72, 73, 74, 76]
+    end
+
+    test "the form must belong to the project that reaches the student" do
+      assert ids(:student, allowed([], [@project, 902])) == [71, 76]
+    end
+
+    test "class and the other scoped dimensions give a researcher what they give an admin" do
+      for dimension <- @scoped -- [:student, :permission_form] do
+        assert ids(dimension, allowed([], [@project])) == ids(dimension, @admin),
+               "#{dimension} narrowed a researcher"
+      end
+
+      assert length(ids(:class, allowed([], [@project]))) == 9
+    end
+  end
+
   describe "scope/2 on the taxonomies" do
     test "is :none whatever the caller may see" do
       for dimension <- @taxonomies do

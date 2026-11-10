@@ -111,6 +111,8 @@ defmodule ReportServer.Reports.DimensionScope do
   # they are unscoped by decision rather than by an absent clause. An entity reaches a project
   # through a cohort, except an assignment, which reaches one through a cohort or through the
   # project's own materials, which is why its joins are LEFT and its predicate a disjunction.
+  # `student` and `permission_form` reach students, so through a researcher project they admit
+  # only what a consenting student of that project reaches.
   @scopes %{
     cohort: %{join: [], where: ["admin_cohorts.project_id IN"]},
     school: %{
@@ -141,7 +143,8 @@ defmodule ReportServer.Reports.DimensionScope do
         "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
         "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
       ],
-      where: ["ac.project_id IN"]
+      project: "ac.project_id",
+      consent: "ppf.project_id = ac.project_id"
     },
     class: %{
       join: [
@@ -158,7 +161,8 @@ defmodule ReportServer.Reports.DimensionScope do
         "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
         "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
       ],
-      where: ["ac.project_id IN"]
+      project: "ac.project_id",
+      consent: AllowedProjects.consent_exists("ps.id", "ac.project_id")
     },
     country: :none,
     state: :none,
@@ -207,6 +211,10 @@ defmodule ReportServer.Reports.DimensionScope do
   end
 
   defp restrict(_config, :none), do: {[], ["1 = 0"]}
+
+  defp restrict(%{project: column, consent: consent} = config, %AllowedProjects{} = allowed) do
+    {config.join, [AllowedProjects.predicate(allowed, column, consent)]}
+  end
 
   defp restrict(config, %AllowedProjects{} = allowed) do
     {config.join, [project_predicate(config.where, AllowedProjects.ids(allowed))]}

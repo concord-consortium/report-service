@@ -135,7 +135,7 @@ defmodule ReportServer.Reports.FilterOptionsTest do
     test "a researcher cannot read a student name, whatever the request asks for" do
       asked_to_see = %ReportFilter{hide_names: false}
 
-      assert labels(:student, asked_to_see, researcher()) == ["101", "102", "103", "104"]
+      assert labels(:student, asked_to_see, researcher()) == ["101"]
     end
 
     test "a researcher cannot confirm a name through the search text either" do
