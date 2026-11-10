@@ -8,6 +8,9 @@ defmodule ReportServer.PortalDbs do
   @ping_timeout 300_000     # the default is 15 seconds, but we want to increase it to 5 minutes
   @query_timeout 300_000    # 5 minutes for long-running queries
 
+  # rigse's User#_project_user_researchers: a row expiring today is already expired
+  @live_researcher "apu.is_researcher = 1 AND (apu.expiration_date IS NULL OR apu.expiration_date > CURDATE())"
+
   # the three role flags of the user aliased `u`, as 0 or 1
   @role_flags """
   EXISTS (
@@ -24,7 +27,7 @@ defmodule ReportServer.PortalDbs do
   EXISTS (
     SELECT 1
     FROM admin_project_users apu
-    WHERE apu.is_researcher = true AND apu.user_id = u.id
+    WHERE #{@live_researcher} AND apu.user_id = u.id
   ) AS is_project_researcher
   """
 
@@ -251,14 +254,14 @@ defmodule ReportServer.PortalDbs do
   def get_allowed_project_ids(user = %User{}, options \\ []) do
     cond do
       user.portal_is_admin -> :all
-      user.portal_is_project_admin -> get_project_ids(user, "is_admin", options)
-      user.portal_is_project_researcher -> get_project_ids(user, "is_researcher", options)
+      user.portal_is_project_admin -> get_project_ids(user, "apu.is_admin = 1", options)
+      user.portal_is_project_researcher -> get_project_ids(user, @live_researcher, options)
       true -> :none
     end
   end
 
-  defp get_project_ids(user = %User{}, is_column, options) do
-    sql = "SELECT DISTINCT project_id FROM admin_project_users WHERE user_id = ? AND #{is_column} = 1"
+  defp get_project_ids(user = %User{}, condition, options) do
+    sql = "SELECT DISTINCT apu.project_id FROM admin_project_users apu WHERE apu.user_id = ? AND #{condition}"
 
     case query(user.portal_server, sql, [user.portal_user_id], options) do
       {:ok, result} ->

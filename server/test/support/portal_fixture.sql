@@ -47,7 +47,7 @@ CREATE TABLE roles (id INT PRIMARY KEY, title VARCHAR(255));
 DROP TABLE IF EXISTS roles_users;
 CREATE TABLE roles_users (role_id INT, user_id INT);
 DROP TABLE IF EXISTS admin_project_users;
-CREATE TABLE admin_project_users (id INT PRIMARY KEY, project_id INT, user_id INT, is_admin TINYINT(1), is_researcher TINYINT(1));
+CREATE TABLE admin_project_users (id INT PRIMARY KEY, project_id INT, user_id INT, is_admin TINYINT(1), is_researcher TINYINT(1), expiration_date DATE NULL);
 DROP TABLE IF EXISTS report_learners;
 CREATE TABLE report_learners (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -126,7 +126,14 @@ UPDATE portal_clazzes SET class_hash = '' WHERE id = 603;
 INSERT INTO portal_teacher_clazzes VALUES
   (10,2,31),(11,3,31),(12,5,31),(13,9,31),(14,40,31),(15,77,31),(16,4,31);
 INSERT INTO admin_project_materials VALUES (1,900,'ExternalActivity',801),(2,900,'ExternalActivity',803);
-INSERT INTO admin_project_users VALUES (1,900,555,1,0),(2,900,557,0,1);
+INSERT INTO admin_project_users VALUES (1,900,555,1,0,NULL),(2,900,557,0,1,NULL);
+-- researchers 564, 565, 566 expire yesterday, today, tomorrow; relative dates keep each row meaning the same on every run
+INSERT INTO admin_project_users VALUES
+  (6,900,564,0,1,DATE_SUB(CURDATE(), INTERVAL 1 DAY)),
+  (7,900,565,0,1,CURDATE()),
+  (8,900,566,0,1,DATE_ADD(CURDATE(), INTERVAL 1 DAY));
+INSERT INTO users VALUES (564,'res.expired','Res','Expired','res.expired@e.org',NULL),
+  (565,'res.today','Res','Today','res.today@e.org',NULL),(566,'res.tomorrow','Res','Tomorrow','res.tomorrow@e.org',NULL);
 -- the catalog's role reads: 560 is a site admin, 555 administers project 900, 557 researches it. 561 has a blank last name and email, so no report-server user can be stored for it
 INSERT INTO users VALUES (555,'padmin','Pat','Admin','pat@e.org',NULL),(557,'rres','Rae','Search','rae@e.org',NULL),(560,'sadmin','Sam','Site','sam@e.org',NULL),(561,'blank','Blank','','',NULL);
 INSERT INTO roles VALUES (1,'admin'),(2,'manager');
