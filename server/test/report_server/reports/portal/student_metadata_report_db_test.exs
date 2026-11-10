@@ -135,6 +135,30 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportDbTest do
     assert row.permission_forms == "Proj A: Form 1,Proj B: Form 2"
   end
 
+  describe "permission_forms for a caller with a researcher project" do
+    defp forms(user) do
+      {_result, rows} = run(filter([601, 602, 604]), user)
+      rows |> by_learner() |> Map.new(fn {id, row} -> {id, row.permission_forms} end)
+    end
+
+    defp user(id, flags), do: struct(%User{portal_server: @server, portal_user_id: id}, flags)
+
+    test "a researcher sees only their projects' forms" do
+      assert forms(user(563, portal_is_project_researcher: true)) == %{905 => "Proj C: Form C"}
+    end
+
+    test "a user with both roles sees the full list in an admin-project class and the narrowed one elsewhere" do
+      mixed = forms(user(562, portal_is_project_admin: true, portal_is_project_researcher: true))
+
+      assert mixed[901] == "Proj A: Form 1,Proj B: Form 2"
+      assert mixed[905] == "Proj C: Form C"
+    end
+
+    test "a project admin's list is unchanged" do
+      assert forms(user(555, portal_is_project_admin: true))[901] == "Proj A: Form 1,Proj B: Form 2"
+    end
+  end
+
   test "last_run renders as an ISO-8601 string, and an absent one as an empty cell" do
     {_result, rows} = run()
     by = by_learner(rows)

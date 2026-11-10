@@ -1,7 +1,8 @@
 defmodule ReportServer.Reports.Portal.StudentMetadataReport do
   use ReportServer.Reports.Report, type: :portal
 
-  alias ReportServer.Reports.{LearnerBaseQuery, LearnerHideNames}
+  alias ReportServer.PortalDbs
+  alias ReportServer.Reports.{AllowedProjects, LearnerBaseQuery, LearnerHideNames}
 
   # GROUP_CONCAT cuts mid-value at group_concat_max_len with only a warning nothing reads, which
   # would misalign the teacher columns. The hint raises the ceiling for this statement alone: a
@@ -10,11 +11,13 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
   @group_concat_hint "/*+ SET_VAR(group_concat_max_len=1048576) */"
 
   def get_query(report_filter = %ReportFilter{hide_names: hide_names}, user = %User{portal_server: portal_server}) do
-    LearnerBaseQuery.build(report_filter, user, cols(portal_server, hide_names),
-      group_by: LearnerBaseQuery.group_by(), order_by: [{"learner_id", :asc}])
+    allowed = PortalDbs.get_allowed_project_ids(user)
+
+    LearnerBaseQuery.build(report_filter, user, cols(portal_server, hide_names, allowed),
+      group_by: LearnerBaseQuery.group_by(), order_by: [{"learner_id", :asc}], allowed: allowed)
   end
 
-  defp cols(portal_server, hide_names) do
+  defp cols(portal_server, hide_names, allowed) do
     [
       {"#{@group_concat_hint} rl.learner_id", "learner_id"},
       {"rl.user_id", "user_id"},
@@ -32,7 +35,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
       {csv_list("rl.teachers_email"), "teacher_emails"},
       {teacher_school_field("name"), "teacher_districts"},
       {teacher_school_field("state"), "teacher_states"},
-      {"rl.permission_forms", "permission_forms"},
+      {AllowedProjects.form_names_sql(allowed), "permission_forms"},
       {"DATE_FORMAT(rl.last_run, '%Y-%m-%dT%H:%i:%s')", "last_run"}
     ]
   end

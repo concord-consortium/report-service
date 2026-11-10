@@ -152,7 +152,8 @@ VALUES
    'School W','Class 602',51,NULL,'Dist W, Dist Y','NH, MA','ann@e.org, cid@e.org, gone@e.org','','31, 33, 34'),
   (904,74,102,703,602,NULL,NULL,'Stu Four','stu.four',
    'School W','Class 602',51,NULL,NULL,NULL,NULL,NULL,NULL);
--- Project 902 reaches class 604 through teacher 36. Student 76 holds 902's form, 77 only 901's,
+-- Project 902 reaches class 604 through teacher 36. Student 76 holds 901's form and 902's; learner
+-- 905's stored lists put 901's first, so a researcher's kept form sits second; 77 holds only 901's,
 -- and 78 none.
 INSERT INTO admin_projects VALUES (902,'Proj C');
 INSERT INTO admin_cohorts VALUES (3,'Cohort Three',902);
@@ -171,13 +172,13 @@ INSERT INTO portal_learners VALUES
   (906,77,704,'SECUREKEY906','2026-04-06 09:00:00'),
   (907,78,704,'SECUREKEY907','2026-04-07 09:00:00');
 INSERT INTO portal_permission_forms VALUES (15,'Form C',902);
-INSERT INTO portal_student_permission_forms VALUES (4,76,15),(5,77,12);
+INSERT INTO portal_student_permission_forms VALUES (4,76,15),(5,77,12),(14,76,12);
 INSERT INTO report_learners
   (learner_id,student_id,user_id,offering_id,class_id,last_run,teachers_name,student_name,username,
    school_name,class_name,school_id,permission_forms,teachers_district,teachers_state,teachers_email,
    permission_forms_id,teachers_id)
 VALUES
-  (905,76,106,704,604,NULL,'Dee Teach','Stu Six','stu.six',NULL,'Class 604',NULL,'Proj C: Form C',NULL,NULL,'dee@e.org','15','36'),
+  (905,76,106,704,604,NULL,'Dee Teach','Stu Six','stu.six',NULL,'Class 604',NULL,'Proj B: Form 2,Proj C: Form C',NULL,NULL,'dee@e.org','12,15','36'),
   (906,77,107,704,604,NULL,'Dee Teach','Stu Seven','stu.seven',NULL,'Class 604',NULL,'Proj B: Form 2',NULL,NULL,'dee@e.org','12','36'),
   (907,78,108,704,604,NULL,'Dee Teach','Stu Eight','stu.eight',NULL,'Class 604',NULL,NULL,NULL,NULL,'dee@e.org',NULL,'36');
 -- 562 administers 900 and researches 902; 563 researches 902; 567 holds both roles on 900; 568's

@@ -41,7 +41,8 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   end
 
   @doc """
-  Builds the base query with the caller's select list, and optional group_by/order_by.
+  Builds the base query with the caller's select list, and optional group_by/order_by. `allowed:`
+  is the caller's allowed projects, looked up when absent.
 
   Not a pure builder: with `exclude_internal` set it runs its own portal query to resolve the
   internal teacher ids, so it can fail before any SQL is produced.
@@ -55,19 +56,18 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
       order_by: Keyword.get(opts, :order_by, [])
     }
 
-    {join, where} = apply_filters(report_filter, user)
+    allowed = Keyword.get_lazy(opts, :allowed, fn -> PortalDbs.get_allowed_project_ids(user) end)
+    {join, where} = apply_filters(report_filter, user, allowed)
     ReportQuery.update_query(query, join: join, where: where)
   end
 
   defp apply_filters(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment,
         permission_form: permission_form, class: class, student: student,
-        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
+        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}, allowed) do
     join = []
     where = []
 
-    {join, where} =
-      PortalDbs.get_allowed_project_ids(user)
-      |> scope_by_allowed_projects(join, where, "po.runnable_id", "ptc.teacher_id", "rl.student_id")
+    {join, where} = scope_by_allowed_projects(allowed, join, where, "po.runnable_id", "ptc.teacher_id", "rl.student_id")
 
     {join, where} = if have_filter?(cohort) do
       {
