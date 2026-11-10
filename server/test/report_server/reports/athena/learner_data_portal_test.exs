@@ -25,6 +25,17 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
     defp user(id, flags), do: struct(%User{portal_server: PortalFixture.server(), portal_user_id: id}, flags)
     defp mixed, do: user(562, portal_is_project_admin: true, portal_is_project_researcher: true)
 
+    # sets one column of learner 905's report_learners row for this test, restoring what it held
+    defp set_905(column, value) do
+      server = PortalFixture.server()
+      {:ok, %{rows: [[previous]]}} = ReportServer.PortalDbs.query(server, "SELECT #{column} FROM report_learners WHERE learner_id = 905")
+      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE report_learners SET #{column} = ? WHERE learner_id = 905", [value])
+
+      on_exit(fn ->
+        {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE report_learners SET #{column} = ? WHERE learner_id = 905", [previous])
+      end)
+    end
+
     defp learners(user) do
       {:ok, groups} = LearnerData.fetch(@filter, user, allow_empty: true)
       groups |> Enum.flat_map(& &1.learners) |> Map.new(&{&1.learner_id, &1})
@@ -35,9 +46,7 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
     end
 
     test "a researcher's list is empty when none of the stored forms is theirs" do
-      server = PortalFixture.server()
-      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE report_learners SET permission_forms_id = '12' WHERE learner_id = 905")
-      on_exit(fn -> ReportServer.PortalDbs.query(server, "UPDATE report_learners SET permission_forms_id = '12,15' WHERE learner_id = 905") end)
+      set_905("permission_forms_id", "12")
 
       assert learners(user(563, portal_is_project_researcher: true))[905].permission_forms == []
     end
@@ -112,9 +121,7 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
     end
 
     test "a NULL username stays nil" do
-      server = PortalFixture.server()
-      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE report_learners SET username = NULL WHERE learner_id = 905")
-      on_exit(fn -> ReportServer.PortalDbs.query(server, "UPDATE report_learners SET username = 'stu.six' WHERE learner_id = 905") end)
+      set_905("username", nil)
 
       assert mixed_learners(false)[905].username == nil
     end

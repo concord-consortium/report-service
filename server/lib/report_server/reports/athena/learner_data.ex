@@ -70,7 +70,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     LearnerBaseQuery.build(report_filter, user, learner_cols(allowed), allowed: allowed)
   end
 
-  # the class's admin-project test rides along for a researcher, for the per-row narrowing below
+  # the class's admin-project test, for a researcher's per-row narrowing here and in the CLUE export
   defp learner_cols(allowed) do
     case AllowedProjects.admin_class_sql(allowed, :class) do
       nil -> @learner_cols
@@ -131,6 +131,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       allowed = Keyword.get(opts, :allowed)
       form_projects = AllowedProjects.form_project_ids(allowed)
       hide_outside_admin_classes = Keyword.get(opts, :hide_names) != true and AllowedProjects.researcher?(allowed)
+      salt = if hide_outside_admin_classes, do: AthenaConfig.get_hide_username_hash_salt()
 
       result = rows
         |> Enum.map(fn row ->
@@ -159,7 +160,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
             created_at: row.created_at
           }
           |> put_in_admin_class(row)
-          |> maybe_hide_name(hide_outside_admin_classes and Map.get(row, :in_admin_class) != 1)
+          |> maybe_hide_name(hide_outside_admin_classes and Map.get(row, :in_admin_class) != 1, salt)
         end)
         |> group_learners_by_runnable_url()
 
@@ -171,14 +172,14 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   end
 
   # the values hide_names: true gives, so this digest matches the MySQL and Presto ones
-  defp maybe_hide_name(learner, false), do: learner
+  defp maybe_hide_name(learner, false, _salt), do: learner
 
-  defp maybe_hide_name(learner = %{student_id: student_id, username: username}, true) do
-    %{learner | student_name: Integer.to_string(student_id), username: hash_username(username)}
+  defp maybe_hide_name(learner = %{student_id: student_id, username: username}, true, salt) do
+    %{learner | student_name: Integer.to_string(student_id), username: hash_username(username, salt)}
   end
 
-  defp hash_username(nil), do: nil
-  defp hash_username(username), do: Base.encode16(:crypto.hash(:sha, AthenaConfig.get_hide_username_hash_salt() <> username))
+  defp hash_username(nil, _salt), do: nil
+  defp hash_username(username, salt), do: Base.encode16(:crypto.hash(:sha, salt <> username))
 
   defp put_in_admin_class(learner, %{in_admin_class: in_admin_class}), do: Map.put(learner, :in_admin_class, in_admin_class)
   defp put_in_admin_class(learner, _row), do: learner

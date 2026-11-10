@@ -152,9 +152,8 @@ VALUES
    'School W','Class 602',51,NULL,'Dist W, Dist Y','NH, MA','ann@e.org, cid@e.org, gone@e.org','','31, 33, 34'),
   (904,74,102,703,602,NULL,NULL,'Stu Four','stu.four',
    'School W','Class 602',51,NULL,NULL,NULL,NULL,NULL,NULL);
--- Project 902 reaches class 604 through teacher 36. Student 76 holds 901's form and 902's; learner
--- 905's stored lists put 901's first, so a researcher's kept form sits second; 77 holds only 901's,
--- and 78 none.
+-- Project 902 reaches class 604 through teacher 36; learner 905's stored lists put 901's form
+-- first, so a researcher's kept form sits second.
 INSERT INTO admin_projects VALUES (902,'Proj C');
 INSERT INTO admin_cohorts VALUES (3,'Cohort Three',902);
 INSERT INTO admin_cohort_items VALUES (4,3,'Portal::Teacher',36),(5,3,'ExternalActivity',801);
