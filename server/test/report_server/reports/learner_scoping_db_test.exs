@@ -15,8 +15,8 @@ defmodule ReportServer.Reports.LearnerScopingDbTest do
   defp user(id, flags), do: struct(%User{portal_server: @server, portal_user_id: id}, flags)
   defp researcher(id), do: user(id, portal_is_project_researcher: true)
 
-  defp learner_ids(user) do
-    {:ok, query} = StudentIdMappingReport.get_query(@filter, user)
+  defp learner_ids(user, filter \\ @filter) do
+    {:ok, query} = StudentIdMappingReport.get_query(filter, user)
     {:ok, sql} = ReportQuery.get_sql(query)
     {:ok, result} = PortalDbs.query(@server, sql)
     result |> PortalDbs.map_columns_on_rows() |> Enum.map(& &1.learner_id) |> Enum.sort()
@@ -48,6 +48,17 @@ defmodule ReportServer.Reports.LearnerScopingDbTest do
   test "a site admin with a researcher row sees every learner" do
     site_admin = user(570, portal_is_admin: true, portal_is_project_researcher: true)
     assert learner_ids(site_admin) == [901, 902, 903, 904, 905, 906, 907]
+  end
+
+  test "a researcher's named form matches only a form of their projects" do
+    assert learner_ids(researcher(563), %{@filter | permission_form: [12]}) == []
+    assert learner_ids(researcher(563), %{@filter | permission_form: [15]}) == [905]
+  end
+
+  test "a user with both roles matches a foreign form in an admin-project class only" do
+    mixed = user(562, portal_is_project_admin: true, portal_is_project_researcher: true)
+    assert learner_ids(mixed, %{@filter | permission_form: [12]}) == [901]
+    assert learner_ids(mixed, %{@filter | permission_form: [11]}) == [901, 905]
   end
 
   test "the Athena learner fetch takes the same rule" do

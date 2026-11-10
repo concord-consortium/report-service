@@ -158,6 +158,31 @@ defmodule ReportServer.Reports.FilterOptionsTest do
     end
   end
 
+  describe "page/4 narrowing by a named permission form" do
+    defp form_user(id, flags), do: struct(%User{portal_server: @server, portal_user_id: id}, flags)
+    defp by_form(form), do: %ReportFilter{permission_form: [form]}
+
+    test "a researcher's options match only a form of their projects" do
+      researcher = form_user(563, portal_is_project_researcher: true)
+
+      assert ids(:student, by_form(12), researcher) == []
+      assert ids(:student, by_form(15), researcher) == ["76"]
+      assert ids(:class, by_form(12), researcher) == []
+    end
+
+    test "a user with both roles matches a foreign form in an admin-project class only" do
+      mixed = form_user(562, portal_is_project_admin: true, portal_is_project_researcher: true)
+
+      assert ids(:student, by_form(12), mixed) == ["71"]
+      assert ids(:class, by_form(12), mixed) == ["601"]
+      assert "76" in ids(:student, by_form(11), mixed)
+    end
+
+    test "a project admin's narrowing is unchanged" do
+      assert ids(:student, by_form(12)) == ["71"]
+    end
+  end
+
   describe "page/4 narrowing" do
     test "a narrowing selection excludes a specific option" do
       in_601 = labels(:student, %ReportFilter{class: [601]})

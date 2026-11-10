@@ -10,7 +10,7 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{ReportFilter, ReportQuery}
+  alias ReportServer.Reports.{AllowedProjects, ReportFilter, ReportQuery}
 
   @from "report_learners rl"
   @join [
@@ -92,10 +92,10 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
           "JOIN portal_student_permission_forms pspf ON (pspf.portal_student_id = psc.student_id)"
           | join
         ],
-        [
-          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
-          | where
-        ]
+        Enum.reject([
+          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}",
+          AllowedProjects.named_form_sql(allowed, "pspf.portal_permission_form_id", :class)
+        ], &is_nil/1) ++ where
       }
     else
       {join, where}

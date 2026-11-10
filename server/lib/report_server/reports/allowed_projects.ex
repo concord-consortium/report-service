@@ -103,6 +103,20 @@ defmodule ReportServer.Reports.AllowedProjects do
 
   defp comma_count(col), do: "CHAR_LENGTH(#{col}) - CHAR_LENGTH(REPLACE(#{col}, ',', ''))"
 
+  @doc """
+  The extra condition on a row matched through `form_col`, a named permission form: nil for a caller
+  with no researcher project; else the form belongs to one of the caller's projects, or the row's
+  class is reached through one of their admin projects (`by` as for `admin_class_sql/2`).
+  """
+  def named_form_sql(allowed, form_col, by) do
+    if researcher?(allowed) do
+      "(EXISTS (SELECT 1 FROM portal_permission_forms ppf_f WHERE ppf_f.id = #{form_col} " <>
+        "AND #{in_clause("ppf_f.project_id", ids(allowed))}) OR #{admin_class_sql(allowed, by)})"
+    else
+      nil
+    end
+  end
+
   # every caller passes a non-empty list, so no `IN ()` is rendered
   defp in_clause(column, ids), do: "#{column} IN (#{Enum.map_join(ids, ",", &Integer.to_string/1)})"
 end

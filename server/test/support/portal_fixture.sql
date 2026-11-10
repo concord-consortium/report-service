@@ -190,3 +190,6 @@ INSERT INTO roles_users VALUES (1,570);
 -- form must belong to the project that reaches the class, not to any of the caller's projects.
 INSERT INTO admin_project_users VALUES (14,900,569,0,1,NULL),(15,902,569,0,1,NULL);
 INSERT INTO portal_student_permission_forms VALUES (13,78,11);
+-- student 76, reached only through 902, also holds 900's form, so a named admin-project form is
+-- one of the caller's projects for a user with both roles
+INSERT INTO portal_student_permission_forms VALUES (15,76,11);
