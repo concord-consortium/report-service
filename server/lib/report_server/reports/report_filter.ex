@@ -177,7 +177,9 @@ defmodule ReportServer.Reports.ReportFilter do
 
     case AllowedProjects.admin_class_sql(allowed, {:student, "ps.id"}) do
       nil -> name
-      admin_class -> "CASE WHEN #{admin_class} THEN #{name} ELSE CAST(u.id AS CHAR) END"
+      # the name keeps the users table's collation and the id the connection's; casting the whole
+      # CASE gives it one collation, which LIKE and the option cursor's comparison need
+      admin_class -> "CAST(CASE WHEN #{admin_class} THEN #{name} ELSE CAST(u.id AS CHAR) END AS CHAR)"
     end
   end
 

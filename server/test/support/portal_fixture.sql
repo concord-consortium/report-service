@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS users;
-CREATE TABLE users (id INT PRIMARY KEY, login VARCHAR(255), first_name VARCHAR(255), last_name VARCHAR(255), email VARCHAR(255), primary_account_id INT);
+-- MySQL 8's default collation, which CI's server uses, unlike a connection's utf8mb4_general_ci
+CREATE TABLE users (id INT PRIMARY KEY, login VARCHAR(255), first_name VARCHAR(255), last_name VARCHAR(255), email VARCHAR(255), primary_account_id INT) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 DROP TABLE IF EXISTS portal_districts;
 CREATE TABLE portal_districts (id INT PRIMARY KEY, name VARCHAR(255), state VARCHAR(2));
 DROP TABLE IF EXISTS portal_schools;
