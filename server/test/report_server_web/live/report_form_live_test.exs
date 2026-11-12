@@ -201,6 +201,23 @@ defmodule ReportServerWeb.ReportFormLiveTest do
 
       assert html =~ "No options available"
     end
+
+    test "lose a project whose researcher row expires while a search is typed", %{conn: conn} do
+      server = ReportServer.PortalFixture.server()
+      researcher = user_fixture(%{portal_server: server, portal_user_id: 566, portal_is_project_researcher: true})
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      html = render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1_type"], "filter_form" => %{"filter1_type" => "class"}})
+      refute html =~ "No options available"
+
+      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = CURDATE() WHERE id = 8")
+      on_exit(fn ->
+        {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY) WHERE id = 8")
+      end)
+
+      render_hook(view, "live_select_change", %{"field" => "filter_form_filter1", "id" => "live_select1", "text" => ""})
+
+      assert render(view) =~ "No options available"
+    end
   end
 
   describe "the date range note" do
