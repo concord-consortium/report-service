@@ -202,6 +202,29 @@ defmodule ReportServerWeb.ReportFormLiveTest do
       assert html =~ "No options available"
     end
 
+    test "show an error, and the form stays up, when the project lookup fails", %{conn: conn} do
+      researcher = user_fixture(%{portal_server: "unknown.portal.example", portal_user_id: 566, portal_is_project_researcher: true})
+      class_form = %{"filter1_type" => "class", "filter1" => ["1"]}
+      failed? = fn view -> render(view) =~ "Unable to look up your project access" end
+
+      # a filter-type change
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1_type"], "filter_form" => %{"filter1_type" => "class"}})
+      assert failed?.(view)
+
+      # a change that updates the following filters
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      render_change(view, "form_updated", %{"_target" => ["filter_form", "exclude_internal"], "filter_form" => class_form})
+      assert failed?.(view)
+
+      # a search, after a value change that runs no lookup
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1"], "filter_form" => class_form})
+      refute failed?.(view)
+      render_hook(view, "live_select_change", %{"field" => "filter_form_filter1", "id" => "live_select1", "text" => ""})
+      assert failed?.(view)
+    end
+
     test "lose a project whose researcher row expires while a search is typed", %{conn: conn} do
       server = ReportServer.PortalFixture.server()
       researcher = user_fixture(%{portal_server: server, portal_user_id: 566, portal_is_project_researcher: true})
