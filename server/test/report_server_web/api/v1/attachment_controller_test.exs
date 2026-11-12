@@ -6,6 +6,7 @@ defmodule ReportServerWeb.Api.V1.AttachmentControllerTest do
   alias ReportServer.AuditLog.DataAccessLogEntry
   alias ReportServer.{LearnerDataStub, ReportServiceStub, Repo}
   alias ReportServer.Reports
+  alias ReportServer.Reports.AllowedProjects
 
   setup :register_and_put_bearer_token
 
@@ -42,7 +43,7 @@ defmodule ReportServerWeb.Api.V1.AttachmentControllerTest do
   defp default_meta(_req), do: {:ok, %{"results" => [result_row("d1", "file.json", meta("re-1"))]}}
 
   defp stub(opts) do
-    allowed = Keyword.get(opts, :allowed, [1, 2])
+    allowed = Keyword.get(opts, :allowed, %AllowedProjects{admin: [1, 2], researcher: []})
     fetch = Keyword.get(opts, :fetch, fn _f, _u, _o -> {:ok, [learner_group("re-1", "https://example.com/a")]} end)
     meta_fun = Keyword.get(opts, :meta, &default_meta/1)
 

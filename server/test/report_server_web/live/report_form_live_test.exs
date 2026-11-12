@@ -184,6 +184,65 @@ defmodule ReportServerWeb.ReportFormLiveTest do
     end
   end
 
+  describe "a researcher's option lists" do
+    @describetag :portal_db
+
+    test "lose a project whose researcher row expires while the form is open", %{conn: conn} do
+      server = ReportServer.PortalFixture.server()
+      researcher = user_fixture(%{portal_server: server, portal_user_id: 566, portal_is_project_researcher: true})
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+
+      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = CURDATE() WHERE id = 8")
+      on_exit(fn ->
+        {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY) WHERE id = 8")
+      end)
+
+      html = render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1_type"], "filter_form" => %{"filter1_type" => "class"}})
+
+      assert html =~ "No options available"
+    end
+
+    test "show an error, and the form stays up, when the project lookup fails", %{conn: conn} do
+      researcher = user_fixture(%{portal_server: "unknown.portal.example", portal_user_id: 566, portal_is_project_researcher: true})
+      class_form = %{"filter1_type" => "class", "filter1" => ["1"]}
+      failed? = fn view -> render(view) =~ "Unable to look up your project access" end
+
+      # a filter-type change
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1_type"], "filter_form" => %{"filter1_type" => "class"}})
+      assert failed?.(view)
+
+      # a change that updates the following filters
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      render_change(view, "form_updated", %{"_target" => ["filter_form", "exclude_internal"], "filter_form" => class_form})
+      assert failed?.(view)
+
+      # a search, after a value change that runs no lookup
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1"], "filter_form" => class_form})
+      refute failed?.(view)
+      render_hook(view, "live_select_change", %{"field" => "filter_form_filter1", "id" => "live_select1", "text" => ""})
+      assert failed?.(view)
+    end
+
+    test "lose a project whose researcher row expires while a search is typed", %{conn: conn} do
+      server = ReportServer.PortalFixture.server()
+      researcher = user_fixture(%{portal_server: server, portal_user_id: 566, portal_is_project_researcher: true})
+      {view, _user} = mount_form_as(conn, "student-actions", researcher)
+      html = render_change(view, "form_updated", %{"_target" => ["filter_form", "filter1_type"], "filter_form" => %{"filter1_type" => "class"}})
+      refute html =~ "No options available"
+
+      {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = CURDATE() WHERE id = 8")
+      on_exit(fn ->
+        {:ok, _} = ReportServer.PortalDbs.query(server, "UPDATE admin_project_users SET expiration_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY) WHERE id = 8")
+      end)
+
+      render_hook(view, "live_select_change", %{"field" => "filter_form_filter1", "id" => "live_select1", "text" => ""})
+
+      assert render(view) =~ "No options available"
+    end
+  end
+
   describe "the date range note" do
     test "renders on student-actions, names the learner selection, and ties both date inputs to it",
          %{conn: conn} do

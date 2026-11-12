@@ -318,7 +318,7 @@ defmodule ReportServerWeb.Api.V1.FilterOptionsControllerTest do
     test "a researcher gets id-shaped student labels whatever the request asks for", %{conn: conn} do
       body = %{"dimension" => "student", "report_filter" => %{"hide_names" => false}}
 
-      assert labels(researcher_conn(conn), body) == ["101", "102", "103", "104"]
+      assert labels(researcher_conn(conn), body) == ["101"]
     end
 
     test "an admin sees the names", %{conn: conn} do

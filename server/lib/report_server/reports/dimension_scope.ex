@@ -15,7 +15,7 @@ defmodule ReportServer.Reports.DimensionScope do
 
   import ReportServer.Reports.ReportUtils, only: [list_to_in: 1]
 
-  alias ReportServer.Reports.AllowedProjectsLookupError
+  alias ReportServer.Reports.{AllowedProjects, AllowedProjectsLookupError}
 
   @bases %{
     cohort: %{
@@ -111,6 +111,8 @@ defmodule ReportServer.Reports.DimensionScope do
   # they are unscoped by decision rather than by an absent clause. An entity reaches a project
   # through a cohort, except an assignment, which reaches one through a cohort or through the
   # project's own materials, which is why its joins are LEFT and its predicate a disjunction.
+  # `student` and `permission_form` reach students, so through a researcher project they admit
+  # only what a consenting student of that project reaches.
   @scopes %{
     cohort: %{join: [], where: ["admin_cohorts.project_id IN"]},
     school: %{
@@ -141,7 +143,8 @@ defmodule ReportServer.Reports.DimensionScope do
         "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
         "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
       ],
-      where: ["ac.project_id IN"]
+      project: "ac.project_id",
+      consent: "ppf.project_id = ac.project_id"
     },
     class: %{
       join: [
@@ -158,7 +161,8 @@ defmodule ReportServer.Reports.DimensionScope do
         "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
         "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
       ],
-      where: ["ac.project_id IN"]
+      project: "ac.project_id",
+      consent: AllowedProjects.consent_exists("ps.id", "ac.project_id")
     },
     country: :none,
     state: :none,
@@ -188,8 +192,8 @@ defmodule ReportServer.Reports.DimensionScope do
   The joins and predicates that restrict `dimension` to what `allowed` covers, or `:none` when the
   dimension is a global vocabulary that is deliberately unscoped.
 
-  `:all` (a portal super-admin) scopes nothing. An empty list or `:none` is a caller who can see no
-  project-scoped data, which is not the same as "no restriction": it restricts to nothing.
+  `:all` (a portal super-admin) scopes nothing. `:none` is a caller who can see no project-scoped
+  data, which is not the same as "no restriction": it restricts to nothing.
   """
   def scope(dimension, allowed) do
     case Map.fetch!(@scopes, dimension) do
@@ -206,10 +210,14 @@ defmodule ReportServer.Reports.DimensionScope do
     raise AllowedProjectsLookupError, message: "allowed-projects lookup failed: #{inspect(reason)}"
   end
 
-  defp restrict(_config, allowed) when allowed in [[], :none], do: {[], ["1 = 0"]}
+  defp restrict(_config, :none), do: {[], ["1 = 0"]}
 
-  defp restrict(config, allowed) when is_list(allowed) do
-    {config.join, [project_predicate(config.where, allowed)]}
+  defp restrict(%{project: column, consent: consent} = config, %AllowedProjects{} = allowed) do
+    {config.join, [AllowedProjects.predicate(allowed, column, consent)]}
+  end
+
+  defp restrict(config, %AllowedProjects{} = allowed) do
+    {config.join, [project_predicate(config.where, AllowedProjects.ids(allowed))]}
   end
 
   defp project_predicate([column], allowed), do: "#{column} #{list_to_in(allowed)}"

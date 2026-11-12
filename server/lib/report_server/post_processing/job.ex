@@ -7,9 +7,10 @@ defmodule ReportServer.PostProcessing.Job do
   alias ReportServer.PostProcessing.{JobParams, Output}
   alias ReportServer.PostProcessing.Steps.Helpers
   alias ReportServer.PortalDbs
+  alias ReportServer.Reports.AllowedProjects
 
   @derive {Jason.Encoder, only: [:id, :steps, :status, :result]}
-  defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0, portal_url: nil
+  defstruct id: nil, query_id: nil, steps: [], status: :queued, ref: nil, result: nil, rows_processed: 0, started_at: 0, portal_url: nil, allowed: :none
 
   defmodule JobOverrides do
     defstruct output: nil, get_input: nil, learners: nil
@@ -207,7 +208,8 @@ defmodule ReportServer.PostProcessing.Job do
               output_header_map: header_map,
               rows_processed: 0,
               portal_url: job.portal_url,
-              preprocessed: preprocessed
+              preprocessed: preprocessed,
+              allowed: job.allowed
             }
             params = Enum.reduce(job.steps, params, fn step, acc -> step.init.(acc) end)
             {[params.output_header], increment_rows_processed(params, job_server_pid, job.id)}
@@ -318,7 +320,7 @@ defmodule ReportServer.PostProcessing.Job do
 
   defp get_learners(_job_params, [], _overrides), do: %{}
   defp get_learners(_job_params, _run_remote_endpoints, %JobOverrides{learners: learners}) when not is_nil(learners), do: learners
-  defp get_learners(%{portal_url: portal_url}, run_remote_endpoints, _overrides) do
+  defp get_learners(%{portal_url: portal_url, allowed: allowed}, run_remote_endpoints, _overrides) do
     # extract the secure_key from the run_remote_endpoint
     secure_key_map = Enum.reduce(run_remote_endpoints, %{}, fn run_remote_endpoint, acc ->
       secure_key = run_remote_endpoint |> String.split("/") |> List.last()
@@ -327,8 +329,14 @@ defmodule ReportServer.PostProcessing.Job do
     secure_keys = Map.keys(secure_key_map)
 
     # get the needed learner data from the portal
+    in_admin_class =
+      case AllowedProjects.admin_class_sql(allowed, {:class, "po.clazz_id"}) do
+        nil -> ""
+        admin_class -> ", #{admin_class} AS in_admin_class"
+      end
+
     sql = """
-    SELECT pl.secure_key, pl.offering_id, ps.user_id, po.clazz_id FROM portal_learners pl
+    SELECT pl.secure_key, pl.offering_id, ps.user_id, po.clazz_id#{in_admin_class} FROM portal_learners pl
     JOIN portal_offerings po ON (po.id = pl.offering_id)
     JOIN portal_students ps ON (ps.id = pl.student_id)
     where pl.secure_key in #{ReportUtils.mysql_string_list_to_in(secure_keys)}
@@ -337,9 +345,11 @@ defmodule ReportServer.PostProcessing.Job do
     # generate a map of run_remote_endpoint to offering_id and class_id
     case PortalDbs.query(portal_url, sql) do
       {:ok, result} ->
-        Enum.reduce(result.rows, %{}, fn [secure_key, offering_id, user_id, class_id], acc ->
+        Enum.reduce(result.rows, %{}, fn [secure_key, offering_id, user_id, class_id | admin_class], acc ->
           run_remote_endpoint = secure_key_map[secure_key]
-          acc |> Map.put(run_remote_endpoint, %{offering_id: offering_id, class_id: class_id, user_id: user_id})
+          learner = %{offering_id: offering_id, class_id: class_id, user_id: user_id}
+          learner = if admin_class == [], do: learner, else: Map.put(learner, :in_admin_class, hd(admin_class))
+          acc |> Map.put(run_remote_endpoint, learner)
         end)
 
       _ -> %{}

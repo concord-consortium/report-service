@@ -6,6 +6,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerCreateTest do
 
   alias ReportServer.{PackagesMemoryStore, PackagesPortalStub, Repo}
   alias ReportServer.Packages.{Package, PackageEvent, PackageVersion}
+  alias ReportServer.Reports.AllowedProjects
 
   setup :register_and_put_bearer_token
 
@@ -144,14 +145,20 @@ defmodule ReportServerWeb.Api.V1.PackageControllerCreateTest do
 
   describe "origin and role" do
     test "publishes under a project the caller holds a grant on", %{conn: conn} do
-      PackagesPortalStub.set(%{allowed_project_ids: [20]})
+      PackagesPortalStub.set(%{allowed_project_ids: %AllowedProjects{admin: [20], researcher: []}})
       conn = publish(conn, package_zip(), "?origin=projects/20")
       assert %{"identity" => "projects/20/counts"} = json_response(conn, 201)
       assert Repo.get_by!(Package, identity: "projects/20/counts").maintainer == "projects/20"
     end
 
+    test "a researcher grant on the project is enough to publish under it", %{conn: conn} do
+      PackagesPortalStub.set(%{allowed_project_ids: %AllowedProjects{admin: [21], researcher: [20]}})
+      conn = publish(conn, package_zip(), "?origin=projects/20")
+      assert %{"identity" => "projects/20/counts"} = json_response(conn, 201)
+    end
+
     test "a project without a grant is 403 and writes nothing", %{conn: conn} do
-      PackagesPortalStub.set(%{allowed_project_ids: [21]})
+      PackagesPortalStub.set(%{allowed_project_ids: %AllowedProjects{admin: [21], researcher: []}})
       assert %{"error" => "FORBIDDEN"} = json_response(publish(conn, package_zip(), "?origin=projects/20"), 403)
       assert Repo.aggregate(Package, :count) == 0
       assert PackagesMemoryStore.objects() == %{}

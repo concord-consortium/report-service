@@ -2,11 +2,15 @@ defmodule ReportServer.PortalDbs do
   require Logger
 
   alias ReportServer.Accounts.User
+  alias ReportServer.Reports.AllowedProjects
 
   @connect_timeout 15_000   # the default is 15 seconds, but we want to be more explicit
   @handshake_timeout 15_000 # the default is 15 seconds, but we want to be more explicit
   @ping_timeout 300_000     # the default is 15 seconds, but we want to increase it to 5 minutes
   @query_timeout 300_000    # 5 minutes for long-running queries
+
+  # rigse's User#_project_user_researchers: a row expiring today is already expired
+  @live_researcher "apu.is_researcher = 1 AND (apu.expiration_date IS NULL OR apu.expiration_date > CURDATE())"
 
   # the three role flags of the user aliased `u`, as 0 or 1
   @role_flags """
@@ -24,8 +28,15 @@ defmodule ReportServer.PortalDbs do
   EXISTS (
     SELECT 1
     FROM admin_project_users apu
-    WHERE apu.is_researcher = true AND apu.user_id = u.id
+    WHERE #{@live_researcher} AND apu.user_id = u.id
   ) AS is_project_researcher
+  """
+
+  @project_roles """
+  SELECT apu.project_id, MAX(COALESCE(apu.is_admin, 0) = 1) AS is_admin, MAX(#{@live_researcher}) AS is_researcher
+  FROM admin_project_users apu
+  WHERE apu.user_id = ?
+  GROUP BY apu.project_id
   """
 
   @user_info_cols "u.id, u.login, u.first_name, u.last_name, u.email, #{@role_flags}"
@@ -251,22 +262,26 @@ defmodule ReportServer.PortalDbs do
   def get_allowed_project_ids(user = %User{}, options \\ []) do
     cond do
       user.portal_is_admin -> :all
-      user.portal_is_project_admin -> get_project_ids(user, "is_admin", options)
-      user.portal_is_project_researcher -> get_project_ids(user, "is_researcher", options)
+      user.portal_is_project_admin || user.portal_is_project_researcher -> get_allowed_projects(user, options)
       true -> :none
     end
   end
 
-  defp get_project_ids(user = %User{}, is_column, options) do
-    sql = "SELECT DISTINCT project_id FROM admin_project_users WHERE user_id = ? AND #{is_column} = 1"
-
-    case query(user.portal_server, sql, [user.portal_user_id], options) do
-      {:ok, result} ->
-        result
-        |> map_columns_on_rows()
-        |> Enum.map(&Map.get(&1, :project_id))
-
+  defp get_allowed_projects(user = %User{}, options) do
+    case query(user.portal_server, @project_roles, [user.portal_user_id], options) do
+      {:ok, %{rows: rows}} -> to_allowed_projects(rows)
       error -> error
+    end
+  end
+
+  defp to_allowed_projects(rows) do
+    admin = for [id, 1, _] <- rows, do: id
+    researcher = for [id, 0, 1] <- rows, do: id
+
+    if admin == [] and researcher == [] do
+      :none
+    else
+      %AllowedProjects{admin: admin, researcher: researcher}
     end
   end
 

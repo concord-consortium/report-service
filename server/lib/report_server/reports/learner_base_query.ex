@@ -9,7 +9,8 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   import ReportServer.Reports.ReportUtils
 
   alias ReportServer.Accounts.User
-  alias ReportServer.Reports.{ReportFilter, ReportQuery}
+  alias ReportServer.PortalDbs
+  alias ReportServer.Reports.{AllowedProjects, ReportFilter, ReportQuery}
 
   @from "report_learners rl"
   @join [
@@ -27,7 +28,8 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
 
   Every table the select list can read contributes its primary key. `rl.id` alone is accepted only
   while MySQL can see the joins: the project scoping's `1 = 0` clause lets the optimizer discard
-  them, and `ONLY_FULL_GROUP_BY` then rejects their columns.
+  them, and `ONLY_FULL_GROUP_BY` then rejects their columns. `adm_n`, the admin-class join, needs
+  no key: its one column equals `rl.class_id` where it is not NULL.
   """
   def group_by, do: "rl.id, u.id, ea.id, pl.id"
 
@@ -40,31 +42,34 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   end
 
   @doc """
-  Builds the base query with the caller's select list, and optional group_by/order_by.
+  Builds the base query with the caller's select list, and optional group_by/order_by. `allowed:`
+  is the caller's allowed projects, looked up when absent.
 
   Not a pure builder: with `exclude_internal` set it runs its own portal query to resolve the
   internal teacher ids, so it can fail before any SQL is produced.
   """
   def build(report_filter = %ReportFilter{}, user = %User{}, cols, opts \\ []) do
+    allowed = Keyword.get_lazy(opts, :allowed, fn -> PortalDbs.get_allowed_project_ids(user) end)
+
     query = %ReportQuery{
       cols: cols,
       from: @from,
-      join: [@join],
+      join: [@join ++ List.wrap(AllowedProjects.admin_class_join(allowed))],
       group_by: Keyword.get(opts, :group_by, ""),
       order_by: Keyword.get(opts, :order_by, [])
     }
 
-    {join, where} = apply_filters(report_filter, user)
+    {join, where} = apply_filters(report_filter, user, allowed)
     ReportQuery.update_query(query, join: join, where: where)
   end
 
   defp apply_filters(%ReportFilter{cohort: cohort, school: school, teacher: teacher, assignment: assignment,
         permission_form: permission_form, class: class, student: student,
-        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}) do
+        exclude_internal: exclude_internal, start_date: start_date, end_date: end_date}, user = %User{}, allowed) do
     join = []
     where = []
 
-    {join, where} = apply_allowed_project_ids_filter(user, join, where, "po.runnable_id", "ptc.teacher_id")
+    {join, where} = scope_by_allowed_projects(allowed, join, where, "po.runnable_id", "ptc.teacher_id", "rl.student_id")
 
     {join, where} = if have_filter?(cohort) do
       {
@@ -89,10 +94,10 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
           "JOIN portal_student_permission_forms pspf ON (pspf.portal_student_id = psc.student_id)"
           | join
         ],
-        [
-          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}"
-          | where
-        ]
+        Enum.reject([
+          "pspf.portal_permission_form_id IN #{list_to_in(permission_form)}",
+          AllowedProjects.named_form_sql(allowed, "pspf.portal_permission_form_id", :class)
+        ], &is_nil/1) ++ where
       }
     else
       {join, where}

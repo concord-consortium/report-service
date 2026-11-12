@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS users;
-CREATE TABLE users (id INT PRIMARY KEY, login VARCHAR(255), first_name VARCHAR(255), last_name VARCHAR(255), email VARCHAR(255), primary_account_id INT);
+-- MySQL 8's default collation, which CI's server uses, unlike a connection's utf8mb4_general_ci
+CREATE TABLE users (id INT PRIMARY KEY, login VARCHAR(255), first_name VARCHAR(255), last_name VARCHAR(255), email VARCHAR(255), primary_account_id INT) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 DROP TABLE IF EXISTS portal_districts;
 CREATE TABLE portal_districts (id INT PRIMARY KEY, name VARCHAR(255), state VARCHAR(2));
 DROP TABLE IF EXISTS portal_schools;
@@ -47,7 +48,7 @@ CREATE TABLE roles (id INT PRIMARY KEY, title VARCHAR(255));
 DROP TABLE IF EXISTS roles_users;
 CREATE TABLE roles_users (role_id INT, user_id INT);
 DROP TABLE IF EXISTS admin_project_users;
-CREATE TABLE admin_project_users (id INT PRIMARY KEY, project_id INT, user_id INT, is_admin TINYINT(1), is_researcher TINYINT(1));
+CREATE TABLE admin_project_users (id INT PRIMARY KEY, project_id INT, user_id INT, is_admin TINYINT(1), is_researcher TINYINT(1), expiration_date DATE NULL);
 DROP TABLE IF EXISTS report_learners;
 CREATE TABLE report_learners (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -126,7 +127,14 @@ UPDATE portal_clazzes SET class_hash = '' WHERE id = 603;
 INSERT INTO portal_teacher_clazzes VALUES
   (10,2,31),(11,3,31),(12,5,31),(13,9,31),(14,40,31),(15,77,31),(16,4,31);
 INSERT INTO admin_project_materials VALUES (1,900,'ExternalActivity',801),(2,900,'ExternalActivity',803);
-INSERT INTO admin_project_users VALUES (1,900,555,1,0),(2,900,557,0,1);
+INSERT INTO admin_project_users VALUES (1,900,555,1,0,NULL),(2,900,557,0,1,NULL);
+-- researchers 564, 565, 566 expire yesterday, today, tomorrow; relative dates keep each row meaning the same on every run
+INSERT INTO admin_project_users VALUES
+  (6,900,564,0,1,DATE_SUB(CURDATE(), INTERVAL 1 DAY)),
+  (7,900,565,0,1,CURDATE()),
+  (8,900,566,0,1,DATE_ADD(CURDATE(), INTERVAL 1 DAY));
+INSERT INTO users VALUES (564,'res.expired','Res','Expired','res.expired@e.org',NULL),
+  (565,'res.today','Res','Today','res.today@e.org',NULL),(566,'res.tomorrow','Res','Tomorrow','res.tomorrow@e.org',NULL);
 -- the catalog's role reads: 560 is a site admin, 555 administers project 900, 557 researches it. 561 has a blank last name and email, so no report-server user can be stored for it
 INSERT INTO users VALUES (555,'padmin','Pat','Admin','pat@e.org',NULL),(557,'rres','Rae','Search','rae@e.org',NULL),(560,'sadmin','Sam','Site','sam@e.org',NULL),(561,'blank','Blank','','',NULL);
 INSERT INTO roles VALUES (1,'admin'),(2,'manager');
@@ -145,3 +153,56 @@ VALUES
    'School W','Class 602',51,NULL,'Dist W, Dist Y','NH, MA','ann@e.org, cid@e.org, gone@e.org','','31, 33, 34'),
   (904,74,102,703,602,NULL,NULL,'Stu Four','stu.four',
    'School W','Class 602',51,NULL,NULL,NULL,NULL,NULL,NULL);
+-- Project 902 reaches class 604 through teacher 36; learner 905's stored lists put 901's form
+-- first, so a researcher's kept form sits second.
+INSERT INTO admin_projects VALUES (902,'Proj C');
+INSERT INTO admin_cohorts VALUES (3,'Cohort Three',902);
+INSERT INTO admin_cohort_items VALUES (4,3,'Portal::Teacher',36),(5,3,'ExternalActivity',801);
+INSERT INTO users VALUES (136,'dee','Dee','Teach','dee@e.org',NULL),
+  (106,'stu.six','Stu','Six','stu.six@e.org',NULL),(107,'stu.seven','Stu','Seven','stu.seven@e.org',NULL),
+  (108,'stu.eight','Stu','Eight','stu.eight@e.org',NULL);
+INSERT INTO portal_teachers VALUES (36,136);
+INSERT INTO portal_clazzes (id, name, class_word) VALUES (604,'Class 604','d');
+INSERT INTO portal_teacher_clazzes VALUES (17,604,36);
+INSERT INTO portal_students VALUES (76,106),(77,107),(78,108);
+INSERT INTO portal_student_clazzes VALUES (5,604,76),(6,604,77),(7,604,78);
+INSERT INTO portal_offerings VALUES (704,'ExternalActivity',801,604);
+INSERT INTO portal_learners VALUES
+  (905,76,704,'SECUREKEY905','2026-04-05 09:00:00'),
+  (906,77,704,'SECUREKEY906','2026-04-06 09:00:00'),
+  (907,78,704,'SECUREKEY907','2026-04-07 09:00:00');
+INSERT INTO portal_permission_forms VALUES (15,'Form C',902);
+INSERT INTO portal_student_permission_forms VALUES (4,76,15),(5,77,12),(14,76,12);
+INSERT INTO report_learners
+  (learner_id,student_id,user_id,offering_id,class_id,last_run,teachers_name,student_name,username,
+   school_name,class_name,school_id,permission_forms,teachers_district,teachers_state,teachers_email,
+   permission_forms_id,teachers_id)
+VALUES
+  (905,76,106,704,604,NULL,'Dee Teach','Stu Six','stu.six',NULL,'Class 604',NULL,'Proj B: Form 2,Proj C: Form C',NULL,NULL,'dee@e.org','12,15','36'),
+  (906,77,107,704,604,NULL,'Dee Teach','Stu Seven','stu.seven',NULL,'Class 604',NULL,'Proj B: Form 2',NULL,NULL,'dee@e.org','12','36'),
+  (907,78,108,704,604,NULL,'Dee Teach','Stu Eight','stu.eight',NULL,'Class 604',NULL,NULL,NULL,NULL,'dee@e.org',NULL,'36');
+-- 562 administers 900 and researches 902; 563 researches 902; 567 holds both roles on 900; 568's
+-- researcher row has a NULL is_admin; 570 is a site admin who also researches 900.
+INSERT INTO admin_project_users VALUES (3,900,562,1,0,NULL),(4,902,562,0,1,NULL),(5,902,563,0,1,NULL),
+  (9,900,567,1,1,NULL),(13,901,568,NULL,1,NULL),(16,900,570,0,1,NULL);
+INSERT INTO roles_users VALUES (1,570);
+-- 569 researches 900 and 902; student 78 is in 902's class 604 and holds only 900's form, so the
+-- form must belong to the project that reaches the class, not to any of the caller's projects.
+INSERT INTO admin_project_users VALUES (14,900,569,0,1,NULL),(15,902,569,0,1,NULL);
+INSERT INTO portal_student_permission_forms VALUES (13,78,11);
+-- student 76, reached only through 902, also holds 900's form, so a named admin-project form is
+-- one of the caller's projects for a user with both roles
+INSERT INTO portal_student_permission_forms VALUES (15,76,11);
+-- 571 administers 903 and researches 902; student 79 is in 903's class 605 and 902's class 604 and
+-- holds 902's form and 901's, so a foreign form's admin-class exception must be the matched class's
+INSERT INTO admin_projects VALUES (903,'Proj D');
+INSERT INTO admin_cohorts VALUES (4,'Cohort Four',903);
+INSERT INTO admin_cohort_items VALUES (6,4,'Portal::Teacher',37);
+INSERT INTO users VALUES (137,'fay','Fay','Teach','fay@e.org',NULL),(109,'stu.nine','Stu','Nine','stu.nine@e.org',NULL);
+INSERT INTO portal_teachers VALUES (37,137);
+INSERT INTO portal_clazzes (id, name, class_word) VALUES (605,'Class 605','e');
+INSERT INTO portal_teacher_clazzes VALUES (18,605,37);
+INSERT INTO portal_students VALUES (79,109);
+INSERT INTO portal_student_clazzes VALUES (8,605,79),(9,604,79);
+INSERT INTO portal_student_permission_forms VALUES (16,79,15),(17,79,12);
+INSERT INTO admin_project_users VALUES (17,903,571,1,0,NULL),(18,902,571,0,1,NULL);

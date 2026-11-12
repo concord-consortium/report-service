@@ -10,6 +10,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
   alias ReportServer.{ClueClassHashesStub, ClueExportStub, LearnerDataStub, Repo}
   alias ReportServer.Reports
   alias ReportServerWeb.Api.V1.BulkParams
+  alias ReportServer.Reports.AllowedProjects
 
   setup :register_and_put_bearer_token
 
@@ -46,7 +47,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
 
   defp stub(opts \\ []) do
     test_pid = self()
-    allowed = Keyword.get(opts, :allowed, [1, 2])
+    allowed = Keyword.get(opts, :allowed, %AllowedProjects{admin: [1, 2], researcher: []})
     learners = Keyword.get(opts, :learners, [learner(101, 601, 701)])
     fetch = Keyword.get(opts, :fetch, fn _f, _u, _o -> {:ok, groups_of(learners)} end)
     hashes = Keyword.get(opts, :hashes, fn _portal, ids -> {:ok, Map.new(ids, &{&1, hash_for(&1)})} end)
@@ -257,7 +258,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     end
 
     test "grants that exclude every learner give an empty terminal page and an intent row", %{conn: conn, user: user} do
-      stub(allowed: [], fetch: fn _f, _u, _o -> raise "should not be called" end)
+      stub(allowed: :none, fetch: fn _f, _u, _o -> raise "should not be called" end)
       refuse_calls()
       run = run_fixture(user)
 
@@ -367,6 +368,63 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
                %{@class | "offerings" => [701, 703]},
                %{"class_hash" => @hash, "uid" => "group_703_2", "portal_class_id" => 601, "offerings" => [703]}
              ]
+    end
+
+    test "a researcher's export holds student owners only and asks for no groups", %{conn: conn, user: user} do
+      stub(
+        allowed: %AllowedProjects{admin: [], researcher: [3]},
+        learners: [learner(101, 601, 701) |> Map.put(:in_admin_class, 0)],
+        owners: fn _req -> raise "the owners call should not be made" end
+      )
+
+      run = run_fixture(user)
+      assert json_response(get(conn, clue_path(run, "documents")), 200)
+
+      assert [%{owners: [@student]}] = walk_requests()
+      assert owners_requests() == []
+    end
+
+    test "an admin's export over the same learners keeps class and group owners", %{conn: conn, user: user} do
+      stub(
+        learners: [learner(101, 601, 701)],
+        owners: fn _req -> {:ok, %{"groups" => [%{"class_hash" => @hash, "uid" => "group_701_1", "offering" => 701}]}} end
+      )
+
+      run = run_fixture(user)
+      assert json_response(get(conn, clue_path(run, "documents")), 200)
+
+      [scratch] = Repo.all(ExportScratch)
+      assert Enum.map(scratch.endpoint_set, & &1["uid"]) == ["101", "class_" <> @hash, "group_701_1"]
+    end
+
+    test "a user with both roles keeps class and group owners for admin-project classes only", %{conn: conn, user: user} do
+      allowed = %AllowedProjects{admin: [1], researcher: [3]}
+
+      learners = [
+        learner(101, 601, 701) |> Map.put(:in_admin_class, 1),
+        learner(102, 602, 702) |> Map.put(:in_admin_class, 0)
+      ]
+
+      stub(
+        allowed: allowed,
+        fetch: fn _f, _u, opts ->
+          assert Keyword.get(opts, :allowed) == allowed
+          {:ok, groups_of(learners)}
+        end,
+        owners: fn _req -> {:ok, %{"groups" => [%{"class_hash" => @hash, "uid" => "group_701_1", "offering" => 701}]}} end
+      )
+
+      run = run_fixture(user)
+      assert json_response(get(conn, clue_path(run, "documents")), 200)
+
+      [scratch] = Repo.all(ExportScratch)
+      uids = Enum.map(scratch.endpoint_set, &{&1["class_hash"], &1["uid"]})
+
+      assert {@hash, "class_" <> @hash} in uids
+      assert {@hash, "group_701_1"} in uids
+      assert {@hash_b, "102"} in uids
+      refute {@hash_b, "class_" <> @hash_b} in uids
+      assert [%{classes: [%{"class_hash" => @hash}]}] = owners_requests()
     end
 
     for {label, group} <- [

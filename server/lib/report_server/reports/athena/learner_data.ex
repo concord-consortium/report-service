@@ -10,7 +10,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
 
   alias ReportServer.Accounts.User
   alias ReportServer.{PortalDbs, AthenaDB}
-  alias ReportServer.Reports.{LearnerBaseQuery, ReportFilter, ReportQuery}
+  alias ReportServer.Reports.{AllowedProjects, LearnerBaseQuery, ReportFilter, ReportQuery}
+  alias ReportServer.Reports.Athena.AthenaConfig
 
   def no_learners_error, do: "No learners were found matching the filters you selected."
 
@@ -24,7 +25,10 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   end
 
   def fetch(report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
-    with {:ok, portal_query} <- build_query(report_filter, user),
+    allowed = Keyword.get_lazy(opts, :allowed, fn -> PortalDbs.get_allowed_project_ids(user) end)
+    opts = opts |> Keyword.put(:allowed, allowed) |> Keyword.put(:hide_names, report_filter.hide_names)
+
+    with {:ok, portal_query} <- build_query(report_filter, user, allowed: allowed),
          {:ok, sql} <- ReportQuery.get_sql(portal_query),
          {:ok, result} <- PortalDbs.query(user.portal_server, sql),
          {:ok, learner_data} <- map_learner_data(result, user, opts) do
@@ -61,8 +65,17 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   Inherits `LearnerBaseQuery.build/4`'s failure modes, including the portal round trip
   `exclude_internal` makes before any SQL exists.
   """
-  def build_query(report_filter = %ReportFilter{}, user = %User{}) do
-    LearnerBaseQuery.build(report_filter, user, @learner_cols)
+  def build_query(report_filter = %ReportFilter{}, user = %User{}, opts \\ []) do
+    allowed = Keyword.get_lazy(opts, :allowed, fn -> PortalDbs.get_allowed_project_ids(user) end)
+    LearnerBaseQuery.build(report_filter, user, learner_cols(allowed), allowed: allowed)
+  end
+
+  # the class's admin-project test, for a researcher's per-row narrowing here and in the CLUE export
+  defp learner_cols(allowed) do
+    case AllowedProjects.admin_class_sql(allowed, :class) do
+      nil -> @learner_cols
+      admin_class -> @learner_cols ++ [{admin_class, "in_admin_class"}]
+    end
   end
 
   @doc """
@@ -91,7 +104,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       |> Enum.reduce_while({:ok, learner_data}, fn %{query_id: query_id, learners: learners}, acc ->
         path = "learners/#{query_id}/#{UUID.uuid4()}.json"
         contents = learners
-          |> Enum.map(&(Jason.encode!/1))
+          |> Enum.map(&(&1 |> Map.delete(:in_admin_class) |> Jason.encode!()))
           |> Enum.join("\n")
         Logger.info("Uploading learners to #{path}")
         case athena_db().put_file_contents(path, contents) do
@@ -115,11 +128,15 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     with {:ok, rows} <- maybe_ensure_not_empty(rows, Keyword.get(opts, :allow_empty, false)),
          {:ok, teacher_map} <- get_teacher_map(teacher_ids, user),
          {:ok, permission_form_map } <- get_permission_form_map(permission_form_ids, user) do
+      allowed = Keyword.get(opts, :allowed)
+      form_projects = AllowedProjects.form_project_ids(allowed)
+      hide_outside_admin_classes = Keyword.get(opts, :hide_names) != true and AllowedProjects.researcher?(allowed)
+      salt = if hide_outside_admin_classes, do: AthenaConfig.get_hide_username_hash_salt()
 
       result = rows
         |> Enum.map(fn row ->
           teachers = get_info_by_ids(teacher_map, row.teachers_id)
-          permission_forms = get_info_by_ids(permission_form_map, row.permission_forms_id)
+          permission_forms = row_permission_forms(permission_form_map, row, form_projects)
           run_remote_endpoint = "https://#{user.portal_server}/dataservice/external_activity_data/#{row.secure_key}"
 
           # use same format as api
@@ -142,6 +159,8 @@ defmodule ReportServer.Reports.Athena.LearnerData do
             teachers: teachers,
             created_at: row.created_at
           }
+          |> put_in_admin_class(row)
+          |> maybe_hide_name(hide_outside_admin_classes and Map.get(row, :in_admin_class) != 1, salt)
         end)
         |> group_learners_by_runnable_url()
 
@@ -150,6 +169,28 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     else
       error -> error
     end
+  end
+
+  # the values hide_names: true gives, so this digest matches the MySQL and Presto ones
+  defp maybe_hide_name(learner, false, _salt), do: learner
+
+  defp maybe_hide_name(learner = %{student_id: student_id, username: username}, true, salt) do
+    %{learner | student_name: Integer.to_string(student_id), username: hash_username(username, salt)}
+  end
+
+  defp hash_username(nil, _salt), do: nil
+  defp hash_username(username, salt), do: Base.encode16(:crypto.hash(:sha, salt <> username))
+
+  defp put_in_admin_class(learner, %{in_admin_class: in_admin_class}), do: Map.put(learner, :in_admin_class, in_admin_class)
+  defp put_in_admin_class(learner, _row), do: learner
+
+  defp row_permission_forms(form_map, row, form_projects) do
+    keep = if form_projects == :all or Map.get(row, :in_admin_class) == 1, do: :all, else: form_projects
+
+    form_map
+    |> get_info_by_ids(row.permission_forms_id)
+    |> Enum.filter(fn {_name, project_id} -> keep == :all or project_id in keep end)
+    |> Enum.map(fn {name, _project_id} -> name end)
   end
 
   defp maybe_ensure_not_empty(rows, true), do: {:ok, rows}
@@ -231,6 +272,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
         {"ppf.id", "id"},
         {"ppf.name", "name"},
         {"ap.name", "project_name"},
+        {"ppf.project_id", "project_id"},
       ],
       from: "portal_permission_forms ppf",
       join: [[
@@ -245,13 +287,13 @@ defmodule ReportServer.Reports.Athena.LearnerData do
          {:ok, result} <- PortalDbs.query(user.portal_server, sql) do
 
       permission_form_map = result.rows
-        |> Enum.reduce(%{}, fn [id, name, project_name], acc ->
+        |> Enum.reduce(%{}, fn [id, name, project_name, project_id], acc ->
           value = if project_name != nil do
             "#{project_name}: #{name}"
           else
             name
           end
-          Map.put(acc, "#{id}", value)
+          Map.put(acc, "#{id}", {value, project_id})
         end)
 
       {:ok, permission_form_map}

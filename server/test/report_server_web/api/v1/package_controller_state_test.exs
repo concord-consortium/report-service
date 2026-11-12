@@ -6,6 +6,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerStateTest do
 
   alias ReportServer.{PackagesMemoryStore, PackagesPortalStub, Repo}
   alias ReportServer.Packages.{PackageEvent, PackageVersion}
+  alias ReportServer.Reports.AllowedProjects
 
   setup :register_and_put_bearer_token
 
@@ -31,7 +32,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerStateTest do
     end
 
     test "project visibility needs a grant, records the project, and leaving it clears the project", %{conn: conn, path: path, package: package} do
-      PackagesPortalStub.set(%{allowed_project_ids: [20]})
+      PackagesPortalStub.set(%{allowed_project_ids: admin([20])})
 
       assert %{"visibility" => "project", "project_id" => 20} =
                json_response(change(conn, path, "visibility", %{visibility: "project", project_id: 20}), 200)
@@ -47,7 +48,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerStateTest do
     end
 
     test "project visibility without a grant is 403", %{conn: conn, path: path} do
-      PackagesPortalStub.set(%{allowed_project_ids: [21]})
+      PackagesPortalStub.set(%{allowed_project_ids: admin([21])})
       assert %{"error" => "FORBIDDEN"} = json_response(change(conn, path, "visibility", %{visibility: "project", project_id: 20}), 403)
     end
 
@@ -80,7 +81,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerStateTest do
 
   describe "a project-maintained package" do
     setup %{user: user} do
-      PackagesPortalStub.set(%{allowed_project_ids: [20]})
+      PackagesPortalStub.set(%{allowed_project_ids: admin([20])})
       %{package: package} = publish_fixture(user, %{"name" => "team"}, origin: "projects/20")
       %{team_path: "/api/v1/packages/#{package.identity}"}
     end
@@ -90,7 +91,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerStateTest do
     end
 
     test "is refused without that grant", %{conn: conn, team_path: path} do
-      PackagesPortalStub.set(%{allowed_project_ids: [21]})
+      PackagesPortalStub.set(%{allowed_project_ids: admin([21])})
       assert %{"error" => "FORBIDDEN"} = json_response(change(conn, path, "archived", %{archived: true}), 403)
     end
 
@@ -132,7 +133,7 @@ defmodule ReportServerWeb.Api.V1.PackageControllerStateTest do
     end
 
     test "setting it on a project-visible package clears the project", %{conn: conn, path: path, package: package, user: user} do
-      PackagesPortalStub.set(%{allowed_project_ids: [20]})
+      PackagesPortalStub.set(%{allowed_project_ids: admin([20])})
       assert json_response(change(conn, path, "visibility", %{visibility: "project", project_id: 20}), 200)
       as_publisher(user)
 
@@ -185,4 +186,5 @@ defmodule ReportServerWeb.Api.V1.PackageControllerStateTest do
     end
   end
 
+  defp admin(ids), do: %AllowedProjects{admin: ids, researcher: []}
 end

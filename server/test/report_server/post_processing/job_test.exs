@@ -5,6 +5,7 @@ defmodule ReportServer.PostProcessing.JobTest do
 
   alias ReportServer.PostProcessing.Job
   alias ReportServer.PostProcessing.Steps.{ClueLinkToWork, MergeToPrimaryUser}
+  alias ReportServer.Reports.AllowedProjects
 
   describe "run/4" do
     test "runs a job with empty input and no steps successfully" do
@@ -98,6 +99,53 @@ defmodule ReportServer.PostProcessing.JobTest do
       {job, query_result, overrides, get_output} = job_fixture(input, [MergeToPrimaryUser.step()])
       Job.run(job, query_result, nil, overrides)
       assert get_output.() == output
+    end
+  end
+
+  describe "the CLUE link to work step for a run owner with a researcher project" do
+    @endpoint "https://learn.concord.org/dataservice/external_activity_data/abc"
+
+    defp link_cell(allowed, learner, document_uid) do
+      parameters =
+        %{"documentUid" => document_uid, "documentKey" => "-doc"}
+        |> Jason.encode!()
+        |> String.replace("\"", "\"\"")
+
+      input = """
+      "application","time","parameters","run_remote_endpoint"
+      "CLUE","1737574924","#{parameters}","#{@endpoint}"
+      """
+
+      {job, query_result, overrides, get_output} =
+        job_fixture(input, [ClueLinkToWork.step()], %{@endpoint => learner}, allowed)
+
+      Job.run(job, query_result, nil, overrides)
+      [header, row] = get_output.() |> String.split("\r\n", trim: true) |> Enum.map(&String.split(&1, ","))
+      Enum.at(row, Enum.find_index(header, &(&1 == "link_to_work")))
+    end
+
+    @learner %{offering_id: 1, class_id: 1, user_id: 77701}
+    @researcher %AllowedProjects{admin: [], researcher: [3]}
+
+    test "a classmate's document outside an admin-project class is not linked" do
+      assert link_cell(@researcher, @learner, "77702") == ""
+    end
+
+    test "the learner's own document is linked" do
+      assert link_cell(@researcher, @learner, "77701") =~ "targetUserId=77701"
+    end
+
+    test "a user with both roles links a classmate's document in an admin-project class" do
+      mixed = %AllowedProjects{admin: [1], researcher: [3]}
+      assert link_cell(mixed, Map.put(@learner, :in_admin_class, 1), "77702") =~ "targetUserId=77702"
+    end
+
+    test "an admin-only owner's links are unchanged" do
+      assert link_cell(%AllowedProjects{admin: [1], researcher: []}, @learner, "77702") =~ "targetUserId=77702"
+    end
+
+    test "an owner with no live project links nothing" do
+      assert link_cell(:none, @learner, "77702") == ""
     end
   end
 end

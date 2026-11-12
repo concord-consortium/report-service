@@ -135,15 +135,58 @@ defmodule ReportServer.Reports.FilterOptionsTest do
     test "a researcher cannot read a student name, whatever the request asks for" do
       asked_to_see = %ReportFilter{hide_names: false}
 
-      assert labels(:student, asked_to_see, researcher()) == ["101", "102", "103", "104"]
+      assert labels(:student, asked_to_see, researcher()) == ["101"]
     end
 
     test "a researcher cannot confirm a name through the search text either" do
       assert labels(:student, %ReportFilter{}, researcher(), limit: 100, like_text: "Stu One") == []
     end
 
+    test "a user with both roles sees a name only for a student of an admin-project class" do
+      mixed = %User{portal_server: @server, portal_user_id: 562, portal_is_project_admin: true, portal_is_project_researcher: true}
+      shown = %ReportFilter{hide_names: false}
+      student_labels = labels(:student, shown, mixed)
+
+      assert "106" in student_labels
+      assert "Stu One <101>" in student_labels
+      assert labels(:student, shown, mixed, limit: 100, like_text: "Stu Six") == []
+      assert labels(:student, shown, mixed, limit: 100, like_text: "106") == ["106"]
+    end
+
     test "an admin sees the names a researcher cannot" do
       assert "Stu One <101>" in labels(:student, %ReportFilter{}, project_admin())
+    end
+  end
+
+  describe "page/4 narrowing by a named permission form" do
+    defp form_user(id, flags), do: struct(%User{portal_server: @server, portal_user_id: id}, flags)
+    defp by_form(form), do: %ReportFilter{permission_form: [form]}
+
+    test "a researcher's options match only a form of their projects" do
+      researcher = form_user(563, portal_is_project_researcher: true)
+
+      assert ids(:student, by_form(12), researcher) == []
+      assert ids(:student, by_form(15), researcher) == ["76", "79"]
+      assert ids(:class, by_form(12), researcher) == []
+    end
+
+    test "a user with both roles matches a foreign form in an admin-project class only" do
+      mixed = form_user(562, portal_is_project_admin: true, portal_is_project_researcher: true)
+
+      assert ids(:student, by_form(12), mixed) == ["71"]
+      assert ids(:class, by_form(12), mixed) == ["601"]
+      assert "76" in ids(:student, by_form(11), mixed)
+    end
+
+    test "a foreign form's admin-class exception is the matched class's, not another of the student's" do
+      dual = form_user(571, portal_is_project_admin: true, portal_is_project_researcher: true)
+
+      assert ids(:class, by_form(12), dual) == ["605"]
+      assert "79" in ids(:student, by_form(12), dual)
+    end
+
+    test "a project admin's narrowing is unchanged" do
+      assert ids(:student, by_form(12)) == ["71"]
     end
   end
 

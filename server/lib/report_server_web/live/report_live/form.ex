@@ -70,7 +70,6 @@ defmodule ReportServerWeb.ReportLive.Form do
     |> assign(:partition_warning, nil)
     |> assign(:placeholder_text, [""])
     |> assign(:dev, @dev)
-    |> assign(:allowed_project_ids, PortalDbs.get_allowed_project_ids(user))
 
     {:noreply, socket}
   end
@@ -86,30 +85,19 @@ defmodule ReportServerWeb.ReportLive.Form do
 
   ## Called when the text in one of the search boxes changes
   @impl true
-  def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form, user: user, allowed_project_ids: allowed_project_ids}}) do
+  def handle_event("live_select_change", %{"field" => field, "text" => text, "id" => live_select_id}, socket = %{assigns: %{form: form, user: user}}) do
     filter_index = get_filter_index(field)
     report_filter = ReportFilter.from_form(form, filter_index)
       |> HideNames.enforce(user)
-    if String.length(text) >= 3 || has_few_options?(report_filter, filter_index, user, allowed_project_ids, text) do
-      case ReportFilterQuery.get_options(report_filter, user, allowed_project_ids, text) do
-        {:ok, options, sql, params} ->
-          send_update(LiveSelect.Component, id: live_select_id, options: options)
-          new_placeholder_text = socket.assigns.placeholder_text
-          |> List.replace_at(filter_index - 1, describe_options(field, text, options))
-          socket = socket
-            |> assign(:error, nil)
-            |> assign(:debug, debug_filter(sql ,params))
-            |> assign(:placeholder_text, new_placeholder_text)
-          {:noreply, socket}
-
-        {:error, error, sql, params} ->
-          socket = socket
-            |> assign(:error, error)
-            |> assign(:debug, debug_filter(sql ,params))
-          {:noreply, socket}
+    long_text? = String.length(text) >= 3
+    # read per query, so a researcher whose access expires while the form is open loses it at once
+    allowed_project_ids =
+      if long_text? || counts_options?(report_filter, filter_index) do
+        PortalDbs.get_allowed_project_ids(user)
       end
-    else
-      {:noreply, socket}
+    case allowed_project_ids do
+      {:error, reason} -> {:noreply, lookup_failed(socket, reason)}
+      _ -> search_options(socket, report_filter, filter_index, field, text, live_select_id, allowed_project_ids)
     end
   end
 
@@ -134,7 +122,9 @@ defmodule ReportServerWeb.ReportLive.Form do
     socket = assign(socket, :form, form)
 
     socket = if type_change? do
-      update_options(socket, filter_index, form, field, live_select_id)
+      with_allowed_projects(socket, fn allowed_project_ids ->
+        update_options(socket, allowed_project_ids, filter_index, form, field, live_select_id)
+      end)
     else
       # Not a filter-type change event
       # If the change was adding or removing a value from one of the filters, we'll get a field like "filter1" or "filter1_empty_selection"
@@ -155,8 +145,10 @@ defmodule ReportServerWeb.ReportLive.Form do
 
       if changed_filter_index && changed_filter_index < socket.assigns.num_filters do
         # There was a change in the filter values, so we need to update the options for any following filters
-        Enum.reduce((changed_filter_index+1)..socket.assigns.num_filters, socket, fn i, acc ->
-          update_options(acc, i, form, form["filter#{i}_type"].value, "live_select#{i}")
+        with_allowed_projects(socket, fn allowed_project_ids ->
+          Enum.reduce((changed_filter_index+1)..socket.assigns.num_filters, socket, fn i, acc ->
+            update_options(acc, allowed_project_ids, i, form, form["filter#{i}_type"].value, "live_select#{i}")
+          end)
         end)
       else
         socket
@@ -397,10 +389,35 @@ defmodule ReportServerWeb.ReportLive.Form do
     end
   end
 
+  # Query for the options matching the text typed in one of the search boxes.
+  defp search_options(socket = %{assigns: %{user: user}}, report_filter, filter_index, field, text, live_select_id, allowed_project_ids) do
+    if String.length(text) >= 3 || has_few_options?(report_filter, filter_index, user, allowed_project_ids, text) do
+      case ReportFilterQuery.get_options(report_filter, user, allowed_project_ids, text) do
+        {:ok, options, sql, params} ->
+          send_update(LiveSelect.Component, id: live_select_id, options: options)
+          new_placeholder_text = socket.assigns.placeholder_text
+          |> List.replace_at(filter_index - 1, describe_options(field, text, options))
+          socket = socket
+            |> assign(:error, nil)
+            |> assign(:debug, debug_filter(sql ,params))
+            |> assign(:placeholder_text, new_placeholder_text)
+          {:noreply, socket}
+
+        {:error, error, sql, params} ->
+          socket = socket
+            |> assign(:error, error)
+            |> assign(:debug, debug_filter(sql ,params))
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   # Query for the set of options for one of the filters in the form and send an update to the LiveSelect component.
   # The values and placeholder text are also updated and socket values are assigned.
   # Returns the new socket structure.
-  defp update_options(socket = %{assigns: %{user: user, allowed_project_ids: allowed_project_ids}}, filter_index, form, field, live_select_id) do
+  defp update_options(socket = %{assigns: %{user: user}}, allowed_project_ids, filter_index, form, field, live_select_id) do
     report_filter = ReportFilter.from_form(form, filter_index)
       |> HideNames.enforce(user)
 
@@ -452,18 +469,30 @@ defmodule ReportServerWeb.ReportLive.Form do
     end
   end
 
-  defp has_few_options?(report_filter, filter_index, user, allowed_project_ids, like_text \\ "")
+  defp with_allowed_projects(socket = %{assigns: %{user: user}}, fun) do
+    case PortalDbs.get_allowed_project_ids(user) do
+      {:error, reason} -> lookup_failed(socket, reason)
+      allowed_project_ids -> fun.(allowed_project_ids)
+    end
+  end
+
+  # a failed lookup must not reach the option queries, whose scopes raise on it
+  defp lookup_failed(socket, reason) do
+    Logger.error("Unable to look up allowed projects: #{inspect(reason)}")
+    assign(socket, :error, "Unable to look up your project access. Please try again.")
+  end
 
   # since there are a lot of students in the system, we should skip getting the count
   # when it is the first filter
-  defp has_few_options?(%ReportFilter{filters: [:student]}, 1, _user, _allowed_project_ids, _like_text) do
-    Logger.debug("Skipping student count for first filter")
-    false
-  end
+  defp counts_options?(%ReportFilter{filters: [:student]}, 1), do: false
+  defp counts_options?(_report_filter, _filter_index), do: true
 
-  defp has_few_options?(report_filter, filter_index, user, allowed_project_ids, like_text) do
+  defp has_few_options?(report_filter, filter_index, user, allowed_project_ids, like_text \\ "") do
     cond do
       filter_index > 1 -> true
+      not counts_options?(report_filter, filter_index) ->
+        Logger.debug("Skipping student count for first filter")
+        false
       {:ok, count } = ReportFilterQuery.get_option_count(report_filter, user, allowed_project_ids, like_text) ->
         Logger.debug("Count of options for filter #{filter_index}: #{inspect(count)}")
         count <= @max_auto_options_length

@@ -5,7 +5,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{DimensionScope, ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{AllowedProjects, DimensionScope, ReportFilter, ReportFilterQuery}
 
   defstruct id: nil, value: nil, from: nil, join: [], where: [], order_by: nil, num_params: 1
 
@@ -592,8 +592,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
   end
 
   # Apply all secondary filters to a query based on the configuration map
-  defp apply_secondary_filters(query, _primary_filter, _report_filter, []), do: query
-  defp apply_secondary_filters(query, primary_filter, report_filter, [filter_name | rest]) do
+  defp apply_secondary_filters(query, _primary_filter, _report_filter, _allowed, []), do: query
+  defp apply_secondary_filters(query, primary_filter, report_filter, allowed, [filter_name | rest]) do
     filter_value = Map.get(report_filter, filter_name)
 
     query = if filter_value == nil do
@@ -607,14 +607,29 @@ defmodule ReportServer.Reports.ReportFilterQuery do
           :integer -> list_to_in(filter_value)
         end
         where = "#{config.where} #{in_clause}"
+        where = with_named_form_check(where, filter_name, primary_filter, allowed)
         secondary_filter_query(query, join, where)
       else
         query
       end
     end
 
-    apply_secondary_filters(query, primary_filter, report_filter, rest)
+    apply_secondary_filters(query, primary_filter, report_filter, allowed, rest)
   end
+
+  # Every permission_form cascade joins pspf, and every one but the student dimension's reaches the
+  # student through psc, the class the option is matched by, so the admin-class exception is that
+  # class's, as in the learner query. A student option is the student's, in any of their classes.
+  defp with_named_form_check(where, :permission_form, primary_filter, allowed) do
+    by = if primary_filter == :student, do: {:student, "pspf.portal_student_id"}, else: {:class, "psc.clazz_id"}
+
+    case AllowedProjects.named_form_sql(allowed, "pspf.portal_permission_form_id", by) do
+      nil -> where
+      check -> "#{where} AND #{check}"
+    end
+  end
+
+  defp with_named_form_check(where, _filter_name, _primary_filter, _allowed), do: where
 
   defp get_filter_query(:cohort, report_filter = %ReportFilter{}, allowed_project_ids, like_text, _portal_server) do
     ## If there are any empty-set filters, do not bother querying and just return nil.
@@ -631,7 +646,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :cohort, allowed_project_ids)
 
-      apply_secondary_filters(query, :cohort, report_filter, [:school, :teacher, :assignment, :permission_form, :class, :student])
+      apply_secondary_filters(query, :cohort, report_filter, allowed_project_ids, [:school, :teacher, :assignment, :permission_form, :class, :student])
     end
   end
 
@@ -650,7 +665,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :school, allowed_project_ids)
 
-      apply_secondary_filters(query, :school, report_filter, [:cohort, :teacher, :assignment, :permission_form, :class, :student])
+      apply_secondary_filters(query, :school, report_filter, allowed_project_ids, [:cohort, :teacher, :assignment, :permission_form, :class, :student])
     end
   end
 
@@ -673,7 +688,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :teacher, allowed_project_ids)
 
-      apply_secondary_filters(query, :teacher, report_filter, [:cohort, :school, :assignment, :permission_form, :class, :student])
+      apply_secondary_filters(query, :teacher, report_filter, allowed_project_ids, [:cohort, :school, :assignment, :permission_form, :class, :student])
     end
   end
 
@@ -692,7 +707,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :assignment, allowed_project_ids)
 
-      apply_secondary_filters(query, :assignment, report_filter, [:cohort, :school, :teacher, :permission_form, :class, :student])
+      apply_secondary_filters(query, :assignment, report_filter, allowed_project_ids, [:cohort, :school, :teacher, :permission_form, :class, :student])
     end
   end
 
@@ -716,7 +731,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :permission_form, allowed_project_ids)
 
-      apply_secondary_filters(query, :permission_form, report_filter, [:cohort, :school, :teacher, :assignment, :class, :student])
+      apply_secondary_filters(query, :permission_form, report_filter, allowed_project_ids, [:cohort, :school, :teacher, :assignment, :class, :student])
     end
   end
 
@@ -736,7 +751,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :class, allowed_project_ids)
 
-      apply_secondary_filters(query, :class, report_filter, [:cohort, :school, :teacher, :assignment, :permission_form, :student])
+      apply_secondary_filters(query, :class, report_filter, allowed_project_ids, [:cohort, :school, :teacher, :assignment, :permission_form, :student])
     end
   end
 
@@ -745,16 +760,9 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     if has_empty_dependent_filters?(report_filter, :student) do
       nil
     else
-      value = if hide_names do
-        "CAST(u.id AS CHAR) AS fullname"
-      else
-        "CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') AS fullname"
-      end
-      where = if hide_names do
-        maybe_add_like(like_text, ["CAST(u.id AS CHAR) LIKE ?"])
-      else
-        maybe_add_like(like_text, ["CONCAT(u.first_name, ' ', u.last_name, ' <', u.id, '>') LIKE ?"])
-      end
+      label = ReportFilter.student_label_expr(hide_names, allowed_project_ids)
+      value = "#{label} AS fullname"
+      where = maybe_add_like(like_text, ["#{label} LIKE ?"])
 
       query = build_base_query(%{
         id: DimensionScope.id_expr(:student),
@@ -767,7 +775,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :student, allowed_project_ids)
 
-      apply_secondary_filters(query, :student, report_filter, [:cohort, :school, :teacher, :assignment, :permission_form, :class])
+      apply_secondary_filters(query, :student, report_filter, allowed_project_ids, [:cohort, :school, :teacher, :assignment, :permission_form, :class])
     end
   end
 
@@ -786,7 +794,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :country, allowed_project_ids)
 
-      apply_secondary_filters(query, :country, report_filter, [:state, :school, :teacher, :subject_area])
+      apply_secondary_filters(query, :country, report_filter, allowed_project_ids, [:state, :school, :teacher, :subject_area])
     end
   end
 
@@ -805,7 +813,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :state, allowed_project_ids)
 
-      apply_secondary_filters(query, :state, report_filter, [:country, :school, :teacher, :subject_area])
+      apply_secondary_filters(query, :state, report_filter, allowed_project_ids, [:country, :school, :teacher, :subject_area])
     end
   end
 
@@ -832,7 +840,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
       query = apply_scope(query, :subject_area, allowed_project_ids)
 
-      apply_secondary_filters(query, :subject_area, report_filter, [:country, :state, :school, :teacher])
+      apply_secondary_filters(query, :subject_area, report_filter, allowed_project_ids, [:country, :state, :school, :teacher])
     end
   end
 

@@ -61,6 +61,23 @@ teacher with no school at all still occupies its position, as an empty entry.
 has one splitting rule. Values containing commas are not a concern because the portal replaces a
 comma inside a value with a space before joining.
 
+### Who sees which students
+
+A site admin sees every student. A project admin sees the students in their projects' cohort
+classes, on assignments in those projects' cohorts or materials. A project researcher sees only
+those of them who hold one of that same project's permission forms, and this applies to every
+report with a row per student (the Student Reports and Assignment Usage by Student), the exports and
+the filter options alike. A researcher whose access has expired on the portal sees nothing.
+
+For any caller other than a site admin who holds a researcher project, full permission-form names,
+CLUE group and class documents, and student names show only in classes reached through one of their
+admin projects, as the portal decides names. Elsewhere the form names are narrowed to their
+projects' forms, the CLUE export holds student documents only, and names are hidden as
+`hide_names` hides them.
+
+The teacher-level reports (Teacher Status, Summary Metrics by Assignment and Detailed Metrics by
+Assignment) count students without the permission-form narrowing.
+
 ## Development Setup
 
 First install the `asdf` version manager: <https://asdf-vm.com/guide/getting-started.html>
@@ -168,7 +185,7 @@ Three routes page a report run's CLUE documents out of CLUE's own Firebase proje
 
 `/clue/history` is CLUE **document** history, the edit entries CLUE keeps for each document. It is not `/history`, which is LARA interactive-state history from report-service's own Firestore.
 
-**Scope.** The run's learners are derived as `/answers` derives them, and only learners on an application that writes CLUE documents count: `collaborative-learning.concord.org` (branch builds included) or the Dataflow 3.0 app at `dataflow-app.concord.org`. Each student with such a learner in a class that has a class hash is one student owner in that class. A student owner's document is in scope when its offering is one of the run's offerings for that student, or when it has no offering, as personal documents, learning logs and their publications do; an offering that is present but not an integer puts the document out of scope. Each class with a student owner also has a class owner, narrowed the same way by the class's run offerings, and one owner per group of the run's offerings. Teacher documents are not exported.
+**Scope.** The run's learners are derived as `/answers` derives them, and only learners on an application that writes CLUE documents count: `collaborative-learning.concord.org` (branch builds included) or the Dataflow 3.0 app at `dataflow-app.concord.org`. Each student with such a learner in a class that has a class hash is one student owner in that class. A student owner's document is in scope when its offering is one of the run's offerings for that student, or when it has no offering, as personal documents, learning logs and their publications do; an offering that is present but not an integer puts the document out of scope. Each class with a student owner also has a class owner, narrowed the same way by the class's run offerings, and one owner per group of the run's offerings. Teacher documents are not exported. For a caller who holds a researcher project, a class reached through one of their admin projects keeps its class and group documents, and any other class gives its student documents only, because a group or class document can hold the work of students outside their consent.
 
 **Paging.** The owners are frozen on the first page, so a later change to the run's learners does not move an export already under way. The envelope is `{items, next_page_token, total_endpoints}`, where `total_endpoints` counts the scope owners above. Pass `limit` (at most 500) and the previous `page_token`, and stop when `next_page_token` is `null`; an empty page with a token is normal. A token expires after an hour idle (410 `EXPIRED_CURSOR`), and a token from one CLUE route is 404 on another. Paging is at-least-once: a retried page may repeat items, so de-duplicate on `doc_id`, or on `(doc_id, entry_id)` for history. No item is ever split across pages.
 

@@ -4,10 +4,10 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
   @moduletag :portal_db
 
   alias ReportServer.{PortalDbs, PortalFixture}
-  alias ReportServer.Reports.{ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{AllowedProjects, ReportFilter, ReportFilterQuery}
 
   @server PortalFixture.server()
-  @project 900
+  @allowed %AllowedProjects{admin: [900], researcher: []}
 
   @secondary_values [
     cohort: [1],
@@ -24,14 +24,14 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
 
   defp options(dimension, report_filter \\ %ReportFilter{}) do
     filter = %{report_filter | filters: [dimension]}
-    {query, params} = ReportFilterQuery.get_query_and_params(filter, [@project], "", @server)
+    {query, params} = ReportFilterQuery.get_query_and_params(filter, @allowed, "", @server)
     {:ok, result} = PortalDbs.query(@server, ReportFilterQuery.get_options_sql(query), params)
     Enum.map(result.rows, fn [id, label] -> {to_string(id), label} end)
   end
 
   defp run_narrowed(dimension, secondary, value) do
     filter = %ReportFilter{filters: [dimension]} |> Map.put(secondary, value)
-    {query, params} = ReportFilterQuery.get_query_and_params(filter, [@project], "", @server)
+    {query, params} = ReportFilterQuery.get_query_and_params(filter, @allowed, "", @server)
     PortalDbs.query(@server, ReportFilterQuery.get_options_sql(query), params)
   end
 
@@ -60,7 +60,7 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
 
   test "a scoped caller can narrow assignments by cohort" do
     filter = %ReportFilter{filters: [:assignment], cohort: [1]}
-    {query, params} = ReportFilterQuery.get_query_and_params(filter, [@project], "", @server)
+    {query, params} = ReportFilterQuery.get_query_and_params(filter, @allowed, "", @server)
     {:ok, result} = PortalDbs.query(@server, ReportFilterQuery.get_options_sql(query), params)
 
     assert result.rows == [[801, "Activity One"]]

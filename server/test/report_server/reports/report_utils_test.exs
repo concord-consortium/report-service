@@ -1,7 +1,7 @@
 defmodule ReportServer.Reports.ReportUtilsTest do
   use ExUnit.Case, async: true
 
-  alias ReportServer.Reports.AllowedProjectsLookupError
+  alias ReportServer.Reports.{AllowedProjects, AllowedProjectsLookupError}
   alias ReportServer.Reports.ReportUtils
 
   describe "the run date bounds" do
@@ -64,29 +64,54 @@ defmodule ReportServer.Reports.ReportUtilsTest do
     end
   end
 
-  describe "scope_by_allowed_projects/5" do
+  describe "scope_by_allowed_projects/6" do
     test ":all applies no scoping" do
       assert ReportUtils.scope_by_allowed_projects(:all, ["j"], ["w"], "ea.id", "pt.id") == {["j"], ["w"]}
     end
 
-    test "a non-empty list scopes to those projects with a valid IN clause" do
-      {join, where} = ReportUtils.scope_by_allowed_projects([1, 2], [], [], "ea.id", "pt.id")
+    test "allowed projects scope to those projects with a valid IN clause" do
+      allowed = %AllowedProjects{admin: [1], researcher: [2]}
+      {join, where} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id")
       where_sql = Enum.join(where, " ")
       assert where_sql =~ "IN (1,2)"
       refute where_sql =~ "IN ()"
       assert length(join) == 5
     end
 
-    test "an empty list constrains to zero rows instead of emitting IN ()" do
-      {join, where} = ReportUtils.scope_by_allowed_projects([], [], ["existing"], "ea.id", "pt.id")
-      assert where == ["1 = 0", "existing"]
-      refute Enum.join(where, " ") =~ "IN ()"
-      # no scoping joins are added for a user who can see nothing
-      assert join == []
+    test "an admin-only caller's SQL is the same with a student ref as without" do
+      allowed = %AllowedProjects{admin: [1, 2], researcher: []}
+
+      assert ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id") ==
+               ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id")
     end
 
-    test ":none (no roles) also constrains to zero rows" do
-      assert ReportUtils.scope_by_allowed_projects(:none, [], [], "ea.id", "pt.id") == {[], ["1 = 0"]}
+    test "a researcher project requires the student's consent to that project" do
+      allowed = %AllowedProjects{admin: [], researcher: [3]}
+      {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
+
+      assert teacher ==
+               "(ac_teacher_a.project_id IN (3) AND " <>
+                 AllowedProjects.consent_exists("rl.student_id", "ac_teacher_a.project_id") <> ")"
+    end
+
+    test "a caller with both roles gets an admin branch and a consent branch" do
+      allowed = %AllowedProjects{admin: [1], researcher: [3]}
+      {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
+
+      assert teacher =~ ~r/^\(ac_teacher_a\.project_id IN \(1\)\) OR \(ac_teacher_a\.project_id IN \(3\) AND EXISTS /
+      refute teacher =~ "IN ()"
+    end
+
+    test "with no student ref a researcher project takes the admin rule" do
+      allowed = %AllowedProjects{admin: [], researcher: [3]}
+      {_join, where} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id")
+
+      refute Enum.join(where, " ") =~ "EXISTS"
+      assert hd(where) == "ac_teacher_a.project_id IN (3)"
+    end
+
+    test ":none (no roles) constrains to zero rows and adds no scoping joins" do
+      assert ReportUtils.scope_by_allowed_projects(:none, [], ["existing"], "ea.id", "pt.id") == {[], ["1 = 0", "existing"]}
     end
 
     test "a failed permission lookup raises rather than silently returning zero rows" do

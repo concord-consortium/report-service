@@ -106,6 +106,20 @@ defmodule ReportServer.Reports.ReportFilterValuesTest do
       end
     end
 
+    test "a researcher can name only a student holding their project's form" do
+      researcher = %User{portal_server: @server, portal_user_id: 557, portal_is_project_researcher: true}
+
+      assert values(%ReportFilter{student: [73]}, researcher) == {:error, :out_of_scope, [{:student, [73]}]}
+      assert {:ok, %{student: %{71 => _}}} = values(%ReportFilter{student: [71]}, researcher)
+    end
+
+    test "a user with both roles gets a stored name only for a student of an admin-project class" do
+      mixed = %User{portal_server: @server, portal_user_id: 562, portal_is_project_admin: true, portal_is_project_researcher: true}
+
+      assert {:ok, %{student: labels}} = values(%ReportFilter{student: [71, 76], hide_names: false}, mixed)
+      assert labels == %{71 => "Stu One <101>", 76 => "106"}
+    end
+
     test "the refusal names every dimension that lost an id, and resolves the rest" do
       filter = %ReportFilter{cohort: [1, 2], school: [51, 54]}
 

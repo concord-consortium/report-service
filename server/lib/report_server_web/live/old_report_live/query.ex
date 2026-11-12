@@ -195,7 +195,7 @@ defmodule ReportServerWeb.OldReportLive.QueryComponent do
         _, acc -> acc
       end)
       |> JobServer.sort_steps()
-    JobServer.add_job(id, query.result, steps, portal_url)
+    JobServer.add_job(id, query.result, steps, portal_url, :none)
 
     query = %{query | result: %{query.result | form: to_form(query.result.default_form_params)}}
     {:noreply, socket
