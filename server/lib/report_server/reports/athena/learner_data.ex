@@ -70,11 +70,12 @@ defmodule ReportServer.Reports.Athena.LearnerData do
     LearnerBaseQuery.build(report_filter, user, learner_cols(allowed), allowed: allowed)
   end
 
-  # the class's admin-project test, for a researcher's per-row narrowing here and in the CLUE export
+  # the class's admin-project and whole-class tests, for a researcher's per-row narrowing here and in
+  # the CLUE export
   defp learner_cols(allowed) do
     case AllowedProjects.admin_class_sql(allowed, :class) do
       nil -> @learner_cols
-      admin_class -> @learner_cols ++ [{admin_class, "in_admin_class"}]
+      admin_class -> @learner_cols ++ [{admin_class, "in_admin_class"}, {AllowedProjects.whole_class_sql(allowed, :class), "in_whole_class"}]
     end
   end
 
@@ -104,7 +105,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
       |> Enum.reduce_while({:ok, learner_data}, fn %{query_id: query_id, learners: learners}, acc ->
         path = "learners/#{query_id}/#{UUID.uuid4()}.json"
         contents = learners
-          |> Enum.map(&(&1 |> Map.delete(:in_admin_class) |> Jason.encode!()))
+          |> Enum.map(&(&1 |> Map.drop([:in_admin_class, :in_whole_class]) |> Jason.encode!()))
           |> Enum.join("\n")
         Logger.info("Uploading learners to #{path}")
         case athena_db().put_file_contents(path, contents) do
@@ -159,7 +160,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
             teachers: teachers,
             created_at: row.created_at
           }
-          |> put_in_admin_class(row)
+          |> put_class_flags(row)
           |> maybe_hide_name(hide_outside_admin_classes and Map.get(row, :in_admin_class) != 1, salt)
         end)
         |> group_learners_by_runnable_url()
@@ -181,8 +182,7 @@ defmodule ReportServer.Reports.Athena.LearnerData do
   defp hash_username(nil, _salt), do: nil
   defp hash_username(username, salt), do: Base.encode16(:crypto.hash(:sha, salt <> username))
 
-  defp put_in_admin_class(learner, %{in_admin_class: in_admin_class}), do: Map.put(learner, :in_admin_class, in_admin_class)
-  defp put_in_admin_class(learner, _row), do: learner
+  defp put_class_flags(learner, row), do: Map.merge(learner, Map.take(row, [:in_admin_class, :in_whole_class]))
 
   defp row_permission_forms(form_map, row, form_projects) do
     keep = if form_projects == :all or Map.get(row, :in_admin_class) == 1, do: :all, else: form_projects

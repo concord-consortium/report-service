@@ -4,9 +4,12 @@ defmodule ReportServer.Reports.AllowedProjects do
   and `researcher`, the ones they research and do not also administer. At least one list is
   non-empty; `PortalDbs.get_allowed_project_ids/2` answers `:none` for a user with neither.
 
-  A project admin sees a project's students through its cohort classes; a project researcher sees
+  A project admin sees a project's students through its cohort classes. A project researcher sees
   only those of them holding one of that project's permission forms, as rigse's
-  `Report::LearnerPolicy` does. Scopes that reach no students use `ids/1`.
+  `Report::LearnerPolicy` does, unless the project has no permission forms at all, when they see
+  every student its cohort classes reach, as the portal's Research Classes view does. Archived
+  forms count, so deleting a project's last form widens its researchers' view, and adding its first
+  narrows it. Scopes that reach no students use `ids/1`.
   """
   alias ReportServer.Reports.ReportUtils
 
@@ -17,8 +20,8 @@ defmodule ReportServer.Reports.AllowedProjects do
 
   @doc """
   The predicate restricting `project_col` to these projects. `consent` is a condition that holds
-  when a student the row reaches has a permission form of `project_col`'s project; it applies to
-  the researcher projects only. Without it both lists take the admin rule.
+  when a student the row reaches may be seen through `project_col`'s project as a researcher; it
+  applies to the researcher projects only. Without it both lists take the admin rule.
   """
   def predicate(allowed, project_col, consent \\ nil)
 
@@ -34,11 +37,15 @@ defmodule ReportServer.Reports.AllowedProjects do
     end)
   end
 
-  @doc "Whether the student `student_ref` holds a permission form of the project `project_col`."
-  def consent_exists(student_ref, project_col) do
-    "EXISTS (SELECT 1 FROM portal_student_permission_forms pspf_r " <>
+  @doc """
+  Whether a researcher on the project `project_col` may see the student `student_ref`: the project
+  has no permission forms, or the student holds one of them.
+  """
+  def researcher_may_see_student(student_ref, project_col) do
+    "(NOT EXISTS (SELECT 1 FROM portal_permission_forms ppf_p WHERE ppf_p.project_id = #{project_col}) " <>
+      "OR EXISTS (SELECT 1 FROM portal_student_permission_forms pspf_r " <>
       "JOIN portal_permission_forms ppf_r ON (ppf_r.id = pspf_r.portal_permission_form_id) " <>
-      "WHERE pspf_r.portal_student_id = #{student_ref} AND ppf_r.project_id = #{project_col})"
+      "WHERE pspf_r.portal_student_id = #{student_ref} AND ppf_r.project_id = #{project_col}))"
   end
 
   @doc "Whether the caller holds a researcher project, which narrows what consent-bound outputs show."
@@ -73,6 +80,39 @@ defmodule ReportServer.Reports.AllowedProjects do
   end
 
   def admin_class_join(_allowed), do: nil
+
+  @doc """
+  The condition that a row's class shows the caller every one of its students, so its class and
+  group CLUE work is theirs too: the class is reached through one of their admin projects, or
+  through a researcher project with no permission forms. Names still follow `admin_class_sql/2`.
+  `by` is `:class`, read through the joins `admin_class_join/1` and `whole_class_join/1` add, or
+  `{:class, ref}`. `nil` for a caller with no researcher project.
+  """
+  def whole_class_sql(allowed, by) do
+    if researcher?(allowed) do
+      "(#{admin_class_exists(allowed.admin, by)} OR #{formless_class_exists(allowed.researcher, by)})"
+    end
+  end
+
+  @doc "The join `whole_class_sql(allowed, :class)` reads; `nil` for a caller with no researcher project."
+  def whole_class_join(allowed) do
+    if researcher?(allowed) do
+      "LEFT JOIN (SELECT DISTINCT ptc_n.clazz_id FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
+        "WHERE #{formless_project(allowed.researcher)}) whl_n ON (whl_n.clazz_id = rl.class_id)"
+    end
+  end
+
+  defp formless_class_exists(_researcher_ids, :class), do: "whl_n.clazz_id IS NOT NULL"
+
+  defp formless_class_exists(researcher_ids, {:class, class_ref}),
+    do:
+      "EXISTS (SELECT 1 FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
+        "WHERE ptc_n.clazz_id = #{class_ref} AND #{formless_project(researcher_ids)})"
+
+  defp formless_project(researcher_ids),
+    do:
+      "#{in_clause("ac_n.project_id", researcher_ids)} AND " <>
+        "NOT EXISTS (SELECT 1 FROM portal_permission_forms ppf_n WHERE ppf_n.project_id = ac_n.project_id)"
 
   defp admin_class_exists([], _by), do: "FALSE"
 

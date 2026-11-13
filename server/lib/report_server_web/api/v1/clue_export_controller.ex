@@ -85,7 +85,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
           {:ok, []}
 
         students ->
-          class_owners = students |> Scope.class_owners() |> keep_admin_classes(clue_learners, allowed) |> Scope.order()
+          class_owners = students |> Scope.class_owners() |> keep_whole_classes(clue_learners, allowed) |> Scope.order()
 
           with {:ok, groups} <- fetch_groups(user.portal_server, class_owners) do
             {:ok, Scope.order(students ++ class_owners ++ Scope.group_owners(groups, class_owners))}
@@ -94,11 +94,11 @@ defmodule ReportServerWeb.Api.V1.ClueExportController do
     end
   end
 
-  # a group or class document can hold work of students outside a researcher's consent
-  defp keep_admin_classes(class_owners, learners, allowed) do
+  # a group or class document can hold work of students a researcher may not see
+  defp keep_whole_classes(class_owners, learners, allowed) do
     if AllowedProjects.researcher?(allowed) do
-      admin_classes = for learner <- learners, Map.get(learner, :in_admin_class) == 1, into: MapSet.new(), do: learner.class_id
-      Enum.filter(class_owners, &MapSet.member?(admin_classes, &1["portal_class_id"]))
+      whole_classes = for learner <- learners, Map.get(learner, :in_whole_class) == 1, into: MapSet.new(), do: learner.class_id
+      Enum.filter(class_owners, &MapSet.member?(whole_classes, &1["portal_class_id"]))
     else
       class_owners
     end

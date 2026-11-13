@@ -34,6 +34,21 @@ defmodule ReportServer.Reports.AllowedProjectsDbTest do
     refute AllowedProjects.form_names_sql(@researcher_only) =~ "CASE"
   end
 
+  defp whole_class?(allowed, class_id) do
+    sql = "SELECT #{AllowedProjects.whole_class_sql(allowed, {:class, "c.id"})} FROM (SELECT ? AS id) c"
+    {:ok, %{rows: [[value]]}} = PortalDbs.query(PortalFixture.server(), sql, [class_id])
+    value
+  end
+
+  test "a class is whole through an admin project or a researcher project with no forms" do
+    assert AllowedProjects.whole_class_sql(@admin_only, {:class, "c.id"}) == nil
+    assert whole_class?(%AllowedProjects{admin: [], researcher: [903]}, 605) == 1
+    assert whole_class?(%AllowedProjects{admin: [], researcher: [903]}, 604) == 0
+    assert whole_class?(@researcher_only, 604) == 0
+    assert whole_class?(@researcher_only, 605) == 0
+    assert whole_class?(%AllowedProjects{admin: [900], researcher: [902]}, 601) == 1
+  end
+
   # the narrowed expression over a derived table standing in for report_learners
   defp narrowed(project_ids, names, ids) do
     sql =
