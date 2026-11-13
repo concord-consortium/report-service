@@ -5,7 +5,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{AllowedProjects, DimensionScope, ReportFilter, ReportFilterQuery}
+  alias ReportServer.Reports.{AllowedProjects, CohortFilter, DimensionScope, ReportFilter, ReportFilterQuery}
 
   defstruct id: nil, value: nil, from: nil, join: [], where: [], order_by: nil, num_params: 1
 
@@ -17,8 +17,6 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     cohort_items_teacher_via_id: "JOIN admin_cohort_items aci ON (aci.item_type = 'Portal::Teacher' AND aci.item_id = ptc.teacher_id)",
     cohort_items_teacher_ref: DimensionScope.cohort_join(:from_teacher),
     cohort_items_teacher_via_member: DimensionScope.cohort_join(:from_school_member),
-    cohort_items_assignment: "JOIN admin_cohort_items aci_assignment ON (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.admin_cohort_id = admin_cohorts.id)",
-    cohort_items_assignment_ref: DimensionScope.cohort_join(:from_assignment),
 
     # Teacher-class relationships
     teacher_class_via_id: "JOIN portal_teacher_clazzes ptc ON (ptc.teacher_id = portal_teachers.id)",
@@ -100,6 +98,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
   # Configuration map defining join and where clauses for each (primary_filter, secondary_filter) combination
   # Join patterns are now referenced by name from @join_patterns and resolved at runtime
+  # A where is a prefix that the selected ids' IN list completes, or a function of the selected ids
   @secondary_filter_config %{
     cohort: %{
       school: %{
@@ -114,8 +113,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
         where: "aci.item_id IN"
       },
       assignment: %{
-        join: :cohort_items_assignment,
-        where: "aci_assignment.item_id IN"
+        join: [],
+        where: &ReportFilterQuery.cohort_admits_assignments/1
       },
       permission_form: %{
         join: [
@@ -230,8 +229,8 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     },
     assignment: %{
       cohort: %{
-        join: :cohort_items_assignment_ref,
-        where: "aci_cohort.admin_cohort_id IN"
+        join: [],
+        where: &ReportFilterQuery.assignment_in_cohorts/1
       },
       school: %{
         join: [
@@ -602,11 +601,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       config = get_in(@secondary_filter_config, [primary_filter, filter_name])
       if config do
         join = resolve_join_patterns(config.join)
-        in_clause = case DimensionScope.id_type(filter_name) do
-          :string -> mysql_string_list_to_in(filter_value)
-          :integer -> list_to_in(filter_value)
-        end
-        where = "#{config.where} #{in_clause}"
+        where = secondary_where(config.where, filter_name, filter_value)
         where = with_named_form_check(where, filter_name, primary_filter, allowed)
         secondary_filter_query(query, join, where)
       else
@@ -616,6 +611,23 @@ defmodule ReportServer.Reports.ReportFilterQuery do
 
     apply_secondary_filters(query, primary_filter, report_filter, allowed, rest)
   end
+
+  defp secondary_where(where, _filter_name, filter_value) when is_function(where, 1), do: where.(filter_value)
+
+  defp secondary_where(prefix, filter_name, filter_value) do
+    in_clause = case DimensionScope.id_type(filter_name) do
+      :string -> mysql_string_list_to_in(filter_value)
+      :integer -> list_to_in(filter_value)
+    end
+
+    "#{prefix} #{in_clause}"
+  end
+
+  @doc false
+  def assignment_in_cohorts(cohort_ids), do: CohortFilter.activity_in_cohorts(DimensionScope.id_expr(:assignment), cohort_ids)
+
+  @doc false
+  def cohort_admits_assignments(assignment_ids), do: CohortFilter.cohort_admits_activities(DimensionScope.from(:cohort), assignment_ids)
 
   # Every permission_form cascade joins pspf, and every one but the student dimension's reaches the
   # student through psc, the class the option is matched by, so the admin-class exception is that

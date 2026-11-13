@@ -80,6 +80,11 @@ CLUE export holds student documents only.
 The teacher-level reports (Teacher Status, Summary Metrics by Assignment and Detailed Metrics by
 Assignment) count students without the permission-form narrowing.
 
+A cohort filter keeps the learners whose teacher is in one of the selected cohorts and whose
+assignment is either an item of one of those cohorts or on the materials list of one of their
+projects. It applies within what the rules above let the caller see, so it never adds a student
+they could not see without it.
+
 ## Development Setup
 
 First install the `asdf` version manager: <https://asdf-vm.com/guide/getting-started.html>

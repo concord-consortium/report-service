@@ -1,6 +1,8 @@
 defmodule ReportServer.Reports.Portal.TeacherStatusReport do
   use ReportServer.Reports.Report, type: :portal
 
+  alias ReportServer.Reports.CohortFilter
+
   def get_query(report_filter = %ReportFilter{}, user = %User{}) do
     students_in_class_subquery =
       """
@@ -58,13 +60,12 @@ defmodule ReportServer.Reports.Portal.TeacherStatusReport do
     {join, where} = if have_filter?(cohort) do
       {
         [
-          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' and aci_teacher.item_id = pt.id)",
-          "join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' and aci_assignment.item_id = ea.id)"
+          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' and aci_teacher.item_id = pt.id)"
           | join
         ],
         [
           "aci_teacher.admin_cohort_id in #{list_to_in(cohort)}",
-          "aci_assignment.admin_cohort_id in #{list_to_in(cohort)} and aci_assignment.item_id = ea.id"
+          CohortFilter.activity_in_cohorts("ea.id", cohort)
           | where
         ]
       }

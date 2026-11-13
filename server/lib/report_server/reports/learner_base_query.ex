@@ -10,7 +10,7 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
 
   alias ReportServer.Accounts.User
   alias ReportServer.PortalDbs
-  alias ReportServer.Reports.{AllowedProjects, ReportFilter, ReportQuery}
+  alias ReportServer.Reports.{AllowedProjects, CohortFilter, ReportFilter, ReportQuery}
 
   @from "report_learners rl"
   @join [
@@ -75,13 +75,12 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
     {join, where} = if have_filter?(cohort) do
       {
         [
-          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)",
-          "join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' AND aci_assignment.item_id = po.runnable_id)"
+          "join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)"
           | join
         ],
         [
           "aci_teacher.admin_cohort_id in #{list_to_in(cohort)}",
-          "aci_assignment.admin_cohort_id in #{list_to_in(cohort)}"
+          CohortFilter.activity_in_cohorts("po.runnable_id", cohort)
           | where
         ]
       }

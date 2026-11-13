@@ -58,12 +58,15 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
     assert broken == []
   end
 
-  test "a scoped caller can narrow assignments by cohort" do
-    filter = %ReportFilter{filters: [:assignment], cohort: [1]}
-    {query, params} = ReportFilterQuery.get_query_and_params(filter, @allowed, "", @server)
-    {:ok, result} = PortalDbs.query(@server, ReportFilterQuery.get_options_sql(query), params)
+  test "a scoped caller can narrow assignments by cohort, to its items and its project's materials" do
+    assert options(:assignment, %ReportFilter{cohort: [1]}) == [{"801", "Activity One"}, {"803", "Activity Three"}]
+    assert options(:assignment, %ReportFilter{cohort: [6]}) == [{"801", "Activity One"}, {"803", "Activity Three"}]
+    assert options(:assignment, %ReportFilter{cohort: [3]}) == [{"801", "Activity One"}]
+  end
 
-    assert result.rows == [[801, "Activity One"]]
+  test "a materials-only assignment leaves the cohorts of its project selectable" do
+    assert options(:cohort, %ReportFilter{assignment: [803]}) == [{"1", "Cohort One"}, {"6", "Cohort Six"}]
+    assert options(:cohort, %ReportFilter{assignment: [802]}) == []
   end
 
   test "a country narrowed by its schools' subject areas resolves through the offering chain" do
@@ -100,7 +103,7 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
   end
 
   test "scoping keeps another project's cohort out" do
-    assert options(:cohort) == [{"1", "Cohort One"}]
+    assert options(:cohort) == [{"1", "Cohort One"}, {"6", "Cohort Six"}]
   end
 
   test "a taxonomy dimension is not scoped to the caller's projects" do
