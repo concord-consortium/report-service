@@ -224,3 +224,8 @@ INSERT INTO report_learners
 VALUES
   (908,79,109,705,605,NULL,'Fay Teach','Stu Nine','stu.nine',NULL,'Class 605',NULL,'Proj C: Form C,Proj B: Form 2',NULL,NULL,'fay@e.org','15,12','37'),
   (909,80,110,705,605,NULL,'Fay Teach','Stu Ten','stu.ten',NULL,'Class 605',NULL,NULL,NULL,NULL,'fay@e.org',NULL,'37');
+-- 904 has no forms and no members; its cohort reaches 902's class 604, so a class reached through a
+-- formless project the caller does not research stays out of their whole classes.
+INSERT INTO admin_projects VALUES (904,'Proj E');
+INSERT INTO admin_cohorts VALUES (5,'Cohort Five',904);
+INSERT INTO admin_cohort_items VALUES (8,5,'Portal::Teacher',36);

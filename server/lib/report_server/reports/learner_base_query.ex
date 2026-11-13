@@ -28,8 +28,9 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
 
   Every table the select list can read contributes its primary key. `rl.id` alone is accepted only
   while MySQL can see the joins: the project scoping's `1 = 0` clause lets the optimizer discard
-  them, and `ONLY_FULL_GROUP_BY` then rejects their columns. `adm_n`, the admin-class join, needs
-  no key: its one column equals `rl.class_id` where it is not NULL.
+  them, and `ONLY_FULL_GROUP_BY` then rejects their columns. `adm_n` and `whl_n`, the admin-class
+  and whole-class joins, need no key: each one's single column equals `rl.class_id` where it is not
+  NULL.
   """
   def group_by, do: "rl.id, u.id, ea.id, pl.id"
 

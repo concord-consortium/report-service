@@ -45,6 +45,7 @@ defmodule ReportServer.Reports.AllowedProjectsDbTest do
     assert whole_class?(%AllowedProjects{admin: [], researcher: [903]}, 605) == 1
     assert whole_class?(%AllowedProjects{admin: [], researcher: [903]}, 604) == 0
     assert whole_class?(@researcher_only, 604) == 0
+    assert whole_class?(@researcher_only, 605) == 0
     assert whole_class?(%AllowedProjects{admin: [900], researcher: [902]}, 601) == 1
   end
 

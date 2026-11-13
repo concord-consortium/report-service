@@ -141,9 +141,8 @@ defmodule ReportServer.Reports.ReportUtils do
   # :all (super-admin) applies no scoping.
   def scope_by_allowed_projects(:all, join, where, _assignment_id_ref, _teacher_id_ref, _student_id_ref), do: {join, where}
 
-  # A researcher project admits a learner only when `student_id_ref`'s student holds one of that
-  # project's permission forms, or the project has none; with no student ref every project takes
-  # the admin rule.
+  # A researcher project admits a learner only when `AllowedProjects.researcher_may_see_student/2`
+  # allows its student; with no student ref every project takes the admin rule.
   def scope_by_allowed_projects(%AllowedProjects{} = allowed, join, where, assignment_id_ref, teacher_id_ref, student_id_ref) do
     allowed_project_ids = AllowedProjects.ids(allowed)
     consent = student_id_ref && AllowedProjects.researcher_may_see_student(student_id_ref, "ac_teacher_a.project_id")
