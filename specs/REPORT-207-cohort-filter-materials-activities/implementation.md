@@ -355,10 +355,10 @@ Under today's rule cohort 6 admits no activity, so the query carries only the `l
 **Estimated diff size**: ~5 lines
 
 ```markdown
-A cohort filter keeps the rows whose teacher is in one of the selected cohorts and whose assignment
-is either an item of one of those cohorts or on the materials list of one of their projects. It
-applies within what the rules above let the caller see, so it never adds a student they could not
-see without it.
+A cohort filter keeps the learners whose teacher is in one of the selected cohorts and whose
+assignment is either an item of one of those cohorts or on the materials list of one of their
+projects. It applies within what the rules above let the caller see, so it never adds a student
+they could not see without it.
 ```
 
 ## Release notes
