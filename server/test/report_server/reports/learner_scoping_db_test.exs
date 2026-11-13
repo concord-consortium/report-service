@@ -27,6 +27,10 @@ defmodule ReportServer.Reports.LearnerScopingDbTest do
     assert learner_ids(researcher(563)) == [905]
   end
 
+  test "a researcher on a project with no permission forms sees every cohort-class learner" do
+    assert learner_ids(researcher(572), %ReportFilter{filters: [:class], class: [605]}) == [908]
+  end
+
   test "a project admin of the same project sees every cohort-class learner" do
     assert learner_ids(user(555, portal_is_project_admin: true)) == [901, 903, 904]
   end

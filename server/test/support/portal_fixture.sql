@@ -206,3 +206,16 @@ INSERT INTO portal_students VALUES (79,109);
 INSERT INTO portal_student_clazzes VALUES (8,605,79),(9,604,79);
 INSERT INTO portal_student_permission_forms VALUES (16,79,15),(17,79,12);
 INSERT INTO admin_project_users VALUES (17,903,571,1,0,NULL),(18,902,571,0,1,NULL);
+-- 572 researches 903, which has no permission forms, so every student its cohort classes reach is
+-- theirs; learner 908's student holds 902's and 901's forms, which 903 does not count either way.
+INSERT INTO admin_cohort_items VALUES (7,4,'ExternalActivity',801);
+INSERT INTO portal_offerings VALUES (705,'ExternalActivity',801,605);
+INSERT INTO portal_learners VALUES (908,79,705,'SECUREKEY908','2026-04-08 09:00:00');
+INSERT INTO users VALUES (572,'res.noforms','Res','Noforms','res.noforms@e.org',NULL);
+INSERT INTO admin_project_users VALUES (19,903,572,0,1,NULL);
+INSERT INTO report_learners
+  (learner_id,student_id,user_id,offering_id,class_id,last_run,teachers_name,student_name,username,
+   school_name,class_name,school_id,permission_forms,teachers_district,teachers_state,teachers_email,
+   permission_forms_id,teachers_id)
+VALUES
+  (908,79,109,705,605,NULL,'Fay Teach','Stu Nine','stu.nine',NULL,'Class 605',NULL,'Proj C: Form C,Proj B: Form 2',NULL,NULL,'fay@e.org','15,12','37');

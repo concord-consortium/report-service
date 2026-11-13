@@ -138,6 +138,13 @@ defmodule ReportServer.Reports.FilterOptionsTest do
       assert labels(:student, asked_to_see, researcher()) == ["101"]
     end
 
+    test "a researcher on a project with no permission forms is offered every student, without names" do
+      no_forms = %User{portal_server: @server, portal_user_id: 572, portal_is_project_researcher: true}
+
+      assert labels(:student, %ReportFilter{hide_names: false}, no_forms) == ["109"]
+      assert ids(:permission_form, %ReportFilter{}, no_forms) == []
+    end
+
     test "a researcher cannot confirm a name through the search text either" do
       assert labels(:student, %ReportFilter{}, researcher(), limit: 100, like_text: "Stu One") == []
     end

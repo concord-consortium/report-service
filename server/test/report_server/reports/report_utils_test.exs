@@ -98,7 +98,7 @@ defmodule ReportServer.Reports.ReportUtilsTest do
       allowed = %AllowedProjects{admin: [1], researcher: [3]}
       {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
 
-      assert teacher =~ ~r/^\(ac_teacher_a\.project_id IN \(1\)\) OR \(ac_teacher_a\.project_id IN \(3\) AND EXISTS /
+      assert teacher =~ ~r/^\(ac_teacher_a\.project_id IN \(1\)\) OR \(ac_teacher_a\.project_id IN \(3\) AND \(NOT EXISTS /
       refute teacher =~ "IN ()"
     end
 
