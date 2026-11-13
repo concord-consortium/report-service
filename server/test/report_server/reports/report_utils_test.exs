@@ -91,7 +91,7 @@ defmodule ReportServer.Reports.ReportUtilsTest do
 
       assert teacher ==
                "(ac_teacher_a.project_id IN (3) AND " <>
-                 AllowedProjects.consent_exists("rl.student_id", "ac_teacher_a.project_id") <> ")"
+                 AllowedProjects.researcher_may_see_student("rl.student_id", "ac_teacher_a.project_id") <> ")"
     end
 
     test "a caller with both roles gets an admin branch and a consent branch" do

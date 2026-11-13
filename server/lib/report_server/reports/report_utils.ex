@@ -146,7 +146,7 @@ defmodule ReportServer.Reports.ReportUtils do
   # the admin rule.
   def scope_by_allowed_projects(%AllowedProjects{} = allowed, join, where, assignment_id_ref, teacher_id_ref, student_id_ref) do
     allowed_project_ids = AllowedProjects.ids(allowed)
-    consent = student_id_ref && AllowedProjects.consent_exists(student_id_ref, "ac_teacher_a.project_id")
+    consent = student_id_ref && AllowedProjects.researcher_may_see_student(student_id_ref, "ac_teacher_a.project_id")
     ## Suffix all table aliases with "_a" ("allowed") to avoid conflicts with the main query table aliases
     {
       [

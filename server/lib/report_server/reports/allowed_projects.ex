@@ -40,7 +40,7 @@ defmodule ReportServer.Reports.AllowedProjects do
   Whether a researcher on the project `project_col` may see the student `student_ref`: the project
   has no permission forms, or the student holds one of them.
   """
-  def consent_exists(student_ref, project_col) do
+  def researcher_may_see_student(student_ref, project_col) do
     "(NOT EXISTS (SELECT 1 FROM portal_permission_forms ppf_p WHERE ppf_p.project_id = #{project_col}) " <>
       "OR EXISTS (SELECT 1 FROM portal_student_permission_forms pspf_r " <>
       "JOIN portal_permission_forms ppf_r ON (ppf_r.id = pspf_r.portal_permission_form_id) " <>

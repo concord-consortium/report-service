@@ -67,7 +67,8 @@ A site admin sees every student. A project admin sees the students in their proj
 classes, on assignments in those projects' cohorts or materials. A project researcher sees only
 those of them who hold one of that same project's permission forms, or all of them when the project
 has no permission forms, and this applies to every report with a row per student (the Student
-Reports and Assignment Usage by Student), the exports and the filter options alike. A researcher whose access has expired on the portal sees nothing.
+Reports and Assignment Usage by Student), the exports and the filter options alike. A researcher
+whose access has expired on the portal sees nothing.
 
 For any caller other than a site admin who holds a researcher project, full permission-form names,
 CLUE group and class documents, and student names show only in classes reached through one of their
