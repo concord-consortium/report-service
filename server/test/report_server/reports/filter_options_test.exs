@@ -141,7 +141,7 @@ defmodule ReportServer.Reports.FilterOptionsTest do
     test "a researcher on a project with no permission forms is offered every student, without names" do
       no_forms = %User{portal_server: @server, portal_user_id: 572, portal_is_project_researcher: true}
 
-      assert labels(:student, %ReportFilter{hide_names: false}, no_forms) == ["109"]
+      assert labels(:student, %ReportFilter{hide_names: false}, no_forms) == ["109", "110"]
       assert ids(:permission_form, %ReportFilter{}, no_forms) == []
     end
 
