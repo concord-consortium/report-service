@@ -217,10 +217,19 @@ The two enumerations cohort 6 moves:
 - Delete the `cohort_items_assignment` and `cohort_items_assignment_ref` entries of `@join_patterns`; nothing else reads them. The `from_assignment` entry of `DimensionScope`'s `@cohort_joins` stays, because the assignment scope uses it; `cohort_join(:from_assignment)` has no caller left.
 - Under the comment above `@secondary_filter_config`, add: `# A where is a prefix that the selected ids' IN list completes, or a function of the selected ids`.
 - `cohort.assignment` becomes `%{join: [], where: &ReportFilterQuery.cohort_admits_assignments/1}`, and `assignment.cohort` becomes `%{join: [], where: &ReportFilterQuery.assignment_in_cohorts/1}`. A remote capture of the module's own public function compiles in the attribute (built and run).
-- In `apply_secondary_filters/5`:
+- In `apply_secondary_filters/5`, the `where` comes from a two-clause private helper, so the IN list (and its `DimensionScope.id_type/1` choice) is built only for a prefix:
 
   ```elixir
-  where = if is_function(config.where, 1), do: config.where.(filter_value), else: "#{config.where} #{in_clause}"
+  defp secondary_where(where, _filter_name, filter_value) when is_function(where, 1), do: where.(filter_value)
+
+  defp secondary_where(prefix, filter_name, filter_value) do
+    in_clause = case DimensionScope.id_type(filter_name) do
+      :string -> mysql_string_list_to_in(filter_value)
+      :integer -> list_to_in(filter_value)
+    end
+
+    "#{prefix} #{in_clause}"
+  end
   ```
 
 - Beside `with_named_form_check/4`:
@@ -329,8 +338,8 @@ end
       end)
     end
 
-    # Teacher 31's classes have offerings of 801 and 802, and cohort 6 admits only 801, through
-    # project 900's materials.
+    # Teacher 31's classes have offerings of 801 and 802; cohort 6 admits 801, through project
+    # 900's materials, and not 802.
     test "the activity list admits a cohort's project's materials" do
       site_admin = %User{portal_server: @server, portal_user_id: 560, portal_is_admin: true}
       filter = %ReportFilter{filters: [:cohort], cohort: [6]}

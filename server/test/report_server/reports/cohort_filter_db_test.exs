@@ -90,8 +90,8 @@ defmodule ReportServer.Reports.CohortFilterDbTest do
       end)
     end
 
-    # Teacher 31's classes have offerings of 801 and 802, and cohort 6 admits only 801, through
-    # project 900's materials.
+    # Teacher 31's classes have offerings of 801 and 802; cohort 6 admits 801, through project
+    # 900's materials, and not 802.
     test "the activity list admits a cohort's project's materials" do
       site_admin = %User{portal_server: @server, portal_user_id: 560, portal_is_admin: true}
       filter = %ReportFilter{filters: [:cohort], cohort: [6]}

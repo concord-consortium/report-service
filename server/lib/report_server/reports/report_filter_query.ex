@@ -601,11 +601,7 @@ defmodule ReportServer.Reports.ReportFilterQuery do
       config = get_in(@secondary_filter_config, [primary_filter, filter_name])
       if config do
         join = resolve_join_patterns(config.join)
-        in_clause = case DimensionScope.id_type(filter_name) do
-          :string -> mysql_string_list_to_in(filter_value)
-          :integer -> list_to_in(filter_value)
-        end
-        where = if is_function(config.where, 1), do: config.where.(filter_value), else: "#{config.where} #{in_clause}"
+        where = secondary_where(config.where, filter_name, filter_value)
         where = with_named_form_check(where, filter_name, primary_filter, allowed)
         secondary_filter_query(query, join, where)
       else
@@ -614,6 +610,17 @@ defmodule ReportServer.Reports.ReportFilterQuery do
     end
 
     apply_secondary_filters(query, primary_filter, report_filter, allowed, rest)
+  end
+
+  defp secondary_where(where, _filter_name, filter_value) when is_function(where, 1), do: where.(filter_value)
+
+  defp secondary_where(prefix, filter_name, filter_value) do
+    in_clause = case DimensionScope.id_type(filter_name) do
+      :string -> mysql_string_list_to_in(filter_value)
+      :integer -> list_to_in(filter_value)
+    end
+
+    "#{prefix} #{in_clause}"
   end
 
   @doc false
