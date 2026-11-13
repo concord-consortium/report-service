@@ -411,7 +411,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
       assert Enum.map(scratch.endpoint_set, & &1["uid"]) == ["101", "class_" <> @hash, "group_701_1"]
     end
 
-    test "a user with both roles keeps class and group owners for admin-project classes only", %{conn: conn, user: user} do
+    test "a user with both roles keeps class and group owners for a whole class and student owners only elsewhere", %{conn: conn, user: user} do
       allowed = %AllowedProjects{admin: [1], researcher: [3]}
 
       learners = [
