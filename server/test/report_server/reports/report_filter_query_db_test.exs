@@ -100,7 +100,7 @@ defmodule ReportServer.Reports.ReportFilterQueryDbTest do
   end
 
   test "scoping keeps another project's cohort out" do
-    assert options(:cohort) == [{"1", "Cohort One"}]
+    assert options(:cohort) == [{"1", "Cohort One"}, {"6", "Cohort Six"}]
   end
 
   test "a taxonomy dimension is not scoped to the caller's projects" do

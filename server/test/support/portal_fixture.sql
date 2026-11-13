@@ -229,3 +229,11 @@ VALUES
 INSERT INTO admin_projects VALUES (904,'Proj E');
 INSERT INTO admin_cohorts VALUES (5,'Cohort Five',904);
 INSERT INTO admin_cohort_items VALUES (8,5,'Portal::Teacher',36);
+-- Cohort 6 holds teacher 31 and no activity, so project 900's materials are its only route to an
+-- activity: 801 and 803 are admitted, and 802, which no project holds, is not.
+INSERT INTO admin_cohorts VALUES (6,'Cohort Six',900);
+INSERT INTO admin_cohort_items VALUES (9,6,'Portal::Teacher',31);
+-- Rows of other types whose ids are activities' ids: cohort 2 does not hold activity 803, and
+-- project 901 does not hold activity 802.
+INSERT INTO admin_cohort_items VALUES (10,2,'Investigation',803);
+INSERT INTO admin_project_materials VALUES (3,901,'Investigation',802);
