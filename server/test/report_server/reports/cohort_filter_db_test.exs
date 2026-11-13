@@ -6,7 +6,7 @@ defmodule ReportServer.Reports.CohortFilterDbTest do
   alias ReportServer.{PortalDbs, PortalFixture}
   alias ReportServer.Accounts.User
   alias ReportServer.Reports.{CohortFilter, ReportFilter, ReportQuery}
-  alias ReportServer.Reports.Athena.LearnerData
+  alias ReportServer.Reports.Athena.{LearnerData, TeacherActionsReport}
   alias ReportServer.Reports.Portal.StudentIdMappingReport
 
   @server PortalFixture.server()
@@ -77,6 +77,27 @@ defmodule ReportServer.Reports.CohortFilterDbTest do
     # Teacher 36 is in cohort 5 and teaches learners on 801, which project 904 does not hold.
     test "a cohort's teacher is not enough when the activity is neither its item nor its material" do
       assert learner_ids(user(560, portal_is_admin: true), [5]) == []
+    end
+  end
+
+  describe "Teacher Actions" do
+    setup do
+      original = Application.get_env(:report_server, :athena)
+      Application.put_env(:report_server, :athena, log_db_name: "log_ingester_qa")
+
+      on_exit(fn ->
+        if original, do: Application.put_env(:report_server, :athena, original), else: Application.delete_env(:report_server, :athena)
+      end)
+    end
+
+    # Teacher 31's classes have offerings of 801 and 802, and cohort 6 admits only 801, through
+    # project 900's materials.
+    test "the activity list admits a cohort's project's materials" do
+      site_admin = %User{portal_server: @server, portal_user_id: 560, portal_is_admin: true}
+      filter = %ReportFilter{filters: [:cohort], cohort: [6]}
+
+      assert {:ok, %ReportQuery{where: where}} = TeacherActionsReport.get_query(filter, site_admin)
+      assert "log.activity IN ('https://activity.example.org/a?answersSourceKey=src.example.org')" in where
     end
   end
 end

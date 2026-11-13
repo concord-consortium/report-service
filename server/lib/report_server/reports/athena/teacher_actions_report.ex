@@ -2,6 +2,7 @@ defmodule ReportServer.Reports.Athena.TeacherActionsReport do
   use ReportServer.Reports.Report, type: :athena, api_report_type: :log
 
   alias ReportServer.PortalDbs
+  alias ReportServer.Reports.CohortFilter
 
   def no_match_error, do: "No teachers or activities found to match the requested filter(s)."
 
@@ -106,13 +107,12 @@ defmodule ReportServer.Reports.Athena.TeacherActionsReport do
     {join, where} = if have_filter?(cohort) do
       {
         [
-          "left join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)",
-          "left join admin_cohort_items aci_assignment on (aci_assignment.item_type = 'ExternalActivity' AND aci_assignment.item_id = po.runnable_id)"
+          "left join admin_cohort_items aci_teacher on (aci_teacher.item_type = 'Portal::Teacher' AND aci_teacher.item_id = ptc.teacher_id)"
           | join
         ],
         [
           "aci_teacher.admin_cohort_id in #{list_to_in(cohort)}",
-          "aci_assignment.admin_cohort_id in #{list_to_in(cohort)} and aci_assignment.item_id = po.runnable_id"
+          CohortFilter.activity_in_cohorts("po.runnable_id", cohort)
           | where
         ]
       }

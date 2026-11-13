@@ -52,7 +52,7 @@ CREATE TABLE admin_project_users (id INT PRIMARY KEY, project_id INT, user_id IN
 DROP TABLE IF EXISTS report_learners;
 CREATE TABLE report_learners (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  learner_id INT, student_id INT, user_id INT, offering_id INT, class_id INT,
+  learner_id INT, student_id INT, user_id INT, offering_id INT, class_id INT, runnable_id INT NULL,
   last_run DATETIME NULL,
   teachers_name VARCHAR(255), student_name VARCHAR(255), username VARCHAR(255),
   school_name VARCHAR(255), class_name VARCHAR(255), school_id INT,
