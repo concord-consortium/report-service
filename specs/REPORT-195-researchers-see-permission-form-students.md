@@ -70,6 +70,16 @@ Project admins with no researcher role see exactly what they saw before. A user 
 
 ---
 
+### What does a researcher see on a project with no permission forms?
+**Context**: `Report::LearnerPolicy` requires a form of the project, so a researcher on a project with none sees no students. As of 2026-11-13, 100 of the 124 production projects have no forms, and 20 of them have live researcher-only users with cohort classes, while the portal's Research Classes view shows those researchers every student, anonymized.
+**Options considered**:
+- A) The strict rule everywhere: no forms, no students.
+- B) A project with no `portal_permission_forms` rows admits every student its cohort classes reach; a project with any form keeps the strict rule.
+
+**Decision**: B. Names stay hidden and form names stay narrowed, as for any researcher project. The test is whether the project has any form row, archived ones included, so it changes with the portal's own data: deleting a project's last form (which also deletes every student's signature of it) widens its researchers to every cohort student, and adding its first form narrows them to none until students sign. That is accepted: after a deletion the strict rule would show those researchers nobody, and Research Classes already shows them everyone.
+
+---
+
 ### Which list governs the assignment restriction?
 **Context**: A learner's assignment must be in a cohort or the materials of an allowed project.
 **Options considered**:

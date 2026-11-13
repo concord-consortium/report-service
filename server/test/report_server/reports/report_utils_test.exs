@@ -85,7 +85,7 @@ defmodule ReportServer.Reports.ReportUtilsTest do
                ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id")
     end
 
-    test "a researcher project requires the student's consent to that project" do
+    test "a researcher project admits a learner only when that project's researchers may see the student" do
       allowed = %AllowedProjects{admin: [], researcher: [3]}
       {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
 

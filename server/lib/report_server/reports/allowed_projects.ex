@@ -7,8 +7,9 @@ defmodule ReportServer.Reports.AllowedProjects do
   A project admin sees a project's students through its cohort classes. A project researcher sees
   only those of them holding one of that project's permission forms, as rigse's
   `Report::LearnerPolicy` does, unless the project has no permission forms at all, when they see
-  every student its cohort classes reach, as the portal's Research Classes view does. Scopes that
-  reach no students use `ids/1`.
+  every student its cohort classes reach, as the portal's Research Classes view does. Archived
+  forms count, so deleting a project's last form widens its researchers' view, and adding its first
+  narrows it. Scopes that reach no students use `ids/1`.
   """
   alias ReportServer.Reports.ReportUtils
 
