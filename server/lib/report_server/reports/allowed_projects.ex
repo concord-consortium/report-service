@@ -81,6 +81,39 @@ defmodule ReportServer.Reports.AllowedProjects do
 
   def admin_class_join(_allowed), do: nil
 
+  @doc """
+  The condition that a row's class shows the caller every one of its students, so its class and
+  group CLUE work is theirs too: the class is reached through one of their admin projects, or
+  through a researcher project with no permission forms. Names still follow `admin_class_sql/2`.
+  `by` is `:class`, read through the joins `admin_class_join/1` and `whole_class_join/1` add, or
+  `{:class, ref}`. `nil` for a caller with no researcher project.
+  """
+  def whole_class_sql(allowed, by) do
+    if researcher?(allowed) do
+      "(#{admin_class_exists(allowed.admin, by)} OR #{formless_class_exists(allowed.researcher, by)})"
+    end
+  end
+
+  @doc "The join `whole_class_sql(allowed, :class)` reads; `nil` for a caller with no researcher project."
+  def whole_class_join(allowed) do
+    if researcher?(allowed) do
+      "LEFT JOIN (SELECT DISTINCT ptc_n.clazz_id FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
+        "WHERE #{formless_project(allowed.researcher)}) whl_n ON (whl_n.clazz_id = rl.class_id)"
+    end
+  end
+
+  defp formless_class_exists(_researcher_ids, :class), do: "whl_n.clazz_id IS NOT NULL"
+
+  defp formless_class_exists(researcher_ids, {:class, class_ref}),
+    do:
+      "EXISTS (SELECT 1 FROM portal_teacher_clazzes ptc_n #{@admin_cohort_joins} " <>
+        "WHERE ptc_n.clazz_id = #{class_ref} AND #{formless_project(researcher_ids)})"
+
+  defp formless_project(researcher_ids),
+    do:
+      "#{in_clause("ac_n.project_id", researcher_ids)} AND " <>
+        "NOT EXISTS (SELECT 1 FROM portal_permission_forms ppf_n WHERE ppf_n.project_id = ac_n.project_id)"
+
   defp admin_class_exists([], _by), do: "FALSE"
 
   defp admin_class_exists(_admin_ids, :class), do: "adm_n.clazz_id IS NOT NULL"

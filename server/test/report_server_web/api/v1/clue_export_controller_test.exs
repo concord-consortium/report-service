@@ -373,7 +373,7 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
     test "a researcher's export holds student owners only and asks for no groups", %{conn: conn, user: user} do
       stub(
         allowed: %AllowedProjects{admin: [], researcher: [3]},
-        learners: [learner(101, 601, 701) |> Map.put(:in_admin_class, 0)],
+        learners: [learner(101, 601, 701) |> Map.put(:in_whole_class, 0)],
         owners: fn _req -> raise "the owners call should not be made" end
       )
 
@@ -382,6 +382,20 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
 
       assert [%{owners: [@student]}] = walk_requests()
       assert owners_requests() == []
+    end
+
+    test "a researcher keeps class and group owners for a class whose every student they may see", %{conn: conn, user: user} do
+      stub(
+        allowed: %AllowedProjects{admin: [], researcher: [3]},
+        learners: [learner(101, 601, 701) |> Map.put(:in_whole_class, 1)],
+        owners: fn _req -> {:ok, %{"groups" => [%{"class_hash" => @hash, "uid" => "group_701_1", "offering" => 701}]}} end
+      )
+
+      run = run_fixture(user)
+      assert json_response(get(conn, clue_path(run, "documents")), 200)
+
+      [scratch] = Repo.all(ExportScratch)
+      assert Enum.map(scratch.endpoint_set, & &1["uid"]) == ["101", "class_" <> @hash, "group_701_1"]
     end
 
     test "an admin's export over the same learners keeps class and group owners", %{conn: conn, user: user} do
@@ -401,8 +415,8 @@ defmodule ReportServerWeb.Api.V1.ClueExportControllerTest do
       allowed = %AllowedProjects{admin: [1], researcher: [3]}
 
       learners = [
-        learner(101, 601, 701) |> Map.put(:in_admin_class, 1),
-        learner(102, 602, 702) |> Map.put(:in_admin_class, 0)
+        learner(101, 601, 701) |> Map.put(:in_whole_class, 1),
+        learner(102, 602, 702) |> Map.put(:in_whole_class, 0)
       ]
 
       stub(

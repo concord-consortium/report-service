@@ -60,12 +60,23 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
       assert by_learner[905].in_admin_class == 0
     end
 
+    test "a class is whole for an admin project or a researcher project with no forms, never for one with forms" do
+      {:ok, groups} = LearnerData.fetch(%ReportFilter{filters: [:class], class: [605]}, user(572, portal_is_project_researcher: true), allow_empty: true)
+      no_forms = groups |> Enum.flat_map(& &1.learners) |> Map.new(&{&1.learner_id, &1})
+
+      assert Map.keys(no_forms) |> Enum.sort() == [908, 909]
+      assert Enum.all?(Map.values(no_forms), &(&1.in_whole_class == 1 and &1.in_admin_class == 0))
+      assert learners(user(563, portal_is_project_researcher: true))[905].in_whole_class == 0
+      assert learners(mixed())[901].in_whole_class == 1
+      assert learners(mixed())[905].in_whole_class == 0
+    end
+
     test "a project admin's list is unchanged" do
       assert learners(user(555, portal_is_project_admin: true))[901].permission_forms ==
                ["Proj A: Form 1", "Proj B: Form 2"]
     end
 
-    test "the upload leaves the admin-class flag out" do
+    test "the upload leaves the class flags out" do
       previous = Application.get_env(:report_server, :athena_db)
       Application.put_env(:report_server, :athena_db, ReportServer.AthenaDBStub)
       test_pid = self()
@@ -91,6 +102,7 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
 
       assert Map.has_key?(learner, "permission_forms")
       refute Map.has_key?(learner, "in_admin_class")
+      refute Map.has_key?(learner, "in_whole_class")
     end
   end
 
