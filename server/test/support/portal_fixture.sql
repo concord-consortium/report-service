@@ -237,3 +237,5 @@ INSERT INTO admin_cohort_items VALUES (9,6,'Portal::Teacher',31);
 -- project 901 does not hold activity 802.
 INSERT INTO admin_cohort_items VALUES (10,2,'Investigation',803);
 INSERT INTO admin_project_materials VALUES (3,901,'Investigation',802);
+-- An offering of another type in teacher 31's class 601 whose runnable id is activity 803's.
+INSERT INTO portal_offerings VALUES (707,'Investigation',803,601);

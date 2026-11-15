@@ -91,7 +91,7 @@ defmodule ReportServer.Reports.Athena.TeacherActionsReport do
       cols: [{"DISTINCT ea.id", "id"}, {"ea.url", "url"}],
       from: "external_activities ea",
       join: [[
-        "join portal_offerings po on (po.runnable_id = ea.id)",
+        "join portal_offerings po on (po.runnable_type = 'ExternalActivity' and po.runnable_id = ea.id)",
         "join portal_clazzes pc on (pc.id = po.clazz_id)",
         "join portal_teacher_clazzes ptc on (ptc.clazz_id = pc.id)",
         "join portal_teachers pt on (pt.id = ptc.teacher_id)",
