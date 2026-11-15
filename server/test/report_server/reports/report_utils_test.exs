@@ -85,20 +85,20 @@ defmodule ReportServer.Reports.ReportUtilsTest do
                ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id")
     end
 
-    test "a researcher project requires the student's consent to that project" do
+    test "a researcher project admits a learner only when that project's researchers may see the student" do
       allowed = %AllowedProjects{admin: [], researcher: [3]}
       {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
 
       assert teacher ==
                "(ac_teacher_a.project_id IN (3) AND " <>
-                 AllowedProjects.consent_exists("rl.student_id", "ac_teacher_a.project_id") <> ")"
+                 AllowedProjects.researcher_may_see_student("rl.student_id", "ac_teacher_a.project_id") <> ")"
     end
 
     test "a caller with both roles gets an admin branch and a consent branch" do
       allowed = %AllowedProjects{admin: [1], researcher: [3]}
       {_join, [teacher | _]} = ReportUtils.scope_by_allowed_projects(allowed, [], [], "ea.id", "pt.id", "rl.student_id")
 
-      assert teacher =~ ~r/^\(ac_teacher_a\.project_id IN \(1\)\) OR \(ac_teacher_a\.project_id IN \(3\) AND EXISTS /
+      assert teacher =~ ~r/^\(ac_teacher_a\.project_id IN \(1\)\) OR \(ac_teacher_a\.project_id IN \(3\) AND \(NOT EXISTS /
       refute teacher =~ "IN ()"
     end
 

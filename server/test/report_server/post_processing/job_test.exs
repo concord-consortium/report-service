@@ -137,7 +137,12 @@ defmodule ReportServer.PostProcessing.JobTest do
 
     test "a user with both roles links a classmate's document in an admin-project class" do
       mixed = %AllowedProjects{admin: [1], researcher: [3]}
-      assert link_cell(mixed, Map.put(@learner, :in_admin_class, 1), "77702") =~ "targetUserId=77702"
+      assert link_cell(mixed, Map.put(@learner, :in_whole_class, 1), "77702") =~ "targetUserId=77702"
+    end
+
+    test "a researcher links a classmate's document in a class whose every student they may see" do
+      assert link_cell(@researcher, Map.put(@learner, :in_whole_class, 1), "77702") =~ "targetUserId=77702"
+      assert link_cell(@researcher, Map.put(@learner, :in_whole_class, 0), "77702") == ""
     end
 
     test "an admin-only owner's links are unchanged" do

@@ -46,14 +46,14 @@ defmodule ReportServer.PostProcessing.Steps.ClueLinkToWork do
 
   def process_row(_job_params, row, _data_row?), do: row
 
-  # A log row can name a classmate's document: a researcher links only the learner's own work or an
-  # admin-project class's, and :none links nothing.
+  # A log row can name a classmate's document: a researcher links only the learner's own work or that
+  # of a class whose every student they may see, and :none links nothing.
   defp link_allowed?(%JobParams{allowed: :all}, _learner, _document_uid), do: true
   defp link_allowed?(%JobParams{allowed: %AllowedProjects{researcher: []}}, _learner, _document_uid), do: true
 
   defp link_allowed?(%JobParams{allowed: allowed}, learner, document_uid) do
     AllowedProjects.researcher?(allowed) and
-      (document_uid == Integer.to_string(learner.user_id) or learner[:in_admin_class] == 1)
+      (document_uid == Integer.to_string(learner.user_id) or learner[:in_whole_class] == 1)
   end
 
   defp generate_link_to_work(%JobParams{portal_url: portal_url}, _learner = %{offering_id: offering_id, class_id: class_id}, document_key, document_uid, maybe_document_history_id) do

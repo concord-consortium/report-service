@@ -111,8 +111,9 @@ defmodule ReportServer.Reports.DimensionScope do
   # they are unscoped by decision rather than by an absent clause. An entity reaches a project
   # through a cohort, except an assignment, which reaches one through a cohort or through the
   # project's own materials, which is why its joins are LEFT and its predicate a disjunction.
-  # `student` and `permission_form` reach students, so through a researcher project they admit
-  # only what a consenting student of that project reaches.
+  # `student` and `permission_form` reach students, so through a researcher project `student`
+  # admits only the students `AllowedProjects.researcher_may_see_student/2` allows, and
+  # `permission_form` only that project's own forms.
   @scopes %{
     cohort: %{join: [], where: ["admin_cohorts.project_id IN"]},
     school: %{
@@ -162,7 +163,7 @@ defmodule ReportServer.Reports.DimensionScope do
         "JOIN admin_cohorts ac ON (ac.id = aci.admin_cohort_id)"
       ],
       project: "ac.project_id",
-      consent: AllowedProjects.consent_exists("ps.id", "ac.project_id")
+      consent: AllowedProjects.researcher_may_see_student("ps.id", "ac.project_id")
     },
     country: :none,
     state: :none,
