@@ -24,6 +24,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReport do
       {"#{@group_concat_hint} rl.learner_id", "learner_id"},
       {"rl.user_id", "user_id"},
       {"COALESCE(u.primary_account_id, u.id)", "primary_user_id"},
+      {LearnerBaseQuery.student_user_type_sql(), "student_user_type"},
       {"rl.student_id", "student_id"},
       {"rl.class_id", "class_id"},
       {"rl.school_id", "school_id"},

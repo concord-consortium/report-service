@@ -6,7 +6,7 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportTest do
   alias ReportServer.Reports.Portal.StudentMetadataReport
   alias ReportServerWeb.Api.V1.ReportJSON
 
-  @columns ~w(learner_id user_id primary_user_id student_id class_id school_id run_remote_endpoint
+  @columns ~w(learner_id user_id primary_user_id student_user_type student_id class_id school_id run_remote_endpoint
               student_name username class school teacher_user_ids teacher_names teacher_emails
               teacher_districts teacher_states permission_forms last_run)
 
@@ -21,14 +21,14 @@ defmodule ReportServer.Reports.Portal.StudentMetadataReportTest do
 
   defp select_list(sql), do: sql |> String.split(" FROM report_learners", parts: 2) |> List.first()
 
-  test "emits the eighteen columns, in order" do
+  test "emits the nineteen columns, in order" do
     emitted =
       ~r/ AS (\w+)/
       |> Regex.scan(select_list(sql_for(admin())))
       |> Enum.map(&List.last/1)
 
     assert emitted == @columns
-    assert length(@columns) == 18
+    assert length(@columns) == 19
   end
 
   test "carries the join keys the mapping report emits, so it can stand alone" do

@@ -7,7 +7,7 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReportTest do
   alias ReportServer.Reports.ReportRun
   alias ReportServerWeb.Api.V1.ReportJSON
 
-  @columns ~w(learner_id user_id primary_user_id student_id class_id offering_id runnable_url
+  @columns ~w(learner_id user_id primary_user_id student_user_type student_id class_id offering_id runnable_url
               run_remote_endpoint)
 
   defp filter, do: %ReportFilter{filters: [:class], class: [601]}

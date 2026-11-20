@@ -63,7 +63,7 @@ defmodule ReportServerWeb.Api.V1.RecentLogsControllerTest do
         "id" => id, "session" => "s", "application" => "Activity Player", "activity" => "a",
         "event" => "e", "event_value" => "v", "time" => div(timestamp, 1000), "parameters" => "{}",
         "extras" => "{}", "run_remote_endpoint" => @endpoint_557, "timestamp" => timestamp,
-        "user_id" => 101, "primary_user_id" => 101
+        "user_id" => 101, "primary_user_id" => 101, "student_user_type" => "student"
       },
       overrides
     )

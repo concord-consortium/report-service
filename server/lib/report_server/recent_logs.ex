@@ -8,7 +8,7 @@ defmodule ReportServer.RecentLogs do
 
   alias ReportServer.Reports.ReportQuery
 
-  @columns ~w(id session application activity event event_value time parameters extras run_remote_endpoint timestamp user_id primary_user_id)
+  @columns ~w(id session application activity event event_value time parameters extras run_remote_endpoint timestamp user_id primary_user_id student_user_type)
   @integer_columns ~w(time timestamp user_id primary_user_id)
   @cursor_version "v1"
   @version_pattern ~r/\Av[1-9][0-9]{0,5}\z/
@@ -100,9 +100,10 @@ defmodule ReportServer.RecentLogs do
   end
 
   @doc """
-  The Athena SQL for `learners` (maps with `run_remote_endpoint`, `user_id`, `primary_user_id`)
-  within `bounds`: the 13 columns ordered by `timestamp` then `id`. The learners are an inline
-  `VALUES` table rather than the uploaded `learners` table, so a read writes nothing to S3.
+  The Athena SQL for `learners` (maps with `run_remote_endpoint`, `user_id`, `primary_user_id`,
+  `student_user_type`) within `bounds`: the 14 columns ordered by `timestamp` then `id`. The
+  learners are an inline `VALUES` table rather than the uploaded `learners` table, so a read
+  writes nothing to S3.
   """
   def sql(learners, bounds = %{since: since, until: until}) when learners != [] do
     log_db = ReportQuery.get_log_db_name()
@@ -114,7 +115,7 @@ defmodule ReportServer.RecentLogs do
     SELECT #{Enum.map_join(cols, ", ", fn {col, name} -> "#{col} AS #{name}" end)}
     FROM "#{log_db}"."logs_by_hour" log
     JOIN (VALUES #{Enum.map_join(learners, ", ", &learner_value/1)})
-      AS learner (run_remote_endpoint, user_id, primary_user_id)
+      AS learner (run_remote_endpoint, user_id, primary_user_id, student_user_type)
       ON learner.run_remote_endpoint = log.run_remote_endpoint
     WHERE #{dt_predicate(bounds)}
       AND log.timestamp >= #{since}#{until_predicate}
@@ -122,15 +123,18 @@ defmodule ReportServer.RecentLogs do
     """
   end
 
-  defp learner_value(%{run_remote_endpoint: ep, user_id: user_id, primary_user_id: primary}) do
-    "('#{String.replace(ep, "'", "''")}', #{integer!(user_id)}, #{integer!(primary)})"
+  defp learner_value(%{run_remote_endpoint: ep, user_id: user_id, primary_user_id: primary, student_user_type: type}) do
+    "('#{String.replace(ep, "'", "''")}', #{integer!(user_id)}, #{integer!(primary)}, '#{student_user_type!(type)}')"
   end
+
+  # the two values the portal query produces; anything else would be spliced into the SQL
+  defp student_user_type!(type) when type in ["student", "teacher_learner"], do: type
 
   defp integer!(value) when is_integer(value), do: value
 
   @doc """
   One CSV row (a header-keyed map, as `CSV.decode(headers: true)` gives it) as the route answers
-  it: an ordered object, so it encodes in the `student-actions` column order. A plain map of 13
+  it: an ordered object, so it encodes in the `student-actions` column order. A plain map of 14
   keys encodes in key order.
   """
   def row(csv_row) do

@@ -79,12 +79,12 @@ defmodule ReportServer.Reports.ReportQuery do
 
   def get_learner_cols(opts \\ []) do
     format_as_learner_col_list(opts,
-      ["learner_id", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "primary_user_id", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run"])
+      ["learner_id", "class_id", "runnable_url", "student_id", "class", "school", "user_id", "primary_user_id", "student_user_type", "offering_id", "permission_forms", "username", "student_name", "teachers", "last_run"])
   end
 
   def get_minimal_learner_cols(opts \\ []) do
     format_as_learner_col_list(opts,
-      ["user_id", "primary_user_id"])
+      ["user_id", "primary_user_id", "student_user_type"])
   end
 
   defp format_as_learner_col_list(opts, column_names) do
