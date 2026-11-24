@@ -19,6 +19,15 @@ defmodule ReportServer.Reports.Athena.LearnerDataPortalTest do
     assert %{user_id: 102} = Enum.find(learners, &(&1.learner_id == 904))
   end
 
+  test "each learner carries its student_user_type into the upload" do
+    filter = %ReportFilter{filters: [:class], class: [602]}
+
+    assert {:ok, groups} = LearnerData.fetch(filter, admin())
+
+    types = groups |> Enum.flat_map(& &1.learners) |> Map.new(&{&1.learner_id, &1.student_user_type})
+    assert types == %{903 => "teacher_learner", 904 => "student"}
+  end
+
   describe "permission_forms for a caller with a researcher project" do
     @filter %ReportFilter{filters: [:class], class: [601, 602, 604]}
 

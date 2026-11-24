@@ -61,6 +61,33 @@ teacher with no school at all still occupies its position, as an empty entry.
 has one splitting rule. Values containing commas are not a concern because the portal replaces a
 comma inside a value with a space before joining.
 
+### Teacher learner accounts
+
+A teacher can switch into learner mode on the portal, which signs them in to a second, linked
+account with its own student record, marked by `portal_students.is_teacher_preview_student`. Its
+work is a teacher trying out an assignment, not a student's, so every report and export with a row
+per student or learner carries a `student_user_type` column: `teacher_learner` for that account and
+`student` for everyone else. That is Student ID Mapping, Student Metadata, Student Actions, Student
+Actions with Metadata, Student Answers, Assignment Usage by Student and a class's recent logs.
+Nothing is filtered out: a consumer keeps or drops those rows on this column. The log events
+themselves are unchanged; the column comes from the portal, joined on as the other learner columns
+are.
+
+Two things must be in place before a release with this column serves traffic, because every
+learner query reads it and fails without it:
+
+1. The portal's `is_teacher_preview_student` migration, in every portal database that
+   report-server instance reads (each `*_DB` it is configured with). A portal database without it
+   fails every learner report for that portal with "Unknown column".
+2. The column on the Athena `learners` table, which the uploaded learner files are read through:
+
+    ```
+    ALTER TABLE `report-service`.`learners` ADD COLUMNS (student_user_type string)
+    ```
+
+    Learner files uploaded before the release have no such field and read it as NULL, which is
+    harmless: each run reads only the files it uploaded itself.
+
 ### Who sees which students
 
 A site admin sees every student. A project admin sees the students in their projects' cohort
@@ -176,7 +203,7 @@ bin/report_server eval 'ReportServer.Release.revoke_package_publisher("learn.con
 
 **The cursor.** Every answer to a read with no `end` carries a `next_cursor` (one with an `end` carries `null`), an opaque string whose `since` is `query_started_at` minus ten minutes, never the newest `timestamp` it returned: a row can land after one with a later `timestamp`. Passing it back as `cursor` reads from there, so answers overlap by design and the caller deduplicates by `id`. A cursor cannot be combined with `start` or `end`, and one for another class or that does not decode is 400; one older than `window_start`, or in a well-formed version other than the one the server reads (`v2.…` while it reads `v1`, after a format change or a rollback), is 410 `EXPIRED_CURSOR`, and the caller starts again without it. A server that introduces a new cursor version must answer 410, never 400, to the versions it stops reading, so a stored cursor only ever costs its holder one re-read of the window. A caller resuming a pull without the cursor sets `start` from its last `query_started_at` minus ten minutes, never from the largest `timestamp` it holds.
 
-**The answer.** JSON with `class_id`, `window_start`, `nightly_through` (an ISO date), `since`, `until` (`null` with no `end`), `query_started_at` (when report-server received the request, the one instant that also fixes `window_start` and the bounds check, so it is never later than the Athena query), `rows`, `count`, `latest_timestamp` (`null` when there are no rows) and `next_cursor` (`null` with an `end`); `window_start`, `since`, `until`, `query_started_at` and `latest_timestamp` are epoch milliseconds. Each row has the 13 Student Actions columns in their order, `id`, `session`, `application`, `activity`, `event`, `event_value`, `time`, `parameters`, `extras`, `run_remote_endpoint`, `timestamp`, `user_id` and `primary_user_id`, with the four numeric columns as integers and an empty value as `null`; rows are ordered by `timestamp`, then `id`. The rows stream as they are read from Athena's result, so `count`, `latest_timestamp` and `next_cursor` follow them, and a failure partway through ends the body early, leaving invalid JSON the caller retries.
+**The answer.** JSON with `class_id`, `window_start`, `nightly_through` (an ISO date), `since`, `until` (`null` with no `end`), `query_started_at` (when report-server received the request, the one instant that also fixes `window_start` and the bounds check, so it is never later than the Athena query), `rows`, `count`, `latest_timestamp` (`null` when there are no rows) and `next_cursor` (`null` with an `end`); `window_start`, `since`, `until`, `query_started_at` and `latest_timestamp` are epoch milliseconds. Each row has the 14 Student Actions columns in their order, `id`, `session`, `application`, `activity`, `event`, `event_value`, `time`, `parameters`, `extras`, `run_remote_endpoint`, `timestamp`, `user_id`, `primary_user_id` and `student_user_type` (see "Teacher learner accounts"), with the four numeric columns as integers and an empty value as `null`; rows are ordered by `timestamp`, then `id`. The rows stream as they are read from Athena's result, so `count`, `latest_timestamp` and `next_cursor` follow them, and a failure partway through ends the body early, leaving invalid JSON the caller retries.
 
 **Errors.** 400 for a malformed class id or cursor, a `start` or `end` that is malformed or before `window_start` or an `end` not after `start`, or a cursor combined with `start` or `end`; 401 without a valid credential; 403 for a class outside the caller's grants, an access token whose context does not name this class, or a browser request with a bearer from an origin not in `PACKAGES_CORS_ORIGINS`; 410 for an expired cursor; 422 for a class whose learners make the query longer than Athena's 262,144-byte limit (about 2,100 learners, each student once per assignment); 500 when the audit row cannot be written; 503 when the portal cannot be asked, Athena fails or does not finish within 60 seconds, or `RECENT_LOGS_MAX_CONCURRENT` reads are already running.
 
@@ -241,6 +268,7 @@ The reads are done by CLUE's `clueExport` function in that portal's CLUE project
 To start the Phoenix server:
 
 * Run `mix setup` to install and setup dependencies
+* Run `npm install` in the `assets` folder to install the JavaScript packages the asset build needs.
 * Start ssh tunnel if needed (see above)
 * Run `source .env` (created in step above) to load the environment variables
 * Run `docker compose up` (or `docker-compose up` for older Docker installs) to start the MySQL database

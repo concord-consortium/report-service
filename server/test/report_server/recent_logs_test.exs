@@ -23,8 +23,8 @@ defmodule ReportServer.RecentLogsTest do
 
   defp learners do
     [
-      %{run_remote_endpoint: "https://p/dataservice/external_activity_data/K1", user_id: 101, primary_user_id: 101},
-      %{run_remote_endpoint: "https://p/dataservice/external_activity_data/K2", user_id: 102, primary_user_id: 99}
+      %{run_remote_endpoint: "https://p/dataservice/external_activity_data/K1", user_id: 101, primary_user_id: 101, student_user_type: "student"},
+      %{run_remote_endpoint: "https://p/dataservice/external_activity_data/K2", user_id: 102, primary_user_id: 99, student_user_type: "teacher_learner"}
     ]
   end
 
@@ -32,12 +32,13 @@ defmodule ReportServer.RecentLogsTest do
             ~s("log"."activity" AS activity, "log"."event" AS event, "log"."event_value" AS event_value, ) <>
             ~s("log"."time" AS time, "log"."parameters" AS parameters, "log"."extras" AS extras, ) <>
             ~s("log"."run_remote_endpoint" AS run_remote_endpoint, "log"."timestamp" AS timestamp, ) <>
-            ~s("learner"."user_id" AS user_id, "learner"."primary_user_id" AS primary_user_id)
+            ~s("learner"."user_id" AS user_id, "learner"."primary_user_id" AS primary_user_id, ) <>
+            ~s("learner"."student_user_type" AS student_user_type)
 
   @from ~s(FROM "log_ingester_qa"."logs_by_hour" log ) <>
-          ~s[JOIN (VALUES ('https://p/dataservice/external_activity_data/K1', 101, 101), ] <>
-          ~s[('https://p/dataservice/external_activity_data/K2', 102, 99)) ] <>
-          ~s[AS learner (run_remote_endpoint, user_id, primary_user_id) ] <>
+          ~s[JOIN (VALUES ('https://p/dataservice/external_activity_data/K1', 101, 101, 'student'), ] <>
+          ~s[('https://p/dataservice/external_activity_data/K2', 102, 99, 'teacher_learner')) ] <>
+          ~s[AS learner (run_remote_endpoint, user_id, primary_user_id, student_user_type) ] <>
           ~s(ON learner.run_remote_endpoint = log.run_remote_endpoint)
 
   describe "window/1" do
@@ -177,10 +178,16 @@ defmodule ReportServer.RecentLogsTest do
     end
 
     test "doubles a quote in a learner endpoint" do
-      learner = %{run_remote_endpoint: "https://p/x/K'1", user_id: 1, primary_user_id: 1}
+      learner = %{run_remote_endpoint: "https://p/x/K'1", user_id: 1, primary_user_id: 1, student_user_type: "student"}
       sql = RecentLogs.sql([learner], %{since: @window_start, until: nil})
 
-      assert sql =~ "('https://p/x/K''1', 1, 1)"
+      assert sql =~ "('https://p/x/K''1', 1, 1, 'student')"
+    end
+
+    test "refuses a student_user_type the portal query cannot produce, rather than splice it into the SQL" do
+      learner = %{run_remote_endpoint: "https://p/x/K1", user_id: 1, primary_user_id: 1, student_user_type: "x'); DROP"}
+
+      assert_raise FunctionClauseError, fn -> RecentLogs.sql([learner], %{since: @window_start, until: nil}) end
     end
   end
 
@@ -188,7 +195,7 @@ defmodule ReportServer.RecentLogsTest do
     defp csv_row(overrides) do
       RecentLogs.columns()
       |> Map.new(&{&1, "x"})
-      |> Map.merge(%{"time" => "1792454400", "timestamp" => "1792454400000", "user_id" => "101", "primary_user_id" => "99"})
+      |> Map.merge(%{"time" => "1792454400", "timestamp" => "1792454400000", "user_id" => "101", "primary_user_id" => "99", "student_user_type" => "teacher_learner"})
       |> Map.merge(overrides)
     end
 
@@ -200,6 +207,7 @@ defmodule ReportServer.RecentLogsTest do
       assert decoded["timestamp"] == 1_792_454_400_000
       assert decoded["user_id"] == 101
       assert decoded["primary_user_id"] == 99
+      assert decoded["student_user_type"] == "teacher_learner"
       assert decoded["extras"] == nil
       assert decoded["parameters"] == "{\"a\":\"line1\nline2\"}"
     end
@@ -211,7 +219,7 @@ defmodule ReportServer.RecentLogsTest do
       assert keys == RecentLogs.columns()
 
       assert RecentLogs.columns() ==
-               ~w(id session application activity event event_value time parameters extras run_remote_endpoint timestamp user_id primary_user_id)
+               ~w(id session application activity event event_value time parameters extras run_remote_endpoint timestamp user_id primary_user_id student_user_type)
     end
 
     test "raises on a CSV missing a column" do

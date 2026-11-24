@@ -76,6 +76,22 @@ defmodule ReportServer.ReportQueryTest do
 
   end
 
+  describe "learner columns" do
+    @student_user_type_col {"\"learner\".\"student_user_type\"", "student_user_type"}
+
+    defp col_after_primary_user_id(cols) do
+      cols |> Enum.drop_while(&(elem(&1, 1) != "primary_user_id")) |> Enum.at(1)
+    end
+
+    test "get_learner_cols/1 has student_user_type right after primary_user_id" do
+      assert col_after_primary_user_id(ReportQuery.get_learner_cols()) == @student_user_type_col
+    end
+
+    test "get_minimal_learner_cols/1 has student_user_type right after primary_user_id" do
+      assert col_after_primary_user_id(ReportQuery.get_minimal_learner_cols()) == @student_user_type_col
+    end
+  end
+
   describe "update_query/2" do
 
     test "adds JOIN and WHERE clauses" do

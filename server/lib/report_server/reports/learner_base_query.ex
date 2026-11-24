@@ -12,10 +12,15 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.{AllowedProjects, CohortFilter, ReportFilter, ReportQuery}
 
+  # the `student_user_type` values; `RecentLogs` checks spliced values against this same list
+  @student_type "student"
+  @teacher_learner_type "teacher_learner"
+
   @from "report_learners rl"
   @join [
     "JOIN portal_learners pl ON (rl.learner_id = pl.id)",
     "JOIN users u ON (u.id = rl.user_id)",
+    "JOIN portal_students pstu ON (pstu.id = rl.student_id)",
     "JOIN portal_offerings po ON (po.id = rl.offering_id)",
     "JOIN external_activities ea on (po.runnable_type = 'ExternalActivity' AND po.runnable_id = ea.id)",
     "JOIN portal_student_clazzes psc ON (psc.student_id = rl.student_id)",
@@ -32,7 +37,19 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   and whole-class joins, need no key: each one's single column equals `rl.class_id` where it is not
   NULL.
   """
-  def group_by, do: "rl.id, u.id, ea.id, pl.id"
+  def group_by, do: "rl.id, u.id, pstu.id, ea.id, pl.id"
+
+  @doc """
+  The `student_user_type` column: `teacher_learner` for the student record a teacher's learner mode
+  account uses (the portal's `portal_students.is_teacher_preview_student`), and `student` for every
+  other student. A researcher filters on it to keep or drop a teacher's own trial runs.
+  """
+  def student_user_type_sql do
+    "CASE WHEN pstu.is_teacher_preview_student = 1 THEN '#{@teacher_learner_type}' ELSE '#{@student_type}' END"
+  end
+
+  @doc "Every value `student_user_type_sql/0` can produce."
+  def student_user_types, do: [@student_type, @teacher_learner_type]
 
   @doc """
   The `run_remote_endpoint` string, byte-identical to the one `LearnerData` builds in Elixir,

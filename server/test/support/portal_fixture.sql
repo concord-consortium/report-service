@@ -32,7 +32,7 @@ CREATE TABLE admin_projects (id INT PRIMARY KEY, name VARCHAR(255));
 DROP TABLE IF EXISTS portal_clazzes;
 CREATE TABLE portal_clazzes (id INT PRIMARY KEY, name VARCHAR(255), class_word VARCHAR(255), class_hash VARCHAR(48) NULL);
 DROP TABLE IF EXISTS portal_students;
-CREATE TABLE portal_students (id INT PRIMARY KEY, user_id INT);
+CREATE TABLE portal_students (id INT PRIMARY KEY, user_id INT, is_teacher_preview_student TINYINT(1) NOT NULL DEFAULT 0);
 DROP TABLE IF EXISTS portal_permission_forms;
 CREATE TABLE portal_permission_forms (id INT PRIMARY KEY, name VARCHAR(255), project_id INT);
 DROP TABLE IF EXISTS portal_countries;
@@ -109,7 +109,9 @@ INSERT INTO portal_countries VALUES (1,'United States'),(2,'Canada');
 INSERT INTO portal_permission_forms VALUES (11,'Form 1',900),(12,'Form 2',901),(13,'Aardvark Form',901),
   (14,'Unreachable Form',901);
 -- Student 75 is in no class, so no teacher and no project reach them.
-INSERT INTO portal_students VALUES (71,101),(72,102),(73,103),(74,104),(75,105);
+INSERT INTO portal_students (id, user_id) VALUES (71,101),(72,102),(73,103),(74,104),(75,105);
+-- Student 73 is a teacher's learner mode account, so its learner (903) is a `teacher_learner`.
+UPDATE portal_students SET is_teacher_preview_student = 1 WHERE id = 73;
 INSERT INTO admin_tags VALUES (1,'Science','subject_areas'),(2,'Math','subject_areas'),(3,'Not A Subject','other');
 INSERT INTO taggings VALUES (1,1,'subject_areas','ExternalActivity',801);
 -- Three classes share a label so a page boundary can fall inside the tie, and their ids disagree
@@ -164,7 +166,7 @@ INSERT INTO users VALUES (136,'dee','Dee','Teach','dee@e.org',NULL),
 INSERT INTO portal_teachers VALUES (36,136);
 INSERT INTO portal_clazzes (id, name, class_word) VALUES (604,'Class 604','d');
 INSERT INTO portal_teacher_clazzes VALUES (17,604,36);
-INSERT INTO portal_students VALUES (76,106),(77,107),(78,108);
+INSERT INTO portal_students (id, user_id) VALUES (76,106),(77,107),(78,108);
 INSERT INTO portal_student_clazzes VALUES (5,604,76),(6,604,77),(7,604,78);
 INSERT INTO portal_offerings VALUES (704,'ExternalActivity',801,604);
 INSERT INTO portal_learners VALUES
@@ -202,7 +204,7 @@ INSERT INTO users VALUES (137,'fay','Fay','Teach','fay@e.org',NULL),(109,'stu.ni
 INSERT INTO portal_teachers VALUES (37,137);
 INSERT INTO portal_clazzes (id, name, class_word) VALUES (605,'Class 605','e');
 INSERT INTO portal_teacher_clazzes VALUES (18,605,37);
-INSERT INTO portal_students VALUES (79,109);
+INSERT INTO portal_students (id, user_id) VALUES (79,109);
 INSERT INTO portal_student_clazzes VALUES (8,605,79),(9,604,79);
 INSERT INTO portal_student_permission_forms VALUES (16,79,15),(17,79,12);
 INSERT INTO admin_project_users VALUES (17,903,571,1,0,NULL),(18,902,571,0,1,NULL);
@@ -214,7 +216,7 @@ INSERT INTO portal_learners VALUES (908,79,705,'SECUREKEY908','2026-04-08 09:00:
   (909,80,705,'SECUREKEY909','2026-04-09 09:00:00');
 INSERT INTO users VALUES (572,'res.noforms','Res','Noforms','res.noforms@e.org',NULL),
   (110,'stu.ten','Stu','Ten','stu.ten@e.org',NULL);
-INSERT INTO portal_students VALUES (80,110);
+INSERT INTO portal_students (id, user_id) VALUES (80,110);
 INSERT INTO portal_student_clazzes VALUES (10,605,80);
 INSERT INTO admin_project_users VALUES (19,903,572,0,1,NULL);
 INSERT INTO report_learners

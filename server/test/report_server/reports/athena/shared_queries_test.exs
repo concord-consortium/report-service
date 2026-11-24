@@ -288,5 +288,22 @@ defmodule ReportServer.Reports.Athena.SharedQueriesTest do
       assert alias_count(sql, "res_1_#{@open_response}_text") == 3
       assert alias_count(sql, "res_1_#{@interactive}_url") == 3
     end
+
+    test "every row carries the learner's student_user_type, after primary_user_id" do
+      sql = answers_sql(%ReportFilter{})
+
+      assert sql =~ "arbitrary(student_user_type) as student_user_type"
+      assert alias_count(sql, "student_user_type") == 2
+      assert sql =~ ~r/unique_user_class\.primary_user_id,\s+unique_user_class\.student_user_type,/
+    end
+  end
+
+  describe "generate_no_resource_sql/2" do
+    test "carries the learner's student_user_type, after primary_user_id" do
+      {:ok, query} = SharedQueries.generate_no_resource_sql(%ReportFilter{}, [%{query_id: "q1"}])
+
+      assert query.raw_sql =~ "arbitrary(l.student_user_type) AS student_user_type"
+      assert query.raw_sql =~ ~r/primary_user_id AS primary_user_id,\s+student_user_type AS student_user_type,/
+    end
   end
 end

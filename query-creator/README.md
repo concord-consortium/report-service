@@ -250,6 +250,8 @@ You can change the behavior of the query-creator using the following query param
       class string,
       school string,
       user_id string,
+      primary_user_id string,
+      student_user_type string,
       offering_id string,
       permission_forms string,
       username string,

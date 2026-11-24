@@ -47,6 +47,12 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReportDbTest do
     assert length(run(admin(), filter([601]))) == 2
   end
 
+  test "student_user_type marks a teacher's learner mode account and no one else" do
+    by_learner = admin() |> run() |> Map.new(&{&1.learner_id, &1.student_user_type})
+
+    assert by_learner == %{901 => "student", 902 => "student", 903 => "teacher_learner", 904 => "student"}
+  end
+
   test "run_remote_endpoint is byte-identical to the string LearnerData builds in Elixir" do
     rows = run(admin())
     by_learner = Map.new(rows, &{&1.learner_id, &1})

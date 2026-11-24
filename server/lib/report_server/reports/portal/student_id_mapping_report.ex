@@ -13,6 +13,7 @@ defmodule ReportServer.Reports.Portal.StudentIdMappingReport do
       {"rl.learner_id", "learner_id"},
       {"rl.user_id", "user_id"},
       {"COALESCE(u.primary_account_id, u.id)", "primary_user_id"},
+      {LearnerBaseQuery.student_user_type_sql(), "student_user_type"},
       {"rl.student_id", "student_id"},
       {"rl.class_id", "class_id"},
       {"rl.offering_id", "offering_id"},
