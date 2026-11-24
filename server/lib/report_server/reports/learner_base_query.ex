@@ -12,6 +12,10 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   alias ReportServer.PortalDbs
   alias ReportServer.Reports.{AllowedProjects, CohortFilter, ReportFilter, ReportQuery}
 
+  # the `student_user_type` values; `RecentLogs` checks spliced values against this same list
+  @student_type "student"
+  @teacher_learner_type "teacher_learner"
+
   @from "report_learners rl"
   @join [
     "JOIN portal_learners pl ON (rl.learner_id = pl.id)",
@@ -41,8 +45,11 @@ defmodule ReportServer.Reports.LearnerBaseQuery do
   other student. A researcher filters on it to keep or drop a teacher's own trial runs.
   """
   def student_user_type_sql do
-    "CASE WHEN pstu.is_teacher_preview_student = 1 THEN 'teacher_learner' ELSE 'student' END"
+    "CASE WHEN pstu.is_teacher_preview_student = 1 THEN '#{@teacher_learner_type}' ELSE '#{@student_type}' END"
   end
+
+  @doc "Every value `student_user_type_sql/0` can produce."
+  def student_user_types, do: [@student_type, @teacher_learner_type]
 
   @doc """
   The `run_remote_endpoint` string, byte-identical to the one `LearnerData` builds in Elixir,

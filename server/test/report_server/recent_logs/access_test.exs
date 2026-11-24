@@ -6,7 +6,7 @@ defmodule ReportServer.RecentLogs.AccessTest do
   import ReportServer.AccountsFixtures
 
   alias ReportServer.Accounts.User
-  alias ReportServer.PortalFixture
+  alias ReportServer.{PortalFixture, RecentLogs}
   alias ReportServer.RecentLogs.Access
   alias ReportServer.Repo
 
@@ -56,6 +56,23 @@ defmodule ReportServer.RecentLogs.AccessTest do
              ]
 
       assert Access.learners(user, 603) == {:ok, []}
+    end
+
+    test "a class with a teacher's learner mode account reads it as teacher_learner, which the SQL accepts" do
+      assert {:ok, learners} = Access.learners(admin(), 602)
+      assert learners |> Enum.map(& &1.student_user_type) |> Enum.sort() == ["student", "teacher_learner"]
+
+      previous = Application.get_env(:report_server, :athena)
+      Application.put_env(:report_server, :athena, log_db_name: "log_ingester_qa")
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:report_server, :athena, previous),
+          else: Application.delete_env(:report_server, :athena)
+      end)
+
+      since = RecentLogs.window(System.system_time(:millisecond)).window_start
+      assert RecentLogs.sql(learners, %{since: since, until: nil}) =~ ", 'teacher_learner')"
     end
   end
 

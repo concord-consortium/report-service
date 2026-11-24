@@ -6,10 +6,11 @@ defmodule ReportServer.RecentLogs do
   a `student-actions` run ending on it and these rows meet at `window_start`.
   """
 
-  alias ReportServer.Reports.ReportQuery
+  alias ReportServer.Reports.{LearnerBaseQuery, ReportQuery}
 
   @columns ~w(id session application activity event event_value time parameters extras run_remote_endpoint timestamp user_id primary_user_id student_user_type)
   @integer_columns ~w(time timestamp user_id primary_user_id)
+  @student_user_types LearnerBaseQuery.student_user_types()
   @cursor_version "v1"
   @version_pattern ~r/\Av[1-9][0-9]{0,5}\z/
   # 13 digits (year 2286): DateTime can still render the padded `dt` hour, and Athena's bigint holds it
@@ -127,8 +128,8 @@ defmodule ReportServer.RecentLogs do
     "('#{String.replace(ep, "'", "''")}', #{integer!(user_id)}, #{integer!(primary)}, '#{student_user_type!(type)}')"
   end
 
-  # the two values the portal query produces; anything else would be spliced into the SQL
-  defp student_user_type!(type) when type in ["student", "teacher_learner"], do: type
+  # only the values the portal query produces; anything else would be spliced into the SQL
+  defp student_user_type!(type) when type in @student_user_types, do: type
 
   defp integer!(value) when is_integer(value), do: value
 

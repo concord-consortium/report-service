@@ -114,11 +114,6 @@ defmodule ReportServer.Reports.LearnerBaseQueryTest do
              "CONCAT('https://#{portal_server}/dataservice/external_activity_data/', COALESCE(pl.secure_key, ''))"
   end
 
-  test "student_user_type_sql/0 names a teacher's learner mode account and every other student" do
-    assert LearnerBaseQuery.student_user_type_sql() ==
-             "CASE WHEN pstu.is_teacher_preview_student = 1 THEN 'teacher_learner' ELSE 'student' END"
-  end
-
   test "a filter with nothing to constrain it is rejected rather than run unscoped" do
     assert {:error, "Cannot run query with no filters"} =
              LearnerBaseQuery.build(%ReportFilter{},
