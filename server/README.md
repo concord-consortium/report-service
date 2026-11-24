@@ -76,7 +76,9 @@ are.
 Two things must be in place before a release with this column serves traffic, because every
 learner query reads it and fails without it:
 
-1. The portal's `is_teacher_preview_student` migration, in that environment's portal database.
+1. The portal's `is_teacher_preview_student` migration, in every portal database that
+   report-server instance reads (each `*_DB` it is configured with). A portal database without it
+   fails every learner report for that portal with "Unknown column".
 2. The column on the Athena `learners` table, which the uploaded learner files are read through:
 
     ```
